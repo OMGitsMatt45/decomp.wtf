@@ -331,6 +331,16 @@ games, much less on real ones so far. Expect rough edges, and please
 [report](https://github.com/i12bp8/decomp.wtf/issues) what you hit: the app's error panel copies everything an issue
 needs. Public decomps of any platform run in their own project's build, so their status is the project's.
 
+**Encrypted DS ROMs.** Set `DECOMP_ARM7_BIOS` to the path of your own 16 KiB ARM7 BIOS before starting the app
+(`export DECOMP_ARM7_BIOS=/path/to/arm7_bios.bin` on Linux). The importer copies it into the project's ignored
+`extract/arm7_bios.bin`, and subsequent builds reuse it. The BIOS and ROM stay out of git.
+
+For a bounded test from a source checkout, `uv run python tools/ds_pilot.py --help` exposes an import and
+machine-draft runner. Pass `--rom`, `--arm7-bios`, an external `--work` directory, `--own-copy`, and the game's
+compiler (for example `--compiler DS/2.0/sp1p6`). `--drafts 64` limits the attempts; `--sample spread` samples
+different function sizes. An optional `--remaining-report` CSV restricts attempts to its `analysis_name` or
+`name` column, so existing work can be excluded. Results record object matches and the separate full-ROM check.
+
 **From scratch.** splat and spimdisasm split MIPS games, decomp-toolkit analyses GameCube and Wii programs inside a
 generated [dtk-template](https://github.com/encounter/dtk-template) project, [ds-decomp](https://github.com/AetiasHax/ds-decomp)
 analyses DS ROMs (ARM9, ITCM, DTCM, overlays) inside a generated project of the same kind, and Game Boy Advance

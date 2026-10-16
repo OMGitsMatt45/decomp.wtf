@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import struct
@@ -141,18 +142,26 @@ def _units(module: Path) -> list[tuple[int, int, int]]:
     if text is None:
         return []
     symbols = (module / "symbols.txt").read_text(encoding="utf-8")
-    funcs = sorted({int(a, 16): int(size, 16) for _, _, size, a in _FUNC.findall(symbols)
-                    if text[0] <= int(a, 16) < text[1]}.items())
+    sizes = {}
+    for _, _, size, a in _FUNC.findall(symbols):
+        addr, length = int(a, 16), int(size, 16)
+        if text[0] <= addr < text[1]:
+            sizes[addr] = max(sizes.get(addr, 0), length)
+    funcs = sorted(sizes.items())
     units, cur = [], None
     for addr, size in funcs:
         end = min(addr + size, text[1])
-        if cur and (end - cur[0] > UNIT_BYTES or addr < cur[1]):
+        # Alternate entry points may overlap an earlier function. Keep the entire overlapping run in one
+        # object, even beyond UNIT_BYTES: splitting it would truncate symbols and dsd cannot delink that file.
+        # dsd's generated linker script aligns input sections to four bytes. A Thumb entry at +2 cannot start a
+        # separate input section without moving it; extend the preceding unit until a word-aligned boundary.
+        if cur and addr >= cur[1] and addr % 4 == 0 and end - cur[0] > UNIT_BYTES:
             units.append(tuple(cur))
             cur = None
         if cur is None:
             cur = [addr, end, 1]
         else:
-            cur[1], cur[2] = end, cur[2] + 1
+            cur[1], cur[2] = max(cur[1], end), cur[2] + 1
     if cur:
         units.append(tuple(cur))
     if not units:
@@ -178,7 +187,28 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
         _run([*init, "--allow-unknown-function-calls"], root, "analysing the game")
 
 
-def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
+def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None) -> None:
+    """Extract with an optional user-supplied BIOS, retained privately for subsequent builds."""
+    configured = arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")
+    cmd = [dsd, "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", f"extract/{version}"]
+    if configured:
+        bios = Path(configured).expanduser().resolve()
+        if not bios.is_file() or bios.stat().st_size != 0x4000:
+            raise ForkError("the ARM7 BIOS must be an existing 16 KiB file; check DECOMP_ARM7_BIOS")
+        private = root / "extract" / "arm7_bios.bin"
+        if bios != private.resolve():
+            shutil.copyfile(bios, private)
+        cmd += ["--arm7-bios", "extract/arm7_bios.bin"]
+    try:
+        _run(cmd, root, "extracting the ROM")
+    except ForkError as e:
+        if "provide ARM7 BIOS" in str(e):
+            raise ForkError(f"{e}\nSet DECOMP_ARM7_BIOS to your own 16 KiB ARM7 BIOS file and retry.") from e
+        raise
+
+
+def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None,
+           log=print) -> dict:
     """Make the project in `root` (which must not exist yet) and build it once. Returns facts about the game."""
     info = game_info(game)
     version = info["id"].lower()
@@ -200,8 +230,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
 
     dsd = args[args.index("--dsd") + 1]
     log(f"extracting {info['title']} ({info['id']}) with ds-decomp")
-    _run([dsd, "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", f"extract/{version}"], root,
-         "extracting the ROM")
+    _extract(dsd, root, version, arm7_bios=arm7_bios)
     log("analysing the ARM9 program, its autoloads and overlays (dsd init)")
     _init(dsd, root, version, log)
 
@@ -246,6 +275,7 @@ Started from scratch with [decomp.wtf](https://decomp.wtf) on [ds-decomp](https:
 the toolkit DS decomps use. Every build rebuilds the ROM and checks it against your copy, byte for byte.
 
 1. Put your own copy of the game here as `extract/baserom.nds` (never commit it).
+   Encrypted ROMs also need your own 16 KiB ARM7 BIOS at `extract/arm7_bios.bin` (also never committed).
 2. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
 3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).
 

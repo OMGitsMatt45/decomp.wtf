@@ -25,7 +25,8 @@ MWCC_VERSION = "2.0/sp1p5"
 CC_FLAGS = ["-O4,p", "-enum", "int", "-char", "signed", "-str", "noreuse", "-proc", "arm946e", "-gccext,on", "-fp",
             "soft", "-inline", "noauto", "-Cpp_exceptions", "off", "-RTTI", "off", "-interworking", "-w", "off",
             "-sym", "on", "-gccinc", "-nolink", "-msgstyle", "gcc"]
-LD_FLAGS = ["-proc", "arm946e", "-dead", "-nostdlib", "-interworking", "-map", "closure,unused", "-msgstyle", "gcc"]
+# Keep unused original sections too: their bytes and exported overlay entry points belong to the reference ROM.
+LD_FLAGS = ["-proc", "arm946e", "-nodead", "-nostdlib", "-interworking", "-map", "closure,unused", "-msgstyle", "gcc"]
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
@@ -40,6 +41,7 @@ VERSION = args.version
 CONFIG = Path("config") / VERSION / "arm9" / "config.yaml"
 BUILD = Path("build") / VERSION
 BASEROM = Path("extract") / "baserom.nds"
+ARM7_BIOS = Path("extract") / "arm7_bios.bin"
 EXTRACT = Path("extract") / VERSION
 CC = str(Path(args.compilers) / MWCC_VERSION / "mwccarm.exe")
 LD = str(Path(args.compilers) / MWCC_VERSION / "mwldarm.exe")
@@ -70,7 +72,8 @@ def main() -> None:
     rom = BUILD / f"{GAME}.nds"
     with open("build.ninja", "w", encoding="utf-8") as f:
         n = ninja_syntax.Writer(f)
-        n.rule("extract", f"{DSD} rom extract --rom $in --output-path {EXTRACT}")
+        bios_arg = f" --arm7-bios {ARM7_BIOS}" if ARM7_BIOS.is_file() else ""
+        n.rule("extract", f"{DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}")
         n.rule("delink", f"{DSD} delink --config-path {CONFIG}")
         n.rule("mwcc", f"{WRAP}\"{CC}\" {q(CC_FLAGS)} -i include $cflags -MD -c $in -o $basedir"
                + ("" if sys.platform == "win32" else f" && {PY} tools/transform_dep.py $basefile.d $basefile.d"),
@@ -78,13 +81,14 @@ def main() -> None:
         n.rule("lcf", f"{DSD} lcf -c {CONFIG}")
         n.rule("mwld", f"{WRAP}\"{LD}\" {q(LD_FLAGS)} -m Entry @$objects $lcf -o $out")
         n.rule("rom_config", f"{DSD} rom config --elf $in --config {CONFIG}")
-        n.rule("rom_build", f"{DSD} rom build --config $in --rom $out")
+        n.rule("rom_build", f"{DSD} rom build --config $in --rom $out{bios_arg}")
         n.rule("same", f"{PY} tools/same.py $in {BASEROM} $out")
         n.rule("objdiff", f"{DSD} objdiff --config-path {CONFIG} --custom-make ninja")
         n.rule("check", f"{SH}{DSD} check modules --config-path {CONFIG} --fail && {PY} tools/same.py --touch $out")
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 
-        n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM))
+        n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM),
+                implicit=[str(ARM7_BIOS)] if ARM7_BIOS.is_file() else None)
         targets = sorted({x["delink_file"] for x in files})
         n.build(targets or ["delink"], "delink", [*dsd_configs, str(EXTRACT / "config.yaml")])
         objs = []
@@ -100,7 +104,8 @@ def main() -> None:
         n.build(str(BUILD / "arm9.o"), "mwld", [*linked, lcf, objects], variables={"lcf": lcf, "objects": objects})
         rom_config = BUILD / "build" / "rom_config.yaml"
         n.build(str(rom_config), "rom_config", str(BUILD / "arm9.o"))
-        n.build(str(rom), "rom_build", str(rom_config))
+        n.build(str(rom), "rom_build", str(rom_config),
+                implicit=[str(ARM7_BIOS)] if ARM7_BIOS.is_file() else None)
         n.build(str(BUILD / "rom.ok"), "same", str(rom))
         n.build(str(BUILD / "check.ok"), "check", str(BUILD / "arm9.o"))
         n.build("objdiff.json", "objdiff", dsd_configs)
