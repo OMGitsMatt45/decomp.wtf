@@ -110,6 +110,128 @@ try {{
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_wsl_capture_preserves_native_error_and_exit_code(powershell):
+    native_code = ('[Console]::Out.WriteLine("import" + [char]0 + " progress"); '
+                   '[Console]::Error.WriteLine("Wsl/Service/RegisterDistro/CreateVm/HCS_E_HYPERV_NOT_INSTALLED"); '
+                   'exit 23')
+    encoded = base64.b64encode(native_code.encode("utf-16-le")).decode()
+    result = powershell(helpers("Invoke-WslCapture") + f"""
+$Wsl = (Get-Process -Id $PID).Path
+$capture = Invoke-WslCapture @('-NoProfile', '-EncodedCommand', '{encoded}')
+$capture | ConvertTo-Json -Compress
+""")
+    assert result.returncode == 0, result.stdout + result.stderr
+    capture = json.loads(result.stdout)
+    assert capture["ExitCode"] == 23
+    assert "import progress" in capture["Output"]
+    assert "HCS_E_HYPERV_NOT_INSTALLED" in capture["Output"]
+    assert "\x00" not in capture["Output"]
+    assert "-EncodedCommand" in capture["Command"]
+
+
+@pytest.fixture
+def distro_setup(powershell, tmp_path):
+    """Run the real distro creation flow against fake downloads and WSL; never touch Windows settings."""
+    def run(*, already_registered=False, import_exit=0, import_registers=True,
+            fallback_exit=0, fallback_registers=True, download_fails=False, checksum_matches=True):
+        code = helpers("Step", "New-DecompDistro") + f"""
+$Distro = 'decomp-wtf'
+$Wsl = 'wsl.exe'
+$Base = {ps_string(tmp_path / "distro")}
+$UA = 'decomp.wtf-test'
+$script:registered = ${str(already_registered).lower()}
+$script:downloadCalls = 0
+$script:calls = New-Object 'System.Collections.Generic.List[object]'
+function Distros {{ if ($script:registered) {{ 'decomp-wtf' }} }}
+function Invoke-RestMethod {{
+    [pscustomobject]@{{ ModernDistributions = [pscustomobject]@{{ Debian = @(
+        [pscustomobject]@{{ Name = 'Debian'; Amd64Url = [pscustomobject]@{{
+            Url = 'https://example.invalid/debian.wsl'; Sha256 = 'expected'
+        }} }}
+    ) }} }}
+}}
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$UserAgent, [string]$Uri, [string]$OutFile)
+    $script:downloadCalls++
+    if (${str(download_fails).lower()}) {{ throw 'Debian image download failed: HTTP 403' }}
+    [IO.File]::WriteAllText($OutFile, 'fake Debian image')
+}}
+function Get-FileHash {{ [pscustomobject]@{{ Hash = '{'expected' if checksum_matches else 'mismatch'}' }} }}
+function Invoke-WslCapture([string[]]$Arguments) {{
+    $script:calls.Add($Arguments)
+    if ($Arguments -contains '--import') {{
+        $script:registered = ${str(import_registers).lower()}
+        return [pscustomobject]@{{ ExitCode = {import_exit}; Output = 'Wsl/Service/RegisterDistro/CreateVm/HCS_E_HYPERV_NOT_INSTALLED'; Command = 'wsl.exe --import decomp-wtf' }}
+    }}
+    if ($Arguments -notcontains '--install') {{ throw "unexpected WSL call: $Arguments" }}
+    $script:registered = ${str(fallback_registers).lower()}
+    return [pscustomobject]@{{ ExitCode = {fallback_exit}; Output = 'Wsl/E_INVALIDARG: unsupported installation option'; Command = 'wsl.exe --install Debian' }}
+}}
+try {{
+    New-DecompDistro
+    $failure = $null
+}} catch {{ $failure = $_.Exception.Message }}
+'TEST_RESULT=' + (@{{ Calls = @($script:calls.ToArray()); DownloadCalls = $script:downloadCalls; Error = $failure }} | ConvertTo-Json -Depth 10 -Compress)
+"""
+        result = powershell(code)
+        assert result.returncode == 0, result.stdout + result.stderr
+        outcome = next(line.removeprefix("TEST_RESULT=") for line in result.stdout.splitlines()
+                       if line.startswith("TEST_RESULT="))
+        outcome = json.loads(outcome)
+        log = tmp_path / "distro" / "install.log"
+        outcome["Log"] = log.read_text(encoding="utf-8") if log.exists() else ""
+        return outcome, result.stdout + result.stderr
+
+    return run
+
+
+@pytest.mark.parametrize("import_exit", [0, 23])
+def test_unregistered_import_uses_wsl2_fallback(distro_setup, import_exit):
+    outcome, output = distro_setup(import_exit=import_exit, import_registers=False)
+    assert outcome["Error"] is None, output
+    assert len(outcome["Calls"]) == 2
+    assert outcome["Calls"][0][0] == "--import"
+    fallback = outcome["Calls"][1]
+    assert fallback[:2] == ["--install", "Debian"]
+    assert fallback[fallback.index("--version") + 1] == "2"
+    assert "--unregister" not in str(outcome["Calls"])
+
+
+def test_registered_import_is_not_recreated_after_an_unusual_exit(distro_setup):
+    outcome, output = distro_setup(import_exit=23, import_registers=True)
+    assert outcome["Error"] is None, output
+    assert len(outcome["Calls"]) == 1
+    assert outcome["Calls"][0][0] == "--import"
+
+
+def test_existing_distribution_is_left_alone(distro_setup):
+    outcome, output = distro_setup(already_registered=True)
+    assert outcome["Error"] is None, output
+    assert outcome["Calls"] == [] and outcome["DownloadCalls"] == 0
+
+
+@pytest.mark.parametrize("fallback_exit", [0, 87])
+def test_failed_distro_creation_keeps_both_wsl_errors(distro_setup, fallback_exit):
+    outcome, output = distro_setup(import_exit=23, import_registers=False,
+                                  fallback_exit=fallback_exit, fallback_registers=False)
+    for details in (outcome["Error"], outcome["Log"]):
+        assert "HCS_E_HYPERV_NOT_INSTALLED" in details, output
+        assert "Wsl/E_INVALIDARG" in details, output
+        assert "exit code 23" in details and f"exit code {fallback_exit}" in details
+        assert "--import" in details and "--install" in details
+    assert "--unregister" not in str(outcome["Calls"])
+
+
+@pytest.mark.parametrize("download_fails,checksum_matches", [(True, True), (False, False)])
+def test_unverified_debian_images_are_not_imported(distro_setup, download_fails, checksum_matches):
+    outcome, output = distro_setup(download_fails=download_fails, checksum_matches=checksum_matches)
+    assert outcome["Error"] is None, output
+    assert len(outcome["Calls"]) == 1
+    assert outcome["Calls"][0][0] == "--install"
+    reason = "HTTP 403" if download_fails else "checksum mismatch"
+    assert reason in outcome["Log"]
+
+
 def test_shell_scripts_are_saved_as_utf8_without_crlf_or_bom(powershell, tmp_path):
     dest = tmp_path / "install.sh"
     text = '#!/bin/sh\r\necho "café"\r\n'

@@ -63,6 +63,77 @@ function Distros {
     return @($list | ForEach-Object { ("$_" -replace "`0", "").Trim() } | Where-Object { $_ })
 }
 
+# Keep the native error text as well as the exit code. The creation paths below can fail for different reasons:
+# a blocked image download, unsupported WSL options, a restart pending, or a WSL service error.
+function Invoke-WslCapture([string[]]$Arguments) {
+    $ErrorActionPreference = "Continue"
+    $lines = @()
+    try {
+        $lines = @(& $Wsl @Arguments 2>&1)
+        $code = $LASTEXITCODE
+    } catch {
+        $lines += $_
+        $code = 1
+    }
+    $output = (($lines | ForEach-Object { "$_" -replace "`0", "" }) -join "`n").Trim()
+    $display = ($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join " "
+    return [pscustomobject]@{ ExitCode = $code; Output = $output; Command = "wsl.exe $display" }
+}
+
+function New-DecompDistro {
+    # Never replace or unregister an existing distribution, including one registered by a previous attempt.
+    if ((Distros) -contains $Distro) { return }
+    Step "making decomp.wtf's Linux (Debian, from Microsoft's list of WSL distributions)"
+    New-Item -ItemType Directory -Force -Path $Base | Out-Null
+    $log = Join-Path $Base "install.log"
+    $details = New-Object 'System.Collections.Generic.List[string]'
+    $details.Add("[$([DateTime]::Now.ToString('s'))] Creating $Distro (WSL 2)")
+    $image = Join-Path $Base "debian.tar.gz"
+    try {
+        $verified = $false
+        try {
+            $info = Invoke-RestMethod -UseBasicParsing -UserAgent $UA "https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json"
+            $debian = @($info.ModernDistributions.Debian) | Where-Object { $_.Name -eq "Debian" } | Select-Object -First 1
+            if (-not $debian -or -not $debian.Amd64Url.Url -or -not $debian.Amd64Url.Sha256) {
+                throw "Microsoft's distribution list did not include a checksum-verified Debian x64 image"
+            }
+            $details.Add("Debian image: $($debian.Amd64Url.Url)")
+            Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Uri $debian.Amd64Url.Url -OutFile $image
+            $sum = (Get-FileHash $image -Algorithm SHA256).Hash
+            if ($sum -ne $debian.Amd64Url.Sha256) {
+                throw "Debian image checksum mismatch (expected $($debian.Amd64Url.Sha256), got $sum); the image was not imported"
+            }
+            $verified = $true
+        } catch {
+            $message = "Debian image download: $($_.Exception.Message)"
+            $details.Add($message)
+            Write-Host "  $message"
+        }
+        if ($verified) {
+            $result = Invoke-WslCapture -Arguments @("--import", $Distro, (Join-Path $Base "wsl"), $image, "--version", "2")
+            $details.Add("$($result.Command) (exit code $($result.ExitCode))`n$($result.Output)")
+            if ($result.Output) { Write-Host $result.Output }
+            # WSL can register a distribution before returning an error. Don't try creating it a second time.
+            if ((Distros) -contains $Distro) { return }
+        }
+        Write-Host "  trying WSL's own Debian download (requires WSL 2.4 or newer)"
+        $result = Invoke-WslCapture -Arguments @("--install", "Debian", "--name", $Distro, "--location", (Join-Path $Base "wsl"), "--version", "2", "--no-launch")
+        $details.Add("$($result.Command) (exit code $($result.ExitCode))`n$($result.Output)")
+        if ($result.Output) { Write-Host $result.Output }
+        if ((Distros) -contains $Distro) { return }
+        throw ("WSL couldn't make decomp.wtf's Linux. The download and WSL errors were:`n`n" + ($details -join "`n`n") +
+            "`n`nDetails are saved to $log. Run 'wsl --status' to check WSL. If WSL reports unsupported options, run 'wsl --update', restart Windows if requested, then run this installer again.")
+    } catch {
+        $details.Add("Setup stopped: $($_.Exception.Message)")
+        throw
+    } finally {
+        # Keep the useful error when a double-clicked setup window closes, without replacing it if logging fails.
+        try { [IO.File]::AppendAllText($log, (($details -join "`r`n`r`n") + "`r`n`r`n"), (New-Object Text.UTF8Encoding $false)) }
+        catch { Write-Host "  couldn't save setup details to $log ($($_.Exception.Message))" }
+        Remove-Item $image -ErrorAction SilentlyContinue
+    }
+}
+
 try {
 Write-Host "decomp.wtf setup" -ForegroundColor White
 
@@ -130,36 +201,7 @@ if ($LASTEXITCODE -ne 0) {
 Step ("WSL " + (((Run { & $Wsl --version }) | Select-Object -First 1) -replace "`0", "" -replace '^\D*', ''))
 
 # ---------------------------------------------------------------------------- decomp.wtf's Linux
-if ((Distros) -notcontains $Distro) {
-    Step "making decomp.wtf's Linux (Debian, from Microsoft's list of WSL distributions)"
-    New-Item -ItemType Directory -Force -Path $Base | Out-Null
-    $made = $false
-    try {
-        $info = Invoke-RestMethod -UseBasicParsing -UserAgent $UA "https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json"
-        $debian = @($info.ModernDistributions.Debian) | Where-Object { $_.Name -eq "Debian" } | Select-Object -First 1
-        if ($debian -and $debian.Amd64Url.Url) {
-            $image = Join-Path $Base "debian.tar.gz"
-            Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Uri $debian.Amd64Url.Url -OutFile $image
-            $sum = (Get-FileHash $image -Algorithm SHA256).Hash
-            if ($sum -eq $debian.Amd64Url.Sha256) {
-                Run { & $Wsl --import $Distro (Join-Path $Base "wsl") $image --version 2 }
-                $made = $LASTEXITCODE -eq 0
-            } else {
-                Write-Host "  the downloaded Debian image isn't the one Microsoft lists (sha256 $sum): using WSL's own download instead"
-            }
-            Remove-Item $image -ErrorAction SilentlyContinue
-        }
-    } catch {
-        Write-Host "  couldn't get Debian's WSL image ($($_.Exception.Message)): using WSL's own download instead"
-    }
-    if (-not $made) {  # WSL's own way (WSL 2.4 and later)
-        Run { & $Wsl --install Debian --name $Distro --location (Join-Path $Base "wsl") --no-launch }
-        $made = (Distros) -contains $Distro
-    }
-    if (-not $made) {
-        throw "WSL couldn't make decomp.wtf's Linux. Restart Windows if WSL was just installed. Run 'wsl --update' in an administrator PowerShell (the fallback download needs WSL 2.4 or newer), then try again. If WSL reports a virtualization error, enable virtualization in your PC's BIOS/UEFI and Windows' 'Virtual Machine Platform' feature."
-    }
-}
+New-DecompDistro
 Step "preparing decomp.wtf's Linux (system packages, a few minutes the first time)"
 Run { & $Wsl -d $Distro -u root --cd $tmp --exec sh ./linux-base.sh wsl } "preparing decomp.wtf's Linux failed"
 Run { & $Wsl --terminate $Distro } -Quiet  # its settings (user, PATH) apply from the next start

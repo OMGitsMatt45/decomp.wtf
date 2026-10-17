@@ -100,6 +100,12 @@ wsl --status
 wsl --list --verbose
 ```
 
+If setup says it couldn't create `decomp-wtf`, include the original WSL error above that message. The installer
+records distribution-creation attempts in `%LOCALAPPDATA%\decomp.wtf\install.log`, including download failures,
+checksum failures, the commands attempted and their exit codes. Share that error together with the three
+command outputs above; a download problem and a missing Windows feature need different fixes. Rerunning setup
+reuses a registered `decomp-wtf` distribution.
+
 `decomp-wtf` must show **VERSION 2**. If it shows 1, stop the app and run:
 
 ```powershell
