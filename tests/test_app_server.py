@@ -10,7 +10,7 @@ import httpx
 import pytest
 from starlette.testclient import TestClient
 
-from decompnet import toolchains
+from decompnet import hostenv, toolchains
 from decompnet.app import agents
 from decompnet.app.engine import RomNetwork
 from decompnet.app.server import build
@@ -48,6 +48,18 @@ def test_gui_needs_the_secret_and_the_right_host(app):
     assert client.post("/api/settings", json={"per_session": 3}, headers={"X-Decomp": "1"}).status_code == 200
     # these tests script the agents themselves: no autopilot after the import
     assert client.post("/api/settings", json={"autopilot": False}, headers={"X-Decomp": "1"}).json()["autopilot"] is False
+
+
+@pytest.mark.parametrize("endpoint", ["/api/import", "/api/collab/join"])
+def test_import_from_another_wsl_distribution_reports_which_path_to_use(app, monkeypatch, endpoint):
+    client, _, _ = app
+    monkeypatch.setattr(hostenv, "runtime", lambda: "wsl")
+    monkeypatch.setattr(hostenv, "distro", lambda: "decomp-wtf")
+    response = client.post(endpoint, params={"confirmed": "1", "path": r"\\wsl.localhost\Ubuntu\home\me\game.z64"},
+                           headers={"X-Decomp": "1"})
+    assert response.status_code == 400
+    assert "Ubuntu" in response.json()["error"] and "decomp-wtf" in response.json()["error"]
+    assert "Windows drive" in response.json()["error"]
 
 
 @needs_demo

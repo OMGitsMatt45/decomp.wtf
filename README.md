@@ -90,6 +90,13 @@ curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/
 
 **Windows** (PowerShell; new and still unstable: problems are worth an [issue](https://github.com/i12bp8/decomp.wtf/issues))
 
+To install this checkout, or an extracted source ZIP, **double-click `windows.cmd`** in the project folder.
+It installs the source you downloaded, keeps errors and restart instructions visible, and creates the same Start
+menu and desktop shortcuts. No separate Python, Git or Node.js installation on Windows is needed.
+See the [Windows setup and troubleshooting guide](docs/windows.md) for requirements, file paths and agent setup.
+
+To install the last upstream release instead:
+
 ```
 irm https://decomp.wtf/install.ps1 | iex
 ```

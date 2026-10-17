@@ -32,8 +32,53 @@ def test_wsl_paths_shown_to_windows(runtime, monkeypatch):
     monkeypatch.setattr(hostenv.subprocess, "run", _no_wslpath)
     assert hostenv.shown_path("/home/decomp/Decomp") == r"\\wsl.localhost\decomp-wtf\home\decomp\Decomp"
     assert hostenv.windows_path("/mnt/c/Users/x") == r"C:\Users\x"
+    assert hostenv.windows_path("/mnt/c") == "C:\\"
     bridge = hostenv.host_bridge()
     assert bridge[0] == "wsl.exe" and bridge[-2:] == ["/usr/local/bin/decomp", "mcp"] and "decomp-wtf" in bridge
+
+
+@pytest.mark.parametrize("text", [r"\\WSL.LOCALHOST\DECOMP-WTF\home\decomp\game.z64",
+                                  r"\\wsl$\decomp-wtf\home\decomp\game.z64",
+                                  "//wsl.localhost/decomp-wtf/home/decomp/game.z64"])
+def test_wsl_unc_paths_use_windows_case_and_separator_rules(runtime, text):
+    runtime("wsl", WSL_DISTRO_NAME="decomp-wtf")
+    assert hostenv.local_path(text) == hostenv.Path("/home/decomp/game.z64")
+
+
+def test_wsl_unc_path_cannot_select_a_file_in_another_distribution(runtime):
+    runtime("wsl", WSL_DISTRO_NAME="decomp-wtf")
+    with pytest.raises(ValueError, match="Ubuntu.*decomp-wtf"):
+        hostenv.local_path(r"\\wsl.localhost\Ubuntu\home\decomp\game.z64")
+
+
+def test_windows_tools_are_found_without_windows_on_path(tmp_path, monkeypatch):
+    windows = tmp_path / "c" / "Windows"
+    (windows / "System32").mkdir(parents=True)
+    explorer = windows / "explorer.exe"
+    explorer.touch()
+    browser = windows / "System32" / "rundll32.exe"
+    browser.touch()
+    monkeypatch.setattr(hostenv.shutil, "which", lambda name: None)
+    monkeypatch.setattr(hostenv.Path, "glob", lambda self, pattern: [windows.parent])
+    hostenv._windows_tool.cache_clear()
+    try:
+        assert hostenv._windows_tool("explorer.exe") == str(explorer)
+        assert hostenv._windows_tool("rundll32.exe") == str(browser)
+    finally:
+        hostenv._windows_tool.cache_clear()
+
+
+def test_wsl_folder_open_failure_returns_a_windows_path(runtime, monkeypatch):
+    runtime("wsl", WSL_DISTRO_NAME="decomp-wtf")
+    monkeypatch.setattr(hostenv, "_windows_tool", lambda name: "/mnt/c/Windows/explorer.exe")
+    monkeypatch.setattr(hostenv.subprocess, "run", _no_wslpath)
+
+    def no_interop(*args, **kwargs):
+        raise OSError("Exec format error")
+
+    monkeypatch.setattr(hostenv.subprocess, "Popen", no_interop)
+    message = hostenv.open_folder(hostenv.Path("/home/decomp/Decomp"))
+    assert r"\\wsl.localhost\decomp-wtf\home\decomp\Decomp" in message
 
 
 def test_docker_home_is_the_users_home(runtime):

@@ -113,7 +113,10 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         if not own_copy:
             raise ToolError("ask the user to confirm this is their own legally obtained copy of the game, then call "
                             "import_game again with own_copy=true")
-        game = hostenv.local_path(path)
+        try:
+            game = hostenv.local_path(path)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
         if not game.is_file():
             hint = {"wsl": " (decomp.wtf runs in WSL: Windows drives are under /mnt, e.g. C:\\ is /mnt/c)",
                     "docker": " (decomp.wtf runs in Docker and sees your home folder only)"}.get(hostenv.runtime(), "")

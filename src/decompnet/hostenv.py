@@ -55,14 +55,15 @@ def distro() -> str:
 
 @functools.cache
 def _windows_tool(name: str) -> str | None:
-    """A program in Windows' System32, reachable through WSL's interop (Windows' PATH isn't on ours)."""
+    """A Windows system program, reachable through WSL's interop (Windows' PATH isn't on ours)."""
     found = shutil.which(name)
     if found:
         return found
     for root in sorted(Path("/mnt").glob("[a-z]")):
-        exe = root / "Windows" / "System32" / name
-        if exe.exists():
-            return str(exe)
+        for folder in (root / "Windows" / "System32", root / "Windows"):
+            exe = folder / name  # explorer.exe is in Windows itself; rundll32.exe is in System32
+            if exe.is_file():
+                return str(exe)
     return None
 
 
@@ -75,16 +76,20 @@ def windows_path(path: Path | str) -> str:
     except (OSError, subprocess.TimeoutExpired):
         pass
     p = str(path)
-    if p.startswith("/mnt/") and len(p) > 6 and p[6:7] in ("/", ""):
+    if p.startswith("/mnt/") and len(p) >= 6 and p[5].isalpha() and p[6:7] in ("/", ""):
         return f"{p[5].upper()}:\\" + p[7:].replace("/", "\\")
     return f"\\\\wsl.localhost\\{distro()}" + p.replace("/", "\\")
 
 
 def _from_windows(text: str) -> Path | None:
     """C:\\Users\\me\\game.iso (or C:/Users/...) and \\\\wsl.localhost\\<distro>\\... as paths here."""
-    if text.startswith(("\\\\wsl.localhost\\", "\\\\wsl$\\")):
-        parts = PureWindowsPath(text).parts  # ('\\\\wsl.localhost\\decomp-wtf\\', 'home', ...)
-        return Path("/", *parts[1:])
+    win = PureWindowsPath(text)
+    share = win.drive.split("\\")  # ['', '', 'wsl.localhost', 'decomp-wtf']
+    if len(share) == 4 and share[2].lower() in ("wsl.localhost", "wsl$"):
+        if share[3].lower() != distro().lower():
+            raise ValueError(f"That path belongs to WSL distribution {share[3]!r}; decomp.wtf runs in {distro()!r}. "
+                             "Copy the file to a Windows drive or decomp.wtf's Linux, then use its new path.")
+        return Path("/", *win.parts[1:])
     if len(text) >= 3 and text[0].isalpha() and text[1] == ":" and text[2] in "\\/":
         try:
             res = subprocess.run(["wslpath", "-u", text], capture_output=True, text=True, timeout=10)
@@ -148,11 +153,15 @@ def open_folder(path: Path) -> str | None:
                 f"`decomp shell`, or copy this one out with: docker cp decomp-wtf:{path} ~/Desktop/")
     if rt == "wsl":
         exe = _windows_tool("explorer.exe")
-        if not exe:
-            return f"Open this in Windows' file explorer: {windows_path(path)}"
-        subprocess.Popen([exe, windows_path(path)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)  # explorer.exe always exits with 1
-        return None
+        shown = windows_path(path)
+        if exe:
+            try:
+                subprocess.Popen([exe, shown], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)  # explorer.exe always exits with 1
+                return None
+            except OSError:  # Windows interop may be disabled even though the executable is present
+                pass
+        return f"Open this in Windows' file explorer: {shown}"
     if sys.platform == "win32":
         os.startfile(str(path))  # noqa: S606 (opening the user's own folder)
     elif sys.platform == "darwin":

@@ -25,6 +25,8 @@ $Version = "0.10.6"
 $Repo = "i12bp8/decomp.wtf"
 $Distro = "decomp-wtf"
 $Wsl = Join-Path $env:SystemRoot "System32\wsl.exe"
+# A 32-bit PowerShell on 64-bit Windows redirects System32 to SysWOW64, where WSL isn't installed.
+if (Test-Path (Join-Path $env:SystemRoot "Sysnative\wsl.exe")) { $Wsl = Join-Path $env:SystemRoot "Sysnative\wsl.exe" }
 # Say who's downloading. salsa.debian.org (Debian's WSL image) answers browser-like agents, as Windows PowerShell's
 # default one is, with an anti-bot challenge page instead of the file.
 $UA = "decomp.wtf-installer/$Version (PowerShell)"
@@ -32,6 +34,7 @@ $Base = Join-Path $env:LOCALAPPDATA "decomp.wtf"
 $Bin = Join-Path $Base "bin"
 $oldUtf8 = $env:WSL_UTF8
 $env:WSL_UTF8 = "1"  # wsl.exe answers in UTF-16 otherwise
+$tmp = $null  # an early failure must never clean up a caller's variable named tmp (irm | iex)
 
 function Step($text) { Write-Host "> " -ForegroundColor Green -NoNewline; Write-Host $text }
 
@@ -56,7 +59,7 @@ function To-Wsl([string]$Path) {
 }
 
 function Distros {
-    $list = Run { & $Wsl --list --quiet }
+    $list = Run { & $Wsl --list --quiet } "listing WSL distributions failed; run 'wsl --status' for details"
     return @($list | ForEach-Object { ("$_" -replace "`0", "").Trim() } | Where-Object { $_ })
 }
 
@@ -65,6 +68,9 @@ Write-Host "decomp.wtf setup" -ForegroundColor White
 
 if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64" -and $env:PROCESSOR_ARCHITEW6432 -ne "AMD64") {
     throw "decomp.wtf needs a 64-bit Intel or AMD Windows for now (the old compilers are x86 programs)"
+}
+if (-not (Test-Path $Wsl)) {
+    throw "WSL isn't available on this Windows installation. Install Windows updates (Windows 10 22H2 or Windows 11), then run 'wsl --install --no-distribution' in an administrator PowerShell, restart Windows and run this installer again."
 }
 
 # ---------------------------------------------------------------------------- where decomp.wtf comes from
@@ -77,6 +83,11 @@ if ($PSScriptRoot) {
     if ((Test-Path $py) -and (Select-String -Path $py -Pattern '^name = "decompnet"' -Quiet)) { $checkout = $root }
 }
 $source = if ($env:DECOMP_SOURCE) { $env:DECOMP_SOURCE } elseif ($env:DECOMP_BRANCH) { "branch:$($env:DECOMP_BRANCH)" } elseif ($checkout) { $checkout } else { "release" }
+$repoOverride = if ($source -ne "release") { $env:DECOMP_REPO } else { "" }
+if ($repoOverride) {
+    if ($repoOverride -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$' -or $repoOverride -match '/\.{1,2}$') { throw "DECOMP_REPO must be a GitHub repository in owner/name form" }
+    $Repo = $repoOverride
+}
 $linuxSource = if ($source -eq "release" -or $source.StartsWith("branch:")) { $source } else { To-Wsl $source }
 $web = if ($source.StartsWith("branch:")) { "https://raw.githubusercontent.com/$Repo/$($source.Substring(7))/site/public" } else { "https://decomp.wtf" }
 
@@ -99,8 +110,9 @@ foreach ($f in @("linux-base.sh", "install.sh", "decomp.ico")) {
     }
     if ($f.EndsWith(".sh")) { Save-Lf ([IO.File]::ReadAllText($dest)) $dest }
 }
-Save-Lf ("#!/bin/sh`nexport DECOMP_SOURCE=`"`$(cat ./source.txt)`"`nexec bash ./install.sh --no-start`n") (Join-Path $tmp "run-install.sh")
+Save-Lf ("#!/bin/sh`nexport DECOMP_SOURCE=`"`$(cat ./source.txt)`"`nexport DECOMP_REPO=`"`$(cat ./repo.txt)`"`nexec bash ./install.sh --no-start`n") (Join-Path $tmp "run-install.sh")
 Save-Lf $linuxSource (Join-Path $tmp "source.txt")
+Save-Lf ([string]$repoOverride) (Join-Path $tmp "repo.txt")
 
 # ---------------------------------------------------------------------------- WSL 2
 Run { & $Wsl --version } -Quiet
@@ -111,7 +123,7 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) {
         if ($p.ExitCode -ne 0) { throw "turning on WSL 2 didn't work (exit code $($p.ExitCode)). Run 'wsl --install --no-distribution' in an administrator PowerShell, restart Windows, then run this installer again." }
         Write-Host ""
-        Write-Host "WSL 2 is turned on. Restart Windows to finish, then run this installer again." -ForegroundColor Yellow
+        Write-Host "Restart Windows to finish setting up WSL, then run this installer again. If it still asks to restart, run 'wsl --update' in an administrator PowerShell first." -ForegroundColor Yellow
         return
     }
 }
@@ -145,7 +157,7 @@ if ((Distros) -notcontains $Distro) {
         $made = (Distros) -contains $Distro
     }
     if (-not $made) {
-        throw "WSL couldn't make decomp.wtf's Linux. WSL 2 needs virtualization: check that it's on in your PC's BIOS/UEFI and that Windows' 'Virtual Machine Platform' feature is on, then run this again."
+        throw "WSL couldn't make decomp.wtf's Linux. Restart Windows if WSL was just installed. Run 'wsl --update' in an administrator PowerShell (the fallback download needs WSL 2.4 or newer), then try again. If WSL reports a virtualization error, enable virtualization in your PC's BIOS/UEFI and Windows' 'Virtual Machine Platform' feature."
     }
 }
 Step "preparing decomp.wtf's Linux (system packages, a few minutes the first time)"
@@ -188,17 +200,20 @@ New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 Copy-Item (Join-Path $tmp "decomp.ico") (Join-Path $Bin "decomp.ico") -Force
 $cmd = @'
 @echo off
+setlocal
 rem decomp.wtf runs in WSL 2 (the decomp-wtf distribution); this is its decomp command on Windows.
 rem   decomp            decomp.wtf in this window (opens your browser)   decomp shell      a terminal inside
 rem   decomp connect    give your AI agents decomp.wtf's tools           decomp update     the newest decomp.wtf
 rem   decomp uninstall  remove it
+set "DECOMP_WSL=%SystemRoot%\System32\wsl.exe"
+if exist "%SystemRoot%\Sysnative\wsl.exe" set "DECOMP_WSL=%SystemRoot%\Sysnative\wsl.exe"
 if /i "%~1"=="shell" goto shell
 if /i "%~1"=="connect" goto connect
 if /i "%~1"=="uninstall" goto uninstall
-"%SystemRoot%\System32\wsl.exe" -d decomp-wtf --cd ~ --exec /usr/local/bin/decomp %*
+"%DECOMP_WSL%" -d decomp-wtf --cd ~ --exec /usr/local/bin/decomp %*
 exit /b %ERRORLEVEL%
 :shell
-"%SystemRoot%\System32\wsl.exe" -d decomp-wtf --cd ~
+"%DECOMP_WSL%" -d decomp-wtf --cd ~
 exit /b %ERRORLEVEL%
 :connect
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0decomp-connect.ps1"
@@ -215,6 +230,7 @@ $connect = @'
 # decomp connect: give the AI agents on this computer decomp.wtf's tools (decomp.wtf runs in WSL 2: decomp-wtf)
 $ErrorActionPreference = "Continue"
 $wsl = Join-Path $env:SystemRoot "System32\wsl.exe"
+if (Test-Path (Join-Path $env:SystemRoot "Sysnative\wsl.exe")) { $wsl = Join-Path $env:SystemRoot "Sysnative\wsl.exe" }
 function Bridge($name) { return @($wsl, "-d", "decomp-wtf", "--cd", "~", "--exec", "/usr/local/bin/decomp", "mcp", "--name", $name) }
 # the program itself (.exe, or npm's .cmd), never npm's .ps1: PowerShell would read the "--" below as its own
 function Find($c) { $f = Get-Command $c -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($f) { return $f.Source } }
@@ -259,7 +275,11 @@ $uninstall = @'
 $ErrorActionPreference = "Continue"
 $answer = Read-Host "Remove decomp.wtf and its Linux, with every project in it (\\wsl.localhost\decomp-wtf\home\decomp\Decomp)? Type yes"
 if ($answer -ne "yes") { "Nothing removed."; exit 1 }
-& (Join-Path $env:SystemRoot "System32\wsl.exe") --unregister decomp-wtf
+$wsl = Join-Path $env:SystemRoot "System32\wsl.exe"
+if (Test-Path (Join-Path $env:SystemRoot "Sysnative\wsl.exe")) { $wsl = Join-Path $env:SystemRoot "Sysnative\wsl.exe" }
+if (-not (Test-Path $wsl)) { Write-Error "WSL couldn't be found. Nothing removed; repair WSL, then run decomp uninstall again."; exit 1 }
+& $wsl --unregister decomp-wtf
+if ($LASTEXITCODE -ne 0) { Write-Error "WSL couldn't remove decomp-wtf. Nothing else removed; resolve the WSL error above, then run decomp uninstall again."; exit $LASTEXITCODE }
 foreach ($d in @([Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("Desktop"))) {
     if ($d) { Remove-Item (Join-Path $d "decomp.wtf.lnk") -ErrorAction SilentlyContinue }
 }

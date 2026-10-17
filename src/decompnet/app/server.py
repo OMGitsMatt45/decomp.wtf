@@ -454,7 +454,10 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             if q.get("confirmed") != "1":
                 return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
             if q.get("path"):
-                game = hostenv.local_path(q["path"])
+                try:
+                    game = hostenv.local_path(q["path"])
+                except ValueError as e:
+                    return fail(e)
                 if not game.is_file():
                     return fail(ValueError(f"no file at {game}"))
                 name = game.name
@@ -1175,7 +1178,10 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         link, name = q.get("link", ""), q.get("name", "")
         game: Path | None = None
         if q.get("path"):  # a file on this computer (a disc is gigabytes: not through the browser)
-            game = hostenv.local_path(q["path"])
+            try:
+                game = hostenv.local_path(q["path"])
+            except ValueError as e:
+                return fail(e)
             if not game.is_file():
                 return fail(ValueError(f"no file at {game}"))
         else:  # the browser's upload, streamed to disk

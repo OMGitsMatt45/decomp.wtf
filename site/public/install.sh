@@ -19,7 +19,8 @@
 #   --source <what>     where decomp.wtf comes from: "release" (default), "branch:<name>" (a branch on GitHub, for
 #                       testing; its updates follow that branch) or a folder with decomp.wtf's source. Run from a
 #                       git checkout, the checkout is used (and updates follow its branch).
-# The same through the environment: DECOMP_SOURCE=..., DECOMP_BRANCH=<name>.
+# The same through the environment: DECOMP_SOURCE=..., DECOMP_BRANCH=<name>. DECOMP_REPO=<owner/repository>
+# selects a GitHub fork for branch updates; a checkout uses its GitHub origin unless overridden.
 # On a server, decomp.wtf also runs in Docker: docker-compose.yml in the repository.
 set -euo pipefail
 
@@ -90,13 +91,38 @@ case "$SOURCE" in
   *)
     SRC_DIR="$(cd "$SOURCE" 2>/dev/null && pwd)" || fail "no folder $SOURCE (--source is release, branch:<name> or a folder)"
     [ -f "$SRC_DIR/pyproject.toml" ] && [ -d "$SRC_DIR/src/decompnet" ] || fail "$SRC_DIR isn't decomp.wtf's source"
-    if command -v git >/dev/null; then  # a checkout: updates follow its branch on GitHub
-      BRANCH="$(git -c safe.directory='*' -C "$SRC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    BRANCH="${DECOMP_BRANCH:-}"
+    if [ -e "$SRC_DIR/.git" ] && command -v git >/dev/null; then  # don't mistake a ZIP's parent for its checkout
+      if [ -z "$BRANCH" ]; then
+        BRANCH="$(git -c safe.directory='*' -C "$SRC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+        [ "$BRANCH" = HEAD ] && BRANCH=""
+      fi
       COMMIT="$(git -c safe.directory='*' -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
-      [ "$BRANCH" = HEAD ] && BRANCH=""
-      [ -n "$BRANCH" ] && CHANNEL=branch
-    fi ;;
+    fi
+    if [ -n "$BRANCH" ]; then CHANNEL=branch; fi ;;
 esac
+
+valid_repo() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ && "${1#*/}" != . && "${1#*/}" != .. ]]
+}
+
+# Releases keep using upstream. Source installs follow an explicit fork, or the checkout's GitHub origin.
+if [ "$SOURCE" != release ]; then
+  if [ -n "${DECOMP_REPO:-}" ]; then
+    valid_repo "$DECOMP_REPO" || fail "DECOMP_REPO must be a GitHub owner/repository (for example, your-name/decomp.wtf)"
+    REPO="$DECOMP_REPO"
+  elif [ -n "$SRC_DIR" ] && [ -e "$SRC_DIR/.git" ] && command -v git >/dev/null; then
+    ORIGIN="$(git -c safe.directory='*' -C "$SRC_DIR" config --get remote.origin.url 2>/dev/null || true)"
+    CANDIDATE=""
+    case "$ORIGIN" in
+      https://github.com/*) CANDIDATE="${ORIGIN#https://github.com/}" ;;
+      git@github.com:*) CANDIDATE="${ORIGIN#git@github.com:}" ;;
+      ssh://git@github.com/*) CANDIDATE="${ORIGIN#ssh://git@github.com/}" ;;
+    esac
+    CANDIDATE="${CANDIDATE%.git}"
+    if valid_repo "$CANDIDATE"; then REPO="$CANDIDATE"; fi
+  fi
+fi
 
 resolve_branch() {  # the branch's newest commit, installed from GitHub's archive of it
   local api
