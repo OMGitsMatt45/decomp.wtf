@@ -1,7 +1,7 @@
 """Export a ROM project as a rebuildable source tree: the base for ports and mods.
 
 The tree is a normal decomp project. splat's assembly for every function and all data (with the project's names),
-the matched functions as C, a linker script and a build script that rebuilds the game's image and checks it against
+the matched functions as C or C++, a linker script and a build script that rebuilds the game's image and checks it against
 the original byte for byte. Each function is its own object: a matched one is compiled exactly the way decomp.wtf
 verified it, the rest are assembled. Data stays labeled assembly; a matched function's own constants (strings,
 jump tables) are mapped onto the game's copy at the addresses the matcher verified, so nothing is duplicated.
