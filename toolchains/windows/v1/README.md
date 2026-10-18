@@ -6,6 +6,7 @@ PE32 Windows programs, running directly on Windows x64. No WSL, Linux, MSYS, Cyg
 - `gcc-2.7.2-kmc-windows-source-v2.zip`: complete corresponding source, host portability patches, licenses and tested build recipe for KMC and binutils. Download beside the binary archives to rebuild.
 - `binutils-2.6-windows-i686-v2.zip`: the same native binutils2.6 tools, for the PlayStation compiler packages.
 - `gcc-2.7.2-psx-windows-x86_64-v2.zip`: original patched PSX GCC2.7.2, licenses, complete corresponding source and tested build recipe.
+- `gcc-2.8.1-psx-windows-i686.zip`: original patched PSX GCC2.8.1 C compiler, licenses, complete corresponding source and tested build recipe. Uses the separately pinned binutils-mips v0.10 assembler because binutils2.6 rejects some of its local labels.
 - `agbcc-windows-i686.zip`: native agbcc/old_agbcc, headers, licenses, complete corresponding source and build recipe.
 
 GCC/binutils/agbcc retain their GPL licensing. The application pins immutable Git commit URLs and SHA-256 checksums. Compiler target logic is preserved; source patches only implement Windows host compatibility. Older filenames in the branch history are development candidates.
