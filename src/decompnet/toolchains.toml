@@ -513,8 +513,8 @@ pip_extra = ["setuptools<70"]
 # Native Windows host ports of the original target compilers. Corresponding source and build recipes accompany
 # the archives at the same immutable commit (see tools/windows and the archive's SOURCE.txt).
 [["gcc-2.7.2-kmc".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/gcc-2.7.2-kmc-windows-i686-v2.zip"
-sha256 = "f6fffac97b397e0101e1a3c70b5ceaa64a05d89882f9eeeeca58f6c126963c48"
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/cb28587466ec2e46a072ac49e60da60f5d90b71d/toolchains/windows/v1/gcc-2.7.2-kmc-windows-cpp-i686-v3.zip"
+sha256 = "e9656330dc8dcd7b7cec8e8cd06d9d0ec72a1c5c64e456f0bc16d3c2a02a51f7"
 platforms = ["windows-x86_64"]
 
 [[agbcc.parts]]

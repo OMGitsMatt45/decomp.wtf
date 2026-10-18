@@ -12,6 +12,8 @@ on:
       - "site/public/*.sh"
       - "src/**"
       - "tests/**"
+      - "native/**"
+      - "tools/build_n64_native.py"
   pull_request:
     paths:
       - ".github/workflows/windows.yml"
@@ -23,6 +25,8 @@ on:
       - "site/public/*.sh"
       - "src/**"
       - "tests/**"
+      - "native/**"
+      - "tools/build_n64_native.py"
   workflow_dispatch:
 
 permissions:
@@ -49,12 +53,15 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --group dev --python 3.12
+      - name: Build the N64 C++ analyzer
+        run: uv run --no-sync python tools/build_n64_native.py
       - name: Check Windows platform and installer behavior
         # These tests use fake CLIs and isolated config/registry locations. They do
         # not install a distribution or change the runner's agent configuration.
         run: >-
           uv run --no-sync python -m pytest -q
           tests/test_platform.py tests/test_windows_installer.py tests/test_native_runtime.py
+          tests/test_n64_native.py tests/test_n64code.py tests/test_toolchains.py
       - name: Check offline update metadata
         run: >-
           uv run --no-sync python -m pytest -q tests/test_updates.py
@@ -68,7 +75,7 @@ jobs:
           & (Join-Path $env:UV_TOOL_BIN_DIR "decomp.exe") --help
           if ($LASTEXITCODE -ne 0) { throw "The installed native Windows command did not start" }
           $python = Join-Path $env:UV_TOOL_DIR "decompnet\Scripts\python.exe"
-          & $python -I -c "from decompnet.app import cli; from decompnet import toolchains; assert toolchains.current_platform() == 'windows-x86_64'; print('Installed native app imports successfully')"
+          & $python -I -c "from decompnet.app import cli; from decompnet import toolchains; from decompnet.rom import n64; assert toolchains.current_platform() == 'windows-x86_64'; assert n64.to_z64(bytes.fromhex('80371240'))[1] == 'z64'; print('Installed native app and N64 C++ analyzer load successfully')"
           if ($LASTEXITCODE -ne 0) { throw "The installed Windows app environment is incomplete" }
       - name: Install the pinned free Windows compilers and tools
         run: |
@@ -99,10 +106,13 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --group dev --python 3.12
+      - name: Build the N64 C++ analyzer
+        run: uv run --no-sync python tools/build_n64_native.py
       - name: Check Linux runtime and optional WSL compatibility
         run: >-
           uv run --no-sync python -m pytest -q
           tests/test_hostenv.py tests/test_updates.py tests/test_windows_installer.py tests/test_install_source.py tests/test_native_runtime.py
+          tests/test_n64_native.py tests/test_n64code.py tests/test_toolchains.py
       - name: Check invalid WSL paths produce an actionable import error
         run: >-
           uv run --no-sync python -m pytest -q

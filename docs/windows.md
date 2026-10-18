@@ -54,7 +54,7 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 
 | Toolchain | Native Windows status |
 | --- | --- |
-| KMC GCC 2.7.2 / N64 | Source port, including the original binutils 2.6 |
+| KMC GCC 2.7.2 / N64 | C++ host port, including the original binutils 2.6 |
 | PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
 | agbcc / Game Boy Advance | Source port and a Python pipeline for preprocessing and assembly |
 | IDO 5.3 / 7.1, CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
@@ -64,6 +64,12 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 EE-GCC 2.96 has no verified matching source available for a Windows source port. The installer does not
 substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and
 rebuild recipes are available in the [compiler assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-toolchains-v1/toolchains/windows/v1).
+
+N64 ROM analysis now runs in a bundled C++17 library. The Windows KMC GCC/binutils host implementation
+is ported to GNU C++98, with all 170 project translation units built by G++. Game output remains C.
+The compiler archive includes a source/object build inventory; the corresponding source archive contains
+the generated C++ implementation, original GPL source and rebuild recipes on the
+[N64 C++ assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/n64-cpp-assets/toolchains/windows/v1).
 
 The fork’s compiler ports preserve the original target compiler. Updating the host build to Windows does not
 replace a period compiler with a modern compiler. The native integration checks compare generated code and

@@ -166,6 +166,15 @@ def installed(tid: str, linux: bool | None = None) -> dict | None:
     expected = LINUX if linux else current_platform()
     if data.get("platform", expected) != expected:
         return None
+    if "parts" in data and tid in registry():
+        tc = get(tid)
+        parts = tc.linux_parts() if linux else tc.parts_for()
+        recorded = data["parts"]
+        if len(parts) != len(recorded) or any(
+            p["url"] != old["url"] or (p.get("sha256") and p["sha256"] != old.get("sha256"))
+            for p, old in zip(parts, recorded)
+        ):
+            return None
     return data
 
 

@@ -72,6 +72,16 @@ def test_install_records_a_manifest(tc_root, monkeypatch):
     assert toolchains.require("fake") == toolchains.path("fake")
 
 
+def test_updated_toolchain_pin_requires_reinstall(tc_root, monkeypatch):
+    _fake(monkeypatch, tc_root, sha=None)
+    toolchains.install("fake", log=lambda *_: None)
+    assert toolchains.installed("fake") is not None
+    toolchains.get("fake").parts[0]["sha256"] = "0" * 64
+    assert toolchains.installed("fake") is None
+    with pytest.raises(toolchains.ToolchainError, match="toolchain install fake"):
+        toolchains.require("fake")
+
+
 def test_zst_archives_need_no_zstd_command(tmp_path, monkeypatch):
     """The 32-bit runtime EE-GCC needs is a .tar.zst: GNU tar would run the zstd command for it, which many systems
     don't have (the install then failed with "command failed (2)")."""

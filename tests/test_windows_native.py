@@ -98,6 +98,35 @@ def test_native_kmc_matches_linux_machine_code_and_relocations(native_workspace)
     assert describe_functions(actual) == expected["functions"]
 
 
+def test_cpp_kmc_binutils_preserve_real_n64_objects(native_workspace):
+    """Exercise the C++ archive/conversion/strip/demangler implementations too."""
+    directory = toolchains.require("gcc-2.7.2-kmc")
+    inventory = json.loads((directory / "CPP-BUILD.json").read_text())
+    assert len(inventory["translation_units"]) >= 160
+    assert {unit["language"] for unit in inventory["translation_units"]} == {"GNU C++98"}
+    data = native_compile("int native_archive_probe(int value) { return value * 3; }", native_workspace)
+    obj = native_workspace / "Archive probe.o"
+    obj.write_bytes(data)
+    text = ELFFile(BytesIO(data)).get_section_by_name(".text").data()
+
+    def run(program, *args):
+        result = subprocess.run([str(directory / program), *map(str, args)], cwd=native_workspace,
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        return result.stdout
+
+    archive = native_workspace / "Probe archive.a"
+    run("ar.exe", "rc", archive, obj)
+    assert "Archive probe.o" in run("ar.exe", "t", archive)
+    raw = native_workspace / "Raw code.bin"
+    run("objcopy.exe", "-O", "binary", "-j", ".text", obj, raw)
+    assert raw.read_bytes() == text
+    stripped = native_workspace / "Stripped probe.o"
+    run("strip.exe", "-s", "-o", stripped, obj)
+    assert ELFFile(BytesIO(stripped.read_bytes())).get_section_by_name(".text").data() == text
+    assert "foo(int)" in run("c++filt.exe", "foo__Fi")
+
+
 def test_native_psx_preprocessor_and_compiler_produce_little_endian_mips(native_workspace):
     config = project.compiler_config(native_workspace, {"compiler": {"toolchain": "gcc-2.7.2-psx"}})
     header = "#ifndef NATIVE_PSX_CONTEXT\n#define NATIVE_PSX_CONTEXT\n#if 2 + 2 == 4\ntypedef int s32;\n#else\n#error preprocessor failed\n#endif\n#endif\n"
