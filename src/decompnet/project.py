@@ -85,7 +85,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         else:
             base = [*cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
-        if language == "c++":
+        if language == "c++" and not c.get("cmd"):
             if tc.id != "gcc-2.7.2-kmc":
                 raise toolchains.ToolchainError(f"C++ game output needs the N64 KMC C++ frontend; {tc.name} has no verified C++ setup")
             frontend = dirs[0] / ("cc1plus.exe" if windows else "cc1plus")

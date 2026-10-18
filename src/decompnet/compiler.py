@@ -55,8 +55,6 @@ def check_source(source: str) -> None:
 @dataclass
 class CompilerConfig:
     cmd: list[str]
-    language: str = "c"
-    c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     timeout: float = 15.0
     sandbox: str = "auto"  # auto | bwrap | docker | none
     image: str | None = None  # for sandbox = "docker"
@@ -64,6 +62,8 @@ class CompilerConfig:
     include_dirs: tuple[str, ...] = ()  # absolute paths of extra (static) header dirs
     runtime32: str | None = None  # 32-bit x86 C runtime for old i386 compiler binaries (see toolchains)
     wsl: bool = False  # a Linux toolchain on Windows: runs inside WSL 2, `cmd` holds WSL paths (see wsl.py)
+    language: str = "c"
+    c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
 
 
 @dataclass

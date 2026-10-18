@@ -143,6 +143,7 @@ def _project_info(net: RomNetwork, slug: str) -> str:
     pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
     return (f"{ov['title']} ({ov['rom']['game_code']}, {ov['rom']['region']})\n"
             f"compiler: {ov['compiler']['name']} {' '.join(ov['compiler']['flags'])}\n"
+            f"source language: {'C++' if ov['compiler'].get('language') == 'c++' else 'C'}\n"
             f"progress: {ov['matched']}/{ov['functions']} functions matched ({pct:.1f}% of code), "
             f"{ov['attempts']} compiles so far, context.h v{ov['context_version']}\n"
             f"Next: claim_function(). Guides: guide().")

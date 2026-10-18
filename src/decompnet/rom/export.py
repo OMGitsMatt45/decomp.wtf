@@ -335,9 +335,9 @@ share it.{chr(10) + chr(10) + '## Notes' + notes if notes else ''}
 
 - Goal: SOURCE_LANGUAGE that the original compiler turns into exactly the original bytes. `python build.py` must end with
   "identical".
-- Pick a function from `asm/nonmatchings/`, write it as `src/<segment>/<name>.SOURCE_EXTENSION` (one function, `#include
-  "common.h"` first), add an entry `{"kind": "c", "src": ..., "obj": ...}` to `build.json` objects and point the
-  function's line in `game.ld` at the new object.
+- Pick a function from `asm/nonmatchings/`, write it as `src/<segment>/<name>.SOURCE_EXTENSION` (one function,
+  `#include "common.h"` first), then run `python build.py check <name>` and `python build.py`.
+  The build discovers that filename automatically; its function entry in `build.json` records custom paths.
 - C++ game entry points and external game declarations use `extern "C"` to retain the game's symbol names.
   Templates, classes and C++ helpers can keep C++ linkage.
 - Shared types and prototypes go in `include/common.h`. Never edit `baserom*`, `asm/` or the addresses in
