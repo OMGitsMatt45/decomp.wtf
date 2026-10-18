@@ -54,6 +54,8 @@ def _decompile(tmp: Path, platform: str):
             net.split_function(agent, slug, row["name"], f"0x{syms[name]:08X}", name)
     header = "\n".join(l for l in (GAME / "game.h").read_text().splitlines()
                        if not l.startswith("#include") and not re.match(r"typedef \w+( \w+)? [su]\d+;|typedef \w+ f\d+;", l))
+    if platform == "n64":
+        header = header.replace("#define NULL ((void *)0)", "#define NULL 0")
     if platform != "n64":  # small globals are $gp-relative: tentative definitions, not extern
         header = re.sub(r"^extern (s32|u32) (g_\w+);", r"\1 \2;", header, flags=re.M)
     assert net.edit_context(agent, slug, "", header, "the game's types").startswith("✅")
@@ -72,7 +74,12 @@ def _decompile(tmp: Path, platform: str):
         code = csource.get(source, name)
         if platform == "n64" and name == "abs_s32":
             code = "s32 abs_s32(s32 value) { if (value < 0) value = -value; return value; }"
-        assert net.attempt(agent, name, code, slug)["matched"], name
+        if platform == "n64" and name in ("entity_spawn", "game_tick"):
+            # The period C++ frontend gives block-local declarations different
+            # loop contours. Declaring the pointer outside matches the C target.
+            code = code.replace("s32 i;", "s32 i; Entity *e;").replace("Entity *e = &g_entities[i];", "e = &g_entities[i];")
+        result = net.attempt(agent, name, code, slug)
+        assert result["matched"], (name, result)
     return net, slug
 
 
