@@ -34,7 +34,8 @@ def test_header_and_byte_order_match_the_original(order):
     assert info.to_dict() == reference.to_dict()
 
 
-@pytest.mark.parametrize("data", [b"", b"x" * 0x40000, b"\x80\x37\x12\x40" + b"\0" * 0x40000])
+@pytest.mark.parametrize("data", [b"", b"x" * 0x40000, b"\x80\x37\x12\x40" + b"\0" * 0x40000],
+                         ids=["empty", "bad-magic", "truncated"])
 def test_invalid_images_keep_the_original_error(data):
     with pytest.raises(original.RomError) as old:
         original.read_info(data)

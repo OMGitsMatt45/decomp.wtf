@@ -62,7 +62,7 @@ jobs:
         # These tests use fake CLIs and isolated config/registry locations. They do
         # not install a distribution or change the runner's agent configuration.
         run: >-
-          uv run --no-sync python -m pytest -vv -o faulthandler_timeout=60
+          uv run --no-sync python -m pytest -q -o faulthandler_timeout=60
           tests/test_platform.py tests/test_windows_installer.py tests/test_native_runtime.py
           tests/test_n64_native.py tests/test_n64code.py tests/test_overlays.py tests/test_toolchains.py
       - name: Check offline update metadata
