@@ -66,10 +66,10 @@ substitute another compiler version or silently enable WSL for it. Binary packag
 rebuild recipes are available in the [compiler assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-toolchains-v1/toolchains/windows/v1).
 
 N64 ROM analysis now runs in a bundled C++17 library. The Windows KMC GCC/binutils host implementation
-is ported to GNU C++98, with all 170 project translation units built by G++. Game output remains C.
+is ported to GNU C++98, with all 195 project translation units built by G++. N64 projects using KMC now generate and export `.cpp` sources and compile them with the period C++ frontend.
 The compiler archive includes a source/object build inventory; the corresponding source archive contains
 the generated C++ implementation, original GPL source and rebuild recipes on the
-[N64 C++ assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/n64-cpp-assets/toolchains/windows/v1).
+[N64 C++ assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/n64-game-cpp-assets/toolchains/windows/v1).
 
 The fork’s compiler ports preserve the original target compiler. Updating the host build to Windows does not
 replace a period compiler with a modern compiler. The native integration checks compare generated code and
@@ -106,3 +106,17 @@ first on your user PATH. `Get-Command decomp -All` in a new PowerShell window sh
 A failed import keeps its error and log in the app. The full application log is under
 `%USERPROFILE%\Decomp\.decomp\logs`. A compiler failure in one platform does not require reinstalling Windows
 features; include the game platform, selected compiler and compile log in the report.
+
+## N64 C++ game output
+
+N64 ROM projects using KMC default to C++ for drafts, matching and exported builds.
+The Windows package includes `cc1plus.exe`; rerun setup to replace the older compiler package.
+Exports contain `.cpp` files and retain C linkage for the original game's functions and external
+symbols. Templates, classes and references are available in GCC 2.7.2's period C++ dialect;
+exceptions and RTTI are disabled. This is not a modern C++17/20 compiler or standard library.
+
+C++ syntax can produce different bytes from the same C expression. Matching still requires exact
+bytes; for example, an absolute-value function may need an explicit sign mask in C++.
+Existing matched sources are checked again during export, with reported assembly fallbacks if
+compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
+IDO and other consoles keep their existing language; their C++ frontend support is a separate task.

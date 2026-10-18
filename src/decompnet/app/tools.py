@@ -48,8 +48,8 @@ PLATFORM_GUIDES = {
 }
 
 INSTRUCTIONS = """\
-decomp.wtf: you are decompiling a game ROM that the user owns into C that compiles to exactly the same
-machine code. Your C is compiled with the game's original compiler, linked at the function's real address
+decomp.wtf: you are decompiling a game ROM that the user owns into C/C++ that compiles to exactly the same
+machine code. Your C/C++ is compiled with the game's original compiler, linked at the function's real address
 and compared with the ROM: score 0 means byte-identical, and the function is saved as matched.
 Start with project_info, then claim_function -> compile_and_diff (repeat). guide(topic) has know-how.
 Everything runs on the user's computer. The game's code is the user's: never publish it anywhere.
@@ -59,14 +59,14 @@ WORK_PROMPT = """\
 You are a decompilation agent in decomp.wtf, working on {title}. Other agents may be working on other
 functions of the same game at the same time; the tools keep you from colliding.
 
-Your job: turn functions of this game into C that compiles to *exactly* the original machine code.
+Your job: turn functions of this game into its configured C or C++ language (see project_info), compiling to *exactly* the original machine code.
 Use only the decomp tools. Repeat for up to {count} claims (a batch is one), then stop:
 
 1. claim_function(count=4) gives you the next function, and when it's small, its neighbours with it (small
    functions mostly match on the first try): assembly, location, calls, data it uses, the best previous
    attempt and notes (start from those!), a machine-generated draft, and identical matched code if any.
 2. get_context() shows the shared header every compile includes.
-3. Write the C functions (same names as the assembly) and judge them: compile_and_diff(function="a, b, c",
+3. Write the C/C++ functions (same names as the assembly) and judge them: compile_and_diff(function="a, b, c",
    source=all the definitions) for a batch, one name for one. Read the diff: '<' '>' missing/extra
    instructions, 'i' operands, 'o' order, 'r' registers, 's' stack. Fix structure first, registers last.
    The workflow and {compiler_guide} guides are below. find_similar(function) shows look-alike functions;
@@ -77,7 +77,7 @@ Use only the decomp tools. Repeat for up to {count} claims (a batch is one), the
 5. compile_and_diff says when to move on (no better after 4 compiles in a row; up to 10 for big functions):
    then release_function with precise notes (what you tried, what is left) and claim the next one.
 
-Write plausible original code, pure C (no inline asm). Be brief in your messages: work, don't narrate.
+Write plausible original code, C/C++ (no inline asm). Be brief in your messages: work, don't narrate.
 """
 
 FORK_PROMPT = """\

@@ -16,7 +16,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import wsl
+from . import cpp, wsl
 
 MAX_SOURCE_BYTES = 64 * 1024
 # Per-compile resource caps (address space, CPU seconds, output file size) and a global
@@ -55,6 +55,8 @@ def check_source(source: str) -> None:
 @dataclass
 class CompilerConfig:
     cmd: list[str]
+    language: str = "c"
+    c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     timeout: float = 15.0
     sandbox: str = "auto"  # auto | bwrap | docker | none
     image: str | None = None  # for sandbox = "docker"
@@ -147,12 +149,15 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         for d in cfg.include_dirs:
             shutil.copytree(d, inc, dirs_exist_ok=True)
         # LF on every platform: to the old GCCs a backslash before CRLF doesn't continue a line ("stray '\' in program")
+        if cfg.language == "c++" and cfg.c_linkage:
+            context_header, source = cpp.game_abi(context_header), cpp.game_abi(source)
+        filename = "func.cpp" if cfg.language == "c++" else "func.c"
         (inc / "context.h").write_text(context_header, encoding="utf-8", newline="\n")
-        (work / "func.c").write_text('#include "context.h"\n#line 1 "func.c"\n' + source + "\n", encoding="utf-8",
+        (work / filename).write_text(f'#include "context.h"\n#line 1 "{filename}"\n' + source + "\n", encoding="utf-8",
                                      newline="\n")
 
         root = _root(cfg, work)
-        subst = {"{src}": f"{root}/func.c", "{obj}": f"{root}/func.o", "{include}": f"{root}/include"}
+        subst = {"{src}": f"{root}/{filename}", "{obj}": f"{root}/func.o", "{include}": f"{root}/include"}
         argv = list(cfg.cmd)
         for placeholder, value in subst.items():
             argv = [a.replace(placeholder, value) for a in argv]

@@ -80,7 +80,7 @@ def native_compile(source, work):
 
 
 def test_native_compiler_payloads_are_windows_executables(native_workspace):
-    payloads = [("gcc-2.7.2-kmc", name) for name in ("gcc.exe", "cpp.exe", "cc1.exe", "as.exe")]
+    payloads = [("gcc-2.7.2-kmc", name) for name in ("gcc.exe", "cpp.exe", "cc1.exe", "cc1plus.exe", "as.exe")]
     payloads.append(("agbcc", "bin/agbcc.exe"))
     for tid, name in payloads:
         executable = toolchains.require(tid) / name
@@ -172,16 +172,21 @@ def test_native_demo_import_rejects_wrong_code_and_accepts_exact_match(native_wo
     overview = network.overview(slug)
     assert slug == "demo-quest-64" and overview["functions"] >= 95
     assert overview["compiler"]["toolchain"] == "gcc-2.7.2-kmc"
+    assert overview["compiler"]["language"] == "c++"
     assert overview["compiler"]["installed"] and not overview["compiler"]["wsl"]
     agent, _ = network.local_agent("native-windows-smoke")
     wrong = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { return value; }", slug)
     assert not wrong["matched"] and wrong["score"] is not None and wrong["score"] > 0, wrong["text"]
-    exact = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { return value < 0 ? -value : value; }", slug)
+    exact = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { s32 sign = value >> 31; return (value ^ sign) - sign; }", slug)
     assert exact["matched"] and exact["score"] == 0, exact["text"]
     difference = network.function_diff(slug, "func_800007F4")
     assert difference["score"] == 0 and all(row[0] == " " for row in difference["rows"])
     exported = network.export_rom(slug, log=lambda *_: None)
     assert exported["identical"], exported["log"]
+    tree = Path(exported["path"])
+    assert list((tree / "src").glob("*/*.cpp"))
+    assert not list((tree / "src").glob("*/*.c"))
+    assert json.loads((tree / "build.json").read_text())["compiler"]["language"] == "c++"
 
 
 def test_native_objdiff_judges_real_kmc_objects(native_workspace):

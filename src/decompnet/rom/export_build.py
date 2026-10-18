@@ -76,7 +76,8 @@ def setup() -> None:
 
 
 def c_source(fn: dict) -> str | None:
-    path = fn.get("c") or f"src/{fn['seg']}/{fn['name']}.c"
+    extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+    path = fn.get("source") or fn.get("c") or f"src/{fn['seg']}/{fn['name']}.{extension}"
     return path if (ROOT / path).exists() else None
 
 
@@ -274,7 +275,8 @@ def check(name: str) -> bool:
         fail(f"no function {name}")
     src = c_source(fn)
     if not src:
-        fail(f"write it first as src/{fn['seg']}/{name}.c")
+        extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+        fail(f"write it first as src/{fn['seg']}/{name}.{extension}")
     found = [Symbol(s, a, 0, "data") for s, a in B["symbols"].items()]
     found += [Symbol(f["name"], f["vram"], 0, "func") for f in B["functions"]]
     for path in (ROOT / "asm" / "data").glob("**/*.s"):

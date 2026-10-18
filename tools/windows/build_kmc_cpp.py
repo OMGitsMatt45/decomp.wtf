@@ -17,12 +17,13 @@ import subprocess
 RECIPE = Path(__file__).resolve().parent
 PROGRAMS = {
     "gcc/xgcc.exe": "gcc.exe", "gcc/cc1.exe": "cc1.exe",
+    "gcc/cc1plus.exe": "cc1plus.exe",
     "gcc/cccp.exe": "cccp.exe", "gcc/cpp.exe": "cpp.exe",
     "binutils/gas/as.new": "as.exe", "binutils/binutils/ar.exe": "ar.exe",
     "binutils/binutils/objcopy.exe": "objcopy.exe",
     "binutils/binutils/strip.new": "strip.exe", "binutils/binutils/c++filt.exe": "c++filt.exe",
 }
-LINK_OUTPUTS = {"xgcc", "cccp", "cc1", "as.new", "objcopy", "ar", "strip.new", "c++filt"}
+LINK_OUTPUTS = {"xgcc", "cccp", "cc1", "../cc1plus", "as.new", "objcopy", "ar", "strip.new", "c++filt"}
 
 
 def command(arguments, cwd=None, env=None):

@@ -22,10 +22,9 @@ exceptions become an error string at the boundary. The old Python implementation
 are test fixtures used for differential validation.
 
 The separate Windows KMC GCC/binutils suite is a GNU C++98 source port of the
-period compiler, retaining its algorithms and C target language. Its 170 project
+period compiler, retaining its target algorithms and both C and period C++ frontends. Its 195 project
 translation units, corresponding GPL source, build inventory and recipe accompany
 the compiler archive. See `tools/windows/build_kmc_cpp.py` and
 `tools/windows/port_kmc_cpp.py`. Build-time configuration and generators use C;
 every shipped project runtime object is built from C++. System MinGW runtime
-libraries retain their upstream implementation languages. This does not change
-game source output to C++ or rewrite proprietary IDO compilers.
+libraries retain their upstream implementation languages. N64 KMC game output now defaults to C++; proprietary IDO compilers retain their existing language.

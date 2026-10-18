@@ -42,11 +42,17 @@ cd "$build_dir/gcc"
     --host=i386-pc-winnt3.5 --build=i386-pc-linux
 "$windows_cc" -c windows_spawn.c -O2 -o windows_spawn.o
 touch c-parse.y c-parse.c c-parse.h c-gperf.h cexp.c
-make -j"${JOBS:-4}" CC="$windows_cc" HOST_CC="$build_cc" \
+touch cp/parse.y cp/parse.c cp/parse.h cp/hash.h
+gcc_make_flags=(-j"${JOBS:-4}" CC="$windows_cc" HOST_CC="$build_cc" \
     HOST_PREFIX=build- HOST_PREFIX_1=build- \
     HOST_CFLAGS='-std=gnu89 -O0 -w -fno-strict-aliasing -fwrapv' HOST_LDFLAGS= \
     CFLAGS='-std=gnu89 -O0 -w -DHAVE_STRERROR -fno-strict-aliasing -fwrapv' \
-    LDFLAGS='-static windows_spawn.o' -o c-parse.y -o c-parse.c -o c-gperf.h -o cexp.c -o bi-parser.c xgcc cc1 cpp cccp
+    LDFLAGS="-static $build_dir/gcc/windows_spawn.o" -o c-parse.y -o c-parse.c -o c-gperf.h -o cexp.c -o bi-parser.c)
+make "${gcc_make_flags[@]}" xgcc cc1 cpp cccp stamp-objlist
+# The historical NT host assumes MSVC's .obj extension in this inventory.
+# MinGW builds .o objects, including the common backend linked into cc1plus.
+sed -i 's/\.obj\b/.o/g' stamp-objlist
+make "${gcc_make_flags[@]}" cc1plus
 cd "$build_dir/binutils"
 CC="$windows_cc" AR="$windows_ar" RANLIB="$windows_ranlib" ./configure \
     --target=mips-kmc-elf --host=i386-pc-winnt3.5 --build=i386-pc-linux \
@@ -63,6 +69,7 @@ make -j"${JOBS:-4}" -C binutils CC="$windows_cc" \
 mkdir -p "$build_dir/package"
 cp "$build_dir/gcc/xgcc.exe" "$build_dir/package/gcc.exe"
 cp "$build_dir/gcc/"{cc1,cpp,cccp}.exe "$build_dir/package/"
+cp "$build_dir/gcc/cc1plus.exe" "$build_dir/package/"
 cp "$build_dir/binutils/gas/as.new" "$build_dir/package/as.exe"
 cp "$build_dir/binutils/binutils/"{ar,objcopy,c++filt}.exe "$build_dir/package/"
 cp "$build_dir/binutils/binutils/strip.new" "$build_dir/package/strip.exe"

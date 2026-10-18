@@ -10,7 +10,7 @@ import time
 import tomllib
 from pathlib import Path
 
-from . import scoring, seeds, toolchains, wsl
+from . import cpp, scoring, seeds, toolchains, wsl
 from .compiler import CompilerConfig, compile_source
 from .elfobj import extract_function, list_functions
 from .store import Store
@@ -58,6 +58,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     see toolchains.toml) plus optional `flags`. With a toolchain, `{tc}` expands to its install directory,
     which is mounted read-only into the sandbox together with any runtime it requires."""
     c = cfg["compiler"]
+    language = cpp.language(cfg)
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
@@ -84,6 +85,13 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         else:
             base = [*cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
+        if language == "c++":
+            if tc.id != "gcc-2.7.2-kmc":
+                raise toolchains.ToolchainError(f"C++ game output needs the N64 KMC C++ frontend; {tc.name} has no verified C++ setup")
+            frontend = dirs[0] / ("cc1plus.exe" if windows else "cc1plus")
+            if not frontend.is_file():
+                raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
+            cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
         for dep in tc.dependencies(linux):  # {tc:<id>} is another toolchain this one needs
             where = toolchains.path(dep, linux)
             cmd = [a.replace(f"{{tc:{dep}}}", wsl.path(where) if linux else where.as_posix()) for a in cmd]
@@ -93,6 +101,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         cmd = list(c["cmd"])
     return CompilerConfig(
         cmd=cmd,
+        language=language,
+        c_linkage=language == "c++" and cfg.get("kind") == "rom",
         timeout=float(c.get("timeout", 15)),
         sandbox=c.get("sandbox", "auto"),
         image=c.get("image"),

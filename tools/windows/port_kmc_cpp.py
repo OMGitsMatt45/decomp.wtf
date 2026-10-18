@@ -172,7 +172,9 @@ def generate(row):
                         if decls and (not decls[0].isalpha() or not decls.endswith(';')):return match[0]
                         if decls and decls.split()[0] in ('if','return','while','for','else','switch','case','do','goto'):return match[0]
                     elif decls:return match[0]
-                    return name+'('+args+')\n{'
+                    previous=text[:match.start()].rstrip().rsplit('\n',1)[-1].strip()
+                    implicit_return=(not previous or previous.endswith(('}', ';')) or previous in ('static','extern','inline'))
+                    return ('int ' if implicit_return and re.match(r'(?:extern |static )?int\b',proto) else '')+name+'('+args+')\n{'
                 text=pattern.sub(definition,text)
     # C's unprototyped declarations permit promoted arguments. Preserve that
     # ABI with C++ overload declarations carrying explicit C assembler labels.
@@ -200,7 +202,10 @@ def generate(row):
     for start,end,replacement in reversed(changes):text=text[:start]+replacement+text[end:]
     # Annotate both declarations and definitions before any use. This does not
     # link a C implementation: every body is compiled by the C++ compiler.
+    names.update(re.findall(r'\bextern\s+errorfn\s+(\w+)\s*;',text))
     names=sorted(names,key=len,reverse=True)
+    text=re.sub(r'(^[ \t]*extern[ \t]+\w+[ \t]+)('+'|'.join(map(re.escape,names))+r')\s*;',
+                lambda m:m[1]+m[2]+' asm("_'+m[2]+'");',text,flags=re.M)
     pattern=re.compile(r'(^[ \t]*(?:(?:extern|static|inline|const|volatile|unsigned|signed|struct|enum)[ \t]+)*[A-Za-z_]\w*(?:(?:[ \t]+[A-Za-z_]\w*)|[ \t]*\*)*[ \t\n]*)\b('+'|'.join(map(re.escape,names))+r')\s*\(',re.M)
     inserts=[]
     for m in pattern.finditer(text):
@@ -223,7 +228,45 @@ def generate(row):
         depth+=mask[cursor:m.start()].count('{')-mask[cursor:m.start()].count('}');cursor=m.start()
         if depth==0:edits.append(m.start())
     for at in reversed(edits):text=text[:at]+'extern '+text[at:]
-    text=tokens.sub(lambda m:'' if m[0] in ('inline','__inline__','__inline') else 'cxx_'+m[0] if m[0] in keywords else 'bool' if m[0]=='_Bool' else m[0],text)
+    # The old C++ frontend intentionally uses unprototyped diagnostic calls,
+    # and callback declarations that coexist with typed K&R definitions.
+    # Preserve their original C calling ABI without changing argument lists.
+    if '/gcc/cp/' in row['source']:
+        # These legacy C helpers fall off a non-void body. Every caller discards
+        # their return value. GCC 14's C++ compiler traps on that path even at
+        # -O0, so make the discarded result explicit without changing effects.
+        for name in ('note_level_for_for','pushdecl_nonclass_level','do_toplevel_using_decl',
+                     'start_eh_unwinder','end_eh_unwinder'):
+            definition=re.search(r'\b'+name+r'\([^;{}]*\)\s*\{',text)
+            if not definition:continue
+            opening=definition.end()-1; level=1; end=opening+1
+            body_mask=re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',lambda m:' '*len(m[0]),text)
+            while level:
+                level+=(body_mask[end]=='{')-(body_mask[end]=='}');end+=1
+            body=re.sub(r'\breturn\s*;', 'return 0;',text[opening+1:end-1])
+            text=text[:opening+1]+body+'\n  return 0;\n'+text[end-1:]
+        callbacks = {
+            'rank_for_overload': '(int (*)(const void*, const void*))(int (*)(struct n64_tag_candidate*, struct n64_tag_candidate*))',
+            'dfs_init_vbase_pointers': '(void (*)(...))(void (*)(tree))',
+            'dfs_compress_decls': '(void (*)(...))(void (*)(tree))',
+        }
+        for name, cast in callbacks.items():
+            text=tokens.sub(lambda m:cast+name if m[0]==name and not re.match(r'\s*\(',text[m.end():]) else m[0],text)
+        legacy = {
+            'user_harshness': 'int (*)(tree, tree, tree)',
+            'ack': 'void (*)(char*, int, int)',
+            'dump_readonly_or_volatile': 'void (*)(tree, n64_enum_pad)',
+            'dump_expr_list': 'void (*)(tree)',
+        }
+        mask=re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',lambda m:' '*len(m[0]),text)
+        edits=[]; depth=0; cursor=0
+        for m in re.finditer(r'\b('+'|'.join(legacy)+r')\s*(?=\()',mask):
+            depth+=mask[cursor:m.start()].count('{')-mask[cursor:m.start()].count('}');cursor=m.start()
+            if depth:
+                result='int' if m[1]=='user_harshness' else 'void'
+                edits.append((m.start(),m.end(),'(('+result+' (*)(...))('+legacy[m[1]]+')'+m[1]+')'))
+        for start,end,value in reversed(edits):text=text[:start]+value+text[end:]
+    text=tokens.sub(lambda m:'' if m[0] in ('inline','__inline__','__inline') else 'cxx_'+m[0] if m[0] in keywords or m[0]=='getch' else 'bool' if m[0]=='_Bool' else m[0],text)
     source=work/'implementation.cpp'
     headers=['#include <'+h.rsplit('/include/',1)[-1]+'>\n' for h in row['headers']]
     notices=[]
@@ -233,7 +276,8 @@ def generate(row):
         for comment in re.findall(r'/\*.*?\*/',original.read_text(errors='replace'),re.S):
             if 'Copyright' in comment or 'copyright' in comment:
                 notices.append('// From '+str(original.relative_to(BASE))+'\n'+comment+'\n')
-    source.write_text('// GNU C++98 host port; original algorithms retained. GPL-2.0-or-later.\n'+''.join(notices)+'#include <stdlib.h>\n#include <string.h>\n#include <stdio.h>\n'+''.join(headers)+'#include <getopt.h>\nextern "C" void bcopy(const void*,void*,size_t);\nextern "C" int fork(void);\n'+''.join(implicit)+text+'\n')
+    forward = 'int cxx_getch(void) asm("_getch");\n' if row['source'].endswith('/cp/lex.c') else ''
+    source.write_text('// GNU C++98 host port; original algorithms retained. GPL-2.0-or-later.\n'+''.join(notices)+'#include <stdlib.h>\n#include <string.h>\n#include <stdio.h>\n'+''.join(headers)+'#include <getopt.h>\nextern "C" void bcopy(const void*,void*,size_t);\nextern "C" int fork(void);\n'+forward+''.join(implicit)+text+'\n')
     args=clean_args(row['args']); args=[str(source) if str((Path(row['cwd'])/a).resolve())==row['source'] else a for a in args]
     args=['-std=gnu++98' if a.startswith('-std=') else a for a in args]
     args=[a for a in args if not a.startswith('-I')]

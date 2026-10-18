@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from .. import toolchains
+from .. import cpp, toolchains
 from ..limits import capped
 from . import match
 from .symbols import AUTO_NAME
@@ -93,6 +93,8 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     """Write the rebuildable tree to `out`, build it once and report: {"path", "identical", "matched", ...}."""
     proj = net._project(slug)
     cfg = net.cfg(proj)
+    language = cpp.language(cfg)
+    extension = "cpp" if language == "c++" else "c"
     platform = cfg.get("platform", "n64")
     if platform not in AS_FLAGS:
         raise ExportError(f"exporting a rebuildable project isn't supported for {platform} yet")
@@ -132,9 +134,10 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     units = net._unit_contexts(proj["id"])
     header = net._context(proj["id"])["header"]
     (out / "include").mkdir(exist_ok=True)
-    (out / "include" / "common.h").write_text(header, encoding="utf-8")
+    convert = cpp.game_abi if language == "c++" else lambda text: text
+    (out / "include" / "common.h").write_text(convert(header), encoding="utf-8")
     for u in units:
-        (out / "include" / f"common_{u}.h").write_text(net._context(proj["id"], u)["header"], encoding="utf-8")
+        (out / "include" / f"common_{u}.h").write_text(convert(net._context(proj["id"], u)["header"]), encoding="utf-8")
     functions = []
     for path in sorted((out / "asm" / "nonmatchings").glob("**/*.s")):
         rom_off, vram = _first_address(path)
@@ -174,10 +177,10 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
             as_fallback.append((f["name"], "its own data isn't laid out like the game's"))
             f["kind"] = "asm"
             continue
-        src = out / "src" / f["seg"] / f"{f['name']}.c"
+        src = out / "src" / f["seg"] / f"{f['name']}.{extension}"
         src.parent.mkdir(parents=True, exist_ok=True)
         include = "common.h" if not unit else f"common_{unit}.h"
-        src.write_text(f'#include "{include}"\n\n{row["matched_source"].strip()}\n', encoding="utf-8")
+        src.write_text(f'#include "{include}"\n\n{convert(row["matched_source"]).strip()}\n', encoding="utf-8")
         f["kind"] = "c"
         f["src"] = src.relative_to(out).as_posix()
         f["obj"] = f"build/src/{f['seg']}/{f['name']}.o"
@@ -246,7 +249,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     for f in functions:
         entry = {"name": f["name"], "seg": f["seg"], "vram": f["vram"], "rom": f["rom"], "asm": f["asm"]}
         if f["kind"] == "c":
-            entry["c"] = f["src"]
+            entry["source" if language == "c++" else "c"] = f["src"]
             entry["own"] = {sec: base for (obj, sec, base) in private if obj == f["obj"]}
         fn_json.append(entry)
 
@@ -259,7 +262,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                    encoding="utf-8")
     build = {
         "title": proj["name"], "platform": platform, "image": base, "output": f"build/game{ext}",
-        "sha1": hashlib.sha1(image).hexdigest(), "compiler": cfg["compiler"], "gp": cfg.get("gp") or 0,
+        "sha1": hashlib.sha1(image).hexdigest(), "compiler": {**cfg["compiler"], "language": language}, "gp": cfg.get("gp") or 0,
         "big_endian": platform == "n64",
         "as_flags": [*AS_FLAGS[platform], "-G0", "-no-pad-sections", "-I", "include"],
         "ld_flags": [LD_ENDIAN[platform], "--no-check-sections"],
@@ -278,7 +281,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     (out / "objdiff.json").write_text(json.dumps({"build_base": False, "build_target": False, "units": units_json}, indent=2),
                                       encoding="utf-8")
     matched = sum(1 for f in functions if f["kind"] == "c")
-    _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback)
+    _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback, language)
     # everything made from the game itself stays local: build.py regenerates it from your copy
     (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")
@@ -290,17 +293,18 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     identical = proc.returncode == 0 and "identical" in proc.stdout
     if not identical:
         log((proc.stdout + proc.stderr)[-3000:])
-    return {"path": str(out), "identical": identical, "matched": matched, "functions": len(functions),
+    return {"path": str(out), "language": language, "identical": identical, "matched": matched, "functions": len(functions),
             "fallback": as_fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
 
 
-def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, total: int, fallback) -> None:
+def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, total: int, fallback, language: str = "c") -> None:
+    lang, extension = ("C++", "cpp") if language == "c++" else ("C", "c")
     names = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2"}
     notes = "".join(f"\n- `{n}`: kept as assembly, {why}" for n, why in fallback)
     (out / "README.md").write_text(f"""# {title} (decompilation)
 
 A matching decompilation of {title} for the {names[platform]}, started with [decomp.wtf](https://decomp.wtf).
-{matched} of {total} functions are C that compiles to exactly the original code; the rest are still assembly.
+{matched} of {total} functions are {lang} that compiles to exactly the original code; the rest are still assembly.
 `build.py` rebuilds the game from this tree and checks it against your original, byte for byte.
 
 ## Build
@@ -312,7 +316,7 @@ A matching decompilation of {title} for the {names[platform]}, started with [dec
 
 | Path | What it is |
 | :-- | :-- |
-| `src/<segment>/<function>.c` | Decompiled functions, one per file, each matching the original. |
+| `src/<segment>/<function>.{extension}` | Decompiled functions, one per file, each matching the original. |
 | `asm/nonmatchings/` | Assembly of every function (the target for the decompiled ones). |
 | `asm/data/`, `asm/*.s`, `assets/` | Data, start-up code and binary parts, still as assembly or binary. |
 | `include/common.h` | Types, structs and prototypes worked out so far. |
@@ -320,20 +324,22 @@ A matching decompilation of {title} for the {names[platform]}, started with [dec
 | `build.json`, `build.py` | How each file is built, and the build. |
 | `objdiff.json` | Per-function units for [objdiff](https://github.com/encounter/objdiff). |
 
-Keep going with any tool: write a function in C under `src/`, add it to `build.json` (see the existing entries),
+Keep going with any tool: write a function in {lang} under `src/`, add it to `build.json` (see the existing entries),
 run `build.py`. When it says *identical*, the function matches. This is the base for ports and mods: once
-everything is C, the game can be rebuilt, changed and moved to other platforms.
+everything is {lang}, the game can be rebuilt, changed and moved to other platforms.
 
 The game's code and data belong to their rights holder: keep this tree to yourself unless you have the right to
 share it.{chr(10) + chr(10) + '## Notes' + notes if notes else ''}
 """, encoding="utf-8")
     (out / "AGENTS.md").write_text("""# Working on this decompilation
 
-- Goal: C that the original compiler turns into exactly the original bytes. `python build.py` must end with
+- Goal: SOURCE_LANGUAGE that the original compiler turns into exactly the original bytes. `python build.py` must end with
   "identical".
-- Pick a function from `asm/nonmatchings/`, write it as `src/<segment>/<name>.c` (one function, `#include
+- Pick a function from `asm/nonmatchings/`, write it as `src/<segment>/<name>.SOURCE_EXTENSION` (one function, `#include
   "common.h"` first), add an entry `{"kind": "c", "src": ..., "obj": ...}` to `build.json` objects and point the
   function's line in `game.ld` at the new object.
+- C++ game entry points and external game declarations use `extern "C"` to retain the game's symbol names.
+  Templates, classes and C++ helpers can keep C++ linkage.
 - Shared types and prototypes go in `include/common.h`. Never edit `baserom*`, `asm/` or the addresses in
   `game.ld` to force a match.
-""", encoding="utf-8")
+""".replace("SOURCE_LANGUAGE", lang).replace("SOURCE_EXTENSION", extension), encoding="utf-8")

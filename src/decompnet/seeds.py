@@ -83,12 +83,15 @@ def generate(fn: FunctionObj, toolchain_id: str | None, context_header: str = ""
 
 
 def generate_from_asm(asm_text: str, name: str, toolchain_id: str | None, context_header: str = "",
-                      data_asm: str | None = None, timeout: float = 20, valid: bool = False) -> str | None:
+                      data_asm: str | None = None, timeout: float = 20, valid: bool = False,
+                      language: str = "c") -> str | None:
     """C draft from GNU/splat-style assembly text (plus optional data, for jump tables and strings). `valid`:
     m2c's compilable form (unknown types and expressions as M2C_ macros, see M2C_MACROS), for trying drafts as is."""
     target = M2C_TARGETS.get(toolchain_id or "")
     if not target:
         return None
+    if language == "c++":
+        target = target.removesuffix("-c") + "-c++"
     return run_m2c(asm_text, name, target, context_header, data_asm, timeout, valid)
 
 

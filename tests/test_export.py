@@ -69,7 +69,10 @@ def _decompile(tmp: Path, platform: str):
                 table = net.symbols(pid)
     source = (GAME / "game.c").read_text()
     for name in FUNCTIONS:
-        assert net.attempt(agent, name, csource.get(source, name), slug)["matched"], name
+        code = csource.get(source, name)
+        if platform == "n64" and name == "abs_s32":
+            code = "s32 abs_s32(s32 value) { s32 sign = value >> 31; return (value ^ sign) - sign; }"
+        assert net.attempt(agent, name, code, slug)["matched"], name
     return net, slug
 
 
@@ -82,7 +85,8 @@ def test_export_rebuilds_the_game(tmp_path, platform):
     assert out["identical"], out["log"]
     assert out["matched"] == len(FUNCTIONS) and not out["fallback"]
     tree = Path(out["path"])
-    assert len(list((tree / "src").glob("*/*.c"))) == len(FUNCTIONS)
+    extension = "cpp" if platform == "n64" else "c"
+    assert len(list((tree / "src").glob(f"*/*.{extension}"))) == len(FUNCTIONS)
 
     # a fresh clone: no assembly, assets or build output, only the sources and your copy of the game
     for generated in ("asm", "assets", "build"):
@@ -105,11 +109,11 @@ def test_check_records_a_function_written_outside(tmp_path):
     net, slug = _decompile(tmp_path, "n64")
     tree = Path(net.export_rom(slug, log=lambda *_: None)["path"])
     py = lambda *a: subprocess.run([sys.executable, "build.py", *a], cwd=tree, capture_output=True, text=True)
-    (tree / "src" / "main" / "lerp.c").unlink()  # back to assembly
+    (tree / "src" / "main" / "lerp.cpp").unlink()  # back to assembly
     assert "identical" in py().stdout
-    (tree / "src" / "main" / "lerp.c").write_text('#include "common.h"\n\nf32 lerp(f32 a, f32 b, f32 t) {\n    return a;\n}\n')
+    (tree / "src" / "main" / "lerp.cpp").write_text('#include "common.h"\n\nf32 lerp(f32 a, f32 b, f32 t) {\n    return a;\n}\n')
     assert "differs" in py().stdout
     assert py("check", "lerp").returncode == 1
-    (tree / "src" / "main" / "lerp.c").write_text('#include "common.h"\n\n' + csource.get((GAME / "game.c").read_text(), "lerp"))
+    (tree / "src" / "main" / "lerp.cpp").write_text('#include "common.h"\n\n' + csource.get((GAME / "game.c").read_text(), "lerp"))
     assert py("check", "lerp").returncode == 0
     assert "identical" in py().stdout

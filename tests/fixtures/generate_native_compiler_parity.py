@@ -4,6 +4,7 @@ DECOMPNET_TOOLCHAINS=/path/to/linux/toolchains uv run python tests/fixtures/gene
 """
 
 import hashlib
+import argparse
 import json
 from pathlib import Path
 
@@ -29,9 +30,13 @@ def describe_functions(obj):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--language", choices=["c", "c++"], default="c")
+    args = parser.parse_args()
     if toolchains.current_platform() != "linux-x86_64":
         raise SystemExit("Generate this reference with the pinned Linux x86-64 KMC compiler")
-    config = project.compiler_config(HERE, {"compiler": {"toolchain": TOOLCHAIN, "sandbox": "none"}})
+    config = project.compiler_config(HERE, {"kind": "rom", "platform": "n64", "compiler": {
+        "toolchain": TOOLCHAIN, "language": args.language, "sandbox": "none"}})
     source = SOURCE.read_text(encoding="utf-8")
     result = compiler.compile_source(config, "", source, trusted=True)
     if not result.ok:
@@ -40,10 +45,12 @@ def main():
         "toolchain": TOOLCHAIN,
         "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
         "flags": toolchains.get(TOOLCHAIN).flags,
+        "language": args.language,
         "functions": describe_functions(result.obj),
     }
-    EXPECTED.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"Wrote {len(snapshot['functions'])} Linux-reference functions to {EXPECTED.name}")
+    expected = HERE / "native_cpp_compiler_parity.json" if args.language == "c++" else EXPECTED
+    expected.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"Wrote {len(snapshot['functions'])} Linux-reference functions to {expected.name}")
 
 
 if __name__ == "__main__":
