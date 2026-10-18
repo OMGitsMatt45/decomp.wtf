@@ -122,7 +122,10 @@ function FakeUv {{
     if ($args[0] -eq 'tool' -and $args[1] -eq 'dir') {{ return {ps_string(bindir)} }}
     if ($args[0] -eq 'tool' -and $args[1] -eq 'install') {{
         $script:buildSpec = $args[-1]
-        $script:copiedSource = Test-Path -LiteralPath (Join-Path $script:buildSpec 'src/decompnet/__init__.py')
+        $script:copiedSource = $false
+        if (-not $script:buildSpec.StartsWith('decompnet @ ')) {{
+            $script:copiedSource = Test-Path -LiteralPath (Join-Path $script:buildSpec 'src/decompnet/__init__.py')
+        }}
         $global:LASTEXITCODE = {install_exit}
     }}
 }}
