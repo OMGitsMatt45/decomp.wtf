@@ -92,6 +92,10 @@ license = "GPL-2.0"
 source = "decompals/old-gcc 0.17 (gcc-2.8.1-psx), decompals/mips-binutils-2.6 v0.3"
 description = "GCC 2.8.1 with the PlayStation patches (later PSY-Q versions), with the GNU assembler."
 cc = ["{tc}/gcc", "-B{tc}/", "-c", "-Wa,-EL"]
+windows_requires = ["binutils-mips"]
+# binutils 2.6 mistakes %hi($LC0) for a register operand; use the same modern
+# assembler on both hosts when comparing this port's machine code.
+windows_cc = ["{tc}/gcc.exe", "-B{tc}/", "-B{tc:binutils-mips}/mips-ps2-decompals-", "-c", "-Wa,-EL,-mips1,-mabi=32"]
 flags = ["-O2", "-G8"]
 [["gcc-2.8.1-psx".parts]]
 url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.8.1-psx.tar.gz"
@@ -530,4 +534,9 @@ platforms = ["windows-x86_64"]
 [["gcc-2.7.2-psx".parts]]
 url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/binutils-2.6-windows-i686-v2.zip"
 sha256 = "fad12050405936cdcb349416b2aaf804985f5a4c05c0159442e9489b37a58915"
+platforms = ["windows-x86_64"]
+
+[["gcc-2.8.1-psx".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/b491bf3f8d89554a0d009bf53a4aea57b79999e7/toolchains/windows/v1/gcc-2.8.1-psx-windows-i686.zip"
+sha256 = "537a94a7b33c4be8ef504094b3522f1f137069391453def60c75199eec21c47d"
 platforms = ["windows-x86_64"]

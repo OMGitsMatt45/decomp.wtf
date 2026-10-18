@@ -1,10 +1,11 @@
-"""Generate the native port's reference with the pinned Linux KMC compiler.
+"""Generate a native port's reference with its pinned Linux compiler.
 
 DECOMPNET_TOOLCHAINS=/path/to/linux/toolchains uv run python tests/fixtures/generate_native_compiler_parity.py
 """
 
 import hashlib
 import json
+import argparse
 from pathlib import Path
 
 from decompnet import compiler, elfobj, project, toolchains
@@ -29,21 +30,33 @@ def describe_functions(obj):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--toolchain", default=TOOLCHAIN)
+    parser.add_argument("--output", type=Path, default=EXPECTED)
+    parser.add_argument("--psx-modern-as", action="store_true",
+                        help="Assemble GCC 2.8.1's $L labels with the pinned binutils-mips toolchain")
+    args = parser.parse_args()
     if toolchains.current_platform() != "linux-x86_64":
-        raise SystemExit("Generate this reference with the pinned Linux x86-64 KMC compiler")
-    config = project.compiler_config(HERE, {"compiler": {"toolchain": TOOLCHAIN, "sandbox": "none"}})
+        raise SystemExit("Generate this reference with the pinned Linux x86-64 compiler")
+    config = project.compiler_config(HERE, {"compiler": {"toolchain": args.toolchain, "sandbox": "none"}})
+    if args.psx_modern_as:
+        prefix = (toolchains.require("binutils-mips") / "mips-ps2-decompals-").as_posix()
+        config.cmd.insert(2, "-B" + prefix)
+        config.cmd = ["-Wa,-EL,-mips1,-mabi=32" if arg == "-Wa,-EL" else arg for arg in config.cmd]
     source = SOURCE.read_text(encoding="utf-8")
     result = compiler.compile_source(config, "", source, trusted=True)
     if not result.ok:
         raise SystemExit(result.log)
     snapshot = {
-        "toolchain": TOOLCHAIN,
+        "toolchain": args.toolchain,
         "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-        "flags": toolchains.get(TOOLCHAIN).flags,
+        "flags": toolchains.get(args.toolchain).flags,
         "functions": describe_functions(result.obj),
     }
-    EXPECTED.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"Wrote {len(snapshot['functions'])} Linux-reference functions to {EXPECTED.name}")
+    if args.psx_modern_as:
+        snapshot["assembler"] = {"toolchain": "binutils-mips", "flags": ["-EL", "-mips1", "-mabi=32"]}
+    args.output.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"Wrote {len(snapshot['functions'])} Linux-reference functions to {args.output.name}")
 
 
 if __name__ == "__main__":

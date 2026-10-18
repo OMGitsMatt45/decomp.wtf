@@ -72,7 +72,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The installed Windows app environment is incomplete" }
       - name: Install the pinned free Windows compilers and tools
         run: |
-          foreach ($tool in @("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "arm-gnu", "agbcc", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")) {
+          foreach ($tool in @("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "arm-gnu", "agbcc", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")) {
             uv run --no-sync decompnet toolchain install $tool
             if ($LASTEXITCODE -ne 0) { throw "Installing native $tool failed" }
           }

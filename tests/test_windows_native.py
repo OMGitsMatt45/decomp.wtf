@@ -24,7 +24,7 @@ from decompnet.forks import objdiff
 from .fixtures.generate_native_compiler_parity import describe_functions
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-FREE_TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "agbcc", "arm-gnu", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")
+FREE_TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "agbcc", "arm-gnu", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or os.environ.get("DECOMP_TEST_NATIVE_WINDOWS") != "1",
     reason="opt-in native Windows integration (DECOMP_TEST_NATIVE_WINDOWS=1)",
@@ -70,8 +70,8 @@ def native_workspace(tmp_path, monkeypatch):
     hostenv.runtime.cache_clear()
 
 
-def native_compile(source, work):
-    config = project.compiler_config(work, {"compiler": {"toolchain": "gcc-2.7.2-kmc"}})
+def native_compile(source, work, tid="gcc-2.7.2-kmc"):
+    config = project.compiler_config(work, {"compiler": {"toolchain": tid}})
     assert not config.wsl
     result = compiler.compile_source(config, "", source)
     assert result.ok, result.log
@@ -82,24 +82,27 @@ def native_compile(source, work):
 def test_native_compiler_payloads_are_windows_executables(native_workspace):
     payloads = [("gcc-2.7.2-kmc", name) for name in ("gcc.exe", "cpp.exe", "cc1.exe", "as.exe")]
     payloads.append(("agbcc", "bin/agbcc.exe"))
+    payloads.extend(("gcc-2.8.1-psx", name) for name in ("gcc.exe", "cpp.exe", "cc1.exe"))
     for tid, name in payloads:
         executable = toolchains.require(tid) / name
         with executable.open("rb") as stream:
             assert stream.read(2) == b"MZ", f"{executable} is not a Windows executable"
 
 
-def test_native_kmc_matches_linux_machine_code_and_relocations(native_workspace):
+@pytest.mark.parametrize("snapshot", ["native_compiler_parity.json", "native_psx272_parity.json", "native_psx281_parity.json"])
+def test_native_compiler_matches_linux_machine_code_and_relocations(native_workspace, snapshot):
     source = FIXTURES / "native_compiler_parity.c"
-    expected = json.loads((FIXTURES / "native_compiler_parity.json").read_text(encoding="utf-8"))
+    expected = json.loads((FIXTURES / snapshot).read_text(encoding="utf-8"))
     # read_text normalizes a Git for Windows checkout's CRLF, just as compile_source does.
     assert hashlib.sha256(source.read_text(encoding="utf-8").encode("utf-8")).hexdigest() == expected["source_sha256"]
     assert toolchains.get(expected["toolchain"]).flags == expected["flags"]
-    actual = native_compile(source.read_text(encoding="utf-8"), native_workspace)
+    actual = native_compile(source.read_text(encoding="utf-8"), native_workspace, expected["toolchain"])
     assert describe_functions(actual) == expected["functions"]
 
 
-def test_native_psx_preprocessor_and_compiler_produce_little_endian_mips(native_workspace):
-    config = project.compiler_config(native_workspace, {"compiler": {"toolchain": "gcc-2.7.2-psx"}})
+@pytest.mark.parametrize("tid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+def test_native_psx_preprocessor_and_compiler_produce_little_endian_mips(native_workspace, tid):
+    config = project.compiler_config(native_workspace, {"compiler": {"toolchain": tid}})
     header = "#ifndef NATIVE_PSX_CONTEXT\n#define NATIVE_PSX_CONTEXT\n#if 2 + 2 == 4\ntypedef int s32;\n#else\n#error preprocessor failed\n#endif\n#endif\n"
     result = compiler.compile_source(config, header,
                                      "s32 native_psx_abs(s32 v) { return v < 0 ? -v : v; }")
@@ -109,7 +112,7 @@ def test_native_psx_preprocessor_and_compiler_produce_little_endian_mips(native_
     assert function.code
 
 
-@pytest.mark.parametrize("tid", ["gcc-2.7.2-kmc", "gcc-2.7.2-psx"])
+@pytest.mark.parametrize("tid", ["gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx"])
 def test_native_gcc_driver_reports_preprocessor_failure(native_workspace, tid):
     config = project.compiler_config(native_workspace, {"compiler": {"toolchain": tid}})
     source = native_workspace / "Invalid source.c"
@@ -207,3 +210,18 @@ def test_free_native_assemblers_produce_console_objects(native_workspace, tid, n
     assert result.returncode == 0, result.stdout + result.stderr
     function = elfobj.extract_function(output.read_bytes(), "native_probe")
     assert function.arch == arch and function.big_endian
+
+
+def test_native_ps2_assembler_accepts_r5900_multimedia_instructions(native_workspace):
+    assembler = toolchains.require("binutils-mips") / "mips-ps2-decompals-as.exe"
+    source = native_workspace / "Emotion Engine source.s"
+    source.write_text(".text\n.set noreorder\n.globl native_ps2_probe\n.ent native_ps2_probe\n"
+                      "native_ps2_probe:\n lq $t0,0($a0)\n paddw $t0,$t0,$t0\n"
+                      " sq $t0,0($a0)\n jr $ra\n nop\n.end native_ps2_probe\n", encoding="ascii", newline="\n")
+    output = native_workspace / "Emotion Engine object.o"
+    result = subprocess.run([str(assembler), "-EL", "-march=r5900", "-mabi=eabi", "-G0", "-o", str(output), str(source)],
+                            cwd=native_workspace, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    function = elfobj.extract_function(output.read_bytes(), "native_ps2_probe")
+    assert function.arch == "mips" and not function.big_endian
+    assert len(function.code) == 20

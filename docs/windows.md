@@ -56,14 +56,17 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | --- | --- |
 | KMC GCC 2.7.2 / N64 | Source port, including the original binutils 2.6 |
 | PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
+| PlayStation GCC 2.8.1 | Source port with the pinned native MIPS assembler; [details](windows-playstation.md) |
 | agbcc / Game Boy Advance | Source port and a Python pipeline for preprocessing and assembly |
 | IDO 5.3 / 7.1, CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
-| PlayStation GCC 2.8.1 and EE-GCC 2.96 | No native build in this release; marked unavailable |
+| PS2 EE-GCC 2.96 | Matching source has not been located; marked unavailable |
 
 EE-GCC 2.96 has no verified matching source available for a Windows source port. The installer does not
 substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and
 rebuild recipes are available in the [compiler assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-toolchains-v1/toolchains/windows/v1).
+The additional PS1 GCC 2.8.1 package and its complete source are in the
+[PlayStation assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-playstation-assets-v1/toolchains/windows/v1).
 
 The fork’s compiler ports preserve the original target compiler. Updating the host build to Windows does not
 replace a period compiler with a modern compiler. The native integration checks compare generated code and
