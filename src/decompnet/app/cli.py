@@ -229,15 +229,21 @@ def setup(args) -> int:
     print(f"Setting up decomp.wtf tools for {plat}")
     if why := toolchains.unsupported_cpu():
         print(f"  ! {why}: the games can be imported and looked at here, not matched")
+    missing = []
     for tid in ("gcc-2.7.2-kmc", "m2c", "objdiff-cli"):
         tc = toolchains.get(tid)
         if not tc.supported:
-            print(f"  - {tc.name}: no build for {plat} (projects that need it can't be matched here yet)")
+            print(f"  - {tc.unsupported_reason}; projects that need it can't be matched here yet")
+            missing.append(tc.name)
             continue
         try:
             toolchains.install(tid, log=lambda line: print(f"  {line}"))
         except Exception as e:  # keep going: the app shows what's missing
             print(f"  ! {tc.name}: {e}")
+            missing.append(tc.name)
+    if missing:
+        print("Setup finished with tools unavailable: " + ", ".join(missing)
+              + ". You can open the app; install missing supported tools from Setup to retry.")
     print("  IDO (most first-party games) is proprietary: install it from the app if you accept its license.")
     found = [a["name"] for a in agents.detect() if a["installed"] and a["id"] != "api"]
     print("AI agents found: " + (", ".join(found) if found else "none yet (the app helps you add one)"))

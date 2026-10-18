@@ -1,9 +1,8 @@
 """Where decomp.wtf runs, and how it reaches the computer around it.
 
-decomp.wtf is a Linux program everywhere: on Linux it runs on the computer itself ("native"); on Windows inside
-its own WSL 2 distribution ("wsl", made by install.ps1); on servers, if wanted, in a Docker container ("docker",
-site/public/Dockerfile). Everything inside is the same Linux; only a few things cross to the computer the
-user sits at: opening the browser or a folder, and file paths the user types (C:\\Users\\..., ~/Downloads/...).
+decomp.wtf runs directly on Linux and Windows ("native"). Existing installations can also run in WSL 2
+("wsl", install-wsl.ps1) or a Docker container ("docker", site/public/Dockerfile). These optional runtimes
+translate file paths and open browsers or folders on the computer the user sits at.
 """
 
 from __future__ import annotations

@@ -31,13 +31,20 @@ permissions:
 jobs:
   windows:
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_TEST_NATIVE_WINDOWS: "1"
     defaults:
       run:
         # The installer also supports the Windows PowerShell shipped with Windows.
         shell: powershell
     steps:
       - uses: actions/checkout@v4
+      - name: Use an isolated native toolchain directory with spaces
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP "decomp native toolchains"
+          "DECOMPNET_TOOLCHAINS=$tools" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -47,11 +54,41 @@ jobs:
         # not install a distribution or change the runner's agent configuration.
         run: >-
           uv run --no-sync python -m pytest -q
-          tests/test_platform.py tests/test_windows_installer.py
+          tests/test_platform.py tests/test_windows_installer.py tests/test_native_runtime.py
       - name: Check offline update metadata
         run: >-
           uv run --no-sync python -m pytest -q tests/test_updates.py
           -k "not install_runs_uv_then_the_new_setup and not restart_keeps_port_and_secret and not update_api"
+      - name: Install the Windows app from this checkout
+        run: |
+          $env:UV_TOOL_DIR = Join-Path $env:RUNNER_TEMP "decomp installed environments"
+          $env:UV_TOOL_BIN_DIR = Join-Path $env:RUNNER_TEMP "decomp installed commands"
+          & .\site\public\install.ps1 -NoStart -NoConnect
+          if ($LASTEXITCODE -ne 0) { throw "Installing the native Windows app failed" }
+          & (Join-Path $env:UV_TOOL_BIN_DIR "decomp.exe") --help
+          if ($LASTEXITCODE -ne 0) { throw "The installed native Windows command did not start" }
+          $python = Join-Path $env:UV_TOOL_DIR "decompnet\Scripts\python.exe"
+          & $python -I -c "from decompnet.app import cli; from decompnet import toolchains; assert toolchains.current_platform() == 'windows-x86_64'; print('Installed native app imports successfully')"
+          if ($LASTEXITCODE -ne 0) { throw "The installed Windows app environment is incomplete" }
+      - name: Install the pinned free Windows compilers and tools
+        run: |
+          foreach ($tool in @("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "arm-gnu", "agbcc", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")) {
+            uv run --no-sync decompnet toolchain install $tool
+            if ($LASTEXITCODE -ne 0) { throw "Installing native $tool failed" }
+          }
+      - name: Import, match and rebuild the demo using native Windows tools
+        run: |
+          uv run --no-sync python -m pytest -q tests/test_windows_native.py --junitxml=native-windows-results.xml
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows integration failed" }
+          [xml]$results = Get-Content -Raw native-windows-results.xml
+          if ([int]$results.testsuites.testsuite.skipped -ne 0) { throw "Required native Windows integration tests were skipped" }
+      - name: Save native Windows integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-results
+          path: native-windows-results.xml
+          if-no-files-found: ignore
 
   linux-runtime:
     runs-on: ubuntu-latest
@@ -62,15 +99,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --group dev --python 3.12
-      - name: Check paths and bridges used inside WSL
+      - name: Check Linux runtime and optional WSL compatibility
         run: >-
           uv run --no-sync python -m pytest -q
-          tests/test_hostenv.py tests/test_updates.py tests/test_windows_installer.py tests/test_install_source.py
+          tests/test_hostenv.py tests/test_updates.py tests/test_windows_installer.py tests/test_install_source.py tests/test_native_runtime.py
       - name: Check invalid WSL paths produce an actionable import error
         run: >-
           uv run --no-sync python -m pytest -q
           tests/test_app_server.py -k another_wsl_distribution
-
-# Real WSL 2 installation needs virtualization, elevated feature changes and
-# sometimes a Windows restart. Keep that an explicit Windows-machine smoke check
-# rather than a hosted job that silently skips it (tests/test_wsl_windows.py).

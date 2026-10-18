@@ -50,6 +50,9 @@ class Toolchain:
     flags: list[str] = field(default_factory=list)
     requires: list[str] = field(default_factory=list)
     cmd: list[str] = field(default_factory=list)  # full command template, when compiling is more than cc + flags
+    windows_cc: list[str] | None = None
+    windows_cmd: list[str] | None = None
+    windows_requires: list[str] | None = None
     parts: list[dict] = field(default_factory=list)
     git: str = ""
     commit: str = ""
@@ -73,10 +76,28 @@ class Toolchain:
     def linux_parts(self) -> list[dict]:
         return [p for p in self.parts if WSL_PLATFORM in p.get("platforms", [])] or self.parts_for(LINUX)
 
+    def dependencies(self, linux: bool | None = None) -> list[str]:
+        linux = self.via_wsl if linux is None else linux
+        if not linux and current_platform().startswith("windows-") and self.windows_requires is not None:
+            return self.windows_requires
+        return self.requires
+
+    @property
+    def unsupported_reason(self) -> str | None:
+        if not (self.git or self.parts_for() or self.via_wsl):
+            why = unsupported_cpu()
+            native = "native Windows " if current_platform().startswith("windows-") else ""
+            return (f"{self.id} ({self.name}) has no {native}build for this computer ({current_platform()})"
+                    + (f": {why}" if why else ""))
+        for dep in self.dependencies():
+            if why := get(dep).unsupported_reason:
+                return f"{self.name} needs {get(dep).name}: {why}"
+        return None
+
     @property
     def supported(self) -> bool:
-        """Whether this toolchain can be installed on this computer (on Windows, Linux ones through WSL 2)."""
-        return bool(self.git) or bool(self.parts_for()) or self.via_wsl
+        """Whether this toolchain and its dependencies have builds for this computer."""
+        return self.unsupported_reason is None
 
 
 def current_platform() -> str:
@@ -136,12 +157,22 @@ def path(tid: str, linux: bool | None = None) -> Path:
 
 
 def installed(tid: str, linux: bool | None = None) -> dict | None:
+    if linux is None:
+        linux = get(tid).via_wsl if tid in registry() else False
     m = path(tid, linux) / MANIFEST
-    return json.loads(m.read_text(encoding="utf-8")) if m.exists() else None
+    if not m.exists():
+        return None
+    data = json.loads(m.read_text(encoding="utf-8"))
+    expected = LINUX if linux else current_platform()
+    if data.get("platform", expected) != expected:
+        return None
+    return data
 
 
 def require(tid: str, linux: bool | None = None) -> Path:
     """Directory of an installed toolchain, or a clear error telling the operator how to install it."""
+    if not linux and (why := get(tid).unsupported_reason):
+        raise ToolchainError(why)
     if installed(tid, linux) is None:
         raise ToolchainError(f"toolchain {tid!r} is not installed: run `decompnet toolchain install {tid}`")
     return path(tid, linux)
@@ -151,7 +182,7 @@ def runtime_dirs(tid: str) -> tuple[Path, ...]:
     """The toolchain plus everything it requires, for mounting into the sandbox (all Linux builds for WSL)."""
     tc = get(tid)
     linux = tc.via_wsl
-    return (require(tid, linux), *(require(dep, linux) for dep in tc.requires))
+    return (require(tid, linux), *(require(dep, linux) for dep in tc.dependencies(linux)))
 
 
 # ---------------------------------------------------------------------------- install
@@ -242,13 +273,15 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
         ok, why = wsl.status()
         if not ok:
             raise ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {why}")
-    for dep in tc.requires:
+    elif why := tc.unsupported_reason:
+        raise ToolchainError(why)
+    parts = tc.linux_parts() if linux else tc.parts_for()
+    for dep in tc.dependencies(linux):
         if installed(dep, linux) is None or force:
             install(dep, accept_license=accept_license, force=force, log=log, linux=linux)
     if installed(tid, linux) and not force:
         log(f"{tid}: already installed at {path(tid, linux)}")
         return path(tid, linux)
-    parts = tc.linux_parts() if linux else tc.parts_for()
     if not parts and not tc.git:
         why = unsupported_cpu()
         raise ToolchainError(f"{tid} ({tc.name}) has no build for this computer ({current_platform()})"
@@ -291,7 +324,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                         if f.is_file():
                             os.chmod(f, 0o755)
             pinned.append({"url": part["url"], "sha256": digest})
-        if linux and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
+        if linux and "runtime-i386" in tc.dependencies(linux):  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
     except BaseException:
@@ -301,6 +334,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
         "id": tid, "name": tc.name, "license": tc.license, "source": tc.source,
         "parts": pinned, "commit": tc.commit or None, "installed_at": time.time(),
         "license_accepted": bool(tc.proprietary and accept_license), "wsl": linux,
+        "platform": LINUX if linux else current_platform(),
     }, indent=2), encoding="utf-8")
     log(f"{tid}: installed at {dest}")
     return dest
@@ -331,7 +365,7 @@ def binary(tid: str) -> Path:
     tc = get(tid)
     base = require(tid)
     name = tc.binary_name or tid
-    for candidate in (base / f"{name}.exe", base / name, base / "bin" / name):
+    for candidate in (base / f"{name}.exe", base / name, base / "bin" / f"{name}.exe", base / "bin" / name):
         if candidate.exists():
             return candidate
     raise ToolchainError(f"{tid} is installed but {name} wasn't found in {base}")
@@ -339,6 +373,8 @@ def binary(tid: str) -> Path:
 
 def ensure(tid: str, log=print) -> Path:
     """Install a free tool on first use and return its folder. Proprietary ones must be installed explicitly."""
+    if why := get(tid).unsupported_reason:
+        raise ToolchainError(why)
     if installed(tid) is None:
         tc = get(tid)
         if tc.proprietary:
@@ -368,7 +404,8 @@ def status() -> list[dict]:
     for tc in registry().values():
         m = installed(tc.id)
         rows.append({"id": tc.id, "name": tc.name, "kind": tc.kind, "platform": tc.platform, "license": tc.license,
-                     "installed": m is not None, "supported": tc.supported, "description": tc.description,
+                     "installed": m is not None and tc.supported, "supported": tc.supported, "description": tc.description,
+                     "why": tc.unsupported_reason,
                      "wsl": tc.via_wsl,
                      "pinned": all(p.get("sha256") for p in tc.parts) or bool(tc.commit)})
     return rows

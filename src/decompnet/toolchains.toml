@@ -10,8 +10,8 @@
 #
 # Each part lists the platforms it is for (linux-x86_64, linux-aarch64, macos-x86_64, macos-arm64,
 # windows-x86_64). Apple Silicon Macs run the x86_64 builds through Rosetta 2.
-# On Windows, a toolchain with only a linux-x86_64 build is installed from that build and runs inside
-# WSL 2 (wsl.py); a part for wsl-x86_64 replaces the Linux one there.
+# Windows uses native builds. The legacy WSL bridge is available only when explicitly selected with DECOMP_WSL;
+# a part for wsl-x86_64 replaces the Linux one in that optional bridge.
 
 [runtime-i386]
 name = "32-bit x86 C runtime (glibc 2.44)"
@@ -39,6 +39,7 @@ license = "GPL-2.0"
 source = "decompals/mips-gcc-2.7.2 v0.1, decompals/mips-binutils-2.6 v0.3"
 description = "GCC 2.7.2 built to reproduce the KMC compiler used by many N64 games, with the matching assembler."
 cc = ["{tc}/gcc", "-B{tc}/", "-c"]
+windows_cc = ["{tc}/gcc.exe", "-B{tc}/", "-c"]
 flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
 [["gcc-2.7.2-kmc".parts]]
 url = "https://github.com/decompals/mips-gcc-2.7.2/releases/download/v0.1/gcc-2.7.2-linux.tar.gz"
@@ -353,6 +354,7 @@ description = "The GCC 2.95-based compiler behind most Game Boy Advance games, a
 cc = ["{tc}/bin/agbcc"]
 flags = ["-mthumb-interwork", "-O2"]
 requires = ["arm-gnu"]
+windows_cmd = ["{python}", "-m", "decompnet.agbcc", "--cpp", "{tc:arm-gnu}/bin/arm-none-eabi-cpp.exe", "--cc", "{tc}/bin/agbcc.exe", "--as", "{tc:arm-gnu}/bin/arm-none-eabi-as.exe", "--builtin-include", "{tc}/include", "--src", "{src}", "--obj", "{obj}", "--include", "{include}", "--", "{flags}"]
 # agbcc only compiles preprocessed C to assembly: preprocess, compile, assemble, like pret's builds
 cmd = ["/bin/sh", "-c", "src=\"$1\"; obj=\"$2\"; inc=\"$3\"; shift 3; \"{tc:arm-gnu}/bin/arm-none-eabi-cpp\" -nostdinc -undef -I \"{tc}/include\" -I \"$inc\" \"$src\" -o \"$obj.i\" && \"{tc}/bin/agbcc\" \"$@\" \"$obj.i\" -o \"$obj.s\" && \"{tc:arm-gnu}/bin/arm-none-eabi-as\" -mcpu=arm7tdmi -o \"$obj\" \"$obj.s\"", "agbcc", "{src}", "{obj}", "{include}", "{flags}"]
 [[agbcc.parts]]
@@ -507,3 +509,25 @@ description = "Game Boy Advance disassembler: finds the functions in a ROM and w
 git = "https://github.com/aarant/luvdis"
 commit = "ec3a4e3ee3afe3e9b4a9c7ae8fffc65e1ea2096c"
 pip_extra = ["setuptools<70"]
+
+# Native Windows host ports of the original target compilers. Corresponding source and build recipes accompany
+# the archives at the same immutable commit (see tools/windows and the archive's SOURCE.txt).
+[["gcc-2.7.2-kmc".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/gcc-2.7.2-kmc-windows-i686-v2.zip"
+sha256 = "f6fffac97b397e0101e1a3c70b5ceaa64a05d89882f9eeeeca58f6c126963c48"
+platforms = ["windows-x86_64"]
+
+[[agbcc.parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/agbcc-windows-i686.zip"
+sha256 = "13785cc9419a086c51fac7da6e21fbe1cc0b7d6fe837ddf39bf2c18484395bff"
+platforms = ["windows-x86_64"]
+
+[["gcc-2.7.2-psx".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/gcc-2.7.2-psx-windows-x86_64-v2.zip"
+sha256 = "4326ee391705dd30ca4abcacaaf88f4ac041e269e02e43ec6b0cd600aec38653"
+platforms = ["windows-x86_64"]
+
+[["gcc-2.7.2-psx".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/binutils-2.6-windows-i686-v2.zip"
+sha256 = "fad12050405936cdcb349416b2aaf804985f5a4c05c0159442e9489b37a58915"
+platforms = ["windows-x86_64"]

@@ -1,135 +1,102 @@
-# Running decomp.wtf on Windows
+# Running decomp.wtf natively on Windows
 
-The app and its old compilers run together in a dedicated WSL 2 distribution named `decomp-wtf`. You use the
-interface in your normal Windows browser. Keeping projects in WSL's Linux filesystem avoids Windows path and
-file-ID problems in the old 32-bit compilers.
+This fork runs the app and available compilers directly as Windows programs. The default installer does not
+install WSL, enable virtualization, create a Linux distribution, or require administrator access.
 
-## Install this source
+## Install
 
-You need a 64-bit Intel or AMD PC with virtualization enabled, Windows 10 22H2 (build 19045) or newer,
-and a current WSL installation. Windows 11 is recommended. Windows on ARM is not supported by these compilers.
-The first install needs Internet access and may require a Windows restart.
+Use Windows 10 or Windows 11 on a 64-bit Intel or AMD PC. Internet access is needed for the first setup.
 
-1. Download the repository's source ZIP and extract it to a local drive, or clone the repository. Open the
-   extracted folder containing `windows.cmd`; running inside the ZIP preview will not work.
-2. Double-click **`windows.cmd`**. It runs the included installer using Windows PowerShell. You do not need to
-   install Python, Git or Node.js on Windows. Approve Windows' prompt if WSL needs to be enabled.
-3. If setup asks for a restart, restart Windows and double-click `windows.cmd` again. Setup reuses the existing
-   distribution and projects.
-4. When setup finishes, the app opens in your browser. Open the included **Demo Quest 64** to check the setup.
+1. Download [this fork’s source ZIP](https://github.com/OMGitsMatt45/decomp.wtf/archive/refs/heads/main.zip).
+2. Extract the ZIP to a local folder. Open the extracted folder containing `windows.cmd`.
+3. Double-click **`windows.cmd`**. Setup installs uv, a managed Python 3.12, the app and its default native tools.
+4. Open **Demo Quest 64** from the home screen to check importing and compilation.
 
-From an existing PowerShell window, the equivalent command is:
+Or run the native installer from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.ps1 | iex
+```
+
+From a source checkout, the equivalent is:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\site\public\install.ps1
 ```
 
-This installs the files from this source folder. The public `irm https://decomp.wtf/install.ps1 | iex` command
-installs the last upstream release, so it will not include local fixes that have not been released.
-
-For a Git checkout, updates follow the checkout's branch in its GitHub `origin` repository; publish that branch
-to your fork before using updates. A source ZIP has no
-Git metadata. To install and track a published fork branch explicitly, run this in PowerShell, replacing the
-repository and branch with yours:
-
-```powershell
-$env:DECOMP_REPO = "owner/decomp.wtf"
-$env:DECOMP_BRANCH = "main"
-powershell -NoProfile -ExecutionPolicy Bypass -File .\site\public\install.ps1
-Remove-Item Env:DECOMP_REPO, Env:DECOMP_BRANCH
-```
-
-This downloads the branch from GitHub. Rerun `windows.cmd` with those variables cleared to install your local
-source folder again.
+Python and Git do not need to be installed separately. Agent CLIs may need their own prerequisites, such as
+Node.js; the app shows which agents are available. The original `decomp.wtf` website still serves the archived
+upstream installer; use this fork’s links above for native Windows support.
 
 ## Open it again
 
-Use **decomp.wtf** in the Start menu or its desktop shortcut. In a new PowerShell or Command Prompt window:
+Use **decomp.wtf** in the Start menu or its desktop shortcut, or run `decomp` in a new PowerShell window.
+The shortcuts start a minimized terminal window; closing that window stops the app. `decomp stop` also stops it.
+If the browser does not open, `decomp url` prints its address.
 
-```powershell
-decomp
-```
+Projects are stored in `%USERPROFILE%\Decomp` (usually `C:\Users\your-name\Decomp`). File selection,
+drag-and-drop and paths such as `C:\Games\My Game.iso` all use ordinary Windows files.
 
-The shortcuts start the app in a minimized terminal window; typing `decomp` runs it in your current terminal.
-Closing that window stops it; `decomp stop` also stops it.
-If the browser did not open, `decomp url` prints the address to paste into your browser.
-
-Your projects are at:
-
-```text
-\\wsl.localhost\decomp-wtf\home\decomp\Decomp
-```
-
-Paste that into File Explorer's address bar. Keep projects there for compilation; the app can import a game
-from a Windows drive using a path such as `C:\Games\My Game.iso`. Browser file selection and drag-and-drop also
-work. A path beginning `\\wsl.localhost\Ubuntu\...` belongs to a different distribution; copy the game to a
-Windows drive or this app's distribution before importing it.
-
-## Connect agents
-
-For an agent CLI already installed on Windows, run this from PowerShell:
+Connect an installed Windows agent CLI with:
 
 ```powershell
 decomp connect
 ```
 
-Then ask the agent to import your game using its Windows path. The connection uses `wsl.exe` to reach the app.
+Helpers launched by the app now run on Windows too. Sign them in from a normal Windows terminal using the
+command displayed in **Agents & models**. Local model servers on Windows use the normal `127.0.0.1` addresses.
 
-Helper agents started by the app run inside its Linux distribution. Install and sign those in there, even if
-you already signed in to a Windows installation of the same agent:
+## Compilers and tools
 
-```powershell
-decomp shell
-```
+The app lists native availability in **Compilers & tools**. It downloads Windows builds and verifies their
+pinned SHA-256 checksums. A compiler with no native build is marked unavailable; setup does not start WSL for it.
+IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing explicit installation step.
 
-Use the sign-in command shown by **Agents & models** in that terminal.
+| Toolchain | Native Windows status |
+| --- | --- |
+| KMC GCC 2.7.2 / N64 | Source port, including the original binutils 2.6 |
+| PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
+| agbcc / Game Boy Advance | Source port and a Python pipeline for preprocessing and assembly |
+| IDO 5.3 / 7.1, CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
+| objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
+| PlayStation GCC 2.8.1 and EE-GCC 2.96 | No native build in this release; marked unavailable |
 
-Local model servers need separate networking consideration: under WSL's default NAT networking, `127.0.0.1`
-inside WSL refers to Linux. A model listening only on Windows' localhost will not be reachable at the default
-API preset address. On supported Windows 11 systems, WSL's mirrored networking supports connecting to Windows
-services through localhost. See [Microsoft's WSL networking guide](https://learn.microsoft.com/windows/wsl/networking)
-for mirrored networking and host addressing; test the model endpoint from `decomp shell` before starting agents.
+EE-GCC 2.96 has no verified matching source available for a Windows source port. The installer does not
+substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and
+rebuild recipes are available in the [compiler assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-toolchains-v1/toolchains/windows/v1).
+
+The fork’s compiler ports preserve the original target compiler. Updating the host build to Windows does not
+replace a period compiler with a modern compiler. The native integration checks compare generated code and
+relocations with the Linux compiler and require byte-exact matching on the bundled demo.
+
+## Updates and removal
+
+Close the app, then run `windows.cmd` or the PowerShell installer again to update. Windows locks the running
+application’s files, so this version gives manual update instructions instead of replacing itself in place.
+Git checkouts follow their own GitHub origin and branch. A downloaded source ZIP installs that local source.
+The remote installer follows this fork’s `main` branch by default.
+
+Remove the native app with `uv tool uninstall decompnet`. Your projects remain in `%USERPROFILE%\Decomp`.
+
+## Existing WSL installations
+
+The native installer leaves any previous `decomp-wtf` WSL distribution alone. If you have projects in it, copy
+those folders from `\\wsl.localhost\decomp-wtf\home\decomp\Decomp` into your Windows projects folder while
+WSL is running. Existing projects can refer to Linux tool paths; reselect the matching native compiler in the
+app after copying them.
+
+The former WSL installer remains available as `site/public/install-wsl.ps1` for existing installations. It is
+separate from `windows.cmd` and is not part of native setup.
 
 ## Troubleshooting
 
-Run these in PowerShell to see the WSL installation and the app's distribution:
+If `decomp` is not recognized, open a new terminal or use the Start menu shortcut. If setup fails, its terminal
+stays open; include the first error and the command that failed when reporting it. Setup reports unavailable
+compilers and failed downloads separately.
 
-```powershell
-wsl --version
-wsl --status
-wsl --list --verbose
-```
+If you previously used the WSL launcher and Windows still opens it, rerun native setup to put the new executable
+first on your user PATH. `Get-Command decomp -All` in a new PowerShell window shows which commands Windows finds.
 
-If setup says it couldn't create `decomp-wtf`, include the original WSL error above that message. The installer
-records distribution-creation attempts in `%LOCALAPPDATA%\decomp.wtf\install.log`, including download failures,
-checksum failures, the commands attempted and their exit codes. Share that error together with the three
-command outputs above; a download problem and a missing Windows feature need different fixes. Rerunning setup
-reuses a registered `decomp-wtf` distribution.
-
-`decomp-wtf` must show **VERSION 2**. If it shows 1, stop the app and run:
-
-```powershell
-wsl --set-version decomp-wtf 2
-```
-
-If `wsl --version` is unavailable, update WSL with `wsl --update`, or install the current WSL package from
-Microsoft. If WSL is missing, run `wsl --install --no-distribution` from an administrator PowerShell, restart
-Windows, then rerun `windows.cmd`. An error about virtualization or `0x80370102` usually needs virtualization
-enabled in the PC's BIOS/UEFI and Windows' **Virtual Machine Platform** feature enabled.
-
-If `decomp` is not recognized after setup, open a new terminal or use the Start menu shortcut. The command is
-installed in `%LOCALAPPDATA%\decomp.wtf\bin`.
-
-If the app does not start, run `decomp` in PowerShell so its error stays visible. Background startup output is
-at `\\wsl.localhost\decomp-wtf\home\decomp\Decomp\.decomp\app.log`; application logs are under
-`...\Decomp\.decomp\logs`. Include the error and the WSL version when reporting a failure.
-
-To reinstall or repair the app, run `windows.cmd` again. `decomp uninstall` removes the dedicated distribution
-and **every project inside it**, after asking for confirmation. Copy projects elsewhere before uninstalling.
-
-## Validation status
-
-The repository's Windows workflow checks Windows PowerShell 5.1 syntax, generated connection/uninstall scripts,
-installer helpers, agent command handling and offline update behavior. Linux tests exercise WSL path translation
-and the web API. A full first install still needs validation on a real Windows machine with WSL 2, including
-the administrator prompt, restart, Debian import, shortcuts, browser opening and a demo compile.
+A failed import keeps its error and log in the app. The full application log is under
+`%USERPROFILE%\Decomp\.decomp\logs`. A compiler failure in one platform does not require reinstalling Windows
+features; include the game platform, selected compiler and compile log in the report.

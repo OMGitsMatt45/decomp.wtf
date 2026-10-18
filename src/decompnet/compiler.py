@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -75,18 +76,18 @@ def _sandbox_mode(cfg: CompilerConfig) -> str:
         return "wsl"
     if cfg.sandbox != "auto":
         return cfg.sandbox
-    return "bwrap" if shutil.which("bwrap") else "none"
+    return "bwrap" if sys.platform.startswith("linux") and shutil.which("bwrap") else "none"
 
 
 def _root(cfg: CompilerConfig, work: Path) -> str:
     """How the compiler sees the work folder (in WSL it works on a copy, see wsl.run)."""
     mode = _sandbox_mode(cfg)
-    return "/work" if mode in ("bwrap", "docker") else wsl.stage_dir() if mode == "wsl" else str(work)
+    return "/work" if mode in ("bwrap", "docker") else wsl.stage_dir() if mode == "wsl" else work.as_posix()
 
 
 def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
     mode = _sandbox_mode(cfg)
-    if mode in ("none", "bwrap") and shutil.which("prlimit"):
+    if sys.platform.startswith("linux") and mode in ("none", "bwrap") and shutil.which("prlimit"):
         argv = ["prlimit", *LIMITS, "--", *argv]
     if mode == "none":
         return argv
@@ -152,14 +153,17 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
 
         root = _root(cfg, work)
         subst = {"{src}": f"{root}/func.c", "{obj}": f"{root}/func.o", "{include}": f"{root}/include"}
-        argv = [subst.get(a, a) for a in cfg.cmd]
-        argv = [a.replace("{include}", subst["{include}"]) for a in argv]
+        argv = list(cfg.cmd)
+        for placeholder, value in subst.items():
+            argv = [a.replace(placeholder, value) for a in argv]
         try:
             with _SLOTS:
                 proc = _exec(cfg, work, argv, cfg.timeout,
                              **({"outputs": ["func.o"], "stage": root} if _sandbox_mode(cfg) == "wsl" else {}))
         except subprocess.TimeoutExpired:
             return CompileResult(False, None, f"compiler timed out after {cfg.timeout}s")
+        except OSError as e:
+            return CompileResult(False, None, f"couldn't start compiler {argv[0]}: {e}")
         log = (proc.stdout + proc.stderr).replace(root + "/", "")
         obj = work / "func.o"
         if proc.returncode != 0 or not obj.exists():

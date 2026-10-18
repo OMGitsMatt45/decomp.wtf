@@ -1,0 +1,246 @@
+{
+  "toolchain": "gcc-2.7.2-kmc",
+  "source_sha256": "9d66e9c9bacf950ecc194e0167ee6d506df55d1b9e22e6bf29f66ca149f5427a",
+  "flags": [
+    "-G0",
+    "-mips3",
+    "-mgp32",
+    "-mfp32",
+    "-O2"
+  ],
+  "functions": {
+    "parity_branch": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "0085102a1440000700a0102100c4102a1440000400c0102100801021044200010002102303e0000800000000",
+      "relocations": []
+    },
+    "parity_calls_and_globals": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "27bdffe8afbf00100c000000000000003c0300008c6300003c04000024840000006218213c0100000c000000ac2300003c0200008c4200008fbf001003e0000827bd0018",
+      "relocations": [
+        [
+          8,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          16,
+          5,
+          "native_counter",
+          0
+        ],
+        [
+          20,
+          6,
+          "native_counter",
+          0
+        ],
+        [
+          24,
+          5,
+          ".rodata",
+          0
+        ],
+        [
+          28,
+          6,
+          ".rodata",
+          0
+        ],
+        [
+          36,
+          5,
+          "native_counter",
+          0
+        ],
+        [
+          40,
+          4,
+          "native_message",
+          0
+        ],
+        [
+          44,
+          6,
+          "native_counter",
+          0
+        ],
+        [
+          48,
+          5,
+          "native_counter",
+          0
+        ],
+        [
+          52,
+          6,
+          "native_counter",
+          0
+        ]
+      ]
+    },
+    "parity_double": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "3c010000d4200018462073833c010000d42000204620600203e00008462e0000",
+      "relocations": [
+        [
+          0,
+          5,
+          ".rodata",
+          0
+        ],
+        [
+          4,
+          6,
+          ".rodata",
+          0
+        ],
+        [
+          12,
+          5,
+          ".rodata",
+          0
+        ],
+        [
+          16,
+          6,
+          ".rodata",
+          0
+        ]
+      ]
+    },
+    "parity_float": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "3c013fa0448100000000000046006302460e63003c013f00448100000000000003e0000846006002",
+      "relocations": []
+    },
+    "parity_loop": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "27bdfff80000382118a0000e000030218c830000306200011040000400031040004310210800001800c230210003104300c2302324e7000100e5102a1440fff42484000400c0102103e0000827bd0008",
+      "relocations": [
+        [
+          36,
+          4,
+          "parity_loop",
+          13
+        ]
+      ]
+    },
+    "parity_struct": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "0080302184c200041840000300000000080000768cc200008cc200000045102304410002acc20000acc00000c4c2000c3c013e804481000000000000460010828cc20000c4c0000894c300062404003c46020000a4c4000434630004a4c30006e4c0000803e0000800000000",
+      "relocations": [
+        [
+          16,
+          4,
+          "parity_struct",
+          25
+        ]
+      ]
+    },
+    "parity_switch": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "27bdffe82c8200061040001fafbf0010000410803c010000002208218c22002800400008000000000c0000002404000b0800009b000000000c000000240400170800009b000000000c000000240400250800009b000000000c000000240400290800009b000000000c0000002404003b0800009b000000000c0000002404003d0800009b000000002402ffff8fbf001003e0000827bd0018",
+      "relocations": [
+        [
+          20,
+          5,
+          ".rodata",
+          0
+        ],
+        [
+          28,
+          6,
+          ".rodata",
+          0
+        ],
+        [
+          40,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          48,
+          4,
+          "parity_switch",
+          35
+        ],
+        [
+          56,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          64,
+          4,
+          "parity_switch",
+          35
+        ],
+        [
+          72,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          80,
+          4,
+          "parity_switch",
+          35
+        ],
+        [
+          88,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          96,
+          4,
+          "parity_switch",
+          35
+        ],
+        [
+          104,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          112,
+          4,
+          "parity_switch",
+          35
+        ],
+        [
+          120,
+          4,
+          "native_callback",
+          0
+        ],
+        [
+          128,
+          4,
+          "parity_switch",
+          35
+        ]
+      ]
+    },
+    "parity_wide": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "30c6001f00063e8004e100040000000000c51004100000070000182110e0000400c410040006382300e538060047102500c5180400052c42000433c000a62825000424430044102600651826240400013c05234534a56789006518210065302b0044102103e0000800461021",
+      "relocations": []
+    }
+  }
+}

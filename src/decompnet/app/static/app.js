@@ -2539,8 +2539,8 @@ async function showSettingsPage() {
   $("setAbout").innerHTML = `<p class="small">decomp.wtf ${esc(st.version)} on ${esc(st.platform)}${esc(where)}. Free and open source (MIT). Everything runs on this computer: no account, nothing sent to us.</p>
     <div class="field"><span>Updates come from ${from}</span><div class="row"><span class="muted small grow" id="upText">Checking…</span><button class="ghost small-btn" id="upCheck" type="button">Check now</button></div></div>
     <label class="check"><input type="checkbox" id="checkUpdateSet" ${st.settings.check_updates ? "checked" : ""}><span><b>Look for updates</b> now and then (it only asks ${inst.channel === "branch" ? "GitHub for the branch's newest commit" : "decomp.wtf which version is current"}; nothing about you or your projects is sent).</span></label>
-    <label class="check"><input type="checkbox" id="autoUpdateSet" ${st.settings.auto_update ? "checked" : ""}><span><b>Install updates by itself</b> when no helper agent is working (it restarts in a few seconds; agents carry on).</span></label>
-    <div class="row"><a class="link small" href="https://decomp.wtf" target="_blank" rel="noopener">decomp.wtf</a><a class="link small" href="https://github.com/i12bp8/decomp.wtf" target="_blank" rel="noopener">Source code</a></div>`;
+    ${st.runtime === "native" && st.host_os === "windows" ? `<p class="muted small">To install an update on Windows, close decomp.wtf and run <code>windows.cmd</code> or the PowerShell installer again.</p>` : `<label class="check"><input type="checkbox" id="autoUpdateSet" ${st.settings.auto_update ? "checked" : ""}><span><b>Install updates by itself</b> when no helper agent is working (it restarts in a few seconds; agents carry on).</span></label>`}
+    <div class="row"><a class="link small" href="https://decomp.wtf" target="_blank" rel="noopener">decomp.wtf</a><a class="link small" href="https://github.com/OMGitsMatt45/decomp.wtf" target="_blank" rel="noopener">Source code</a></div>`;
   const showUpdate = (u) => {
     if (!$("upText") || !u) return;
     $("upText").textContent = u.error ? u.error : u.available ? `New: ${updateName(u)}` : u.disabled ? "Not looking for updates." : "Up to date.";
@@ -2554,7 +2554,7 @@ async function showSettingsPage() {
   checkUpdate(false, false).then(showUpdate);
   $("upCheck").onclick = async () => { $("upText").textContent = "Checking…"; showUpdate(await checkUpdate(true, false)); };
   $("checkUpdateSet").onchange = () => save({ check_updates: $("checkUpdateSet").checked }, $("checkUpdateSet").checked ? "decomp.wtf looks for updates." : "decomp.wtf won't look for updates (Check now still does).");
-  $("autoUpdateSet").onchange = () => save({ auto_update: $("autoUpdateSet").checked }, $("autoUpdateSet").checked ? "decomp.wtf installs updates by itself." : "decomp.wtf asks before updating.");
+  if ($("autoUpdateSet")) $("autoUpdateSet").onchange = () => save({ auto_update: $("autoUpdateSet").checked }, $("autoUpdateSet").checked ? "decomp.wtf installs updates by itself." : "decomp.wtf asks before updating.");
   wireCopies($("setComputer"));
   serviceRow($("svcRow2"), "decomp.wtf runs while you have it open.");
   $("themeSeg").querySelectorAll("[data-theme]").forEach((b) => { b.onclick = () => { setTheme(b.dataset.theme); $("themeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); }; });

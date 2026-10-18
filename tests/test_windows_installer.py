@@ -13,7 +13,8 @@ import pytest
 
 
 PUBLIC = Path(__file__).resolve().parents[1] / "site" / "public"
-INSTALLER = PUBLIC / "install.ps1"
+INSTALLER = PUBLIC / "install-wsl.ps1"  # explicit compatibility installer, never the native default
+NATIVE_INSTALLER = PUBLIC / "install.ps1"
 
 
 @pytest.fixture
@@ -54,6 +55,236 @@ $functions = $ast.FindAll({{ param($n)
 }}, $true)
 foreach ($f in $functions) {{ Invoke-Expression $f.Extent.Text }}
 """
+
+
+def native_helpers(*names):
+    # Load configuration and real native installer functions, without running the entrypoint.
+    return f"""
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({ps_string(NATIVE_INSTALLER)}, [ref]$null, [ref]$null)
+$config = $ast.FindAll({{ param($n)
+    $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $n.Left.Extent.Text -in @('$DefaultRepo', '$UA')
+}}, $true)
+foreach ($item in $config) {{ Invoke-Expression $item.Extent.Text }}
+$names = @({', '.join(ps_string(name) for name in names)})
+$functions = $ast.FindAll({{ param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $n.Name
+}}, $true)
+foreach ($f in $functions) {{ Invoke-Expression $f.Extent.Text }}
+"""
+
+
+@pytest.fixture
+def native_setup(powershell, tmp_path):
+    source = tmp_path / "source with spaces and José"
+    (source / "src/decompnet").mkdir(parents=True)
+    (source / ".git").mkdir()
+    (tmp_path / ".git").mkdir()  # an extracted ZIP must not inherit this parent checkout
+    for name in ("pyproject.toml", "README.md", "LICENSE"):
+        (source / name).write_text('name = "decompnet"\n')
+    (source / "src/decompnet/__init__.py").write_text("# source\n")
+    bindir = tmp_path / "native bin"
+    bindir.mkdir()
+
+    def run(*, requested=None, checkout=True, zipped=False, repo=None, branch=None, install_exit=0,
+            origin="https://github.com/fork-user/decomp.wtf.git", api_fails=False, start=False):
+        if zipped:
+            (source / ".git").rmdir()
+        prelude = native_helpers("Step", "Run", "Valid-Repo", "Resolve-DecompSource", "Install-Decomp")
+        requested_arg = "" if requested is None else requested
+        code = prelude + f"""
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$env:USERPROFILE = {ps_string(tmp_path)}
+$env:DECOMP_SOURCE = $null
+$env:DECOMP_BRANCH = {ps_string(branch or '')}
+$env:DECOMP_REPO = {ps_string(repo or '')}
+$env:DECOMP_WSL = 'old-bridge'
+$script:calls = New-Object 'System.Collections.Generic.List[object]'
+$script:buildSpec = $null
+$script:copiedSource = $false
+$script:clearedBridge = $true
+$script:errorText = $null
+function Find-Application {{ return 'FakeGit' }}
+function FakeGit {{
+    $script:calls.Add(@('git') + $args)
+    $global:LASTEXITCODE = 0
+    if ($args -contains '--abbrev-ref') {{ return 'feature/windows' }}
+    if ($args -contains 'remote.origin.url') {{ return {ps_string(origin)} }}
+    return ('a' * 40)
+}}
+function Find-Uv {{ return 'FakeUv' }}
+function Install-Uv {{ throw 'unexpected bootstrap' }}
+function FakeUv {{
+    $script:calls.Add(@('uv') + $args)
+    $global:LASTEXITCODE = 0
+    if ($env:DECOMP_WSL) {{ $script:clearedBridge = $false }}
+    if ($args[0] -eq '--version') {{ return 'uv 1.0.0' }}
+    if ($args[0] -eq 'tool' -and $args[1] -eq 'dir') {{ return {ps_string(bindir)} }}
+    if ($args[0] -eq 'tool' -and $args[1] -eq 'install') {{
+        $script:buildSpec = $args[-1]
+        $script:copiedSource = Test-Path -LiteralPath (Join-Path $script:buildSpec 'src/decompnet/__init__.py')
+        $global:LASTEXITCODE = {install_exit}
+    }}
+}}
+function Add-DecompPath {{ $script:calls.Add(@('path') + $args) }}
+function Stop-Decomp {{ $script:calls.Add(@('stop') + $args) }}
+function Find-Decomp {{ return 'FakeDecomp' }}
+function FakeDecomp {{
+    $script:calls.Add(@('decomp') + $args)
+    if ($env:DECOMP_WSL) {{ $script:clearedBridge = $false }}
+    $global:LASTEXITCODE = 0
+}}
+function Start-Process {{ $script:calls.Add(@('start') + $args) }}
+function Invoke-RestMethod {{
+    $script:calls.Add(@('api') + $args)
+    if (${str(api_fails).lower()}) {{ throw 'API unavailable' }}
+    return [pscustomobject]@{{ sha = ('b' * 40) }}
+}}
+try {{
+    Install-Decomp -Requested {ps_string(requested_arg)} -Checkout {ps_string(source if checkout else '')} -NoStart:${str(not start).lower()} -NoConnect
+}} catch {{ $script:errorText = $_.Exception.Message }}
+$result = [pscustomobject]@{{
+    Calls = @($script:calls.ToArray()); Error = $script:errorText; BuildSpec = $script:buildSpec
+    CopiedSource = $script:copiedSource; ClearedBridge = $script:clearedBridge
+    Bridge = $env:DECOMP_WSL; SourceExists = (Test-Path -LiteralPath {ps_string(source / 'src/decompnet/__init__.py')})
+}}
+'NATIVE_RESULT=' + ($result | ConvertTo-Json -Depth 8 -Compress)
+"""
+        process = powershell(code)
+        assert process.returncode == 0, process.stdout + process.stderr
+        payload = next(line.removeprefix("NATIVE_RESULT=") for line in process.stdout.splitlines()
+                       if line.startswith("NATIVE_RESULT="))
+        return json.loads(payload), process.stdout + process.stderr
+
+    return run
+
+
+def native_metadata(outcome):
+    call = next(call for call in outcome["Calls"] if call[:2] == ["decomp", "install-info"])
+    return dict(zip(call[2::2], call[3::2]))
+
+
+def test_native_checkout_installs_own_copy_and_calls_native_commands(native_setup):
+    outcome, output = native_setup()
+    assert outcome["Error"] is None, output
+    assert outcome["CopiedSource"] and outcome["SourceExists"]
+    assert not Path(outcome["BuildSpec"]).exists()
+    assert ["uv", "tool", "install", "--force", "--managed-python", "--python", "3.12",
+            outcome["BuildSpec"]] in outcome["Calls"]
+    assert ["decomp", "setup"] in outcome["Calls"] and ["decomp", "shortcut"] in outcome["Calls"]
+    assert not any(call[0] == "start" or call[:2] == ["decomp", "connect"] for call in outcome["Calls"])
+    assert outcome["ClearedBridge"] and outcome["Bridge"] == "old-bridge"
+    assert native_metadata(outcome) == {"--channel": "branch", "--repo": "fork-user/decomp.wtf",
+                                        "--branch": "feature/windows", "--commit": "a" * 40}
+
+
+def test_native_download_defaults_to_fork_main(native_setup):
+    outcome, output = native_setup(checkout=False, start=True)
+    assert outcome["Error"] is None, output
+    assert outcome["BuildSpec"] == f"decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/archive/{'b' * 40}.tar.gz"
+    assert native_metadata(outcome)["--repo"] == "OMGitsMatt45/decomp.wtf"
+    assert native_metadata(outcome)["--branch"] == "main"
+    assert any(call[0] == "start" and "FakeDecomp" in call for call in outcome["Calls"])
+
+
+def test_native_branch_override_and_api_fallback_use_selected_fork(native_setup):
+    outcome, output = native_setup(checkout=False, requested="branch:feature/windows", repo="other-fork/decomp.wtf", api_fails=True)
+    assert outcome["Error"] is None, output
+    assert outcome["BuildSpec"] == "decompnet @ https://github.com/other-fork/decomp.wtf/archive/refs/heads/feature/windows.tar.gz"
+    assert native_metadata(outcome) == {"--channel": "branch", "--repo": "other-fork/decomp.wtf", "--branch": "feature/windows"}
+
+
+def test_native_zip_does_not_inherit_parent_git_or_pass_empty_arguments(native_setup):
+    outcome, output = native_setup(zipped=True)
+    assert outcome["Error"] is None, output
+    assert not any(call[0] == "git" for call in outcome["Calls"])
+    assert native_metadata(outcome) == {"--channel": "release", "--repo": "OMGitsMatt45/decomp.wtf"}
+
+
+@pytest.mark.parametrize("origin", ["git@github.com:fork-user/decomp.wtf.git", "ssh://git@github.com/fork-user/decomp.wtf.git"])
+def test_native_checkout_accepts_ssh_github_origins(native_setup, origin):
+    outcome, output = native_setup(origin=origin)
+    assert outcome["Error"] is None, output
+    assert native_metadata(outcome)["--repo"] == "fork-user/decomp.wtf"
+
+
+def test_native_checkout_explicit_repo_and_branch_override(native_setup):
+    outcome, output = native_setup(repo="other-fork/decomp.wtf", branch="native-windows", requested=None)
+    # DECOMP_BRANCH selects a remote branch when no explicit source argument is given.
+    assert outcome["Error"] is None, output
+    assert native_metadata(outcome)["--repo"] == "other-fork/decomp.wtf"
+    assert native_metadata(outcome)["--branch"] == "native-windows"
+
+
+@pytest.mark.parametrize("requested,repo,reason", [("release", None, "predates native Windows"),
+                                                  ("branch:", None, "needs a branch name"),
+                                                  ("branch:main", "fork-user/..", "owner/name")])
+def test_native_invalid_sources_fail_before_uv_install(native_setup, requested, repo, reason):
+    outcome, output = native_setup(checkout=False, requested=requested, repo=repo)
+    assert reason in outcome["Error"], output
+    assert not any(call[0] == "uv" for call in outcome["Calls"])
+    assert outcome["Bridge"] == "old-bridge"
+
+
+def test_native_install_failure_stops_setup_and_restores_environment(native_setup):
+    outcome, output = native_setup(install_exit=23)
+    assert "installing decomp.wtf failed (exit code 23)" in outcome["Error"], output
+    assert not any(call[0] == "decomp" or call[0] == "start" for call in outcome["Calls"])
+    assert outcome["ClearedBridge"] and outcome["Bridge"] == "old-bridge"
+    assert not Path(outcome["BuildSpec"]).exists() and outcome["SourceExists"]
+
+
+def test_native_default_has_no_wsl_or_elevation_commands(powershell):
+    result = powershell(rf"""
+$ast = [System.Management.Automation.Language.Parser]::ParseFile({ps_string(NATIVE_INSTALLER)}, [ref]$null, [ref]$null)
+$commands = $ast.FindAll({{ param($n) $n -is [System.Management.Automation.Language.CommandAst] }}, $true)
+foreach ($command in $commands) {{
+    if ($command.GetCommandName() -match '^(wsl(\.exe)?|dism(\.exe)?|Enable-WindowsOptionalFeature|Restart-Computer)$') {{ throw 'default setup invoked a Linux or system feature command' }}
+    if ($command.Extent.Text -match '-Verb\s+RunAs') {{ throw 'default setup requested elevation' }}
+}}
+""")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_native_uv_bootstrap_keeps_only_executable_as_output_and_restores_settings(powershell, tmp_path):
+    result = powershell(native_helpers("Step", "Install-Uv") + f"""
+$env:USERPROFILE = {ps_string(tmp_path)}
+$env:UV_INSTALL_DIR = 'caller-dir'
+$env:UV_NO_MODIFY_PATH = 'caller-setting'
+function Invoke-RestMethod {{ return "Write-Output 'download status'" }}
+function Find-Uv {{ return 'native-uv.exe' }}
+$found = Install-Uv
+if ($found -ne 'native-uv.exe') {{ throw 'bootstrap mixed diagnostics with the executable path' }}
+if ($env:UV_INSTALL_DIR -ne 'caller-dir' -or $env:UV_NO_MODIFY_PATH -ne 'caller-setting') {{ throw 'bootstrap changed caller settings' }}
+""")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("both_fail", [False, True])
+def test_native_uv_bootstrap_uses_official_fallback_and_preserves_errors(powershell, tmp_path, both_fail):
+    result = powershell(native_helpers("Step", "Install-Uv") + f"""
+$env:USERPROFILE = {ps_string(tmp_path)}
+$env:UV_INSTALL_DIR = 'caller-dir'
+$env:UV_NO_MODIFY_PATH = 'caller-setting'
+$script:urls = New-Object 'System.Collections.Generic.List[string]'
+function Invoke-RestMethod([string]$Uri) {{
+    $script:urls.Add($Uri)
+    if ($Uri -like '*astral.sh*') {{ throw 'primary transport aborted' }}
+    if (${str(both_fail).lower()}) {{ throw 'GitHub connection refused' }}
+    return "Write-Output 'download status'"
+}}
+function Find-Uv {{ return 'native-uv.exe' }}
+$errorText = $null
+try {{ $found = Install-Uv }} catch {{ $errorText = $_.Exception.Message }}
+if ($script:urls.Count -ne 2 -or $script:urls[1] -ne 'https://github.com/astral-sh/uv/releases/latest/download/uv-installer.ps1') {{ throw 'wrong uv fallback source' }}
+if (${str(both_fail).lower()}) {{
+    if ($errorText -notmatch 'primary transport aborted' -or $errorText -notmatch 'GitHub connection refused' -or $errorText -notmatch 'windows.cmd') {{ throw 'bootstrap hid connection diagnostics' }}
+}} else {{
+    if ($errorText -or $found -ne 'native-uv.exe') {{ throw 'bootstrap fallback did not succeed' }}
+}}
+if ($env:UV_INSTALL_DIR -ne 'caller-dir' -or $env:UV_NO_MODIFY_PATH -ne 'caller-setting') {{ throw 'bootstrap changed caller settings' }}
+""")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("name", [p.name for p in sorted(PUBLIC.glob("*.ps1"))])

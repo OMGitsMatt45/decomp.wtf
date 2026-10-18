@@ -143,15 +143,16 @@ def uv() -> str | None:
     if found:
         return found
     for d in (Path.home() / ".local" / "bin", Path.home() / ".cargo" / "bin"):
-        if (d / "uv").exists():
-            return str(d / "uv")
+        exe = d / ("uv.exe" if sys.platform == "win32" else "uv")
+        if exe.is_file():
+            return str(exe)
     return None
 
 
 def can_apply() -> tuple[bool, str]:
     if sys.platform == "win32":
-        return False, ("decomp.wtf now runs in WSL 2 on Windows: run the installer again in PowerShell "
-                       "(irm https://decomp.wtf/install.ps1 | iex) to switch to it")
+        return False, ("To update on Windows, close decomp.wtf and rerun windows.cmd from your source folder "
+                       "or rerun the Windows installer. Windows locks files used by the running app.")
     if not uv():
         return False, "uv isn't installed here, so decomp.wtf can't update itself: run the installer again"
     return True, ""
@@ -168,7 +169,7 @@ def install(found: dict, log=print) -> dict:
     cmd = [uv(), "tool", "install", "--force", "--python", "3.12", found["spec"]]
     _stream(cmd, log, "installing the update failed")
     bindir = subprocess.run([uv(), "tool", "dir", "--bin"], capture_output=True, text=True).stdout.strip()
-    decomp = Path(bindir) / "decomp" if bindir else None
+    decomp = Path(bindir) / ("decomp.exe" if sys.platform == "win32" else "decomp") if bindir else None
     if not decomp or not decomp.exists():
         raise RuntimeError("the update was installed, but its decomp command isn't there")
     log("getting the tools this version needs")
@@ -205,7 +206,8 @@ def restart(port: int, secret: str) -> None:
     argv = [sys.executable, "-m", "decompnet.app.cli", "--no-browser", "--port", str(port)]
     if not Path(sys.executable).exists():  # the environment moved: its decomp command starts the same way
         bindir = subprocess.run([uv() or "uv", "tool", "dir", "--bin"], capture_output=True, text=True).stdout.strip()
-        argv = [str(Path(bindir) / "decomp"), "--no-browser", "--port", str(port)]
+        argv = [str(Path(bindir) / ("decomp.exe" if sys.platform == "win32" else "decomp")),
+                "--no-browser", "--port", str(port)]
     os.execve(argv[0], argv, env)
 
 

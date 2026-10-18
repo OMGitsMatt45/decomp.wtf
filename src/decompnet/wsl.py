@@ -1,8 +1,8 @@
-"""Running the Linux-only period compilers on Windows, through WSL 2.
+"""Optional legacy bridge for running Linux period compilers through WSL 2.
 
-KMC GCC (N64), the PlayStation GCCs, EE-GCC (PS2) and agbcc (GBA) exist only as Linux programs. On Windows they're
-installed like any toolchain (downloaded and checked on the Windows side, under the user's toolchain folder) and run
-inside WSL 2, which reads that folder through /mnt/<drive>. WSL 1 can't run them: their compilers are 32-bit.
+Native Windows builds are selected by default. Only an explicit DECOMP_WSL setting enables this bridge for
+tools that have no native build. Their Linux binaries are downloaded and verified on the Windows side and
+run inside WSL 2, which reads the toolchain folder through /mnt/<drive>.
 
 Commands go to WSL as a small shell script in the compile's own folder, so nothing in them depends on how wsl.exe
 splits a Windows command line.
@@ -29,8 +29,8 @@ _mount: str | None = None
 
 
 def wanted() -> bool:
-    """Whether Linux-only toolchains go through WSL here (Windows; DECOMP_WSL points tests at a stand-in)."""
-    return sys.platform == "win32" or bool(os.environ.get("DECOMP_WSL"))
+    """An explicitly requested legacy WSL bridge. Windows normally uses native toolchains."""
+    return bool(os.environ.get("DECOMP_WSL"))
 
 
 def exe() -> str | None:

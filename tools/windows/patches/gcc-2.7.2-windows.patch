@@ -1,0 +1,30 @@
+diff --git a/gcc.c b/gcc.c
+index 4d4f74b..6d75dfb 100644
+--- a/gcc.c
++++ b/gcc.c
+@@ -41,8 +41,10 @@ compilation is specified by a string called a "spec".  */
+ #include <sys/file.h>   /* May get R_OK, etc. on some systems.  */
+ #else
+ #include <process.h>
+-int __spawnv ();
+-int __spawnvp ();
++#define __spawnv windows_spawnv
++#define __spawnvp windows_spawnvp
++extern int windows_spawnv ();
++extern int windows_spawnvp ();
+ #endif
+ 
+ #include "config.h"
+@@ -2250,7 +2252,11 @@ execute ()
+         status = pid = commands[i].pid;
+ #else
+ #ifdef _WIN32
+-	pid = cwait (&status, commands[i].pid, WAIT_CHILD);
++	pid = _cwait (&status, commands[i].pid, _WAIT_CHILD);
++        /* Windows returns an unencoded exit code, including exception codes.
++           Treat every nonzero status as a failure without overflowing when
++           adapting it to the Unix wait macros used below. */
++        status = status ? (MIN_FATAL_STATUS << 8) : 0;
+ #else
+ 	pid = wait (&status);
+ #endif

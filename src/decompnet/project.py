@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 import time
 import tomllib
@@ -62,25 +63,32 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     linux = False
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
+        if why := tc.unsupported_reason:
+            raise toolchains.ToolchainError(why)
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
         dirs = toolchains.runtime_dirs(tc.id)
-        tc_dir = wsl.path(dirs[0]) if linux else str(dirs[0])
+        tc_dir = wsl.path(dirs[0]) if linux else dirs[0].as_posix()
         ro_paths += [str(d) for d in dirs]
-        if "runtime-i386" in tc.requires and not linux:  # in WSL its programs bring the runtime themselves
+        if "runtime-i386" in tc.dependencies(linux) and not linux:  # WSL programs bring the runtime themselves
             runtime32 = str(toolchains.require("runtime-i386"))
         flags = c.get("flags", tc.flags)
+        windows = not linux and toolchains.current_platform().startswith("windows-")
+        template = tc.windows_cmd if windows and tc.windows_cmd is not None else tc.cmd
+        cc = tc.windows_cc if windows and tc.windows_cc is not None else tc.cc
         if c.get("cmd"):
             base = c["cmd"]
-        elif tc.cmd:  # a full template ({flags} expands to the flags)
-            base = [x for a in tc.cmd for x in (flags if a == "{flags}" else [a])]
+        elif template:  # a full template ({flags} expands to the flags)
+            base = [x for a in template for x in (flags if a == "{flags}" else [a])]
         else:
-            base = [*tc.cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
-        cmd = [a.replace("{tc}", tc_dir) for a in base]
-        for dep in tc.requires:  # {tc:<id>} is another toolchain this one needs
+            base = [*cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
+        cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
+        for dep in tc.dependencies(linux):  # {tc:<id>} is another toolchain this one needs
             where = toolchains.path(dep, linux)
-            cmd = [a.replace(f"{{tc:{dep}}}", wsl.path(where) if linux else str(where)) for a in cmd]
+            cmd = [a.replace(f"{{tc:{dep}}}", wsl.path(where) if linux else where.as_posix()) for a in cmd]
+        if windows and cmd and Path(cmd[0] + ".exe").is_file():
+            cmd[0] += ".exe"
     else:
         cmd = list(c["cmd"])
     return CompilerConfig(

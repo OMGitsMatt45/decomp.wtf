@@ -1,14 +1,10 @@
-## This project is discontinued
+## Native Windows fork
 
-I've decided to stop working on decomp.wtf and archive it.
+This fork adds a native Windows installer and Windows builds of the period compilers. Start with
+[Windows setup](docs/windows.md), or download this repository's source ZIP and double-click `windows.cmd`.
 
-Over the last few days I noticed that a lot of the decompilation community, the people who made the tools and projects all of this is built on, is against AI decompiling like this. I didn't make decomp.wtf to do any harm, but I respect their opinion, and that's why I'm stopping it here.
-
-The code stays up as it is, under the MIT license. If you want to fork it and keep going with it, you can. I won't fix issues, review pull requests or make new releases anymore. If you already have it installed it keeps working, it just won't get any updates. You can still install the last version (0.10.6) with the commands under [Install](#install).
-
-If you do use it or build on it, please only use it on games you own, don't share the game code it produces, and respect the rules of the projects you work with, because many of them don't want AI-made contributions.
-
-Thanks to everyone who tried it, reported bugs and sent fixes.
+The original project was archived at version 0.10.6. Its MIT-licensed code and authorship are preserved here;
+the upstream website and its installers still refer to the original release.
 
 ---
 
@@ -71,9 +67,8 @@ Everything runs on your computer. No account, no telemetry, nothing uploaded.
 
 ## Install
 
-decomp.wtf runs on **Linux**, and on **Windows** (supported, still unstable). The compilers it runs are Linux
-programs, so on Windows it runs in its own small Linux (a WSL 2 distribution called `decomp-wtf`), set up by the
-same script as on Linux. macOS isn't supported.
+decomp.wtf runs on **Linux** and **Windows** on Intel or AMD PCs. This fork's Windows installer runs the app and
+available compilers directly on Windows, without WSL, a Linux distribution, or virtualization. macOS isn't supported.
 
 **Linux**
 
@@ -88,28 +83,28 @@ too):
 curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/install.sh | bash
 ```
 
-**Windows** (PowerShell; new and still unstable: problems are worth an [issue](https://github.com/i12bp8/decomp.wtf/issues))
+**Windows**
 
 To install this checkout, or an extracted source ZIP, **double-click `windows.cmd`** in the project folder.
 It installs the source you downloaded, keeps errors and restart instructions visible, and creates the same Start
-menu and desktop shortcuts. No separate Python, Git or Node.js installation on Windows is needed.
+menu and desktop shortcuts. Python is managed by uv; you do not need to install Python or Git separately.
 See the [Windows setup and troubleshooting guide](docs/windows.md) for requirements, file paths and agent setup.
 
-To install the last upstream release instead:
+Or run this fork's native installer in PowerShell:
 
 ```
-irm https://decomp.wtf/install.ps1 | iex
+irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.ps1 | iex
 ```
 
-It turns on WSL 2 if it isn't yet (Windows asks for permission once, and may want a restart), makes decomp.wtf's
-Linux from Debian's official WSL image and installs everything in it. You get a `decomp` command, a Start menu entry
-and a desktop shortcut. Your projects are at `\\wsl.localhost\decomp-wtf\home\decomp\Decomp`.
+Setup runs for your Windows user, creates the `decomp` command and shortcuts, and opens your browser. Projects
+are at `%USERPROFILE%\Decomp`. The native installer does not enable Windows features or ask for a reboot.
 
 One line sets up everything: [uv](https://docs.astral.sh/uv/), the app, the period compilers (pinned and
 checksum-verified) and the m2c draft decompiler. It then opens decomp.wtf in your browser. After that, start it any
 time from your apps menu (the Start menu on Windows) or by typing `decomp` in a terminal.
 
-**Updates** come by themselves: when there's a new version, decomp.wtf asks once, and one click installs it and
+**Windows updates:** close decomp.wtf and run `windows.cmd` or the PowerShell installer again. Git checkouts
+follow their own GitHub repository and branch. **Linux updates** come by themselves: one click installs it and
 restarts the app in the same tab (helper agents carry on). Settings has "check now", "install updates by itself" and
 "don't look for updates".
 
@@ -362,9 +357,9 @@ now; C++ there (mostly PS2 games) is coming. Public decomps use whatever languag
 **Proprietary compilers** (IDO, CodeWarrior, CodeWarrior for DS) are only installed after you accept that. Heavy
 tools run with a memory cap, so a runaway analysis can't take your computer down.
 
-**Windows.** Several of the compilers (KMC GCC, the PlayStation GCCs, EE-GCC, agbcc) only exist as Linux programs,
-so on Windows decomp.wtf runs in its own WSL 2 distribution. The installer sets that up; you use the app in your
-browser as usual, and the results are byte-identical to Linux. macOS isn't supported.
+**Windows.** The app, Python tools and available period compiler builds run directly as Windows processes.
+Compilers without a native build are marked unavailable, and setup does not install WSL for them. See
+[Windows setup](docs/windows.md) for the supported toolchains and verification status. macOS isn't supported.
 
 **When something goes wrong.** A failed import stays on screen with the reason and what happened, and **Copy for a
 bug report** puts the version, the error and the log on your clipboard for an
@@ -390,9 +385,9 @@ uv run pytest
 | `src/decompnet/forks/` | Fork mode: the decomp.dev catalog, project detection and setup, objdiff, source editing, m2c and Ghidra drafts, linking and file splits for dtk-template projects (`project.py`, `dtksplits.py`), and data diffs (`datadiff.py`). |
 | `src/decompnet/network.py` | The coordination core the engine builds on: claims, attempts, notes, the shared header. |
 | `src/decompnet/toolchains.py` | The pinned compilers: verified downloads and installs. |
-| `src/decompnet/hostenv.py`, `app/updates.py` | Where decomp.wtf runs (Linux itself, its WSL 2 distribution on Windows, Docker on a server) and what crosses to the computer around it; updates. |
+| `src/decompnet/hostenv.py`, `app/updates.py` | Native Linux and Windows, optional WSL/Docker integration, and updates. |
 | `src/decompnet/app/twins.py`, `app/permute.py` | Free matches: identical code from its matched twin, and the background permuter for near misses. |
-| `site/public/install.sh`, `install.ps1`, `linux-base.sh`, `Dockerfile` | The installers: decomp.wtf's own Linux (WSL on Windows, Docker on a server) is made by `linux-base.sh` on Debian. |
+| `site/public/install.sh`, `install.ps1`, `linux-base.sh`, `Dockerfile` | Linux and native Windows installers; `linux-base.sh` prepares the optional Debian container. |
 | `projects/demo-rom/` | Builds Demo Quest 64. `tests/test_rom.py` proves the matcher on it: every function of the original source matches. |
 | `projects/demo-psx/` | The same game as a PlayStation executable, for `tests/test_psx.py`. |
 | `projects/demo-fork/` | A small decomp project in the community's shape (objdiff.json, ninja), for `tests/test_forks.py`. |
@@ -410,7 +405,7 @@ powershell -ExecutionPolicy Bypass -File site\public\install.ps1      # Windows
 bash site/public/install.sh                                           # Linux
 ```
 
-Without a checkout: `$env:DECOMP_BRANCH = "<branch>"; irm https://raw.githubusercontent.com/i12bp8/decomp.wtf/<branch>/site/public/install.ps1 | iex`
+Without a checkout: `$env:DECOMP_BRANCH = "<branch>"; irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/<branch>/site/public/install.ps1 | iex`
 on Windows, `curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/<branch>/site/public/install.sh | DECOMP_BRANCH=<branch> bash`
 on Linux. `decomp update` (or the app's Settings) installs the newest commit by hand.
 
