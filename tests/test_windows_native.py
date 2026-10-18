@@ -107,7 +107,8 @@ def test_cpp_kmc_binutils_preserve_real_n64_objects(native_workspace):
     data = native_compile("int native_archive_probe(int value) { return value * 3; }", native_workspace)
     obj = native_workspace / "Archive probe.o"
     obj.write_bytes(data)
-    text = ELFFile(BytesIO(data)).get_section_by_name(".text").data()
+    elf = ELFFile(BytesIO(data))
+    text = elf.get_section_by_name(".text").data()
 
     def run(program, *args):
         result = subprocess.run([str(directory / program), *map(str, args)], cwd=native_workspace,
@@ -119,7 +120,12 @@ def test_cpp_kmc_binutils_preserve_real_n64_objects(native_workspace):
     run("ar.exe", "rc", archive, obj)
     assert "Archive probe.o" in run("ar.exe", "t", archive)
     raw = native_workspace / "Raw code.bin"
-    run("objcopy.exe", "-O", "binary", "-j", ".text", obj, raw)
+    # Binutils 2.6 predates --only-section/-j. Remove other allocated sections
+    # using its original CLI rather than requiring a modern option.
+    remove = [argument for section in elf.iter_sections()
+              if section.name != ".text" and section["sh_flags"] & 2
+              for argument in ("-R", section.name)]
+    run("objcopy.exe", "-O", "binary", *remove, obj, raw)
     assert raw.read_bytes() == text
     stripped = native_workspace / "Stripped probe.o"
     run("strip.exe", "-s", "-o", stripped, obj)
