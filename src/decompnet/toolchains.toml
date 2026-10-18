@@ -85,12 +85,12 @@ sha256 = "ab21ad5908fb7776a4b0c596cc82f216876e3b5d108c7c7c1f33543b3f3fce4c"
 platforms = ["macos-x86_64", "macos-arm64"]
 
 ["gcc-2.8.1-psx"]
-name = "GCC 2.8.1 for PlayStation + binutils 2.6"
+name = "GCC 2.8.1 for PlayStation"
 platform = "PS1"
 arch = "mipsel"
 license = "GPL-2.0"
-source = "decompals/old-gcc 0.17 (gcc-2.8.1-psx), decompals/mips-binutils-2.6 v0.3"
-description = "GCC 2.8.1 with the PlayStation patches (later PSY-Q versions), with the GNU assembler."
+source = "decompals/old-gcc 0.17 (gcc-2.8.1-psx), binutils 2.6 v0.3 on Linux/macOS, binutils-mips v0.10 on Windows"
+description = "GCC 2.8.1 with the PlayStation patches (later PSY-Q versions), with the GNU assembler. Windows uses the native MIPS assembler."
 cc = ["{tc}/gcc", "-B{tc}/", "-c", "-Wa,-EL"]
 windows_requires = ["binutils-mips"]
 # binutils 2.6 mistakes %hi($LC0) for a register operand; use the same modern
