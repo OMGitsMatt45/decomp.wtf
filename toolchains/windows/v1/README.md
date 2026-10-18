@@ -11,3 +11,5 @@ PE32 Windows programs, running directly on Windows x64. No WSL, Linux, MSYS, Cyg
 - `agbcc-windows-i686.zip`: native agbcc/old_agbcc, headers, licenses, complete corresponding source and build recipe.
 
 GCC/binutils/agbcc retain their GPL licensing. The application pins immutable Git commit URLs and SHA-256 checksums. Compiler target logic is preserved; source patches only implement Windows host compatibility. Older filenames in the branch history are development candidates.
+
+Version 4 adds the real period C++ frontend (`cc1plus.exe`). All 195 project implementation units, including that frontend, are built from C++. Binary and corresponding source archives end in `v4.zip`; use `gcc.exe -x c++` for game C++ sources.
