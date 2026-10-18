@@ -120,10 +120,10 @@ def test_cpp_kmc_binutils_preserve_real_n64_objects(native_workspace):
     run("ar.exe", "rc", archive, obj)
     assert "Archive probe.o" in run("ar.exe", "t", archive)
     raw = native_workspace / "Raw code.bin"
-    # Binutils 2.6 predates --only-section/-j. Remove other allocated sections
-    # using its original CLI rather than requiring a modern option.
+    # Binutils 2.6 predates --only-section/-j. Its binary backend also copies
+    # nonallocated .comment data, so remove every other named section.
     remove = [argument for section in elf.iter_sections()
-              if section.name != ".text" and section["sh_flags"] & 2
+              if section.name and section.name != ".text"
               for argument in ("-R", section.name)]
     run("objcopy.exe", "-O", "binary", *remove, obj, raw)
     assert raw.read_bytes() == text

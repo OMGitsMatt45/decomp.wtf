@@ -1,0 +1,7 @@
+The N64 analysis implementation is MIT licensed (see the package LICENSE).
+The bundled libraries link GCC libstdc++/libgcc statically: GCC 14 on Windows,
+GCC 10 on Linux. Their notices and GCC Runtime Library Exception accompany this
+file; COPYING.GPL-3 contains the full GPL text referenced by those notices.
+Windows also includes the MinGW-w64 runtime; its notices are in COPYING.MinGW.
+Upstream sources: https://gcc.gnu.org/releases.html and https://www.mingw-w64.org/.
+Build commands and compatibility versions: native/n64/README.md in the source repository.
