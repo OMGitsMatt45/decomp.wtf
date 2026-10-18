@@ -71,7 +71,7 @@ def _decompile(tmp: Path, platform: str):
     for name in FUNCTIONS:
         code = csource.get(source, name)
         if platform == "n64" and name == "abs_s32":
-            code = "s32 abs_s32(s32 value) { s32 sign = value >> 31; return (value ^ sign) - sign; }"
+            code = "s32 abs_s32(s32 value) { if (value < 0) value = -value; return value; }"
         assert net.attempt(agent, name, code, slug)["matched"], name
     return net, slug
 

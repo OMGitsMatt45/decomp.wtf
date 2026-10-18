@@ -177,7 +177,7 @@ def test_native_demo_import_rejects_wrong_code_and_accepts_exact_match(native_wo
     agent, _ = network.local_agent("native-windows-smoke")
     wrong = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { return value; }", slug)
     assert not wrong["matched"] and wrong["score"] is not None and wrong["score"] > 0, wrong["text"]
-    exact = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { s32 sign = value >> 31; return (value ^ sign) - sign; }", slug)
+    exact = network.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 value) { if (value < 0) value = -value; return value; }", slug)
     assert exact["matched"] and exact["score"] == 0, exact["text"]
     difference = network.function_diff(slug, "func_800007F4")
     assert difference["score"] == 0 and all(row[0] == " " for row in difference["rows"])

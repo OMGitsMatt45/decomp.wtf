@@ -116,7 +116,7 @@ symbols. Templates, classes and references are available in GCC 2.7.2's period C
 exceptions and RTTI are disabled. This is not a modern C++17/20 compiler or standard library.
 
 C++ syntax can produce different bytes from the same C expression. Matching still requires exact
-bytes; for example, an absolute-value function may need an explicit sign mask in C++.
+bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.
 Existing matched sources are checked again during export, with reported assembly fallbacks if
 compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
 IDO and other consoles keep their existing language; their C++ frontend support is a separate task.
