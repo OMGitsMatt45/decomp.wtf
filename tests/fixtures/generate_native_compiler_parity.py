@@ -6,7 +6,10 @@ DECOMPNET_TOOLCHAINS=/path/to/linux/toolchains uv run python tests/fixtures/gene
 import hashlib
 import json
 import argparse
+from io import BytesIO
 from pathlib import Path
+
+from elftools.elf.elffile import ELFFile
 
 from decompnet import compiler, elfobj, project, toolchains
 
@@ -27,6 +30,12 @@ def describe_functions(obj):
             "relocations": [reloc.to_json() for reloc in function.relocs],
         }
     return result
+
+
+def describe_data(obj):
+    elf = ELFFile(BytesIO(obj))
+    return {section.name: section.data().hex() for section in elf.iter_sections()
+            if section.name in (".data", ".rdata", ".rodata", ".sdata")}
 
 
 def main():
@@ -55,6 +64,8 @@ def main():
     }
     if args.psx_modern_as:
         snapshot["assembler"] = {"toolchain": "binutils-mips", "flags": ["-EL", "-mips1", "-mabi=32"]}
+    if args.toolchain.endswith("-psx"):
+        snapshot["data_sections"] = describe_data(result.obj)
     args.output.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"Wrote {len(snapshot['functions'])} Linux-reference functions to {args.output.name}")
 

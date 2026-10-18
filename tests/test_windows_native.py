@@ -21,7 +21,7 @@ from decompnet import compiler, elfobj, hostenv, project, toolchains, wsl
 from decompnet.app.engine import RomNetwork
 from decompnet.forks import objdiff
 
-from .fixtures.generate_native_compiler_parity import describe_functions
+from .fixtures.generate_native_compiler_parity import describe_data, describe_functions
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 FREE_TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "agbcc", "arm-gnu", "objdiff-cli", "dtk", "binutils-mips", "gc-wii-binutils")
@@ -98,6 +98,8 @@ def test_native_compiler_matches_linux_machine_code_and_relocations(native_works
     assert toolchains.get(expected["toolchain"]).flags == expected["flags"]
     actual = native_compile(source.read_text(encoding="utf-8"), native_workspace, expected["toolchain"])
     assert describe_functions(actual) == expected["functions"]
+    if "data_sections" in expected:
+        assert describe_data(actual) == expected["data_sections"]
 
 
 @pytest.mark.parametrize("tid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])

@@ -17,7 +17,7 @@ by GCC 2.8.1: its operand parser mistakes that local label for a register. Windo
 therefore uses the pinned `binutils-mips` v0.10 assembler with `-EL -mips1 -mabi=32`.
 GCC 2.7.2 keeps its original binutils 2.6. Existing Linux toolchain entries are unchanged.
 
-Windows integration compares code and relocations for eight functions from each
+Windows integration compares code, relocations and constant data for eight functions from each
 PS1 compiler against the pinned Linux compiler. The GCC 2.8.1 reference uses that
 same newer assembler, so this proves compiler parity across hosts; it does not
 claim equivalence with every original PSY-Q assembler. Fixtures cover branches,
@@ -34,7 +34,7 @@ assembles little-endian R5900 code containing `lq`, `paddw` and `sq` without WSL
 This provides the assembler; it does not provide the matching C compiler.
 
 The app's PS2 compiler is specifically `2.96-ee-001003-1`, from
-[`decompme/compilers`](https://github.com/decompme/compilers/tree/master/platforms/ps2/ee-gcc2.96).
+[`decompme/compilers`](https://github.com/decompme/compilers/tree/main/platforms/ps2/ee-gcc2.96).
 Its Linux archive is pinned to SHA-256
 `0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a`.
 Matching source or a verified native Windows build has not been located.
