@@ -128,7 +128,8 @@ def test_cpp_kmc_binutils_preserve_real_n64_objects(native_workspace):
     run("objcopy.exe", "-O", "binary", *remove, obj, raw)
     assert raw.read_bytes() == text
     stripped = native_workspace / "Stripped probe.o"
-    run("strip.exe", "-s", "-o", stripped, obj)
+    stripped.write_bytes(data)
+    run("strip.exe", "-s", stripped)
     assert ELFFile(BytesIO(stripped.read_bytes())).get_section_by_name(".text").data() == text
     assert "foo(int)" in run("c++filt.exe", "foo__Fi")
 
