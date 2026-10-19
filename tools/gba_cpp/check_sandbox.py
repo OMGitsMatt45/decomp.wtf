@@ -1,6 +1,7 @@
 """Check that a managed Python and the GBA pipeline work inside bubblewrap."""
 
 from pathlib import Path
+from dataclasses import replace
 import shutil
 
 from decompnet import compiler, elfobj, project
@@ -16,8 +17,11 @@ int sandbox_probe(int value) { return next(value); }
 """
     result = compiler.compile_source(cfg, "", source)
     assert result.ok, result.log
+    native = compiler.compile_source(replace(cfg, sandbox="none"), "", source)
+    assert native.ok, native.log
     fn = elfobj.extract_function(result.obj, "sandbox_probe")
-    assert fn.arch == "thumb" and fn.code == bytes.fromhex("01307047")
+    reference = elfobj.extract_function(native.obj, "sandbox_probe")
+    assert fn.arch == "thumb" and fn.code == reference.code and fn.relocs == reference.relocs
     print("GBA C++ compiles inside bubblewrap with read-only Python, pipeline and toolchain paths")
 
 
