@@ -29,10 +29,10 @@ wrapup_global_declarations (vec, len)
   for (i = 0; i < len; i++)
     {
       decl = vec[i];
-      
+
       /* We're not deferring this any longer.  */
       DECL_DEFER_OUTPUT (decl) = 0;
-      
+
       if (TREE_CODE (decl) == VAR_DECL && DECL_SIZE (decl) == 0
 	  && incomplete_decl_finalize_hook != 0)
 	(*incomplete_decl_finalize_hook) (decl);
@@ -252,7 +252,7 @@ splay_tree_compare_ints (k1, k2)
     return -1;
   else if ((int) k1 > (int) k2)
     return 1;
-  else 
+  else
     return 0;
 }
 
@@ -267,7 +267,7 @@ splay_tree_compare_pointers (k1, k2)
     return -1;
   else if ((char*) k1 > (char*) k2)
     return 1;
-  else 
+  else
     return 0;
 }
 
@@ -455,4 +455,3 @@ do_float_handler (fn, data)
   set_float_handler (NULL);
   return 1;
 }
-

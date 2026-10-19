@@ -2,44 +2,26 @@ diff --git a/gcc/c-tree.h b/gcc/c-tree.h
 index 01f2191..4d42fe4 100755
 --- a/gcc/c-tree.h
 +++ b/gcc/c-tree.h
-@@ -347,7 +347,7 @@ extern tree c_alignof				(tree);
- extern tree c_alignof_expr			(tree);
- extern tree default_conversion                  (tree);
- extern tree build_component_ref                 (tree, tree);
+@@ -350 +350 @@ extern tree build_component_ref                 (tree, tree);
 -extern tree build_indirect_ref                  (tree, char *);
 +extern tree build_indirect_ref                  (tree, const char *);
- extern tree build_array_ref                     (tree, tree);
- extern tree build_function_call                 (tree, tree);
- extern tree parser_build_binary_op              (enum tree_code,
-@@ -357,8 +357,8 @@ extern tree build_binary_op                     (enum tree_code,
- extern tree build_unary_op                      (enum tree_code,
- 						       tree, int);
- extern int lvalue_p				(tree);
+@@ -360,2 +360,2 @@ extern int lvalue_p				(tree);
 -extern int lvalue_or_else			(tree, char *);
 -extern void readonly_warning			(tree, char *);
 +extern int lvalue_or_else			(tree, const char *);
 +extern void readonly_warning			(tree, const char *);
- extern int mark_addressable			(tree);
- extern tree build_conditional_expr              (tree, tree, tree);
- extern tree build_compound_expr                 (tree);
 diff --git a/gcc/expr.h b/gcc/expr.h
 index 466b4b1..90ac420 100755
 --- a/gcc/expr.h
 +++ b/gcc/expr.h
-@@ -1000,3 +1000,5 @@ extern void do_jump_by_parts_greater_rtx	(enum machine_mode, int,
- extern void mark_seen_cases			(tree, unsigned char *,
- 							long, int);
- #endif
+@@ -1002,0 +1003,2 @@ extern void mark_seen_cases			(tree, unsigned char *,
 +
 +extern tree (*lang_expand_constant)(tree);
 diff --git a/gcc/splay-tree.h b/gcc/splay-tree.h
 index 50c1260..fbd7845 100755
 --- a/gcc/splay-tree.h
 +++ b/gcc/splay-tree.h
-@@ -102,3 +102,6 @@ extern int splay_tree_foreach           (splay_tree,
- 					        void*);
- 
- #endif /* _SPLAY_TREE_H */
+@@ -104,0 +105,3 @@ extern int splay_tree_foreach           (splay_tree,
 +
 +extern int splay_tree_compare_ints(splay_tree_key,splay_tree_key);
 +extern int splay_tree_compare_pointers(splay_tree_key,splay_tree_key);
@@ -47,56 +29,26 @@ diff --git a/gcc/toplev.c b/gcc/toplev.c
 index ac8e21b..a4f3d09 100755
 --- a/gcc/toplev.c
 +++ b/gcc/toplev.c
-@@ -3546,6 +3546,9 @@ main(int argc, char **argv)
-     signal(SIGPIPE, pipe_closed);
- #endif
- 
+@@ -3548,0 +3549,3 @@ main(int argc, char **argv)
 +    extern void lang_init_options(void);
 +    extern int lang_decode_option(int, char **);
 +    lang_init_options();
-     decl_printable_name = decl_name;
-     lang_expand_expr = (lang_expand_expr_t) do_abort;
- 
-@@ -3646,6 +3649,8 @@ main(int argc, char **argv)
- 
-         /* If this is a language-specific option,
-            decode it in a language-specific way.  */
+@@ -3648,0 +3652,2 @@ main(int argc, char **argv)
 +        int consumed = lang_decode_option(argc-i, argv+i);
 +        if (consumed) { i += consumed-1; continue; }
-         for (j = NUM_ELEM(documented_lang_options); j--; )
-             if (check_lang_option(argv[i], documented_lang_options[j].option))
-                 break;
-@@ -4216,3 +4221,5 @@ debug_undef(unsigned lineno, char *buffer)
-         dwarf2out_undef(lineno, buffer);
- #endif /* DWARF2_DEBUGGING_INFO */
- }
+@@ -4218,0 +4224,2 @@ debug_undef(unsigned lineno, char *buffer)
 +
 +tree (*lang_expand_constant)(tree) = 0;
 diff --git a/gcc/tree.h b/gcc/tree.h
 index bc2872b..675ddfa 100755
 --- a/gcc/tree.h
 +++ b/gcc/tree.h
-@@ -1286,6 +1286,7 @@ struct tree_decl
-   unsigned common_flag : 1;
-   unsigned defer_output : 1;
-   unsigned transparent_union : 1;
+@@ -1288,0 +1289 @@ struct tree_decl
 +  unsigned comdat_flag : 1;
-   unsigned static_ctor_flag : 1;
-   unsigned static_dtor_flag : 1;
-   unsigned artificial_flag : 1;
-@@ -1654,7 +1655,7 @@ extern int staticp			(tree);
- /* Gets an error if argument X is not an lvalue.
-    Also returns 1 if X is an lvalue, 0 if not.  */
- 
+@@ -1657 +1658 @@ extern int staticp			(tree);
 -extern int lvalue_or_else		(tree, char *);
 +extern int lvalue_or_else		(tree, const char *);
- 
- /* save_expr (EXP) returns an expression equivalent to EXP
-    but it can be used multiple times within context CTX
-@@ -2249,3 +2250,7 @@ extern void dwarf2out_begin_prologue	(void);
- extern void dwarf2out_end_epilogue	(void);
- 
- #endif /* _TREE_H */
+@@ -2251,0 +2253,4 @@ extern void dwarf2out_end_epilogue	(void);
 +
 +#define DECL_STATIC_CONSTRUCTOR(NODE) (DECL_CHECK(NODE)->decl.static_ctor_flag)
 +#define DECL_STATIC_DESTRUCTOR(NODE) (DECL_CHECK(NODE)->decl.static_dtor_flag)
@@ -105,11 +57,5 @@ diff --git a/gcc/varasm.c b/gcc/varasm.c
 index 5192b24..7e1abdf 100755
 --- a/gcc/varasm.c
 +++ b/gcc/varasm.c
-@@ -3595,6 +3595,7 @@ output_constant (exp, size)
-      register int size;
- {
-   register enum tree_code code = TREE_CODE (TREE_TYPE (exp));
+@@ -3597,0 +3598 @@ output_constant (exp, size)
 +  if (lang_expand_constant) exp = (*lang_expand_constant)(exp);
- 
-   if (size == 0)
-     return;
