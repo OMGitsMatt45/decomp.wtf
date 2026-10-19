@@ -20,6 +20,12 @@ s = p.read_text()
 old = 'memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));'
 assert s.count(old) == 1
 p.write_text(s.replace(old, 'memory_allocate(mem, TRUNC_PAGE(LIBC_ADDR), ROUND_PAGE(LIBC_ADDR + LIBC_SIZE));'))
+# Modern MSYS/newlib's __assert argument order differs from the historical
+# host prototype. Preserve the diagnostic and abort without a host ABI guess.
+s = p.read_text()
+old = '__assert(assertion, file, line);'
+assert s.count(old) == 1
+p.write_text(s.replace(old, 'fprintf(stderr, "Assertion failed: %s, file %s, line %d\\n", assertion, file, line); abort();'))
 PY
 make -j2 RELEASE=1 setup
 make -j2 RELEASE=1 VERSION=7.1 LDFLAGS='-static-libgcc -lm'
@@ -47,5 +53,11 @@ pacman -Q > "$package/BUILD-PACKAGES.txt"
 tar --exclude=.git --exclude=build --exclude=tools/rabbitizer/build \
     -czf "$out_dir/ido-7.1-windows-source-v1.tar.gz" .
 tar -czf "$out_dir/ido-7.1-windows-v1.tar.gz" -C "$package" .
+runtime_dir="$build_dir/runtime"
+mkdir -p "$runtime_dir"
+cp "$package/"*.dll "$runtime_dir/"
+cp -r "$package/licenses" "$runtime_dir/"
+cp "$package/BUILD-PACKAGES.txt" "$runtime_dir/"
+tar -czf "$out_dir/ido-windows-runtime-v1.tar.gz" -C "$runtime_dir" .
 cd "$out_dir"
-sha256sum ido-7.1-windows-v1.tar.gz ido-7.1-windows-source-v1.tar.gz "$runtime_source" > SHA256SUMS
+sha256sum ido-7.1-windows-v1.tar.gz ido-windows-runtime-v1.tar.gz ido-7.1-windows-source-v1.tar.gz "$runtime_source" > SHA256SUMS

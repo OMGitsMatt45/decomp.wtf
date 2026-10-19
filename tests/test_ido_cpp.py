@@ -50,6 +50,10 @@ int ido_add(int value) {
 @pytest.fixture(autouse=True)
 def native_only(monkeypatch):
     monkeypatch.setenv("DECOMP_RUNTIME", "native")
+    if sys.platform == "win32":
+        # A regular Windows installation has no MSYS on PATH. Dependencies must
+        # be bundled with the compiler, including for its child processes.
+        monkeypatch.setenv("PATH", str(Path(os.environ["SystemRoot"]) / "System32"))
     def no_wsl(*args, **kwargs):
         pytest.fail("IDO must run natively without WSL")
     monkeypatch.setattr(wsl, "status", no_wsl)
