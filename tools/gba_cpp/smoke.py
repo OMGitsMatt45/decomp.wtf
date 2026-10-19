@@ -24,7 +24,7 @@ def main():
         "--obj", "{obj}", "--include", "{include}", "--", "-mthumb-interwork", "-O2"]
     cfg = replace(cfg, cmd=pipeline)
     cpp = replace(cfg, language="c++", c_linkage=True, cmd=[
-        a.replace(str(tc / f"bin/agbcc{suffix}"), str(package / f"bin/agbcc-cpp{suffix}"))
+        a.replace(str(tc / f"bin/agbcc{suffix}"), str(package / f"agbcc-cpp{suffix}"))
         for a in pipeline[:-3]] + ["--language", "c++", "--", "-mthumb-interwork", "-O2", "-fno-exceptions", "-fno-rtti"])
     if sys.platform == "win32":
         os.environ["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")

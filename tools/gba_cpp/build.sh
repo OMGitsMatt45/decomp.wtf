@@ -19,7 +19,7 @@ fetch "https://codeload.github.com/gcc-mirror/gcc/tar.gz/$gcc" "$work/downloads/
 # Start fresh so C++ and backend objects can never have different tree layouts,
 # host ABIs or OLD_COMPILER settings left over from another build.
 rm -rf "$work/source" "$work/package"
-mkdir -p "$work/source" "$work/package/bin" "$work/package/source"
+mkdir -p "$work/source" "$work/package/cpp-source"
 tar -xzf "$work/downloads/agbcc.tar.gz" -C "$work/source"
 tar -xzf "$work/downloads/gcc.tar.gz" -C "$work/source"
 source_dir="$work/source/agbcc-$agbcc"
@@ -39,21 +39,21 @@ case "$platform" in
 esac
 make -C "$source_dir/gcc" -j1 "${keep[@]}" CC="$compiler" BASE_CFLAGS="$flags" \
     rtl.o bitmap.o obstack.o print-rtl.o rtlanal.o cpp
-cp "$source_dir/gcc/agbcc-cpp$suffix" "$work/package/bin/agbcc-cpp$suffix"
-"$strip" "$work/package/bin/agbcc-cpp$suffix"
-cp "$source_dir/gcc/COPYING" "$work/package/COPYING"
+cp "$source_dir/gcc/agbcc-cpp$suffix" "$work/package/agbcc-cpp$suffix"
+"$strip" "$work/package/agbcc-cpp$suffix"
+cp "$source_dir/gcc/COPYING" "$work/package/COPYING-CPP"
 # Complete pristine corresponding sources plus every transformation and recipe.
-cp "$work/downloads/agbcc.tar.gz" "$work/package/source/agbcc-$agbcc.tar.gz"
-cp "$work/downloads/gcc.tar.gz" "$work/package/source/gcc-2.95.3-$gcc.tar.gz"
-cp -R "$recipe" "$work/package/source/recipe"
-cat > "$work/package/SOURCE.txt" <<EOF
+cp "$work/downloads/agbcc.tar.gz" "$work/package/cpp-source/agbcc-$agbcc.tar.gz"
+cp "$work/downloads/gcc.tar.gz" "$work/package/cpp-source/gcc-2.95.3-$gcc.tar.gz"
+cp -R "$recipe" "$work/package/cpp-source/recipe"
+cat > "$work/package/CPP-SOURCE.txt" <<EOF
 decomp.wtf agbcc-cpp: GCC 2.95.3 C++ frontend + pret/agbcc Thumb backend.
 GCC revision: $gcc
 agbcc revision: $agbcc
 This is an explicitly restored frontend, not an original Nintendo C++ binary.
 The existing agbcc C compiler is unchanged. No modern GCC code generator is used.
-GPL-2.0-or-later. Complete sources, patches and build instructions are in source/.
-Rebuild: bash source/recipe/build.sh WORK OUTPUT $platform
+GPL-2.0-or-later. Complete sources, patches and build instructions are in cpp-source/.
+Rebuild: bash cpp-source/recipe/build.sh WORK OUTPUT $platform
 Native $platform; no WSL, Cygwin or MSYS runtime required.
 EOF
 tar -czf "$output/agbcc-cpp-$platform.tar.gz" -C "$work/package" .

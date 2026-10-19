@@ -94,10 +94,10 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
                 cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
             elif tc.id == "agbcc":
-                if not (dirs[0] / f"bin/agbcc-cpp{suffix}").is_file():
+                if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
                     raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
                 cmd = [sys.executable, "-m", "decompnet.agbcc", "--cpp", f"{{tc:arm-gnu}}/bin/arm-none-eabi-cpp{suffix}",
-                       "--cc", f"{tc_dir}/bin/agbcc-cpp{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
+                       "--cc", f"{tc_dir}/agbcc-cpp{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
                        "--language", "c++", "--builtin-include", f"{tc_dir}/include", "--src", "{src}",
                        "--obj", "{obj}", "--include", "{include}", "--", "-fno-exceptions", "-fno-rtti", *flags]
             elif tc.id in ("ido-5.3", "ido-7.1"):
