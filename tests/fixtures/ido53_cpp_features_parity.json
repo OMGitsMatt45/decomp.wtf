@@ -1,0 +1,36 @@
+{
+  "toolchain": "ido-5.3",
+  "frontend": "SGI/EDG 2.19 (IDO 5.3)",
+  "language": "c++",
+  "source_sha256": "134eb8ac526d64923f691f8674397d82ca2d0947f5bd34367b8a12ef2c628132",
+  "flags": [
+    "-O2",
+    "-mips2",
+    "-G",
+    "0",
+    "-non_shared",
+    "-Xcpluscomm",
+    "-Wab,-r4300_mul"
+  ],
+  "irix_frontend_sha256": "c7d5bdd0c730d2dbb9e5004ba69fcac48e08c9767af10b71ab2234beb73de3cc",
+  "functions": {
+    "feature_constructor": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "03e0000800851021",
+      "relocations": []
+    },
+    "feature_reference": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "8c8e000025c2000303e00008ac820000",
+      "relocations": []
+    },
+    "feature_template": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "03e0000824820001",
+      "relocations": []
+    }
+  }
+}

@@ -1,0 +1,54 @@
+diff --git a/libc_impl.c b/libc_impl.c
+index a2d58b5..bed1a5d 100644
+--- a/libc_impl.c
++++ b/libc_impl.c
+@@ -494,7 +494,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
+ }
+ 
+ void setup_libc_data(uint8_t* mem) {
+-    memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));
++    memory_allocate(mem, TRUNC_PAGE(LIBC_ADDR), ROUND_PAGE(LIBC_ADDR + LIBC_SIZE));
+     for (size_t i = 0; i < sizeof(ctype); i++) {
+         MEM_U8(CTYPE_ADDR + i) = ctype[i];
+     }
+@@ -3070,7 +3070,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
+     #ifdef __FreeBSD__
+     __assert(assertion, file, line, NULL);
+     #else
+-    __assert(assertion, file, line);
++    fprintf(stderr, "Assertion failed: %s, file %s, line %d\n", assertion, file, line); abort();
+     #endif
+ }
+ 
+diff --git a/recomp.cpp b/recomp.cpp
+index da44c77..03779ed 100644
+--- a/recomp.cpp
++++ b/recomp.cpp
+@@ -843,6 +843,13 @@ void pass1(void) {
+                             // Special hard case in copt where the initial sltiu is in another basic block
+                             found = true;
+                             num_cases = 12;
++                        } else if (i == 37544 && lw == 37541 && addu_index == 37540 &&
++                                   insns[lw].instruction.getRaw() == 0x8c392fd0 &&
++                                   insns[addu_index].instruction.getRaw() == 0x00390821 &&
++                                   insns[i - 35].instruction.getRaw() == 0x2ca10006) {
++                            // IDO 5.3 EDG make_variable: bound check in predecessor block.
++                            found = true;
++                            num_cases = 6;
+                         } else if (i == 37743) {
+                             // Special hard case in edgcpfe where the initial sltiu is in another basic block
+                             if ((lw == 37740) && (addu_index == 37739)) {
+@@ -853,6 +860,13 @@ void pass1(void) {
+                                     num_cases = 6;
+                                 }
+                             }
++                        } else if (i == 208178 && lw == 208175 && addu_index == 208174 &&
++                                   insns[lw].instruction.getRaw() == 0x8c2be11c &&
++                                   insns[addu_index].instruction.getRaw() == 0x002b0821 &&
++                                   insns[i - 30].instruction.getRaw() == 0x2d610008) {
++                            // IDO 5.3 EDG matches_template_type: bound in predecessor block.
++                            found = true;
++                            num_cases = 8;
+                         } else if (i == 208684) {
+                             // Special hard case in edgcpfe where the initial sltiu is in another basic block
+                             if ((lw == 208681) && (addu_index == 208680)) {

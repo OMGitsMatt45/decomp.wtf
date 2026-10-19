@@ -1,0 +1,84 @@
+name: Build native IDO 5.3 C++
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ido53-game-cpp]
+    paths:
+      - tools/ido53/**
+      - .github/workflows/build-ido53-cpp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+          - os: windows-2022
+            platform: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          update: true
+          install: gcc make git python tar
+      - name: Build authentic 5.3 frontend on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash tools/ido53/build.sh "$RUNNER_TEMP/ido53-build" "$RUNNER_TEMP/ido53-artifacts"
+      - name: Build authentic 5.3 frontend on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash tools/ido53/build.sh "$RUNNER_TEMP/ido53-build" "$RUNNER_TEMP/ido53-artifacts"
+      - name: Install the unchanged original 5.3 C suite and pinned runtime
+        run: uv run --no-sync decompnet toolchain install ido-5.3 --accept-license
+      - name: Require original IRIX code and relocation parity without WSL
+        shell: bash
+        run: uv run --no-sync python -m tools.ido53.smoke "$RUNNER_TEMP/ido53-build/package"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ido53-cpp-${{ matrix.platform }}
+          path: ${{ runner.temp }}/ido53-artifacts/*
+          compression-level: 0
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ido53-cpp-*
+          path: artifacts
+      - name: Publish verified overlays and their source
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=ido53-cpp-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/ido53-cpp
+          cp artifacts/ido53-cpp-*/*.tar.gz toolchains/ido53-cpp/
+          (cd toolchains/ido53-cpp && sha256sum *.tar.gz > SHA256SUMS)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolchains/ido53-cpp
+          git commit -m "Package verified native IDO 5.3 SGI/EDG C++ frontends and source"
+          git push origin "$branch"
