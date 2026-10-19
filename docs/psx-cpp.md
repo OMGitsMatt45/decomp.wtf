@@ -30,7 +30,7 @@ The pinned Linux binutils-mips binaries require glibc 2.38 or newer (for example
 Ubuntu 24.04); this also applies to PS1 exported-project linking.
 
 `tools/psx_cpp/build.py` and `tools/windows/build-psx{272,281}.py` build the
-Windows packages. Each package includes licenses, complete corresponding GPL
+Windows packages. The [verified binary/source packages](https://github.com/OMGitsMatt45/decomp.wtf/tree/ca4d1c635680edbfdf40c3028c0d6dcdcb5d42ff/toolchains/ps1-cpp) include licenses, complete corresponding GPL
 sources, target patches and the build recipe in `cpp-source/`. Registry URLs
 pin immutable asset commits and SHA-256 checksums. Reinstall older installations:
 
@@ -69,7 +69,7 @@ Every exported PS1 build runs the same strict checks before linking, then
 compares the entire executable byte for byte. Original data copied into an
 export cannot conceal changed compiled constants.
 
-## Verification and release gate
+## Verification
 
 `DECOMP_TEST_PSX_CPP=1 python -m pytest tests/test_psx.py tests/test_psx_cpp.py`
 requires both pinned compilers, MIPS binutils and m2c. Required Windows/Linux CI
@@ -79,12 +79,14 @@ files, real C++ features, C rejection of the C++ fixture, invalid C++ errors,
 negative instruction/call/GP/table tests, and clean C/C++ exports with per-unit
 headers, paths containing spaces and Git `core.autocrlf=true`.
 
-Native Windows and Linux CI must pass before this change is released to main.
-Local development checks run the original 32-bit Linux binaries through qemu
-where the host cannot execute ELF32. The local Windows emulator crashes on
-floating-point input in both the existing C and restored C++ frontends; emulator
-results therefore do not establish native Windows compatibility. The required
-native Windows job includes those floating-point cases and full export rebuilds.
+The [native compiler build and parity run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39326290620)
+verifies both versions on Windows Server 2022 and Ubuntu 24.04 x86-64 before
+publishing their binary/source packages. Its Windows checks run with only
+Windows' System32 on PATH, exercise floating-point literals as well as C++
+features, and verify propagation of frontend errors.
 
-The separate PlayStation PR #2 is not merged by this work. PS2 output and the
-classic IDO 5.3 cfront investigation are outside this change.
+The [Windows/Linux integration workflow](https://github.com/OMGitsMatt45/decomp.wtf/actions/workflows/windows.yml)
+requires all 26 PS1 tests with no skips on both native operating systems. It also
+checks that changed owned tables and initialized small data fail in exported
+full builds, even when the original data remains in the assembly. Native Windows
+matching and exported rebuilds run without WSL, MSYS or Cygwin on PATH.

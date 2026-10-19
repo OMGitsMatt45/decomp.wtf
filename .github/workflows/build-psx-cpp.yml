@@ -1,13 +1,6 @@
 name: Build native PS1 C++
 
 on:
-  push:
-    branches: [ps1-game-cpp]
-    paths:
-      - .github/workflows/build-psx-cpp.yml
-      - tools/psx_cpp/**
-      - tools/windows/build-psx*.py
-      - tests/fixtures/psx*
   workflow_dispatch:
 
 permissions:
