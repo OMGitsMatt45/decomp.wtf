@@ -67,6 +67,9 @@ linker. Disc images and separate overlay files are not repacked.
 The exact 2.96 archive contains **Linux ELF32 programs only**, not Windows PE
 executables. No matching Sony EE-patched 2.96 source or original native Windows
 2.96 distribution was found in the investigated public packages/repositories.
+The separate `ps2_compilers.tar.xz` collection was also inspected (SHA-256
+`f337a65a4fbab5cf0e335efe266dcbc7cf69b19c665c6b3a8924736df151a02a`):
+it contains Windows 2.95-family and Metrowerks tools, with no 2.96 entry.
 This prevents a verified Windows source port of the original C++ frontend and
 backend. General GNU GCC sources from October 2000 do not contain Sony's exact
 EE target patches.
@@ -113,3 +116,7 @@ checks the implementation in `998cb672843735e8e5e2ee0e0869ad17fb6f275e`:
 **17 PS2 tests passed with zero skips** on Ubuntu 24.04 x86-64, and the original
 C++ driver also passed the separate Ubuntu 22.04 bubblewrap check with the
 pinned i386 runtime. Linux CI installs the compiler in a path containing spaces.
+
+All five jobs in that run passed, including the broader native Windows/Linux
+regressions for N64, IDO, GBA and PS1. The native Windows platform checks include
+the explicit PS2 unavailable-toolchain error; they do not compile PS2 output.
