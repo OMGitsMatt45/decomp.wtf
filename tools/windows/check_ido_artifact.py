@@ -3,15 +3,16 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 tools = Path(sys.argv[1]).resolve()
 root = tools.parent / "IDO source check"
 root.mkdir(exist_ok=True)
 cpp = root / "probe.cpp"
-cpp.write_text('#ifndef __cplusplus\n#error C++ required\n#endif\ntemplate<class T> class Box { public: T value; };\nextern "C" int probe(int x) { Box<int> b; int &r = b.value; r = x + 1; return b.value; }\n', encoding="utf-8")
+cpp.write_text('#ifndef __cplusplus\n#error C++ required\n#endif\ntemplate<class T> class Box { public: T value; };\nextern "C" int probe(int x) { Box<int> b; int &r = b.value; r = x + 1; return b.value; }\n', encoding="utf-8", newline="\n")
 c = root / "probe.c"
-c.write_text("int probe(int x) { return x+1; }\n", encoding="utf-8")
-base = {**os.environ, "PATH": str(Path(os.environ["SystemRoot"]) / "System32"), "TMPDIR": root.as_posix()}
+c.write_text("int probe(int x) { return x+1; }\n", encoding="utf-8", newline="\n")
+base = {**os.environ, "PATH": str(Path(os.environ["SystemRoot"]) / "System32"), "TMPDIR": Path(tempfile.gettempdir()).as_posix()}
 passed = False
 for mode, driver, source, override in [("windows", "NCC.exe", cpp, False), ("posix", "NCC.exe", cpp, False),
                                        ("redirect", "NCC.exe", cpp, True), ("c", "cc.exe", c, True)]:
