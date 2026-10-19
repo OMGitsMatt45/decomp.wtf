@@ -8,7 +8,7 @@ from unittest.mock import Mock
 from decompnet import compiler, cpp, seeds
 
 
-@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-kmc", "ido-7.1"])
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-kmc", "ido-7.1", "ido-5.3"])
 def test_verified_n64_roms_default_to_cpp_and_explicit_c_is_respected(toolchain):
     cfg = {"kind": "rom", "platform": "n64", "compiler": {"toolchain": toolchain}}
     assert cpp.language(cfg) == "c++"
@@ -16,7 +16,6 @@ def test_verified_n64_roms_default_to_cpp_and_explicit_c_is_respected(toolchain)
     assert cpp.language(cfg) == "c"
     assert cpp.language({"kind": "rom", "platform": "psx", "compiler": {"toolchain": "gcc-2.7.2-psx"}}) == "c"
     assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-kmc"}}) == "c"
-    assert cpp.language({"kind": "rom", "platform": "n64", "compiler": {"toolchain": "ido-5.3"}}) == "c"
     with pytest.raises(ValueError, match="compiler.language"):
         cpp.language({"compiler": {"language": "rust"}})
 
@@ -76,7 +75,7 @@ def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_p
     assert not result.ok and "Set TMP and TEMP" in result.log
 
 
-@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++")])
+@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++")])
 def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []
     monkeypatch.setattr(seeds, "run_m2c", lambda *args: calls.append(args) or "draft")

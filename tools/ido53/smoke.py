@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 
-from decompnet import compiler, cpp, toolchains
+from decompnet import compiler, toolchains
 from tests.fixtures.generate_native_compiler_parity import describe_functions
 
 

@@ -110,19 +110,21 @@ features; include the game platform, selected compiler and compile log in the re
 
 ## N64 C++ game output
 
-N64 ROM projects using KMC or IDO 7.1 default to C++ for drafts, matching and exported builds.
+N64 ROM projects using KMC or IDO 5.3/7.1 default to C++ for drafts, matching and exported builds.
 The KMC Windows package includes `cc1plus.exe`; rerun setup to replace the older compiler package.
-The pinned IDO 7.1 package already includes `NCC.exe` and its SGI/EDG C++ frontend, `edgcpfe.exe`.
-It runs directly on Windows without WSL. IDO remains an optional proprietary toolchain.
+The IDO packages include each version's original `NCC.exe` and SGI/EDG C++ frontend, `edgcpfe.exe`.
+IDO 5.3 uses its own frontend and unchanged 5.3 backend. Both run directly on Windows without WSL. IDO remains an optional proprietary toolchain.
 Exports contain `.cpp` files and retain C linkage for the original game's functions and external
 symbols. Templates, classes and references are available in each compiler's period dialect:
-GCC 2.7.2 for KMC and SGI/EDG 2.19 for IDO 7.1. KMC's exceptions and RTTI are disabled.
+GCC 2.7.2 for KMC and SGI/EDG 2.19 for IDO 5.3/7.1. KMC's exceptions and RTTI are disabled.
 Neither provides a modern C++17/20 compiler or the host computer's standard library.
 
 C++ syntax can produce different bytes from the same C expression. Matching still requires exact
 bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.
 Existing matched sources are checked again during export, with reported assembly fallbacks if
 compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
-IDO 5.3 and other consoles keep their existing C language. IDO 5.3's pinned native release omits
-its separate `cfront` frontend; IDO 7.1 is not a compatible replacement for matching 5.3 games.
-See [IDO C++ support and the 5.3 blocker](ido-cpp.md) for validation and investigation details.
+Other consoles keep their existing C language. The classic 5.3 `cfront` driver remains unsupported;
+a project explicitly requesting it is never changed automatically to EDG or IDO 7.1. Reinstall
+`ido-5.3 --force --accept-license` to add the new native C++ overlay to an older installation.
+See [IDO C++ support](ido-cpp.md) for original-IRIX parity checks, rebuild validation and the
+remaining classic cfront driver work.

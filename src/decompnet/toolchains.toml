@@ -152,8 +152,8 @@ name = "IDO 5.3 (static recompilation)"
 platform = "N64"
 arch = "mips"
 license = "proprietary"
-source = "decompals/ido-static-recomp v1.2 (SGI IRIX Development Option, recompiled for Linux, macOS and Windows)"
-description = "The earlier SGI compiler used by early N64 titles. Proprietary: install only if you accept the licensing risk."
+source = "decompals/ido-static-recomp v1.2 C suite; original 5.3 SGI/EDG C++ frontend recompiled at d5aec599 (Windows/Linux x86-64)"
+description = "The earlier SGI compiler used by early N64 titles, with its own SGI/EDG 2.19 C++ frontend and original 5.3 backend. Proprietary: install only if you accept the licensing risk."
 cc = ["{tc}/cc", "-c"]
 flags = ["-O2", "-mips2", "-G", "0", "-non_shared", "-Xcpluscomm", "-Wab,-r4300_mul"]
 [["ido-5.3".parts]]
@@ -171,6 +171,14 @@ platforms = ["windows-x86_64"]
 [["ido-5.3".parts]]
 url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/1d7f59df57cd61805ae9f18cad33ae8d65845623/toolchains/windows/ido/ido-windows-runtime-v1.tar.gz"
 sha256 = "b3c27ccd1cfb40971f4a5396bd327f8f235557b47379a5b702243659ea36b169"
+platforms = ["windows-x86_64"]
+[["ido-5.3".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/c69498c622bfa77fe36fe2a0bb2ce258c7263608/toolchains/ido53-cpp/ido53-cpp-linux-x86_64-v1.tar.gz"
+sha256 = "6f8e985fda4c3087698ae06c66125fa1a4480529820b63014363f5044e8d7547"
+platforms = ["linux-x86_64"]
+[["ido-5.3".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/c69498c622bfa77fe36fe2a0bb2ce258c7263608/toolchains/ido53-cpp/ido53-cpp-windows-x86_64-v1.tar.gz"
+sha256 = "cc331829361dbd008767763e0940fe98e9f38952aa29f0f7fabb52b420e2fef8"
 platforms = ["windows-x86_64"]
 
 [m2c]

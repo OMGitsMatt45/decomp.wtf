@@ -16,7 +16,7 @@ import sys
 import pytest
 from elftools.elf.elffile import ELFFile
 
-from decompnet import compiler, elfobj, project, toolchains, wsl
+from decompnet import compiler, elfobj, project, seeds, toolchains, wsl
 from decompnet.app.engine import RomNetwork
 from .fixtures.generate_native_compiler_parity import describe_functions
 
@@ -77,11 +77,12 @@ def config(root, language=None, toolchain="ido-7.1"):
     return cfg
 
 
-def test_ido71_templates_classes_and_references_match_the_original_c_target(tmp_path):
-    cfg = config(tmp_path)
+@pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
+def test_templates_classes_and_references_match_the_original_c_target(tmp_path, toolchain):
+    cfg = config(tmp_path, toolchain=toolchain)
     assert cfg.language == "c++" and Path(cfg.cmd[0]).stem == "NCC"
     cpp = compiler.compile_source(cfg, HEADER, CPP_ADD)
-    original = compiler.compile_source(config(tmp_path, "c"), HEADER, C_FUNCTIONS["ido_add"])
+    original = compiler.compile_source(config(tmp_path, "c", toolchain), HEADER, C_FUNCTIONS["ido_add"])
     assert cpp.ok, cpp.log
     assert original.ok, original.log
     actual = elfobj.extract_function(cpp.obj, "ido_add")
@@ -92,24 +93,53 @@ def test_ido71_templates_classes_and_references_match_the_original_c_target(tmp_
     assert elfobj.list_functions(cpp.obj) == ["ido_add"]
 
 
-def test_ido71_matches_pinned_cpp_code_and_relocation_reference(tmp_path):
+@pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
+def test_matches_pinned_cpp_code_and_relocation_reference(tmp_path, toolchain):
     source = (FIXTURES / "native_compiler_parity.c").read_text(encoding="utf-8")
-    expected = json.loads((FIXTURES / "ido71_cpp_compiler_parity.json").read_text(encoding="utf-8"))
+    expected = json.loads((FIXTURES / f"ido{toolchain[4:].replace('.', '')}_cpp_compiler_parity.json").read_text(encoding="utf-8"))
     assert hashlib.sha256(source.encode()).hexdigest() == expected["source_sha256"]
-    assert toolchains.get("ido-7.1").flags == expected["flags"]
-    result = compiler.compile_source(config(tmp_path), "", source)
+    assert toolchains.get(toolchain).flags == expected["flags"]
+    result = compiler.compile_source(config(tmp_path, toolchain=toolchain), "", source)
     assert result.ok, result.log
     assert describe_functions(result.obj) == expected["functions"]
 
 
-def test_ido53_retains_its_c_compiler_and_explains_the_missing_cpp_frontend(tmp_path):
-    cfg = config(tmp_path, toolchain="ido-5.3")
+def test_ido53_retains_its_explicit_c_compiler(tmp_path):
+    cfg = config(tmp_path, "c", "ido-5.3")
     assert cfg.language == "c" and Path(cfg.cmd[0]).stem == "cc"
     result = compiler.compile_source(cfg, "", C_FUNCTIONS["ido_add"])
     assert result.ok, result.log
     assert elfobj.extract_function(result.obj, "ido_add").code
-    with pytest.raises(toolchains.ToolchainError, match=r"IDO 5.3.*no C\+\+ frontend \(cfront\)"):
-        config(tmp_path, "c++", "ido-5.3")
+
+
+def test_ido53_never_substitutes_edg_for_a_requested_classic_cfront(tmp_path):
+    with pytest.raises(toolchains.ToolchainError, match="classic cfront driver is not supported"):
+        project.compiler_config(tmp_path, {"kind": "rom", "platform": "n64", "compiler": {
+            "toolchain": "ido-5.3", "language": "c++", "cpp_frontend": "cfront", "sandbox": "none"}})
+
+
+def test_ido53_cpp_features_match_the_original_irix_frontend(tmp_path):
+    source = (FIXTURES / "ido_cpp_features.cpp").read_text(encoding="utf-8")
+    expected = json.loads((FIXTURES / "ido53_cpp_features_parity.json").read_text())
+    assert hashlib.sha256(source.encode()).hexdigest() == expected["source_sha256"]
+    result = compiler.compile_source(config(tmp_path, toolchain="ido-5.3"), "", source)
+    assert result.ok, result.log
+    assert describe_functions(result.obj) == expected["functions"]
+
+
+@pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
+def test_real_cpp_draft_compiles_and_matches_the_c_target(tmp_path, toolchain):
+    assert toolchains.installed("m2c") is not None
+    original = compiler.compile_source(config(tmp_path, "c", toolchain), "", C_FUNCTIONS["ido_add"])
+    assert original.ok, original.log
+    target = elfobj.extract_function(original.obj, "ido_add")
+    draft = seeds.generate_from_asm(seeds.gnu_asm(target), "ido_add", toolchain, language="c++", valid=True)
+    assert draft, "m2c did not produce a C++ draft"
+    header = "typedef signed char s8; typedef short s16; typedef int s32;\n" + seeds.M2C_MACROS
+    result = compiler.compile_source(config(tmp_path, toolchain=toolchain), header, draft)
+    assert result.ok, result.log
+    function = elfobj.extract_function(result.obj, "ido_add")
+    assert function.code == target.code and function.relocs == target.relocs
 
 
 def run(argv, **kwargs):
@@ -118,9 +148,9 @@ def run(argv, **kwargs):
     return result
 
 
-def c_game(root):
+def c_game(root, toolchain):
     """Create a homemade C target with the real IDO C compiler, not the C++ candidate."""
-    result = compiler.compile_source(config(root, "c"), HEADER, "int ido_total = 7;\n" + "\n".join(C_FUNCTIONS.values()))
+    result = compiler.compile_source(config(root, "c", toolchain), HEADER, "int ido_total = 7;\n" + "\n".join(C_FUNCTIONS.values()))
     assert result.ok, result.log
     obj = root / "original.o"
     obj.write_bytes(result.obj)
@@ -155,13 +185,14 @@ SECTIONS {
     return image, symbols
 
 
-def test_ido71_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
+@pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
+def test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, toolchain):
     assert toolchains.installed("binutils-mips") is not None
     root = tmp_path / "IDO C++ project with spaces"
     root.mkdir()
-    image, symbols = c_game(root)
+    image, symbols = c_game(root, toolchain)
     net = RomNetwork(root / "app.db", root)
-    slug = net.import_rom(image, toolchain="ido-7.1", confirmed=True, log=lambda *_: None)
+    slug = net.import_rom(image, toolchain=toolchain, confirmed=True, log=lambda *_: None)
     agent, _ = net.local_agent("agent")
     proj = net.project_row(slug)
     pid = proj["id"]
@@ -172,6 +203,7 @@ def test_ido71_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
     with net.store.tx() as db:
         db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), pid))
     assert net.overview(slug)["compiler"]["language"] == "c++"
+    assert net.overview(slug)["compiler"]["cpp_frontend"] == "edg"
     for name in sorted(C_FUNCTIONS, key=symbols.get):
         addr = symbols[name]
         row = net.store.one("SELECT name, vram FROM functions WHERE project_id=? AND vram<=? AND vram+size>?", pid, addr, addr)
@@ -201,7 +233,8 @@ def test_ido71_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
     assert len(list((tree / "src").glob("*/*.cpp"))) == len(C_FUNCTIONS)
     assert not list((tree / "src").rglob("*.c"))
     build = json.loads((tree / "build.json").read_text())
-    assert build["compiler"]["toolchain"] == "ido-7.1" and build["compiler"]["language"] == "c++"
+    assert build["compiler"]["toolchain"] == toolchain and build["compiler"]["language"] == "c++"
+    assert build["compiler"]["cpp_frontend"] == "edg"
     for generated in ("asm", "assets", "build"):
         shutil.rmtree(tree / generated, ignore_errors=True)
     # Simulate Git for Windows restoring a clone with autocrlf enabled. Its

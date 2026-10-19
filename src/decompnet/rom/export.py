@@ -262,7 +262,10 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                    encoding="utf-8")
     build = {
         "title": proj["name"], "platform": platform, "image": base, "output": f"build/game{ext}",
-        "sha1": hashlib.sha1(image).hexdigest(), "compiler": {**cfg["compiler"], "language": language}, "gp": cfg.get("gp") or 0,
+        "sha1": hashlib.sha1(image).hexdigest(),
+        "compiler": {**cfg["compiler"], "language": language,
+                     **({"cpp_frontend": cpp.ido_frontend(cfg)} if cpp.ido_frontend(cfg) else {})},
+        "gp": cfg.get("gp") or 0,
         "big_endian": platform == "n64",
         "as_flags": [*AS_FLAGS[platform], "-G0", "-no-pad-sections", "-I", "include"],
         "ld_flags": [LD_ENDIAN[platform], "--no-check-sections"],

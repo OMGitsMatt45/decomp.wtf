@@ -9,11 +9,18 @@ _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
     default = "c++" if config.get("kind") == "rom" and config.get("platform", "n64") == "n64" \
-        and compiler.get("toolchain") in ("gcc-2.7.2-kmc", "ido-7.1") else "c"
+        and compiler.get("toolchain") in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3") else "c"
     value = compiler.get("language", default)
     if value not in ("c", "c++"):
         raise ValueError("compiler.language must be 'c' or 'c++'")
     return value
+
+
+def ido_frontend(config: dict) -> str | None:
+    compiler = config.get("compiler", {})
+    if language(config) == "c++" and compiler.get("toolchain") in ("ido-5.3", "ido-7.1"):
+        return compiler.get("cpp_frontend", "edg")
+    return None
 
 
 def game_abi(source: str) -> str:

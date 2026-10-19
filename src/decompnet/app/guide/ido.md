@@ -4,14 +4,16 @@ Usual flags: `-O2 -mips2` (some files `-O1`, `-g`, or `-mips1`). If almost nothi
 may need a different version (5.3 vs 7.1) or flags: tell the user, they can switch it in the app.
 
 Source language
-- IDO 7.1 ROM projects default to C++ through the original SGI/EDG frontend (`NCC`/`edgcpfe`),
+- IDO 5.3/7.1 ROM projects default to C++ through the original SGI/EDG frontend (`NCC`/`edgcpfe`),
   retaining IDO's optimizer, code generator and assembler. Keep original game functions and external
   declarations at C linkage; the judge and export add this to plain global declarations/functions.
 - This is a period C++ dialect. Templates, classes and references work, but use no host standard
   headers or unsupported runtime features. The same expression can generate different code through
   the C and C++ frontends; matching still requires the original bytes and relocated data.
-- Explicit `compiler.language = "c"` selects the original C frontend. IDO 5.3 stays on C because
-  its pinned native package has no `cfront`. IDO 7.1 is not a matching substitute for IDO 5.3.
+- Explicit `compiler.language = "c"` selects the original C frontend. Each IDO version uses its
+  own SGI/EDG 2.19 binary and original backend; never switch 5.3 to 7.1 to accept C++ syntax.
+- Exports record `cpp_frontend = "edg"`. The classic 5.3 cfront/CC driver is a separate unsupported
+  pipeline. An explicit `cpp_frontend = "cfront"` fails; never claim EDG output is cfront-compatible.
 
 Traits
 - Unconditional jumps inside functions are `b label` (`beq $zero, $zero`).

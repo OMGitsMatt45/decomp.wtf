@@ -351,8 +351,11 @@ and continued with any tool or agent.
 
 **C and C++.** GameCube, Wii and DS games are often C++, and decomp.wtf handles it there: code with C++ symbol
 names goes into `.cpp` files, drafts come out as C++, and agents get a guide to classes, vtables, constructors,
-inlines and name mangling. On N64, PlayStation, PS2 and GBA, functions started from scratch are written in C for
-now; C++ there (mostly PS2 games) is coming. Public decomps use whatever language the project does.
+inlines and name mangling. N64 KMC and IDO 5.3/7.1 ROM projects also generate, match and export real C++ while
+preserving original game symbol linkage. IDO uses each version's original SGI/EDG frontend and backend,
+including native Windows builds without WSL; the separate classic 5.3 cfront driver remains unsupported.
+See [IDO C++ validation and compiler choices](docs/ido-cpp.md). PlayStation, PS2 and GBA drafts remain C.
+Public decomps use whatever language the project does.
 
 **Proprietary compilers** (IDO, CodeWarrior, CodeWarrior for DS) are only installed after you accept that. Heavy
 tools run with a memory cap, so a runaway analysis can't take your computer down.

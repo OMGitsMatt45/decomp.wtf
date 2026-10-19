@@ -28,6 +28,8 @@ def run(argv, **kwargs):
 
 def compare(root, qemu, tc, fixtures, source_name, output_name, write_reference):
     frontend = root / "usr/lib/DCC/edgcpfe"
+    frontend_sha = hashlib.sha256(frontend.read_bytes()).hexdigest()
+    assert frontend_sha == "c7d5bdd0c730d2dbb9e5004ba69fcac48e08c9767af10b71ab2234beb73de3cc", "Expected the original IDO 5.3 frontend"
     source = (fixtures / source_name).read_text(encoding="utf-8")
     with tempfile.TemporaryDirectory(prefix="ido53-irix-") as temporary:
         work = Path(temporary)
@@ -61,7 +63,7 @@ def compare(root, qemu, tc, fixtures, source_name, output_name, write_reference)
         "toolchain": "ido-5.3", "frontend": "SGI/EDG 2.19 (IDO 5.3)", "language": "c++",
         "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
         "flags": toolchains.get("ido-5.3").flags,
-        "irix_frontend_sha256": hashlib.sha256(frontend.read_bytes()).hexdigest(),
+        "irix_frontend_sha256": frontend_sha,
         "functions": original,
     }
     expected = fixtures / output_name

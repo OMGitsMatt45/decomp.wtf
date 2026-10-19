@@ -1,8 +1,10 @@
 # IDO C++ game output
 
-IDO 7.1 N64 ROM projects now generate, judge and export real C++ using the original SGI C++
-compiler pipeline. IDO 5.3 remains C because a working native C++ frontend is not available in
-the pinned package. The compiler version is never changed automatically to accept C++ syntax.
+IDO 5.3 and 7.1 N64 ROM projects generate, judge and export real C++ using each version's
+original SGI/EDG frontend and original IDO backend. Both run natively on Windows and Linux
+without WSL. The app identifies the frontend as **SGI/EDG 2.19**, and exported `build.json`
+records `cpp_frontend = "edg"`. The classic AT&T-derived `cfront` pipeline remains unsupported;
+requesting it explicitly fails instead of substituting EDG or another compiler.
 
 ## IDO 7.1
 
@@ -69,39 +71,96 @@ python tests/fixtures/generate_native_compiler_parity.py --toolchain ido-7.1 --l
 DECOMP_TEST_IDO_CPP=1 python -m pytest tests/test_ido_cpp.py
 ```
 
-## Why IDO 5.3 remains C
+## IDO 5.3: authentic SGI/EDG C++
 
-The v1.2 Linux and Windows 5.3 packages contain the C frontend, `cfe`, but no C++ `cfront` or
-compatible C++ driver. Renaming `cc` to `CC` and passing a `.cpp` source still invokes `cfe`:
-`__cplusplus` is absent and templates and `extern "C"` produce syntax errors. `-Xcpluscomm` only
-allows C++-style comments in C; it does not select a C++ frontend.
+The original 5.3 distribution contains **two** C++ frontends: the classic
+`usr/lib/c++/cfront` and SGI/EDG 2.19 at `usr/lib/DCC/edgcpfe`. The earlier native package
+included neither. IDO 5.3's own `cc` driver selects its EDG frontend when named `NCC`.
+The new native overlay supplies that driver and **the 5.3 EDG binary**, not the 7.1 binary.
+Their original IRIX SHA-256 values are different:
 
-The upstream repository does include the original IRIX MIPS binary at
-`ido/5.3/usr/lib/c++/cfront`. That binary is not a native Windows or Linux program. An attempt to
-statically recompile it with upstream revision `d5aec59` failed:
+| Original frontend | SHA-256 |
+| --- | --- |
+| IDO 5.3 `edgcpfe` | `c7d5bdd0c730d2dbb9e5004ba69fcac48e08c9767af10b71ab2234beb73de3cc` |
+| IDO 7.1 `edgcpfe` | `18b70b1f90cab9197868e6a1bd0a0d13c1ee4a1eb423e43d6fc24cf964278715` |
+
+The overlay leaves the pinned 5.3 `cc`, `cfe`, `uopt`, `ugen` and `as1` files unchanged.
+Its static recompiler is pinned to `decompals/ido-static-recomp`
+`d5aec59932034b8a20f23f471297a55c45dcbc45`. The patch recognizes two bounded jump tables
+in `make_variable` and `matches_template_type`; both bounds are checked against the actual
+MIPS instructions. The Windows host memory/assertion fixes also apply. The compiler's target
+algorithms are not rewritten. The build recipe, patch, original-input checksums and corresponding
+recompiler/IRIX input archive accompany the packages. Windows uses the already pinned bundled
+MSYS runtime and its published complete corresponding source; no system MSYS installation is needed.
+The [immutable overlay assets](https://github.com/OMGitsMatt45/decomp.wtf/tree/c69498c622bfa77fe36fe2a0bb2ce258c7263608/toolchains/ido53-cpp)
+include SHA-256 checksums for both native packages and their corresponding source archives.
+
+Install or update the optional proprietary suite:
 
 ```console
-make -j4 RELEASE=1 setup
-make -j4 RELEASE=1 VERSION=5.3 IDO_TC=cfront
+decompnet toolchain install ido-5.3 --force --accept-license
 ```
 
-The first failure is `Insn::getAddress()` on a patched load-address instruction whose address is
-zero (`0x00469658`, original instruction `0x8f9080b4`). An experimental fix for that case gets
-farther but then fails on `missing extern function: __vec_dt`. The frontend also imports vector
-construction/allocation routines (`__vec_ct`, `__vec_new`), `__pure_virtual_called` and other
-functions not covered by the recompiler's host runtime bridge. Those bridges, guest callbacks,
-driver/preprocessor integration and output parity need implementation and validation. The
-experimental recompiler edits and an unverified compiler are not shipped.
+C++ projects select the original 5.3 SGI/EDG pipeline:
 
-Concrete paths forward:
+```toml
+[compiler]
+toolchain = "ido-5.3"
+language = "c++"
+cpp_frontend = "edg"
+```
 
-- Complete a native static recompilation of the **5.3** frontend and its runtime bridge, then
-  validate it against the original IRIX frontend and the original 5.3 backend. The IRIX environment
-  can provide a reference; it does not satisfy native Windows execution for users.
-- Investigate a source-built `cfront` implementation, but prove dialect, ABI and generated output
-  compatibility first. A different `cfront` release is not automatically the SGI 5.3 frontend.
-- Select IDO 7.1 or KMC explicitly for a project that targets that compiler. This changes the
-  compiler and does not establish a matching decompilation of an IDO 5.3 game.
+These are also the N64 ROM defaults for this toolchain. An explicit `language = "c"` retains
+the original 5.3 C pipeline. The new C++ overlay is packaged for Windows/Linux x86-64; macOS
+keeps the existing C package and reports an explicit error if 5.3 C++ is requested.
 
-IDO 5.3 therefore keeps its working native C pipeline and reports the missing `cfront` explicitly
-if C++ is requested. Its C compiler is exercised by the integration checks on both operating systems.
+Verification compares the native frontend with the **unmodified original IRIX 5.3 `edgcpfe`**
+running under QEMU, through the same pinned 5.3 backend. Eleven functions cover calls, external
+data relocations, branches, floating point, templates, class constructors and references.
+Final machine code and relocations must agree exactly. Raw Ucode records contain unused
+uninitialized padding, so raw intermediate files may differ; no final instruction/relocation
+bits are masked. Pinned reference fixtures are checked on both Windows and Linux. QEMU is
+only the reference harness, never an application dependency.
+
+Both suites also build a C-origin homemade ROM, match four functions as C++, reject changed
+instructions and changed relocation destinations, and export `.cpp` files that rebuild the
+entire ROM byte for byte. A second rebuild starts without generated assembly, assets or build
+output, after a Git checkout with `core.autocrlf=true`. Windows tests exclude MSYS from PATH
+and reject WSL invocations. m2c drafts request the `mips-ido-c++` target.
+
+To reproduce the IRIX reference comparison, build `libC.so` from the supplied original `libC.a`
+using the original IRIX `ld` under QEMU (the upstream tree omits the shared library):
+
+```console
+chmod +x "$IRIX_ROOT/usr/lib/ld" "$IRIX_ROOT/usr/lib/DCC/edgcpfe" "$IRIX_ROOT/lib/rld"
+"$QEMU_IRIX" -L "$IRIX_ROOT" "$IRIX_ROOT/usr/lib/ld" -shared -all \
+  "$IRIX_ROOT/usr/lib/libC.a" -o "$IRIX_ROOT/usr/lib/libC.so" -L"$IRIX_ROOT/usr/lib" -lc
+python -m tools.ido53.verify_irix --irix-root "$IRIX_ROOT" --qemu "$QEMU_IRIX"
+DECOMP_TEST_IDO_CPP=1 python -m pytest tests/test_ido_cpp.py
+```
+
+The verified reference harness is `n64decomp/qemu-irix` release `v2.11-deb`. It reports an
+unsupported `sgisysinfo(106)` query when the frontend's verbose banner is enabled; compilation
+completes, and the final code and relocation comparisons pass. Source-built replacement cfront
+or a switch to 7.1/KMC is unnecessary for this supported 5.3 EDG path.
+
+## Classic 5.3 cfront investigation
+
+This is a distinct compiler pipeline, not an alias for EDG. The native investigation fixed a
+patched zero-address load, unresolved quickstarted imports and indirect `signal` calls, then
+implemented the guest vector constructor/destructor/allocation callbacks from 5.3 `libC.a`.
+A native classic cfront translated a template/class/reference probe into exactly the same C
+text as the original IRIX cfront under QEMU.
+
+That proves one frontend translation, not a complete portable classic compiler. The original
+5.3 `CC` driver also needs direct environment access, process/path redirection, additional
+stdio operations and template repository management. It invokes `grep`, `sort`, `rm` and
+`ptcomp`; these are absent from a regular Windows installation. The driver also ignores `.cpp`
+while accepting `.C`. Its pipeline, template instantiation/prelinking and standalone Windows
+execution are not verified. Those experimental runtime changes are not in the shipped overlay.
+
+Projects requiring classic cfront output must not treat the EDG frontend as equivalent:
+`compiler.cpp_frontend = "cfront"` fails explicitly. Completing that driver/runtime port or
+proving a source-built cfront's dialect, ABI and output equivalence remains separate work.
+Neither selecting a different frontend nor renaming source files establishes a byte-matching
+conversion; the strict matcher remains the authority.

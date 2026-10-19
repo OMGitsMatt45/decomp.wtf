@@ -93,12 +93,17 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                 if not (dirs[0] / f"cc1plus{suffix}").is_file():
                     raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
                 cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
-            elif tc.id == "ido-7.1":
+            elif tc.id in ("ido-5.3", "ido-7.1"):
+                # Both suites shipped an SGI/EDG frontend. Keep their distinct
+                # IRIX binaries and backend versions; classic 5.3 cfront is a
+                # separate compiler pipeline and must never fall through here.
+                if cpp.ido_frontend(cfg) != "edg":
+                    raise toolchains.ToolchainError(f"{tc.name} supports cpp_frontend = 'edg' here. The classic cfront driver is not supported; it is not replaced automatically.")
                 if not all((dirs[0] / f"{name}{suffix}").is_file() for name in ("NCC", "edgcpfe")):
-                    raise toolchains.ToolchainError("The IDO 7.1 C++ frontend is missing: reinstall with `decompnet toolchain install ido-7.1 --force --accept-license`")
+                    if tc.id == "ido-5.3" and toolchains.current_platform() not in ("linux-x86_64", "windows-x86_64"):
+                        raise toolchains.ToolchainError("IDO 5.3 SGI/EDG C++ is packaged for Windows and Linux x86-64. Use compiler.language = 'c' on this platform; the compiler version is not changed automatically.")
+                    raise toolchains.ToolchainError(f"The {tc.id} SGI/EDG C++ frontend is missing: reinstall with `decompnet toolchain install {tc.id} --force --accept-license`")
                 cmd[0] = f"{tc_dir}/NCC"
-            elif tc.id == "ido-5.3":
-                raise toolchains.ToolchainError("IDO 5.3's pinned native package has no C++ frontend (cfront). Keep compiler.language = 'c'; IDO 7.1 uses a different frontend and is not a compatible substitute for matching.")
             else:
                 raise toolchains.ToolchainError(f"{tc.name} has no verified C++ setup")
         for dep in tc.dependencies(linux):  # {tc:<id>} is another toolchain this one needs

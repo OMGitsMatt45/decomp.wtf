@@ -2,11 +2,6 @@ name: Build native IDO 5.3 C++
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ido53-game-cpp]
-    paths:
-      - tools/ido53/**
-      - .github/workflows/build-ido53-cpp.yml
 
 permissions:
   contents: read
@@ -44,6 +39,21 @@ jobs:
       - name: Require original IRIX code and relocation parity without WSL
         shell: bash
         run: uv run --no-sync python -m tools.ido53.smoke "$RUNNER_TEMP/ido53-build/package"
+      - name: Compare directly with the original IRIX frontend
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          reference="$RUNNER_TEMP/ido53-reference"
+          mkdir -p "$reference"
+          curl -fL https://github.com/n64decomp/qemu-irix/releases/download/v2.11-deb/qemu-irix-2.11.0-2169-g32ab296eef_amd64.deb -o "$reference/qemu.deb"
+          (cd "$reference" && printf '%s\n' '8170f37cf03a08cc2d7c1c58f10d650ea0d158f711f6916da9364f6d8c85f741  qemu.deb' | sha256sum -c -)
+          dpkg-deb -x "$reference/qemu.deb" "$reference/qemu"
+          qemu="$reference/qemu/usr/bin/qemu-irix"
+          irix="$RUNNER_TEMP/ido53-build/source/ido/5.3"
+          chmod +x "$irix/usr/lib/ld" "$irix/usr/lib/DCC/edgcpfe" "$irix/lib/rld"
+          "$qemu" -L "$irix" "$irix/usr/lib/ld" -shared -all "$irix/usr/lib/libC.a" -o "$irix/usr/lib/libC.so" -L"$irix/usr/lib" -lc
+          uv run --no-sync python -m tools.ido53.verify_irix --irix-root "$irix" --qemu "$qemu"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
