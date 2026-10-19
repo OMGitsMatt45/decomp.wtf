@@ -56,7 +56,7 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | --- | --- |
 | KMC GCC 2.7.2 / N64 | C++ host port, including the original binutils 2.6 |
 | PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
-| agbcc / Game Boy Advance | Source port and a Python pipeline for preprocessing and assembly |
+| agbcc / Game Boy Advance | C compiler plus a restored GCC 2.95.3 C++ frontend using the agbcc Thumb backend |
 | IDO 5.3 / 7.1 | Original statically recompiled SGI programs with bundled MSYS runtime; 7.1 includes a Windows host-memory fix; explicit license acceptance required |
 | CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
@@ -123,8 +123,19 @@ C++ syntax can produce different bytes from the same C expression. Matching stil
 bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.
 Existing matched sources are checked again during export, with reported assembly fallbacks if
 compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
-Other consoles keep their existing C language. The classic 5.3 `cfront` driver remains unsupported;
+The classic 5.3 `cfront` driver remains unsupported;
 a project explicitly requesting it is never changed automatically to EDG or IDO 7.1. Reinstall
 `ido-5.3 --force --accept-license` to add the new native C++ overlay to an older installation.
 See [IDO C++ support](ido-cpp.md) for original-IRIX parity checks, rebuild validation and the
 remaining classic cfront driver work.
+
+## GBA C++ game output
+
+GBA ROM projects now use a separate native `agbcc-cpp.exe`, restoring the GCC
+2.95.3 C++ frontend against the existing agbcc Thumb backend. The pinned Arm GNU
+tools preprocess and assemble; their modern GCC compiler does not replace agbcc.
+Drafts and exported sources use `.cpp`, with original game C linkage preserved.
+Native Windows/Linux tests require real C++ compilation, strict relocation/data
+matching and clean byte-identical exported ROM rebuilds. Reinstall an older
+package with `decompnet toolchain install agbcc --force`.
+See [GBA C++ support](gba-cpp.md) for compiler identity, validation and runtime limits.

@@ -85,6 +85,12 @@ def test_every_game_function_matches(gba):
                 net.rename_symbol(agent, slug, current, name)
                 table = net.symbols(pid)
     source = (GAME / "game.c").read_text()
+    context = net._context(pid)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET unit='spawn' WHERE project_id=? AND name='entity_spawn'", (pid,))
+        db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "
+                   "VALUES(?,?,?,?,?,?,?)", (pid, net._next_version(db, pid), context["header"] + "\n#define GBA_NO_ENTITY 0\n",
+                                            agent.id, "unit-only null constant", context["created_at"], "spawn"))
     scores = {}
     for name in FUNCTIONS:
         candidate = csource.get(source, name)
@@ -98,6 +104,8 @@ s32 abs_s32(s32 v) { return Magnitude<s32>(v).get(); }
             # C++ boolean negation lowers differently; this equivalent comparison
             # preserves the original C game's instructions and register allocation.
             candidate = candidate.replace("!(e->flags & ENTITY_FLAG_ACTIVE)", "(e->flags & ENTITY_FLAG_ACTIVE) == 0")
+        if name == "entity_spawn":
+            candidate = candidate.replace("return NULL;", "return GBA_NO_ENTITY;")
         result = net.attempt(agent, name, candidate, slug)
         scores[name] = result
         if result["score"] != 0:
@@ -125,6 +133,8 @@ def test_export_rebuilds_the_rom(gba):
     source = (root / "src" / f"player_take_damage.{extension}").read_text()
     assert "g_player" in source
     assert out["language"] == language
+    assert '#include "common_spawn.h"' in (root / "src" / f"entity_spawn.{extension}").read_text()
+    assert "GBA_NO_ENTITY" in (root / "include/common_spawn.h").read_text()
     if language == "c++":
         assert 'extern "C" void player_take_damage' in source
         assert 'extern "C" Player g_player;' in (root / "include/common.h").read_text()
@@ -154,6 +164,27 @@ def test_export_rebuilds_the_rom(gba):
         result = subprocess.run([sys.executable, "build.py"], cwd=clone, capture_output=True, text=True, timeout=900)
         assert result.returncode == 0 and "functions in C++" in result.stdout, result.stdout + result.stderr
         assert (clone / "build/game.gba").read_bytes() == ROM.read_bytes()
+        # Full builds must reject changed code and changed relocation targets,
+        # even when the relocation occupies otherwise identical instruction bytes.
+        for filename, old, new in (("abs_s32.cpp", "return v < 0 ? -v : v;", "return v + 1;"),
+                                   ("game_tick.cpp", "add_score(10)", "player_take_damage(10)")):
+            path = clone / "src" / filename
+            text = path.read_text()
+            assert old in text
+            path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+            result = subprocess.run([sys.executable, "build.py"], cwd=clone, capture_output=True, text=True, timeout=900)
+            assert result.returncode != 0 and "not identical" in result.stderr, result.stdout + result.stderr
+            path.write_text(text, encoding="utf-8", newline="\n")
+    else:
+        # Pre-conversion manifests used `c` paths and had no language field.
+        manifest = json.loads((fresh / "build.json").read_text())
+        del manifest["compiler"]["language"]
+        for fn in manifest["functions"]:
+            if "source" in fn:
+                fn["c"] = fn.pop("source")
+        (fresh / "build.json").write_text(json.dumps(manifest), encoding="utf-8")
+        result = subprocess.run([sys.executable, "build.py"], cwd=fresh, capture_output=True, text=True, timeout=900)
+        assert result.returncode == 0 and "functions in C)" in result.stdout, result.stdout + result.stderr
 
 
 def test_luvdis_survives_code_that_pops_more_than_it_pushed(tmp_path):

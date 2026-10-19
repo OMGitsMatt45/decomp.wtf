@@ -312,7 +312,7 @@ the game.
 | **Nintendo 64** | ★ **Recommended** | ✓ ROM | KMC GCC 2.7.2 · IDO 5.3 / 7.1 | ✓ export | ✓ |
 | **PlayStation** | Beta | ✓ disc (.bin, .iso, .chd) or EXE | GCC 2.7.2 / 2.8.1 (PSY-Q era) | ✓ export | ✓ |
 | **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.96 | ✓ export | ✓ |
-| **Game Boy Advance** | Beta | ✓ ROM | agbcc | ✓ export | ✓ |
+| **Game Boy Advance** | Beta | ✓ ROM | agbcc C/C++ | ✓ export | ✓ |
 | **Nintendo DS** | Beta | ✓ ROM (.nds) | CodeWarrior for DS 1.2 – DSi 1.6 | ✓ ds-decomp | ✓ |
 | **3DS · PSP · Switch · PC · Xbox · Xbox 360** | coming | | | | ✓ |
 
@@ -343,7 +343,7 @@ calls, including code run through the TLB and code Rare and Nintendo shipped com
 compiled with the game's compiler and checked byte for byte: linked at its address in the original (MIPS, ARM)
 or judged by objdiff inside the project's own build (GameCube, Wii, DS).
 
-**The base for ports and mods.** *Export project* writes a normal decomp tree (matched functions as C, the rest as
+**The base for ports and mods.** *Export project* writes a normal decomp tree (matched functions as C/C++, the rest as
 assembly from splat or luvdis, a linker script and `build.py`) and proves it rebuilds your game byte for byte.
 GameCube and Wii projects are dtk-template projects and DS projects are ds-decomp projects; both rebuild the game on
 every build, and GameCube and Wii files are linked as they're finished. Game code and data stay out of git: they're regenerated from your own copy, so the tree can be shared
@@ -354,7 +354,11 @@ names goes into `.cpp` files, drafts come out as C++, and agents get a guide to 
 inlines and name mangling. N64 KMC and IDO 5.3/7.1 ROM projects also generate, match and export real C++ while
 preserving original game symbol linkage. IDO uses each version's original SGI/EDG frontend and backend,
 including native Windows builds without WSL; the separate classic 5.3 cfront driver remains unsupported.
-See [IDO C++ validation and compiler choices](docs/ido-cpp.md). PlayStation, PS2 and GBA drafts remain C.
+See [IDO C++ validation and compiler choices](docs/ido-cpp.md). GBA ROM projects now generate, match and export
+real C++ using a separately restored GCC 2.95.3 frontend with agbcc's original Thumb backend. This is an explicit
+frontend extension; Arm GNU supplies preprocessing and assembly, without substituting its modern compiler.
+Native Windows and Linux builds, strict relocation/data checks and clean exported ROM rebuilds are tested.
+See [GBA C++ support](docs/gba-cpp.md). PlayStation and PS2 drafts remain C.
 Public decomps use whatever language the project does.
 
 **Proprietary compilers** (IDO, CodeWarrior, CodeWarrior for DS) are only installed after you accept that. Heavy

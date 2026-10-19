@@ -1,6 +1,7 @@
 """Required native Windows/Linux tests of actual agbcc C++ and strict matching."""
 
 from io import BytesIO
+from dataclasses import replace
 import os
 from pathlib import Path
 import subprocess
@@ -62,6 +63,24 @@ def test_cpp_m2c_draft_compiles_and_matches_the_c_target(tmp_path):
     result = compiler.compile_source(config(tmp_path), "typedef int s32;", draft)
     assert result.ok, result.log
     assert elfobj.extract_function(result.obj, "gba_add").code == target.code
+
+
+def test_out_of_line_templates_and_explicit_cpp_overloads_keep_cpp_linkage(tmp_path):
+    cfg = config(tmp_path)
+    cfg = replace(cfg, cmd=["-O0" if a == "-O2" else a for a in cfg.cmd])
+    source = '''template<class T> T helper(T x) { return x + 7; }
+extern "C++" int overloaded(int x) { return helper(x); }
+extern "C++" int overloaded(int *x) { return helper(*x); }
+int game_entry(int x) { return overloaded(x); }
+'''
+    result = compiler.compile_source(cfg, "", source)
+    assert result.ok, result.log
+    symbols = ELFFile(BytesIO(result.obj)).get_section_by_name(".symtab")
+    functions = {s.name: s for s in symbols.iter_symbols() if s["st_info"]["type"] == "STT_FUNC"}
+    assert "game_entry" in functions and "overloaded" not in functions
+    assert len([n for n in functions if n.startswith("overloaded__")]) == 2
+    helpers = [s for n, s in functions.items() if n.startswith("helper__")]
+    assert len(helpers) == 1 and helpers[0]["st_info"]["bind"] == "STB_WEAK"
 
 
 @pytest.fixture
