@@ -8,8 +8,10 @@ _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
 
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
-    default = "c++" if config.get("kind") == "rom" and config.get("platform", "n64") == "n64" \
-        and compiler.get("toolchain") in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3") else "c"
+    platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
+    supported = (platform == "n64" and toolchain in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3")) \
+        or (platform == "gba" and toolchain == "agbcc")
+    default = "c++" if config.get("kind") == "rom" and supported else "c"
     value = compiler.get("language", default)
     if value not in ("c", "c++"):
         raise ValueError("compiler.language must be 'c' or 'c++'")

@@ -15,11 +15,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--src", required=True)
     parser.add_argument("--obj", required=True)
     parser.add_argument("--include", required=True)
+    parser.add_argument("--language", choices=("c", "c++"), default="c")
     args, flags = parser.parse_known_args(argv)
     if flags[:1] == ["--"]:
         flags = flags[1:]
     commands = [
-        [args.cpp, "-nostdinc", "-undef", "-I", args.builtin_include, "-I", args.include, args.src,
+        [args.cpp, *(["-x", "c++", "-std=c++98"] if args.language == "c++" else []),
+         "-nostdinc", "-undef", "-I", args.builtin_include, "-I", args.include, args.src,
          "-o", args.obj + ".i"],
         [args.cc, *flags, args.obj + ".i", "-o", args.obj + ".s"],
         [args.assembler, "-mcpu=arm7tdmi", "-o", args.obj, args.obj + ".s"],
