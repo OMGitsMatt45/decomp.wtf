@@ -64,6 +64,10 @@ linker. Disc images and separate overlay files are not repacked.
 
 ## Precise Windows blocker and alternatives
 
+See the [source/Windows acquisition investigation](ps2-cpp-source-search.md) for
+verified hashes of a mislabeled Windows candidate, historical source filenames,
+and the new archive lead awaiting inspection.
+
 The exact 2.96 archive contains **Linux ELF32 programs only**, not Windows PE
 executables. No matching Sony EE-patched 2.96 source or original native Windows
 2.96 distribution was found in the investigated public packages/repositories.
