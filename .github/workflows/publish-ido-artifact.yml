@@ -1,0 +1,47 @@
+name: Publish verified IDO artifact
+on:
+  push:
+    branches: [ido-game-cpp]
+    paths: [.github/workflows/publish-ido-artifact.yml]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: standalone-ido-windows
+          run-id: 39222513441
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ido-artifacts
+      - name: Check the original native C++ frontend
+        shell: powershell
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP "IDO runtime check"
+          New-Item -ItemType Directory -Path $tools | Out-Null
+          tar -xzf (Join-Path $env:RUNNER_TEMP "ido-artifacts\ido-7.1-windows-v1.tar.gz") -C $tools
+          if ($LASTEXITCODE -ne 0) { throw "Extracting IDO failed" }
+          python tools/windows/check_ido_artifact.py $tools
+      - name: Publish compiler and complete corresponding runtime source
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=ido-cpp-windows-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/windows/ido
+          cp "$RUNNER_TEMP/ido-artifacts/"* toolchains/windows/ido/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolchains/windows/ido
+          git commit -m "Package native IDO 7.1, its runtime and complete corresponding source"
+          git push origin "$branch"

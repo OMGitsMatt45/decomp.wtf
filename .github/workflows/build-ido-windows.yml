@@ -2,9 +2,6 @@ name: Build standalone Windows IDO
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ido-game-cpp]
-    paths: [tools/windows/build-ido71.sh, .github/workflows/build-ido-windows.yml]
 
 permissions:
   contents: write
@@ -28,15 +25,19 @@ jobs:
         shell: powershell
         run: |
           $tools = Join-Path $env:RUNNER_TEMP "ido-build\package"
-          $source = Join-Path $env:RUNNER_TEMP "IDO build check.cpp"
-          $object = Join-Path $env:RUNNER_TEMP "IDO build check.o"
+          $work = Join-Path $env:RUNNER_TEMP "IDO build check with spaces"
+          New-Item -ItemType Directory -Path $work | Out-Null
+          $source = Join-Path $work "func.cpp"
+          $object = Join-Path $work "func.o"
           $code = "#ifndef __cplusplus`n#error C++ frontend required`n#endif`ntemplate<class T> class Box { public: T value; };`nextern `"C`" int probe(int x) { Box<int> b; int &r = b.value; r = x + 1; return b.value; }`n"
           [IO.File]::WriteAllText($source, $code, (New-Object Text.UTF8Encoding($false)))
           $env:PATH = Join-Path $env:SystemRoot "System32"
           # The application sets this per invocation too; a regular Windows
           # installation has no Unix /tmp directory.
-          $env:TMPDIR = $env:RUNNER_TEMP.Replace('\', '/')
-          & (Join-Path $tools "NCC.exe") -c -O2 -mips2 -G 0 -non_shared $source -o $object
+          $env:TMPDIR = [IO.Path]::GetTempPath().Replace('\', '/')
+          Push-Location $work
+          & (Join-Path $tools "NCC.exe") -c -O2 -mips2 -G 0 -non_shared func.cpp -o func.o
+          Pop-Location
           if ($LASTEXITCODE -ne 0 -or !(Test-Path $object)) { throw "The standalone IDO C++ compiler failed" }
       - uses: actions/upload-artifact@v4
         if: always()
