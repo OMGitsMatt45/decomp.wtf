@@ -16,6 +16,10 @@ on:
       - "tools/build_n64_native.py"
       - "tools/windows/**"
       - "tools/gba_cpp/**"
+      - "projects/demo-gba/**"
+      - "projects/demo-n64/original/**"
+      - "projects/demo-rom/src/**"
+      - "projects/zlib-n64/prepare.py"
   pull_request:
     paths:
       - ".github/workflows/windows.yml"
@@ -31,6 +35,10 @@ on:
       - "tools/build_n64_native.py"
       - "tools/windows/**"
       - "tools/gba_cpp/**"
+      - "projects/demo-gba/**"
+      - "projects/demo-n64/original/**"
+      - "projects/demo-rom/src/**"
+      - "projects/zlib-n64/prepare.py"
   workflow_dispatch:
 
 permissions:
