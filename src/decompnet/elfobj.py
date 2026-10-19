@@ -243,6 +243,8 @@ def extract_function(data: bytes, name: str) -> FunctionObj | None:
         return None
     symtab = elf.get_section_by_name(".symtab")
     shndx, start, size = found
+    if arch == "arm" and start & 1:
+        arch, start = "thumb", start & ~1
     section = elf.get_section(shndx)
     code = section.data()[start : start + size]
 

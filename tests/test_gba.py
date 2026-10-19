@@ -65,6 +65,8 @@ def test_every_game_function_matches(gba):
     syms = {s.name: s["st_value"] & ~1 for s in ELFFile(open(ELF, "rb")).get_section_by_name(".symtab").iter_symbols() if s.name}
     header = "\n".join(l for l in (GAME / "game.h").read_text().splitlines()
                        if not l.startswith("#include") and not re.match(r"typedef \w+( \w+)? [su]\d+;|typedef \w+ f\d+;", l))
+    if net.overview(slug)["compiler"]["language"] == "c++":
+        header = header.replace("#define NULL ((void *)0)", "#define NULL 0")
     assert net.edit_context(agent, slug, "", header, "the game's types").startswith("✅")
     pid = net.project_row(slug)["id"]
     for name in FUNCTIONS:  # merged into the function before, or never found: split it off / add it
@@ -83,8 +85,24 @@ def test_every_game_function_matches(gba):
                 net.rename_symbol(agent, slug, current, name)
                 table = net.symbols(pid)
     source = (GAME / "game.c").read_text()
-    scores = {name: net.attempt(agent, name, csource.get(source, name), slug)["score"] for name in FUNCTIONS}
-    assert all(score == 0 for score in scores.values()), scores
+    scores = {}
+    for name in FUNCTIONS:
+        candidate = csource.get(source, name)
+        if name == "abs_s32" and net.overview(slug)["compiler"]["language"] == "c++":
+            candidate = """template<class T> class Magnitude {
+public: T value; Magnitude(T v) : value(v) {} T get() const { const T &v = value; return v < 0 ? -v : v; }
+};
+s32 abs_s32(s32 v) { return Magnitude<s32>(v).get(); }
+"""
+        if name == "entity_spawn" and net.overview(slug)["compiler"]["language"] == "c++":
+            # C++ boolean negation lowers differently; this equivalent comparison
+            # preserves the original C game's instructions and register allocation.
+            candidate = candidate.replace("!(e->flags & ENTITY_FLAG_ACTIVE)", "(e->flags & ENTITY_FLAG_ACTIVE) == 0")
+        result = net.attempt(agent, name, candidate, slug)
+        scores[name] = result
+        if result["score"] != 0:
+            net.release(agent, name, "", slug)
+    assert all(result["score"] == 0 for result in scores.values()), {n: r for n, r in scores.items() if r["score"] != 0}
 
 
 def test_drafts_and_look_alikes(gba):

@@ -81,7 +81,7 @@ def native_compile(source, work):
 
 def test_native_compiler_payloads_are_windows_executables(native_workspace):
     payloads = [("gcc-2.7.2-kmc", name) for name in ("gcc.exe", "cpp.exe", "cc1.exe", "cc1plus.exe", "as.exe")]
-    payloads.append(("agbcc", "bin/agbcc.exe"))
+    payloads.extend(("agbcc", name) for name in ("bin/agbcc.exe", "agbcc-cpp.exe"))
     for tid, name in payloads:
         executable = toolchains.require(tid) / name
         with executable.open("rb") as stream:

@@ -361,8 +361,8 @@ name = "agbcc"
 platform = "GBA"
 arch = "arm"
 license = "GPL-2.0"
-source = "pret/agbcc release"
-description = "The GCC 2.95-based compiler behind most Game Boy Advance games, as rebuilt by the pret community."
+source = "pret/agbcc release + restored GCC 2.95.3 C++ frontend"
+description = "The GBA compiler rebuilt by pret, with a separate GCC 2.95.3 C++ frontend using agbcc's Thumb backend."
 cc = ["{tc}/bin/agbcc"]
 flags = ["-mthumb-interwork", "-O2"]
 requires = ["arm-gnu"]
@@ -373,6 +373,16 @@ cmd = ["/bin/sh", "-c", "src=\"$1\"; obj=\"$2\"; inc=\"$3\"; shift 3; \"{tc:arm-
 url = "https://github.com/pret/agbcc/releases/download/release/agbcc.tar.gz"
 sha256 = "bcf0197e3e27d8e08506a142e25fa68ea7f6679a98347a6406804eb3f9ff4d29"
 platforms = ["linux-x86_64"]
+
+[[agbcc.parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/05b4893dcded97f392aa1e999855d7c0bc4bf8aa/toolchains/gba-cpp/agbcc-cpp-linux-x86_64.tar.gz"
+sha256 = "c829d4c48eb20eefeb94dc68308877e130f4c32dc4c4e32d39b2011714faa3e1"
+platforms = ["linux-x86_64"]
+
+[[agbcc.parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/05b4893dcded97f392aa1e999855d7c0bc4bf8aa/toolchains/gba-cpp/agbcc-cpp-windows-x86_64.tar.gz"
+sha256 = "1e473236f0e62c149b9fbc4213d2d441f48d79a1cb882a65da49143b997ce8c4"
+platforms = ["windows-x86_64"]
 
 [maspsx]
 name = "maspsx"
