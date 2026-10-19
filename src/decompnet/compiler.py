@@ -138,7 +138,7 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
             get_short.restype = ctypes.c_uint
             size = get_short(str(temp), short, len(short))
             if not size or size >= len(short) or any(c.isspace() for c in short.value):
-                raise RuntimeError("IDO needs a temporary directory without spaces. Set TMP and TEMP to an existing writable folder without spaces, then restart decomp.wtf.")
+                raise OSError("IDO needs a temporary directory without spaces. Set TMP and TEMP to an existing writable folder without spaces, then restart decomp.wtf.")
             temp = Path(short.value)
         env = {"env": {**os.environ, "TMPDIR": temp.as_posix()}}
     return subprocess.run(_wrap(cfg, work, argv), cwd=cwd or work, capture_output=True, text=True, encoding="utf-8",

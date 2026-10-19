@@ -16,8 +16,8 @@ The original Windows 7.1 package failed before compilation because its guest lib
 with the containing libc page mapped. Its assertion reporter also uses a portable diagnostic
 and abort, avoiding an obsolete host `__assert` calling signature. Runtime DLLs are bundled
 beside the executables, including with the existing 5.3 C package, so a separate MSYS installation
-is not required. Linux keeps its original pinned package. The build recipe, compiler source
-archive and corresponding MSYS runtime source accompany the Windows assets.
+is not required. Linux keeps its original pinned package. The build recipe, recompiler source
+archive with its original IRIX inputs, and corresponding MSYS runtime source accompany the Windows assets.
 The [pinned asset commit](https://github.com/OMGitsMatt45/decomp.wtf/tree/1d7f59df57cd61805ae9f18cad33ae8d65845623/toolchains/windows/ido)
 contains their checksums and instructions for joining the complete runtime source archive.
 The application also supplies a writable Windows temporary directory for every compile, rather

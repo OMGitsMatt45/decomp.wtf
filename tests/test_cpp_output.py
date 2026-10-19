@@ -1,6 +1,9 @@
 """C++ source selection, symbol linkage and draft generation."""
 
 import pytest
+import ctypes
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from decompnet import compiler, cpp, seeds
 
@@ -60,6 +63,17 @@ def test_cpp_compilation_writes_cpp_and_uses_identical_linkage_in_context(tmp_pa
     assert 'extern "C" int probe' in source and '#line 1 "func.cpp"' in source
     assert context == 'extern "C" int total;'
     assert any(argument.endswith("/func.cpp") for argument in command)
+
+
+def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_path, monkeypatch):
+    temp = tmp_path / "Windows profile with spaces"
+    temp.mkdir()
+    monkeypatch.setattr(compiler, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(compiler.tempfile, "gettempdir", lambda: str(temp))
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=SimpleNamespace(GetShortPathNameW=Mock(return_value=0))), raising=False)
+    cfg = compiler.CompilerConfig(["NCC.exe", "-c", "{src}", "-o", "{obj}"], relative_paths=True, sandbox="none")
+    result = compiler.compile_source(cfg, "", "int probe(int x) { return x+1; }")
+    assert not result.ok and "Set TMP and TEMP" in result.log
 
 
 @pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++")])
