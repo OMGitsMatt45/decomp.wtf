@@ -110,6 +110,12 @@ def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
             # and point the loader at the pinned 32-bit libraries. 64-bit tools ignore those libraries.
             cmd += ["--dir", "/lib", "--ro-bind", f"{cfg.runtime32}/ld-linux.so.2", "/lib/ld-linux.so.2",
                     "--ro-bind", cfg.runtime32, "/opt/rt32", "--setenv", "LD_LIBRARY_PATH", "/opt/rt32"]
+            # Debian/Ubuntu's /usr/lib64 loader symlink points back through
+            # /lib/x86_64-linux-gnu. Keep that native loader/library directory
+            # visible alongside the private i386 loader (prlimit needs it).
+            native_lib = Path("/lib/x86_64-linux-gnu")
+            if native_lib.is_dir():
+                cmd += ["--ro-bind", str(native_lib), str(native_lib)]
         else:
             cmd += ["--symlink", "usr/lib", "/lib"]
         for p in cfg.ro_paths:
