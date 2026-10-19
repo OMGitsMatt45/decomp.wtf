@@ -1,4 +1,4 @@
-"""Fetch zlib 1.1.4 from zlib.net (pinned sha256) into original/, and build the shared headers
+"""Fetch zlib 1.1.4 from its author's Git repository (pinned commit and sha256) into original/, and build the shared headers
 (context.h) for the two DecompNet projects made from it: zlib-deflate and zlib-inflate.
 
 zlib's license allows use, alteration and redistribution (see LICENSE.zlib). The original source stays
@@ -14,8 +14,11 @@ import tarfile
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
-URL = "https://zlib.net/fossils/zlib-1.1.4.tar.gz"
-SHA256 = "9e3e973174f9910fd51539ef9ce94c86a3943d4f897fab8e9adf4b19e6a8291e"
+# The fossils server sometimes returns a different response to Windows runners.
+# This is the author's v1.1.4 commit, with the same source/header file bytes as
+# the release archive; do not accept an unverified response from either server.
+URL = "https://codeload.github.com/madler/zlib/tar.gz/a383133c4e7b93113cee912f213cf9502d785fa7"
+SHA256 = "aa198828ace3f11638e8d37546cb09240299c7a5bf49595a58e4e590056bb2fb"
 CORE = ["adler32.c", "compress.c", "crc32.c", "deflate.c", "infblock.c", "infcodes.c", "inffast.c", "inflate.c",
         "inftrees.c", "infutil.c", "trees.c", "uncompr.c", "zutil.c"]
 # zlib has two different `struct internal_state`s (compression vs decompression) and per-file macros and

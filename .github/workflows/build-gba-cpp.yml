@@ -1,9 +1,6 @@
 name: Build native GBA C++
 
 on:
-  push:
-    branches: [gba-game-cpp]
-    paths: ["tools/gba_cpp/**", ".github/workflows/build-gba-cpp.yml"]
   workflow_dispatch:
 
 permissions:
