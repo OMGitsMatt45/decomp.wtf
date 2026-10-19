@@ -1,0 +1,44 @@
+name: Build standalone Windows IDO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ido-game-cpp]
+    paths: [tools/windows/build-ido71.sh, .github/workflows/build-ido-windows.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: gcc make git python curl tar
+      - name: Build the original IDO pipeline with its Windows memory fix
+        shell: msys2 {0}
+        run: bash tools/windows/build-ido71.sh "$RUNNER_TEMP/ido-build" "$RUNNER_TEMP/ido-artifacts"
+      - name: Publish pinned compiler and corresponding source on the assets branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=ido-cpp-windows-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/windows/ido
+          cp "$RUNNER_TEMP/ido-artifacts/"* toolchains/windows/ido/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolchains/windows/ido
+          git commit -m "Package IDO 7.1 with the Windows memory fix and its runtime"
+          git push origin "$branch"
