@@ -19,7 +19,10 @@ beside the executables, including with the existing 5.3 C package, so a separate
 is not required. Linux keeps its original pinned package. The build recipe, compiler source
 archive and corresponding MSYS runtime source accompany the Windows assets.
 The application also supplies a writable Windows temporary directory for every compile, rather
-than relying on an MSYS `/tmp` directory.
+than relying on an MSYS `/tmp` directory. IDO uses relative source/object names inside the work
+folder because its legacy tools truncate absolute output paths containing spaces. The Windows
+temporary folder uses its short path when needed. If the filesystem provides no short alias,
+the error explains how to select a writable temporary directory without spaces using TMP/TEMP.
 
 The normal project default is C++ for drafts, matching and `.cpp` exports. Plain game functions,
 prototypes and external declarations retain C linkage. Templates, classes, references and helpers

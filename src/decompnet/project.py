@@ -62,6 +62,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
+    relative_paths = False
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
         if why := tc.unsupported_reason:
@@ -76,6 +77,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             runtime32 = str(toolchains.require("runtime-i386"))
         flags = c.get("flags", tc.flags)
         windows = not linux and toolchains.current_platform().startswith("windows-")
+        relative_paths = windows and tc.id in ("ido-5.3", "ido-7.1")
         template = tc.windows_cmd if windows and tc.windows_cmd is not None else tc.cmd
         cc = tc.windows_cc if windows and tc.windows_cc is not None else tc.cc
         if c.get("cmd"):
@@ -110,6 +112,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         cmd=cmd,
         language=language,
         c_linkage=language == "c++" and cfg.get("kind") == "rom",
+        relative_paths=relative_paths,
         timeout=float(c.get("timeout", 15)),
         sandbox=c.get("sandbox", "auto"),
         image=c.get("image"),

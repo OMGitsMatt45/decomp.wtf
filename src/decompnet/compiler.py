@@ -64,6 +64,7 @@ class CompilerConfig:
     wsl: bool = False  # a Linux toolchain on Windows: runs inside WSL 2, `cmd` holds WSL paths (see wsl.py)
     language: str = "c"
     c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
+    relative_paths: bool = False  # IDO's legacy driver cannot preserve absolute output paths with spaces
 
 
 @dataclass
@@ -84,6 +85,8 @@ def _sandbox_mode(cfg: CompilerConfig) -> str:
 def _root(cfg: CompilerConfig, work: Path) -> str:
     """How the compiler sees the work folder (in WSL it works on a copy, see wsl.run)."""
     mode = _sandbox_mode(cfg)
+    if mode == "none" and cfg.relative_paths:
+        return "."
     return "/work" if mode in ("bwrap", "docker") else wsl.stage_dir() if mode == "wsl" else work.as_posix()
 
 
@@ -124,7 +127,20 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
     # current directory is / ("Bad file descriptor"), which it is for decomp.wtf started by a service or in Docker
     # IDO's native MSYS programs otherwise assume /tmp exists. Give native
     # Windows compilers a real writable folder, including their child phases.
-    env = {"env": {**os.environ, "TMPDIR": (cwd or work).as_posix()}} if sys.platform == "win32" else {}
+    env = {}
+    if sys.platform == "win32":
+        temp = Path(tempfile.gettempdir()) if cfg.relative_paths else (cwd or work)
+        if cfg.relative_paths and any(c.isspace() for c in str(temp)):
+            import ctypes
+            short = ctypes.create_unicode_buffer(32768)
+            get_short = ctypes.windll.kernel32.GetShortPathNameW
+            get_short.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+            get_short.restype = ctypes.c_uint
+            size = get_short(str(temp), short, len(short))
+            if not size or size >= len(short) or any(c.isspace() for c in short.value):
+                raise RuntimeError("IDO needs a temporary directory without spaces. Set TMP and TEMP to an existing writable folder without spaces, then restart decomp.wtf.")
+            temp = Path(short.value)
+        env = {"env": {**os.environ, "TMPDIR": temp.as_posix()}}
     return subprocess.run(_wrap(cfg, work, argv), cwd=cwd or work, capture_output=True, text=True, encoding="utf-8",
                           errors="replace", timeout=timeout, **env)
 
