@@ -96,7 +96,13 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             elif tc.id == "agbcc":
                 if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
                     raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
-                cmd = [sys.executable, "-m", "decompnet.agbcc", "--cpp", f"{{tc:arm-gnu}}/bin/arm-none-eabi-cpp{suffix}",
+                # The isolated script needs only Python's standard library. A
+                # module invocation would require the app's entire environment
+                # inside bubblewrap, and a venv interpreter can point outside
+                # /usr. Bind its real runtime and this script read-only.
+                pipeline = Path(__file__).with_name("agbcc.py").resolve()
+                ro_paths += [str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
+                cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline), "--cpp", f"{{tc:arm-gnu}}/bin/arm-none-eabi-cpp{suffix}",
                        "--cc", f"{tc_dir}/agbcc-cpp{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
                        "--language", "c++", "--builtin-include", f"{tc_dir}/include", "--src", "{src}",
                        "--obj", "{obj}", "--include", "{include}", "--", "-fno-exceptions", "-fno-rtti", *flags]

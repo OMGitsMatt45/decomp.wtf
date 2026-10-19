@@ -84,6 +84,15 @@ def test_windows_pipeline_template_expands_python_dependencies_and_flags(windows
     assert not cfg.wsl
 
 
+def test_missing_agbcc_cpp_frontend_never_falls_back_to_c(windows_catalog):
+    arm = windows_catalog("arm-gnu", parts=[{"url": "unused"}])
+    tc = windows_catalog("agbcc", parts=[{"url": "unused"}], requires=[arm.id])
+    where = mark_installed(tc.id)
+    mark_installed(arm.id)
+    with pytest.raises(toolchains.ToolchainError, match="C\\+\\+ frontend is missing"):
+        project.compiler_config(where, {"kind": "rom", "platform": "gba", "compiler": {"toolchain": tc.id}})
+
+
 def test_compile_source_expands_native_pipeline_paths_through_all_stages(windows_catalog, monkeypatch):
     arm = windows_catalog("arm-gnu", parts=[{"url": "unused"}])
     tc = windows_catalog("agbcc", requires=[arm.id], parts=[{"url": "unused"}], flags=["-O2"],
