@@ -86,12 +86,19 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             base = [*cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
         if language == "c++" and not c.get("cmd"):
-            if tc.id != "gcc-2.7.2-kmc":
-                raise toolchains.ToolchainError(f"C++ game output needs the N64 KMC C++ frontend; {tc.name} has no verified C++ setup")
-            frontend = dirs[0] / ("cc1plus.exe" if windows else "cc1plus")
-            if not frontend.is_file():
-                raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
-            cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
+            suffix = ".exe" if windows else ""
+            if tc.id == "gcc-2.7.2-kmc":
+                if not (dirs[0] / f"cc1plus{suffix}").is_file():
+                    raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
+                cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
+            elif tc.id == "ido-7.1":
+                if not all((dirs[0] / f"{name}{suffix}").is_file() for name in ("NCC", "edgcpfe")):
+                    raise toolchains.ToolchainError("The IDO 7.1 C++ frontend is missing: reinstall with `decompnet toolchain install ido-7.1 --force --accept-license`")
+                cmd[0] = f"{tc_dir}/NCC"
+            elif tc.id == "ido-5.3":
+                raise toolchains.ToolchainError("IDO 5.3's pinned native package has no C++ frontend (cfront). Keep compiler.language = 'c'; IDO 7.1 uses a different frontend and is not a compatible substitute for matching.")
+            else:
+                raise toolchains.ToolchainError(f"{tc.name} has no verified C++ setup")
         for dep in tc.dependencies(linux):  # {tc:<id>} is another toolchain this one needs
             where = toolchains.path(dep, linux)
             cmd = [a.replace(f"{{tc:{dep}}}", wsl.path(where) if linux else where.as_posix()) for a in cmd]

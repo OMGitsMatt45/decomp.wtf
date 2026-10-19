@@ -109,8 +109,10 @@ features; include the game platform, selected compiler and compile log in the re
 
 ## N64 C++ game output
 
-N64 ROM projects using KMC default to C++ for drafts, matching and exported builds.
-The Windows package includes `cc1plus.exe`; rerun setup to replace the older compiler package.
+N64 ROM projects using KMC or IDO 7.1 default to C++ for drafts, matching and exported builds.
+The KMC Windows package includes `cc1plus.exe`; rerun setup to replace the older compiler package.
+The pinned IDO 7.1 package already includes `NCC.exe` and its SGI/EDG C++ frontend, `edgcpfe.exe`.
+It runs directly on Windows without WSL. IDO remains an optional proprietary toolchain.
 Exports contain `.cpp` files and retain C linkage for the original game's functions and external
 symbols. Templates, classes and references are available in GCC 2.7.2's period C++ dialect;
 exceptions and RTTI are disabled. This is not a modern C++17/20 compiler or standard library.
@@ -119,4 +121,6 @@ C++ syntax can produce different bytes from the same C expression. Matching stil
 bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.
 Existing matched sources are checked again during export, with reported assembly fallbacks if
 compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
-IDO and other consoles keep their existing language; their C++ frontend support is a separate task.
+IDO 5.3 and other consoles keep their existing C language. IDO 5.3's pinned native release omits
+its separate `cfront` frontend; IDO 7.1 is not a compatible replacement for matching 5.3 games.
+See [IDO C++ support and the 5.3 blocker](ido-cpp.md) for validation and investigation details.

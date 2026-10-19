@@ -231,14 +231,16 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str]]) -> str:
     for seg in B["segments"]:
         n, start = seg["name"], seg["start"]
         end = seg.get("end") if seg.get("end") is not None else image_size
-        lines += [f"{n}_ROM_START = 0x{start:X};", f"{n}_ROM_END = 0x{end:X};"]
+        # An unnamed binary segment uses its hexadecimal ROM offset as a name,
+        # which can start with a digit. Quote linker symbols to keep it valid.
+        lines += [f'"{n}_ROM_START" = 0x{start:X};', f'"{n}_ROM_END" = 0x{end:X};']
         if seg["kind"] == "code":
             vram = seg["vram"]
             bss_start = seg.get("bss_vram") or vram + end - start
             bss_end = bss_start + seg.get("bss_size", 0)
-            lines += [f"{n}_VRAM = 0x{vram:08X};", f"{n}_VRAM_END = 0x{bss_end:08X};",
-                      f"{n}_BSS_START = 0x{bss_start:08X};", f"{n}_BSS_END = 0x{bss_end:08X};",
-                      f"{n}_BSS_SIZE = 0x{bss_end - bss_start:X};"]
+            lines += [f'"{n}_VRAM" = 0x{vram:08X};', f'"{n}_VRAM_END" = 0x{bss_end:08X};',
+                      f'"{n}_BSS_START" = 0x{bss_start:08X};', f'"{n}_BSS_END" = 0x{bss_end:08X};',
+                      f'"{n}_BSS_SIZE" = 0x{bss_end - bss_start:X};']
     return "\n".join(lines) + "\n"
 
 

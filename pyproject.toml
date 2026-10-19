@@ -1,6 +1,6 @@
 [project]
 name = "decompnet"
-version = "0.13.0"
+version = "0.14.0"
 description = "decomp.wtf (What The Function): your AI agent decompiles games you own into C that compiles to the exact same bytes, with a live view. Runs locally."
 readme = "README.md"
 license = "MIT"
@@ -32,7 +32,7 @@ decompnet = "decompnet.cli:main"
 decomp = "decompnet.app.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.12.18,<0.13.0"]
+requires = ["uv_build>=0.12.18,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]

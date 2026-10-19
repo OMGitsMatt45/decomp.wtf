@@ -5,13 +5,15 @@ import pytest
 from decompnet import compiler, cpp, seeds
 
 
-def test_n64_kmc_roms_default_to_cpp_and_explicit_c_is_respected():
-    cfg = {"kind": "rom", "platform": "n64", "compiler": {"toolchain": "gcc-2.7.2-kmc"}}
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-kmc", "ido-7.1"])
+def test_verified_n64_roms_default_to_cpp_and_explicit_c_is_respected(toolchain):
+    cfg = {"kind": "rom", "platform": "n64", "compiler": {"toolchain": toolchain}}
     assert cpp.language(cfg) == "c++"
     cfg["compiler"]["language"] = "c"
     assert cpp.language(cfg) == "c"
     assert cpp.language({"kind": "rom", "platform": "psx", "compiler": {"toolchain": "gcc-2.7.2-psx"}}) == "c"
     assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-kmc"}}) == "c"
+    assert cpp.language({"kind": "rom", "platform": "n64", "compiler": {"toolchain": "ido-5.3"}}) == "c"
     with pytest.raises(ValueError, match="compiler.language"):
         cpp.language({"compiler": {"language": "rust"}})
 
@@ -60,8 +62,9 @@ def test_cpp_compilation_writes_cpp_and_uses_identical_linkage_in_context(tmp_pa
     assert any(argument.endswith("/func.cpp") for argument in command)
 
 
-def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch):
+@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++")])
+def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []
     monkeypatch.setattr(seeds, "run_m2c", lambda *args: calls.append(args) or "draft")
-    assert seeds.generate_from_asm("asm", "probe", "gcc-2.7.2-kmc", language="c++") == "draft"
-    assert calls[0][2] == "mips-gcc-c++"
+    assert seeds.generate_from_asm("asm", "probe", toolchain, language="c++") == "draft"
+    assert calls[0][2] == target
