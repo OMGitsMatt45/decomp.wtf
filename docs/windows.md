@@ -114,8 +114,9 @@ The KMC Windows package includes `cc1plus.exe`; rerun setup to replace the older
 The pinned IDO 7.1 package already includes `NCC.exe` and its SGI/EDG C++ frontend, `edgcpfe.exe`.
 It runs directly on Windows without WSL. IDO remains an optional proprietary toolchain.
 Exports contain `.cpp` files and retain C linkage for the original game's functions and external
-symbols. Templates, classes and references are available in GCC 2.7.2's period C++ dialect;
-exceptions and RTTI are disabled. This is not a modern C++17/20 compiler or standard library.
+symbols. Templates, classes and references are available in each compiler's period dialect:
+GCC 2.7.2 for KMC and SGI/EDG 2.19 for IDO 7.1. KMC's exceptions and RTTI are disabled.
+Neither provides a modern C++17/20 compiler or the host computer's standard library.
 
 C++ syntax can produce different bytes from the same C expression. Matching still requires exact
 bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.

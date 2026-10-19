@@ -179,7 +179,14 @@ def test_ido71_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
         if current != name:
             net.rename_symbol(agent, slug, current, name)
     assert net.edit_context(agent, slug, "", HEADER, "original game declarations").startswith("✅")
+    # Identical call opcodes with a different relocation destination must fail,
+    # as must C++ that changes the result by one.
+    wrong_sources = {"ido_call": "int ido_call(int value) { return ido_clamp(value); }",
+                     "ido_add": CPP_ADD.replace("value + 1", "value + 2")}
     for name, c in C_FUNCTIONS.items():
+        if name in wrong_sources:
+            wrong = net.attempt(agent, name, wrong_sources[name], slug)
+            assert wrong["score"] is not None and not wrong["matched"], wrong
         result = net.attempt(agent, name, CPP_ADD if name == "ido_add" else c, slug)
         assert result["matched"], (name, result)
     out = net.export_rom(slug, log=lambda *_: None)

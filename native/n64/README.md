@@ -27,4 +27,6 @@ translation units, corresponding GPL source, build inventory and recipe accompan
 the compiler archive. See `tools/windows/build_kmc_cpp.py` and
 `tools/windows/port_kmc_cpp.py`. Build-time configuration and generators use C;
 every shipped project runtime object is built from C++. System MinGW runtime
-libraries retain their upstream implementation languages. N64 KMC game output now defaults to C++; proprietary IDO compilers retain their existing language.
+libraries retain their upstream implementation languages. N64 KMC and IDO 7.1 game output default
+to C++ through their original frontends. IDO 5.3 retains C because its native package omits `cfront`;
+see [IDO C++ support](../../docs/ido-cpp.md).
