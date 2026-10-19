@@ -17,6 +17,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         version: ['2.7.2', '2.8.1']
     steps:
@@ -35,8 +36,9 @@ jobs:
   verify:
     needs: build
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [ubuntu-24.04, windows-2022]
         version: ['2.7.2', '2.8.1']
     runs-on: ${{ matrix.os }}
     steps:

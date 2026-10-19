@@ -26,6 +26,8 @@ compatibility. Target instruction selection, optimization and register allocatio
 are unchanged. Binutils 2.6 misparses GCC 2.8.1's `%hi($LC0)` literal labels;
 the compatible assembler is selected explicitly rather than changing compilers.
 GNU assembly is not a claim of exact ASPSX/PSY-Q assembler compatibility.
+The pinned Linux binutils-mips binaries require glibc 2.38 or newer (for example,
+Ubuntu 24.04); this also applies to PS1 exported-project linking.
 
 `tools/psx_cpp/build.py` and `tools/windows/build-psx{272,281}.py` build the
 Windows packages. Each package includes licenses, complete corresponding GPL
