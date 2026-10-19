@@ -1,5 +1,6 @@
 # shell scripts and the Dockerfile run on Linux: LF even in a checkout made by Git for Windows
 *.sh text eol=lf
+*.patch text eol=lf
 site/public/Dockerfile text eol=lf
 # Windows' command interpreter expects CRLF, including in a checkout on Linux.
 *.cmd text eol=crlf

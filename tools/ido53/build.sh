@@ -7,8 +7,9 @@ build_dir=$(mkdir -p "$1" && cd "$1" && pwd)
 out_dir=$(mkdir -p "$2" && cd "$2" && pwd)
 recipe_dir=$(cd "$(dirname "$0")" && pwd)
 revision=d5aec59932034b8a20f23f471297a55c45dcbc45
-git clone https://github.com/decompals/ido-static-recomp.git "$build_dir/source"
+git -c core.autocrlf=false clone https://github.com/decompals/ido-static-recomp.git "$build_dir/source"
 cd "$build_dir/source"
+git config core.autocrlf false
 git checkout --detach "$revision"
 git apply "$recipe_dir/native-edg.patch"
 make -j2 RELEASE=1 setup
