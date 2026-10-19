@@ -59,7 +59,8 @@ are then matched as C++, including a template/class/reference example, a call an
 reference. The `.cpp` export must rebuild that ROM byte for byte, then rebuild again after removing
 generated assembly, assets and build output. Changed instructions and relocation destinations
 must fail matching. WSL calls fail these tests. Paths include spaces, and Windows tests remove
-MSYS from PATH.
+MSYS from PATH. Exported code and headers use LF line endings, with `.gitattributes` preserving
+them when Git for Windows restores a clone with `core.autocrlf=true`.
 
 Reference generation (after installing the pinned Linux toolchain):
 

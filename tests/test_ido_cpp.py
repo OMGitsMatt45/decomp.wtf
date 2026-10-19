@@ -22,6 +22,7 @@ from .fixtures.generate_native_compiler_parity import describe_functions
 
 pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_IDO_CPP") != "1", reason="requires the pinned IDO packages")
 FIXTURES = Path(__file__).parent / "fixtures"
+GIT = shutil.which("git")  # capture before native_only removes non-system PATH entries
 HEADER = """extern int ido_total;
 int ido_add(int value);
 int ido_call(int value);
@@ -203,6 +204,16 @@ def test_ido71_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
     assert build["compiler"]["toolchain"] == "ido-7.1" and build["compiler"]["language"] == "c++"
     for generated in ("asm", "assets", "build"):
         shutil.rmtree(tree / generated, ignore_errors=True)
+    # Simulate Git for Windows restoring a clone with autocrlf enabled. Its
+    # normal CRLF conversion must never reach the period C++ frontend.
+    assert GIT is not None
+    run([GIT, "init", "-q"], cwd=tree)
+    run([GIT, "-c", "core.autocrlf=true", "add", "-A"], cwd=tree)
+    sources = [*(tree / "src").rglob("*.cpp"), *(tree / "include").rglob("*.h")]
+    for source in sources:
+        source.unlink()
+    run([GIT, "-c", "core.autocrlf=true", "checkout-index", "-a", "-f"], cwd=tree)
+    assert all(b"\r" not in source.read_bytes() for source in sources)
     result = run([sys.executable, "build.py"], cwd=tree)
     assert "identical" in result.stdout and "functions in C++" in result.stdout
     assert (tree / build["output"]).read_bytes() == image.read_bytes()

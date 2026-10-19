@@ -135,9 +135,9 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     header = net._context(proj["id"])["header"]
     (out / "include").mkdir(exist_ok=True)
     convert = cpp.game_abi if language == "c++" else lambda text: text
-    (out / "include" / "common.h").write_text(convert(header), encoding="utf-8")
+    (out / "include" / "common.h").write_text(convert(header), encoding="utf-8", newline="\n")
     for u in units:
-        (out / "include" / f"common_{u}.h").write_text(convert(net._context(proj["id"], u)["header"]), encoding="utf-8")
+        (out / "include" / f"common_{u}.h").write_text(convert(net._context(proj["id"], u)["header"]), encoding="utf-8", newline="\n")
     functions = []
     for path in sorted((out / "asm" / "nonmatchings").glob("**/*.s")):
         rom_off, vram = _first_address(path)
@@ -180,7 +180,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         src = out / "src" / f["seg"] / f"{f['name']}.{extension}"
         src.parent.mkdir(parents=True, exist_ok=True)
         include = "common.h" if not unit else f"common_{unit}.h"
-        src.write_text(f'#include "{include}"\n\n{convert(row["matched_source"]).strip()}\n', encoding="utf-8")
+        src.write_text(f'#include "{include}"\n\n{convert(row["matched_source"]).strip()}\n', encoding="utf-8", newline="\n")
         f["kind"] = "c"
         f["src"] = src.relative_to(out).as_posix()
         f["obj"] = f"build/src/{f['seg']}/{f['name']}.o"
@@ -285,6 +285,10 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     # everything made from the game itself stays local: build.py regenerates it from your copy
     (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")
+    # Period frontends reject CR characters. Preserve LF when Git for Windows
+    # checks out this project with core.autocrlf enabled.
+    (out / ".gitattributes").write_text("*.c text eol=lf\n*.cpp text eol=lf\n*.h text eol=lf\n*.hpp text eol=lf\n",
+                                       encoding="utf-8", newline="\n")
 
     # 6. prove it
     log("building the exported project to check it rebuilds the game byte for byte")
