@@ -89,10 +89,11 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
         if language == "c++" and not c.get("cmd"):
             suffix = ".exe" if windows else ""
-            if tc.id == "gcc-2.7.2-kmc":
+            if tc.id in ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx"):
                 if not (dirs[0] / f"cc1plus{suffix}").is_file():
-                    raise toolchains.ToolchainError("The N64 C++ frontend is missing: rerun setup or `decompnet toolchain install gcc-2.7.2-kmc --force`")
-                cmd[1:1] = ["-x", "c++", "-fno-handle-exceptions", "-fno-rtti"]
+                    raise toolchains.ToolchainError(f"The {tc.id} C++ frontend is missing: reinstall with `decompnet toolchain install {tc.id} --force`")
+                exceptions = "-fno-exceptions" if tc.id == "gcc-2.8.1-psx" else "-fno-handle-exceptions"
+                cmd[1:1] = ["-x", "c++", exceptions, "-fno-rtti"]
             elif tc.id == "agbcc":
                 if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
                     raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")

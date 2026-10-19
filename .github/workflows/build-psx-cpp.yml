@@ -1,0 +1,102 @@
+name: Build native PS1 C++
+
+on:
+  push:
+    branches: [ps1-game-cpp]
+    paths:
+      - .github/workflows/build-psx-cpp.yml
+      - tools/psx_cpp/**
+      - tools/windows/build-psx*.py
+      - tests/fixtures/psx*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        version: ['2.7.2', '2.8.1']
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build original PS1 C++ frontend and complete corresponding source
+        run: python tools/psx_cpp/build.py --version ${{ matrix.version }} --work "$RUNNER_TEMP/build" --output "$RUNNER_TEMP/artifacts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psx-${{ matrix.version }}-cpp
+          path: ${{ runner.temp }}/artifacts/*
+          compression-level: 0
+  verify:
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+        version: ['2.7.2', '2.8.1']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: psx-${{ matrix.version }}-cpp
+          path: artifacts
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Install pinned reference compiler and assembler
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --no-sync decompnet toolchain install binutils-mips
+          if [ "$RUNNER_OS" != Windows ] || [ '${{ matrix.version }}' = 2.7.2 ]; then
+            uv run --no-sync decompnet toolchain install gcc-${{ matrix.version }}-psx
+          fi
+      - name: Verify real C++ code and relocations on native Windows and Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir overlay
+          tar -xzf artifacts/psx-${{ matrix.version }}-cpp-windows.tar.gz -C overlay
+          uv run --no-sync python -m tools.psx_cpp.smoke --version ${{ matrix.version }} --package overlay | tee verification.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psx-${{ matrix.version }}-${{ matrix.os }}-verification
+          path: verification.txt
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: psx-*
+          path: artifacts
+      - name: Publish verified Windows tools, source and native parity reports
+        run: |
+          set -euo pipefail
+          branch=ps1-cpp-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/ps1-cpp
+          cp artifacts/psx-*-cpp/*.tar.gz toolchains/ps1-cpp/
+          for report in artifacts/*-verification; do
+            cp "$report/verification.txt" "toolchains/ps1-cpp/$(basename "$report").txt"
+          done
+          (cd toolchains/ps1-cpp && sha256sum *.tar.gz > SHA256SUMS)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add toolchains/ps1-cpp
+          git commit -m 'Package verified native PS1 GCC C++ frontends and complete source'
+          git push origin "$branch"

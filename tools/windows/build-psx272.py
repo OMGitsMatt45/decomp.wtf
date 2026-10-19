@@ -53,14 +53,14 @@ def edit(path, before, after, count=1):
     path.write_text(text.replace(before, after))
 
 
-def build(source: Path, patches: Path, work: Path, output: Path, mingw_bin: Path, jobs: int):
+def build(source: Path, patches: Path, work: Path, output: Path, mingw_bin: Path, jobs: int, with_cpp: bool = False):
     if work.exists():
         raise RuntimeError(f'build directory already exists: {work}')
     shutil.copytree(source, work, ignore=shutil.ignore_patterns('.git'))
     env=dict(os.environ, PATH=str(mingw_bin)+os.pathsep+os.environ['PATH'])
     def run(argv, **kwargs):
         subprocess.run([str(a) for a in argv], cwd=work, env=env, check=True, **kwargs)
-    for p in work.glob('*.c'):
+    for p in (work.rglob('*.c') if with_cpp else work.glob('*.c')):
         p.write_text(p.read_text().replace('include <varargs.h>', 'include <stdarg.h>'))
     # Restore the original expression when using the mirror import, which
     # contains an incomplete host obstack change; then apply the upstream fix.
@@ -77,6 +77,9 @@ def build(source: Path, patches: Path, work: Path, output: Path, mingw_bin: Path
     # Git checkouts can make grammar inputs newer than release-generated files.
     for generated in ['c-parse.c','c-parse.h','c-gperf.h','cexp.c']:
         os.utime(work/generated,None)
+    if with_cpp:
+        for generated in ['cp/parse.c', 'cp/parse.h', 'cp/hash.h']:
+            os.utime(work/generated, None)
     for name, patch in [('obstack.h','obstack-2.7.2.h.patch'),('configure','configure.patch'),('config.sub','config.sub.patch'),('config/mips/mips.h','mipsel-2.7.patch')]:
         run(['patch','-u','-p1',name,'-i',patches/patch])
     with (patches/'psx-2.5.7.patch').open() as inp:
@@ -107,9 +110,19 @@ def build(source: Path, patches: Path, work: Path, output: Path, mingw_bin: Path
     run(['i686-w64-mingw32-gcc','-c','windows_spawn.c','-o','windows_spawn.o'])
     with (work/'build-windows.log').open('w') as log:
         run(['make',f'-j{jobs}','CC=i686-w64-mingw32-gcc','HOST_CC=gcc','HOST_PREFIX=build-','HOST_PREFIX_1=build-','HOST_CFLAGS=-std=gnu89 -O2 -w','HOST_LDFLAGS=','CFLAGS=-std=gnu89 -O2 -w -DHAVE_STRERROR','LDFLAGS=-static windows_spawn.o','cpp','cc1','xgcc'],stdout=log,stderr=subprocess.STDOUT)
+        if with_cpp:
+            flags = [f'-j{jobs}', 'CC=i686-w64-mingw32-gcc', 'HOST_CC=gcc', 'HOST_PREFIX=build-',
+                     'HOST_PREFIX_1=build-', 'HOST_CFLAGS=-std=gnu89 -O2 -w', 'HOST_LDFLAGS=',
+                     'CFLAGS=-std=gnu89 -O2 -w -DHAVE_STRERROR', f'LDFLAGS=-static {work / "windows_spawn.o"}']
+            run(['make', *flags, 'stamp-objlist'], stdout=log, stderr=subprocess.STDOUT)
+            inventory = work / 'stamp-objlist'
+            inventory.write_text(inventory.read_text().replace('.obj', '.o'))
+            run(['make', *flags, 'cc1plus'], stdout=log, stderr=subprocess.STDOUT)
     output.mkdir(parents=True,exist_ok=True)
     for src,dst in [('xgcc.exe','gcc.exe'),('cpp.exe','cpp.exe'),('cc1.exe','cc1.exe'),('COPYING','COPYING')]:
         shutil.copyfile(work/src,output/dst)
+    if with_cpp:
+        shutil.copyfile(work/'cc1plus.exe', output/'cc1plus.exe')
     (output/'SOURCE.txt').write_text('GCC 2.7.2, GPL-2.0-or-later.\nTarget patches: https://github.com/decompals/old-gcc/tree/cf70ec58bce58128732062bc9930045c82904cbb/patches\nBase source: GNU gcc-2.7.2.tar.gz, SHA256 7cd8bce5c3aeec59a72ecc2d3d5123864a817b14cdbd0680b1a969c3bccc5da5\nBuildable mirror import: https://github.com/AzureFlute/gcc-2.7.2/tree/2d758772bde54b0161ad380d11da13efdebfd261\nHost changes and build command: build_psx272.py distributed with corresponding source.\n')
 
 
@@ -118,8 +131,9 @@ def main():
     for arg in ['source','patches','work','output','mingw-bin']:
         parser.add_argument('--'+arg,required=True,type=lambda p:Path(p).resolve())
     parser.add_argument('--jobs',type=int,default=4)
+    parser.add_argument('--with-cpp', action='store_true', help='also build the original GCC 2.7.2 C++ frontend')
     args=parser.parse_args()
-    build(args.source,args.patches,args.work,args.output,args.mingw_bin,args.jobs)
+    build(args.source,args.patches,args.work,args.output,args.mingw_bin,args.jobs,args.with_cpp)
 
 if __name__=='__main__':
     main()

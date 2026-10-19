@@ -85,13 +85,16 @@ sha256 = "ab21ad5908fb7776a4b0c596cc82f216876e3b5d108c7c7c1f33543b3f3fce4c"
 platforms = ["macos-x86_64", "macos-arm64"]
 
 ["gcc-2.8.1-psx"]
-name = "GCC 2.8.1 for PlayStation + binutils 2.6"
+name = "GCC 2.8.1 for PlayStation + MIPS binutils"
 platform = "PS1"
 arch = "mipsel"
 license = "GPL-2.0"
-source = "decompals/old-gcc 0.17 (gcc-2.8.1-psx), decompals/mips-binutils-2.6 v0.3"
-description = "GCC 2.8.1 with the PlayStation patches (later PSY-Q versions), with the GNU assembler."
-cc = ["{tc}/gcc", "-B{tc}/", "-c", "-Wa,-EL"]
+source = "decompals/old-gcc 0.17 (gcc-2.8.1-psx), binutils-mips v0.10"
+description = "Original PS1 GCC 2.8.1 C/C++ frontends; modern MIPS binutils handle its literal labels on Windows and Linux."
+requires = ["binutils-mips"]
+# Binutils 2.6 misparses %hi($LC0); use the same compatible assembler on both hosts.
+cc = ["{tc}/gcc", "-B{tc}/", "-B{tc:binutils-mips}/mips-ps2-decompals-", "-c", "-Wa,-EL,-mips1,-mabi=32"]
+windows_cc = ["{tc}/gcc.exe", "-B{tc}/", "-B{tc:binutils-mips}/mips-ps2-decompals-", "-c", "-Wa,-EL,-mips1,-mabi=32"]
 flags = ["-O2", "-G8"]
 [["gcc-2.8.1-psx".parts]]
 url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.8.1-psx.tar.gz"

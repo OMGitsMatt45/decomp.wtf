@@ -1,0 +1,102 @@
+{
+  "toolchain": "gcc-2.8.1-psx",
+  "language": "c++",
+  "source_sha256": "4b1b628f2eed8c8f1fc6059d8a7def4a3c66fcf6bda792daf1d6afd1190a79c8",
+  "reference": "decompals/old-gcc 0.17 Linux cc1plus; original PSX target patches",
+  "functions": {
+    "ps1_call": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "e8ffbd271000bfaf0000000c000000000000838f1000bf8f211043000800e0031800bd27",
+      "relocations": [
+        [
+          8,
+          4,
+          "ps1_callback",
+          0
+        ],
+        [
+          16,
+          7,
+          "ps1_total",
+          0
+        ]
+      ]
+    },
+    "ps1_float": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "a03f053ce8ffbd271000bfaf0000000c000000002040053c0000000c252040001000bf8f000000000800e0031800bd27",
+      "relocations": [
+        [
+          12,
+          4,
+          "__addsf3",
+          0
+        ],
+        [
+          24,
+          4,
+          "__mulsf3",
+          0
+        ]
+      ]
+    },
+    "ps1_overload__FPi": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "0000828c0800e0030b004224",
+      "relocations": []
+    },
+    "ps1_overload__Fi": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "c01004000800e00323104400",
+      "relocations": []
+    },
+    "ps1_string": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "0000023c0800e00300004224",
+      "relocations": [
+        [
+          0,
+          5,
+          ".sdata",
+          0
+        ],
+        [
+          8,
+          6,
+          ".sdata",
+          0
+        ]
+      ]
+    },
+    "ps1_table": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "0000023c000042240300843080200400212082000000828c0800e00300000000",
+      "relocations": [
+        [
+          0,
+          5,
+          "values",
+          0
+        ],
+        [
+          4,
+          6,
+          "values",
+          0
+        ]
+      ]
+    },
+    "ps1_template": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "f8ffbd27030082240000a2af0800e0030800bd27",
+      "relocations": []
+    }
+  }
+}
