@@ -107,3 +107,9 @@ A separate Linux check compiles with the original driver inside bubblewrap.
 
 Windows CI verifies the explicit unavailable-toolchain error without WSL; it
 **does not claim actual native Windows PS2 C++ compilation or rebuilds**.
+
+The [native Linux validation run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39341473279)
+checks the implementation in `998cb672843735e8e5e2ee0e0869ad17fb6f275e`:
+**17 PS2 tests passed with zero skips** on Ubuntu 24.04 x86-64, and the original
+C++ driver also passed the separate Ubuntu 22.04 bubblewrap check with the
+pinned i386 runtime. Linux CI installs the compiler in a path containing spaces.
