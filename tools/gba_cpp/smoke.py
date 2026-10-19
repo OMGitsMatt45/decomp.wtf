@@ -17,11 +17,15 @@ def main():
     arm = toolchains.require("arm-gnu")
     suffix = ".exe" if sys.platform == "win32" else ""
     cfg = compiler_config(Path.cwd(), {"compiler": {"toolchain": "agbcc", "language": "c", "sandbox": "none"}})
-    cpp = replace(cfg, language="c++", c_linkage=True, cmd=[
+    pipeline = [
         sys.executable, "-m", "decompnet.agbcc", "--cpp", str(arm / f"bin/arm-none-eabi-cpp{suffix}"),
-        "--cc", str(package / f"bin/agbcc-cpp{suffix}"), "--as", str(arm / f"bin/arm-none-eabi-as{suffix}"),
-        "--language", "c++", "--builtin-include", str(tc / "include"), "--src", "{src}",
-        "--obj", "{obj}", "--include", "{include}", "--", "-mthumb-interwork", "-O2", "-fno-exceptions", "-fno-rtti"])
+        "--cc", str(tc / f"bin/agbcc{suffix}"), "--as", str(arm / f"bin/arm-none-eabi-as{suffix}"),
+        "--builtin-include", str(tc / "include"), "--src", "{src}",
+        "--obj", "{obj}", "--include", "{include}", "--", "-mthumb-interwork", "-O2"]
+    cfg = replace(cfg, cmd=pipeline)
+    cpp = replace(cfg, language="c++", c_linkage=True, cmd=[
+        a.replace(str(tc / f"bin/agbcc{suffix}"), str(package / f"bin/agbcc-cpp{suffix}"))
+        for a in pipeline[:-3]] + ["--language", "c++", "--", "-mthumb-interwork", "-O2", "-fno-exceptions", "-fno-rtti"])
     if sys.platform == "win32":
         os.environ["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
     start = subprocess.Popen

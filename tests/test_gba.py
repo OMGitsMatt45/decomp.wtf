@@ -5,6 +5,8 @@ Demo Quest GBA (projects/demo-gba) is stripped of symbols in the ROM, so the tes
 off a function the finder merged, add one it didn't find, name things, write the C. Every function must match.
 """
 
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,17 +27,26 @@ GAME = ROOT / "projects" / "demo-n64" / "original"
 FUNCTIONS = ["abs_s32", "player_take_damage", "count_alive_entities", "entity_update_physics", "entity_default_hp",
              "entity_spawn", "add_score", "checksum_save", "entity_collides", "game_tick", "clamp_s32", "lerp", "rng_next"]
 
-pytestmark = pytest.mark.skipif(any(toolchains.installed(t) is None for t in ("agbcc", "arm-gnu", "luvdis")),
+pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_GBA_CPP") != "1" and
+                                any(toolchains.installed(t) is None for t in ("agbcc", "arm-gnu", "luvdis")),
                                 reason="needs agbcc, the Arm GNU toolchain and luvdis")
 
 
-@pytest.fixture(scope="module")
-def gba(tmp_path_factory):
+@pytest.fixture(scope="module", params=["c", "c++"])
+def gba(tmp_path_factory, request):
+    assert all(toolchains.installed(t) is not None for t in ("agbcc", "arm-gnu", "luvdis"))
     if not ROM.exists():
         subprocess.run([sys.executable, str(DEMO / "build.py")], check=True)
     work = tmp_path_factory.mktemp("gba")
     net = RomNetwork(work / "app.db", work)
-    return net, net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    proj = net.project_row(slug)
+    assert net.overview(slug)["compiler"]["language"] == "c++"
+    cfg = net.cfg(proj)
+    cfg["compiler"].update(language=request.param, sandbox="none")
+    with net.store.tx() as db:
+        db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+    return net, slug
 
 
 def test_import_finds_the_functions(gba):
@@ -91,7 +102,15 @@ def test_export_rebuilds_the_rom(gba):
     assert out["identical"], out["log"]
     assert out["matched"] == len(FUNCTIONS) and not out["fallback"]
     root = Path(out["path"])
-    assert "g_player" in (root / "src" / "player_take_damage.c").read_text()
+    language = net.overview(slug)["compiler"]["language"]
+    extension = "cpp" if language == "c++" else "c"
+    source = (root / "src" / f"player_take_damage.{extension}").read_text()
+    assert "g_player" in source
+    assert out["language"] == language
+    if language == "c++":
+        assert 'extern "C" void player_take_damage' in source
+        assert 'extern "C" Player g_player;' in (root / "include/common.h").read_text()
+        assert not list((root / "src").glob("*.c"))
     linked = (root / "build" / "game.ld").read_text()  # a matched function links its C, not its assembly
     assert "build/src/game_tick.o(.text)" in linked and "build/asm/game_tick.o" not in linked
     assert (root / "asm" / "game_tick.s").exists()  # the assembly stays as the reference
@@ -105,6 +124,18 @@ def test_export_rebuilds_the_rom(gba):
                                      text=True).stdout
     assert subprocess.run([sys.executable, "build.py", "check", "lerp"], cwd=fresh, capture_output=True,
                           text=True).returncode == 0
+
+    if language == "c++":
+        subprocess.run(["git", "init", "-q"], cwd=fresh, check=True)
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "add", "."], cwd=fresh, check=True)
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Export"], cwd=fresh, check=True)
+        clone = root.parent / "fresh Windows checkout"
+        subprocess.run(["git", "-c", "core.autocrlf=true", "clone", "-q", str(fresh), str(clone)], check=True)
+        shutil.copyfile(ROM, clone / "baserom.gba")
+        assert not (clone / "build").exists() and not (clone / "asm").exists()
+        result = subprocess.run([sys.executable, "build.py"], cwd=clone, capture_output=True, text=True, timeout=900)
+        assert result.returncode == 0 and "functions in C++" in result.stdout, result.stdout + result.stderr
+        assert (clone / "build/game.gba").read_bytes() == ROM.read_bytes()
 
 
 def test_luvdis_survives_code_that_pops_more_than_it_pushed(tmp_path):

@@ -1,7 +1,7 @@
 """Export a Game Boy Advance project as a rebuildable source tree: the base for ports and mods.
 
 Like export.py for MIPS games: luvdis's assembly (with the project's names) for everything not decompiled yet, the
-matched functions as C built with agbcc, and a linker script that puts every piece at its address in the ROM. The
+matched functions as C/C++ built with agbcc, and a linker script that puts every piece at its address in the ROM. The
 build links it with the Arm GNU toolchain and checks the result against your copy, byte for byte. The assembly is
 made from the game, so it stays out of git: build.py regenerates it from your copy with luvdis.
 """
@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .. import cpp
 from ..limits import capped
 from . import match_arm
 from .export import ExportError
@@ -25,6 +26,9 @@ from .symbols import AUTO_NAME
 def export_gba(net, slug: str, out: Path, log=print) -> dict:
     proj = net._project(slug)
     cfg = net.cfg(proj)
+    language = cpp.language(cfg)
+    label, extension = ("C++", "cpp") if language == "c++" else ("C", "c")
+    convert = cpp.game_abi if language == "c++" else lambda text: text
     work = Path(proj["root"])
     image = (work / cfg["rom"]["file"]).read_bytes()
     if out.exists():
@@ -37,9 +41,11 @@ def export_gba(net, slug: str, out: Path, log=print) -> dict:
     syms = net.symbols(proj["id"])
     units = net._unit_contexts(proj["id"])
     (out / "include").mkdir(exist_ok=True)
-    (out / "include" / "common.h").write_text(net._context(proj["id"])["header"], encoding="utf-8")
+    (out / "include" / "common.h").write_text(convert(net._context(proj["id"])["header"]), encoding="utf-8", newline="\n")
+    for unit in units:
+        (out / "include" / f"common_{unit}.h").write_text(convert(net._context(proj["id"], unit)["header"]), encoding="utf-8", newline="\n")
 
-    log("checking the matched functions and writing them as C")
+    log(f"checking the matched functions and writing them as {label}")
     functions, fallback = [], []
     for row in rows:
         thumb = "arm_func_start" not in (row["asm"] or "")
@@ -51,10 +57,12 @@ def export_gba(net, slug: str, out: Path, log=print) -> dict:
         if why:
             fallback.append((row["name"], why))
             continue
-        src = out / "src" / f"{row['name']}.c"
+        src = out / "src" / f"{row['name']}.{extension}"
         src.parent.mkdir(exist_ok=True)
-        src.write_text(f'#include "common.h"\n\n{row["matched_source"].strip()}\n', encoding="utf-8")
-        f["c"] = src.relative_to(out).as_posix()
+        unit = net._effective_unit(row, units)
+        include = f"common_{unit}.h" if unit else "common.h"
+        src.write_text(f'#include "{include}"\n\n{convert(row["matched_source"]).strip()}\n', encoding="utf-8", newline="\n")
+        f["source"] = src.relative_to(out).as_posix()
 
     names = {f["name"] for f in functions}
     symbols = {s.name: s.address for s in syms.by_name.values() if s.name not in names and not AUTO_NAME.match(s.name)}
@@ -63,15 +71,17 @@ def export_gba(net, slug: str, out: Path, log=print) -> dict:
         f"{'thumb_func' if f['thumb'] else 'arm_func'} 0x{f['addr']:X} {f['name']}\n" for f in functions), encoding="utf-8")
     build = {
         "title": proj["name"], "platform": "gba", "image": "baserom.gba", "output": "build/game.gba",
-        "sha1": hashlib.sha1(image).hexdigest(), "base": BASE, "compiler": cfg["compiler"],
+        "sha1": hashlib.sha1(image).hexdigest(), "base": BASE, "compiler": {**cfg["compiler"], "language": language},
         "functions": functions, "symbols": dict(sorted(symbols.items(), key=lambda kv: kv[1])),
     }
     (out / "build.json").write_text(json.dumps(build, indent=1), encoding="utf-8")
     shutil.copyfile(Path(__file__).with_name("export_gba_build.py"), out / "build.py")
     shutil.copyfile(work / cfg["rom"]["file"], out / "baserom.gba")
-    matched = sum(1 for f in functions if f.get("c"))
-    _docs(out, proj["name"], matched, len(functions), fallback)
+    matched = sum(1 for f in functions if f.get("source"))
+    _docs(out, proj["name"], matched, len(functions), fallback, label, extension)
     (out / ".gitignore").write_text("build/\nbaserom*\nasm/\n", encoding="utf-8")
+
+    (out / ".gitattributes").write_text("*.cpp text eol=lf\n*.c text eol=lf\n*.h text eol=lf\n*.s text eol=lf\n", encoding="utf-8", newline="\n")
 
     log("building the exported project to check it rebuilds the game byte for byte")
     proc = subprocess.run(capped([sys.executable, "build.py"]), cwd=out, capture_output=True, text=True, timeout=3600,
@@ -80,7 +90,7 @@ def export_gba(net, slug: str, out: Path, log=print) -> dict:
     if not identical:
         log((proc.stdout + proc.stderr)[-3000:])
     return {"path": str(out), "identical": identical, "matched": matched, "functions": len(functions),
-            "fallback": fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
+            "fallback": fallback, "language": language, "log": (proc.stdout + proc.stderr)[-3000:]}
 
 
 def _check_c(net, proj, row, thumb: bool, units, f: dict) -> str | None:
@@ -105,12 +115,12 @@ def _check_c(net, proj, row, thumb: bool, units, f: dict) -> str | None:
     return None
 
 
-def _docs(out: Path, title: str, matched: int, total: int, fallback) -> None:
+def _docs(out: Path, title: str, matched: int, total: int, fallback, label: str, extension: str) -> None:
     notes = "".join(f"\n- `{n}`: kept as assembly, {why}" for n, why in fallback)
     (out / "README.md").write_text(f"""# {title} (decompilation)
 
 A matching decompilation of {title} for the Game Boy Advance, started with [decomp.wtf](https://decomp.wtf).
-{matched} of {total} functions are C that agbcc compiles to exactly the original code; the rest is still assembly.
+{matched} of {total} functions are {label} that agbcc compiles to exactly the original code; the rest is still assembly.
 `build.py` rebuilds the ROM from this tree and checks it against your original, byte for byte.
 
 ## Build
@@ -125,23 +135,23 @@ function, using the names in `functions.cfg`.
 
 | Path | What it is |
 | :-- | :-- |
-| `src/<function>.c` | Decompiled functions, one per file, each matching the original. |
+| `src/<function>.{extension}` | Decompiled functions, one per file, each matching the original. |
 | `asm/` | Assembly of everything else, made from your copy by the first build. |
 | `include/common.h` | Types, structs and prototypes worked out so far. |
 | `functions.cfg` | Every function's address and name (rename here, then delete `asm/` to regenerate). |
 | `build.json`, `build.py` | What's where, and the build. `build/game.ld` puts every piece at its address. |
 
-Keep going with any tool: write a function as `src/<name>.c`, run `python build.py check <name>`, then
+Keep going with any tool: write a function as `src/<name>.{extension}`, run `python build.py check <name>`, then
 `python build.py`. When it says *identical*, the ROM still matches. This is the base for ports and mods: once
-everything is C, the game can be rebuilt, changed and moved to other platforms.
+everything is {label}, the game can be rebuilt, changed and moved to other platforms.
 
 The game's code and data belong to their rights holder: keep this tree to yourself unless you have the right to
 share it.{chr(10) + chr(10) + '## Notes' + notes if notes else ''}
 """, encoding="utf-8")
-    (out / "AGENTS.md").write_text("""# Working on this decompilation
+    (out / "AGENTS.md").write_text(f"""# Working on this decompilation
 
-- Goal: C that agbcc turns into exactly the original bytes. `python build.py` must end with "identical".
-- Pick a function from `asm/`, write it as `src/<name>.c` (one function, `#include "common.h"` first), then
+- Goal: {label} that agbcc turns into exactly the original bytes. `python build.py` must end with "identical".
+- Pick a function from `asm/`, write it as `src/<name>.{extension}` (one function, `#include "common.h"` first), then
   `python build.py check <name>`: it compiles it, compares it with the original and records it in `build.json`.
 - Shared types and prototypes go in `include/common.h`. Never edit `baserom.gba` or `asm/` to force a match.
 """, encoding="utf-8")
