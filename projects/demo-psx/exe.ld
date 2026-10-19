@@ -4,7 +4,7 @@ ENTRY(_start)
 SECTIONS
 {
     . = 0x80010000;
-    .text : { build/crt0.o(.text) *(.text) }
+    .text : { *crt0.o(.text) *(.text) }
     .rodata : { *(.rodata) *(.rodata.*) }
     .data : { *(.data) *(.data.*) }
     _gp = ALIGN(16) + 0x7FF0;

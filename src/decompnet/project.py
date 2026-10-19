@@ -94,6 +94,10 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     raise toolchains.ToolchainError(f"The {tc.id} C++ frontend is missing: reinstall with `decompnet toolchain install {tc.id} --force`")
                 exceptions = "-fno-exceptions" if tc.id == "gcc-2.8.1-psx" else "-fno-handle-exceptions"
                 cmd[1:1] = ["-x", "c++", exceptions, "-fno-rtti"]
+                if tc.id.endswith("-psx"):
+                    # Context's uninitialized small globals are declarations of
+                    # existing game data; keep the C compiler's common storage.
+                    cmd.insert(1, "-fconserve-space")
             elif tc.id == "agbcc":
                 if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
                     raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")

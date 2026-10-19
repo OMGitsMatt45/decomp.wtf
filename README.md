@@ -310,7 +310,7 @@ the game.
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | **GameCube · Wii** | ★ **Recommended** | ✓ disc (ISO, RVZ, WBFS…) or DOL | CodeWarrior GC 1.0 – Wii 1.7 | ✓ dtk-template | ✓ |
 | **Nintendo 64** | ★ **Recommended** | ✓ ROM | KMC GCC 2.7.2 · IDO 5.3 / 7.1 | ✓ export | ✓ |
-| **PlayStation** | Beta | ✓ disc (.bin, .iso, .chd) or EXE | GCC 2.7.2 / 2.8.1 (PSY-Q era) | ✓ export | ✓ |
+| **PlayStation** | Beta | ✓ disc (.bin, .iso, .chd) or EXE | GCC 2.7.2 / 2.8.1 C/C++ (PSY-Q era) | ✓ export | ✓ |
 | **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.96 | ✓ export | ✓ |
 | **Game Boy Advance** | Beta | ✓ ROM | agbcc C/C++ | ✓ export | ✓ |
 | **Nintendo DS** | Beta | ✓ ROM (.nds) | CodeWarrior for DS 1.2 – DSi 1.6 | ✓ ds-decomp | ✓ |
@@ -358,7 +358,9 @@ See [IDO C++ validation and compiler choices](docs/ido-cpp.md). GBA ROM projects
 real C++ using a separately restored GCC 2.95.3 frontend with agbcc's original Thumb backend. This is an explicit
 frontend extension; Arm GNU supplies preprocessing and assembly, without substituting its modern compiler.
 Native Windows and Linux builds, strict relocation/data checks and clean exported ROM rebuilds are tested.
-See [GBA C++ support](docs/gba-cpp.md). PlayStation and PS2 drafts remain C.
+See [GBA C++ support](docs/gba-cpp.md). PS1 projects using GCC 2.7.2 or 2.8.1 also generate, match and export
+real C++ using each version's original PS1-patched C++ frontend, preserving game symbol linkage.
+See [PS1 C++ support and release verification](docs/psx-cpp.md). PS2 drafts remain C.
 Public decomps use whatever language the project does.
 
 **Proprietary compilers** (IDO, CodeWarrior, CodeWarrior for DS) are only installed after you accept that. Heavy

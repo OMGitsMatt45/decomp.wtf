@@ -8,13 +8,13 @@ from unittest.mock import Mock
 from decompnet import compiler, cpp, seeds
 
 
-@pytest.mark.parametrize("platform,toolchain", [("n64", "gcc-2.7.2-kmc"), ("n64", "ido-7.1"), ("n64", "ido-5.3"), ("gba", "agbcc")])
+@pytest.mark.parametrize("platform,toolchain", [("n64", "gcc-2.7.2-kmc"), ("n64", "ido-7.1"), ("n64", "ido-5.3"), ("gba", "agbcc"), ("psx", "gcc-2.7.2-psx"), ("psx", "gcc-2.8.1-psx")])
 def test_verified_roms_default_to_cpp_and_explicit_c_is_respected(platform, toolchain):
     cfg = {"kind": "rom", "platform": platform, "compiler": {"toolchain": toolchain}}
     assert cpp.language(cfg) == "c++"
     cfg["compiler"]["language"] = "c"
     assert cpp.language(cfg) == "c"
-    assert cpp.language({"kind": "rom", "platform": "psx", "compiler": {"toolchain": "gcc-2.7.2-psx"}}) == "c"
+    assert cpp.language({"kind": "rom", "platform": "ps2", "compiler": {"toolchain": "ee-gcc-2.96"}}) == "c"
     assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-kmc"}}) == "c"
     with pytest.raises(ValueError, match="compiler.language"):
         cpp.language({"compiler": {"language": "rust"}})
@@ -75,7 +75,7 @@ def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_p
     assert not result.ok and "Set TMP and TEMP" in result.log
 
 
-@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++")])
+@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++")])
 def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []
     monkeypatch.setattr(seeds, "run_m2c", lambda *args: calls.append(args) or "draft")

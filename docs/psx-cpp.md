@@ -1,0 +1,88 @@
+# PS1 C++ game output
+
+PS1 ROM projects using `gcc-2.7.2-psx` or `gcc-2.8.1-psx` default to C++
+drafts, compilation, matching and `.cpp` exports. Explicit
+`compiler.language = "c"` retains C. Older exported projects without a language
+field continue to compile as C.
+
+## Compiler identity
+
+These are the **original GNU C++ frontends for each PS1-patched GCC version**,
+from decompals/old-gcc release 0.17, not renamed C files or a modern replacement
+compiler. The Linux release already contains `cc1plus`. Windows packages add
+standalone MinGW PE32 builds of that same frontend; GCC 2.8.1 also gains its
+native C driver, preprocessor and C frontend. Windows execution needs no WSL,
+MSYS or Cygwin runtime.
+
+| Version | Compiler source | Assembler |
+| :-- | :-- | :-- |
+| GCC 2.7.2 PS1 | Original AzureFlute import `2d758772bde54b0161ad380d11da13efdebfd261` plus old-gcc 0.17 PSX patches | Existing pinned binutils 2.6 |
+| GCC 2.8.1 PS1 | Original GNU 2.8.1 tarball, SHA-256 `3b30fbfdf93e628373d90d174243f3267b0eec9ebe792bb64fd15b8828c2ea4c`, plus old-gcc 0.17 PSX patches | Pinned binutils-mips v0.10 on Windows and Linux |
+
+Both use target patches from old-gcc commit
+`cf70ec58bce58128732062bc9930045c82904cbb`. Host changes cover Windows process
+quoting, child exit status, temporary files, modern varargs headers and build
+compatibility. Target instruction selection, optimization and register allocation
+are unchanged. Binutils 2.6 misparses GCC 2.8.1's `%hi($LC0)` literal labels;
+the compatible assembler is selected explicitly rather than changing compilers.
+GNU assembly is not a claim of exact ASPSX/PSY-Q assembler compatibility.
+
+`tools/psx_cpp/build.py` and `tools/windows/build-psx{272,281}.py` build the
+Windows packages. Each package includes licenses, complete corresponding GPL
+sources, target patches and the build recipe in `cpp-source/`. Registry URLs
+pin immutable asset commits and SHA-256 checksums. Reinstall older installations:
+
+```sh
+decompnet toolchain install gcc-2.7.2-psx --force
+decompnet toolchain install gcc-2.8.1-psx --force
+```
+
+## Language, linkage and strict matching
+
+This is the pre-C++98 GNU dialect supported by each period frontend. Templates,
+classes, local constructors, references and explicitly overloaded helpers are
+available. Exceptions and RTTI are disabled. No modern standard library, C++
+startup code or compatible implementation of `new`/`delete` is supplied. Global
+dynamic initialization and code needing a C++ runtime require separate game
+support and are not established by this conversion.
+
+Plain game functions, prototypes and external variables retain the game's C
+linkage. Templates, classes, static helpers and explicit `extern "C++"` helpers
+keep their authored linkage. Judge and exported builds apply the same rules.
+`-fconserve-space` preserves C-style common storage for uninitialized small-global
+declarations in the context; it prevents duplicate definitions across exported
+translation units while retaining `$gp` access. Per-unit headers travel with
+their functions.
+
+C++ can emit different instructions for equivalent C expressions. The demo's
+absolute-value function uses an explicit conditional assignment, its null macro
+is `0`, and two loops declare their entity pointer outside the loop. These are
+authored matching candidates, not automatic rewrites of submitted bodies.
+
+Matching requires exact instructions, resolved call and data relocations, and
+the owned data referenced by the candidate. Local GP relocations honor the
+input object's `.reginfo` GP bias, including binutils 2.6's `0x4000`. Indexed
+loads validate the entire constant table rather than just its first element.
+Every exported PS1 build runs the same strict checks before linking, then
+compares the entire executable byte for byte. Original data copied into an
+export cannot conceal changed compiled constants.
+
+## Verification and release gate
+
+`DECOMP_TEST_PSX_CPP=1 python -m pytest tests/test_psx.py tests/test_psx_cpp.py`
+requires both pinned compilers, MIPS binutils and m2c. Required Windows/Linux CI
+fails on skipped tests. Coverage includes original Linux code/relocation golden
+files, real C++ features, C rejection of the C++ fixture, invalid C++ errors,
+`mipsel-gcc-c++` drafts, all 13 C-built Demo Quest functions matched as C++,
+negative instruction/call/GP/table tests, and clean C/C++ exports with per-unit
+headers, paths containing spaces and Git `core.autocrlf=true`.
+
+Native Windows and Linux CI must pass before this change is released to main.
+Local development checks run the original 32-bit Linux binaries through qemu
+where the host cannot execute ELF32. The local Windows emulator crashes on
+floating-point input in both the existing C and restored C++ frontends; emulator
+results therefore do not establish native Windows compatibility. The required
+native Windows job includes those floating-point cases and full export rebuilds.
+
+The separate PlayStation PR #2 is not merged by this work. PS2 output and the
+classic IDO 5.3 cfront investigation are outside this change.

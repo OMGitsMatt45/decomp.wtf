@@ -113,6 +113,11 @@ url = "https://github.com/decompals/mips-binutils-2.6/releases/download/v0.3/bin
 sha256 = "ab21ad5908fb7776a4b0c596cc82f216876e3b5d108c7c7c1f33543b3f3fce4c"
 platforms = ["macos-x86_64", "macos-arm64"]
 
+[["gcc-2.8.1-psx".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/518f3a69ddcaf20f6412db805360f2f90dd6da29/toolchains/ps1-cpp/psx-2.8.1-cpp-windows.tar.gz"
+sha256 = "c19129ebcc35ca90ad34de146903a92977894a34e5f32c53ba45e3b75c781fae"
+platforms = ["windows-x86_64"]
+
 ["ee-gcc-2.96"]
 name = "EE-GCC 2.96"
 platform = "PS2"
@@ -555,4 +560,8 @@ platforms = ["windows-x86_64"]
 [["gcc-2.7.2-psx".parts]]
 url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/binutils-2.6-windows-i686-v2.zip"
 sha256 = "fad12050405936cdcb349416b2aaf804985f5a4c05c0159442e9489b37a58915"
+platforms = ["windows-x86_64"]
+[["gcc-2.7.2-psx".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/518f3a69ddcaf20f6412db805360f2f90dd6da29/toolchains/ps1-cpp/psx-2.7.2-cpp-windows.tar.gz"
+sha256 = "271d6d34a2680e151a3029dc1747a81f1a06db8b74e3597fe6ca44b877a827ee"
 platforms = ["windows-x86_64"]

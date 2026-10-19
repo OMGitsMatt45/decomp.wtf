@@ -41,6 +41,21 @@ _WIDTH = {0x20: 1, 0x24: 1, 0x28: 1, 0x21: 2, 0x25: 2, 0x29: 2, 0x23: 4, 0x27: 4
 ReadFn = Callable[[int, int], "bytes | None"]
 
 
+def _writes_gpr(word: int, reg: int) -> bool:
+    """Conservatively track the address register between a relocated LUI and load/store."""
+    op = word >> 26
+    rt, rd = (word >> 16) & 31, (word >> 11) & 31
+    if op == 0:
+        return rd == reg and reg != 0
+    if op in (1, 3):
+        return reg == 31
+    if op in (2, 4, 5, 6, 7) or 0x28 <= op <= 0x2F or op in (0x31, 0x32, 0x35, 0x36, 0x39, 0x3A, 0x3D, 0x3E):
+        return False
+    if 8 <= op <= 15 or 0x20 <= op <= 0x27 or op in (0x30, 0x34, 0x37, 0x38):
+        return rt == reg
+    return True  # an unrecognized operation cannot prove a fixed address
+
+
 @dataclass
 class RomTarget:
     name: str
@@ -233,6 +248,12 @@ class _Linker:
         if shndx in ("SHN_UNDEF", "SHN_COMMON") or shndx in (0xFF03, 0xFF04):  # + MIPS small common / small undefined
             base = self.resolve_name(_canonical(sym.name, sym["st_info"]["bind"]))
             return None if base is None else (base + residual) & 0xFFFFFFFF
+        if r["type"] == R_MIPS_GPREL16 and sym["st_info"]["bind"] == "STB_LOCAL":
+            # MIPS ELF local GP relocations include the input object's GP bias.
+            # Binutils 2.6 records 0x4000 here; modern assemblers normally use 0.
+            reginfo = self.elf.get_section_by_name(".reginfo")
+            if reginfo is not None and reginfo["sh_size"] >= 24:
+                residual += int.from_bytes(reginfo.data()[20:24], self.target.order)
         off = residual if sym["st_info"]["type"] == "STT_SECTION" else sym["st_value"] + residual
         named = _symbol_at(self.symtab, shndx, off)
         if shndx == fn_shndx:
@@ -260,10 +281,42 @@ class _Linker:
                 return None
         self.data.setdefault((shndx, off), addr)
         if r["type"] != R_MIPS_HI16:  # the instruction that uses the address says how much of the data it reads
-            width = _WIDTH.get(self.words[r["off"] // 4] >> 26) if r["off"] // 4 < len(self.words) else None
+            width = self.access_width(raw, k)
             prev_width = self.widths.get((shndx, off), 0)
             self.widths[(shndx, off)] = None if width is None or prev_width is None else max(prev_width, width)
         return addr
+
+    def access_width(self, raw: list[dict], k: int) -> int | None:
+        """A fixed load can check one scalar; an indexed load must check its whole table."""
+        r = raw[k]
+        at = r["off"] // 4
+        if at >= len(self.words):
+            return None
+        word = self.words[at]
+        width = _WIDTH.get(word >> 26)
+        if width is None:
+            return None
+        base = (word >> 21) & 31
+        if r["type"] == R_MIPS_GPREL16:
+            return width if base == 28 else None
+        if r["type"] != R_MIPS_LO16:
+            return None
+        hi = next((h for h in reversed(raw[:k]) if h["type"] == R_MIPS_HI16
+                   and h["symidx"] == r["symidx"] and h["symtab"] is r["symtab"]), None)
+        if hi is None:
+            return None
+        first = hi["off"] // 4
+        upper = self.words[first]
+        if upper >> 26 != 15 or (upper >> 16) & 31 != base:
+            return None
+        for i in range(first + 1, at):
+            w = self.words[i]
+            control = w >> 26 in (1, 2, 3, 4, 5, 6, 7) or (w >> 26 == 0 and w & 63 in (8, 9))
+            # A load in the delay slot still sees the pre-branch registers;
+            # farther control flow cannot prove that the address is fixed.
+            if _writes_gpr(w, base) or (control and i != at - 1):
+                return None
+        return width
 
     # ------------------------------------------------------------------ the candidate's own data
 

@@ -55,12 +55,13 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | Toolchain | Native Windows status |
 | --- | --- |
 | KMC GCC 2.7.2 / N64 | C++ host port, including the original binutils 2.6 |
-| PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
+| PlayStation GCC 2.7.2 | Native C/C++ source port, including the original binutils 2.6 |
+| PlayStation GCC 2.8.1 | Native original C/C++ frontends with pinned compatible MIPS binutils |
 | agbcc / Game Boy Advance | C compiler plus a restored GCC 2.95.3 C++ frontend using the agbcc Thumb backend |
 | IDO 5.3 / 7.1 | Original statically recompiled SGI programs with bundled MSYS runtime; 7.1 includes a Windows host-memory fix; explicit license acceptance required |
 | CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
-| PlayStation GCC 2.8.1 and EE-GCC 2.96 | No native build in this release; marked unavailable |
+| EE-GCC 2.96 | No native build in this release; marked unavailable |
 
 EE-GCC 2.96 has no verified matching source available for a Windows source port. The installer does not
 substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and
@@ -139,3 +140,14 @@ Native Windows/Linux tests require real C++ compilation, strict relocation/data
 matching and clean byte-identical exported ROM rebuilds. Reinstall an older
 package with `decompnet toolchain install agbcc --force`.
 See [GBA C++ support](gba-cpp.md) for compiler identity, validation and runtime limits.
+
+## PS1 C++ game output
+
+PS1 GCC 2.7.2 and 2.8.1 projects default to C++ drafts, matching and `.cpp`
+exports using the original version-specific GNU C++ frontends. Windows packages
+contain standalone native executables and complete corresponding source; WSL is
+not required. GCC 2.8.1 uses pinned compatible MIPS binutils for literal labels
+that binutils 2.6 cannot parse. Compiler versions and strict relocation/data
+matching are preserved. Reinstall an older PS1 toolchain with `--force`.
+See [PS1 C++ support](psx-cpp.md) for runtime limits and the required native
+Windows/Linux verification gate before publication.

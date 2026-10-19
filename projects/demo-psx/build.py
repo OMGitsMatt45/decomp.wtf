@@ -9,12 +9,15 @@ put small globals in $gp-relative data.
 from __future__ import annotations
 
 import shutil
+import argparse
 import struct
 import subprocess
 import sys
 from pathlib import Path
 
 from decompnet import toolchains
+from decompnet.project import compiler_config
+from elftools.elf.elffile import ELFFile
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / "build"
@@ -33,38 +36,44 @@ def run(argv):
 
 
 def main() -> None:
-    if BUILD.exists():
-        shutil.rmtree(BUILD)
-    BUILD.mkdir()
-    tc = toolchains.get("gcc-2.7.2-psx")
-    d = str(toolchains.require(tc.id))
-    cc = [a.replace("{tc}", d) for a in tc.cc]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--toolchain", choices=["gcc-2.7.2-psx", "gcc-2.8.1-psx"], default="gcc-2.7.2-psx")
+    parser.add_argument("--output", type=Path, default=BUILD)
+    args = parser.parse_args()
+    build = args.output.resolve()
+    if build.exists():
+        shutil.rmtree(build)
+    build.mkdir(parents=True)
+    cfg = compiler_config(HERE, {"compiler": {"toolchain": args.toolchain, "language": "c", "sandbox": "none"}})
     jobs = [(HERE / "crt0.s", []), (DEMO / "main.c", [f"-I{GAME}"]), (DEMO / "libc.c", []), (HERE / "psxrt.c", []),
             (GAME / "game.c", [f"-I{GAME}"])]
     jobs += [(ZLIB / "original" / f"{u}.c", [f"-I{ZLIB / 'sysinclude'}", f"-I{ZLIB / 'original'}"]) for u in ZLIB_UNITS]
     objs = []
     for src, extra in jobs:
-        obj = BUILD / f"{src.stem}.o"
-        run([*cc, *tc.flags, *extra, str(src), "-o", str(obj)])
+        obj = build / f"{src.stem}.o"
+        argv = [a.replace("{src}", str(src)).replace("{obj}", str(obj)).replace("{include}", str(HERE)) for a in cfg.cmd]
+        run([*argv, *extra])
         objs.append(obj)
-    elf = BUILD / "demoq_ps1.elf"
-    run(["ld.lld", "-m", "elf32ltsmip", "-T", str(HERE / "exe.ld"), "--no-check-sections", "-o", str(elf), *map(str, objs)])
-    text = BUILD / "text.bin"
-    run(["llvm-objcopy", "-O", "binary", "--only-section=.text", "--only-section=.rodata", "--only-section=.data",
+    tools = toolchains.ensure("binutils-mips", log=print)
+    suffix = ".exe" if sys.platform == "win32" else ""
+    elf = build / "demoq_ps1.elf"
+    run([str(tools / f"mips-ps2-decompals-ld{suffix}"), "-EL", "-T", str(HERE / "exe.ld"), "--no-check-sections", "-o", str(elf), *map(str, objs)])
+    text = build / "text.bin"
+    run([str(tools / f"mips-ps2-decompals-objcopy{suffix}"), "-O", "binary", "--only-section=.text", "--only-section=.rodata", "--only-section=.data",
          "--only-section=.sdata", str(elf), str(text)])
     body = text.read_bytes()
     body += b"\0" * (-len(body) % 2048)
-    nm = subprocess.run(["llvm-nm", str(elf)], capture_output=True, text=True).stdout
-    syms = {f[2]: int(f[0], 16) for f in (line.split() for line in nm.splitlines()) if len(f) == 3}
+    with elf.open("rb") as stream:
+        syms = {s.name: s["st_value"] for s in ELFFile(stream).get_section_by_name(".symtab").iter_symbols() if s.name}
     header = bytearray(2048)
     header[0:8] = b"PS-X EXE"
     struct.pack_into("<IIIIIIIIIIII", header, 0x10, syms["_start"], syms["_gp"], LOAD, len(body), 0, 0,
                      syms["_bss_start"], syms["_bss_end"] - syms["_bss_start"], 0x801FFF00, 0, 0, 0)
     header[0x4C:0x4C + 40] = b"Demo Quest PS1 - made for decomp.wtf".ljust(40, b"\0")
-    out = BUILD / "DEMOQ_PS1.EXE"
+    out = build / "DEMOQ_PS1.EXE"
     out.write_bytes(bytes(header) + body)
     text.unlink()
-    print(f"built {out.relative_to(HERE)}: {len(body)} bytes of code+data, gp=0x{syms['_gp']:08X}")
+    print(f"built {out}: {len(body)} bytes of code+data, gp=0x{syms['_gp']:08X}")
 
 
 if __name__ == "__main__":

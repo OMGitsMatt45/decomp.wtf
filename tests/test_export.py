@@ -5,6 +5,7 @@ export the project, build it, then build it again from a clean tree (as from a f
 your own copy of the game), and check that nothing made from the game would be committed.
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -35,7 +36,7 @@ DEMOS = {
 def _ready(platform: str) -> bool:
     _, _, tc, _ = DEMOS[platform]
     return (toolchains.installed(tc) is not None and toolchains.installed("binutils-mips") is not None
-            and shutil.which("ld.lld") is not None)
+            and (platform == "psx" or shutil.which("ld.lld") is not None))
 
 
 def _decompile(tmp: Path, platform: str):
@@ -44,6 +45,12 @@ def _decompile(tmp: Path, platform: str):
         subprocess.run([sys.executable, str(build)], check=True)
     net = RomNetwork(tmp / "app.db", tmp)
     slug = net.import_rom(game, confirmed=True, log=lambda *_: None)
+    if platform == "psx":  # legacy C exports remain rebuildable after the default changes
+        proj = net.project_row(slug)
+        cfg = net.cfg(proj)
+        cfg["compiler"].update(language="c", sandbox="none")
+        with net.store.tx() as db:
+            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
     agent, _ = net.local_agent("agent")
     syms = {s.name: s["st_value"] for s in ELFFile(open(elf, "rb")).get_section_by_name(".symtab").iter_symbols()}
     pid = net.project_row(slug)["id"]

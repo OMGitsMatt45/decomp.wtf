@@ -33,7 +33,7 @@ def main():
         command += [f"-B{tools.as_posix()}/mips-ps2-decompals-"]
     command += ["-c", "-Wa,-EL" if args.version == "2.7.2" else "-Wa,-EL,-mips1,-mabi=32", "-O2", "-G8"]
     cfg = compiler.CompilerConfig(command + ["-I{include}", "{src}", "-o", "{obj}"], sandbox="none")
-    cfg = replace(cfg, language="c++", c_linkage=True, cmd=[*cfg.cmd[:1], "-x", "c++",
+    cfg = replace(cfg, language="c++", c_linkage=True, cmd=[*cfg.cmd[:1], "-fconserve-space", "-x", "c++",
         "-fno-handle-exceptions" if args.version == "2.7.2" else "-fno-exceptions", "-fno-rtti", *cfg.cmd[1:]])
     if windows:
         os.environ["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
@@ -50,7 +50,7 @@ def main():
     reference = json.loads((fixtures / f"psx{args.version.replace('.', '')}_cpp_parity.json").read_text())
     assert describe_functions(result.obj) == reference["functions"]
     assert not compiler.compile_source(cfg, "", "int broken() { return no_such_identifier; }").ok
-    print(f"Native {'Windows' if windows else 'Linux'} PS1 GCC {args.version} C++: "
+    print(f"{'Windows' if windows else 'Linux'} PS1 GCC {args.version} C++: "
           "templates, classes, constructors, references, overloads, floats, data and relocations match Linux")
 
 

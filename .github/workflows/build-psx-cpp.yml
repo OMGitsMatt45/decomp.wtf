@@ -41,6 +41,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: psx-${{ matrix.version }}-cpp
@@ -51,6 +53,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Bootstrap from the unchanged C registry, independently of any
+          # previously published C++ overlay (including the candidate itself).
+          git show d594544b86d1b0b5ab5d4084fe140dcbfb09cf56:src/decompnet/toolchains.toml > src/decompnet/toolchains.toml
           uv run --no-sync decompnet toolchain install binutils-mips
           if [ "$RUNNER_OS" != Windows ] || [ '${{ matrix.version }}' = 2.7.2 ]; then
             uv run --no-sync decompnet toolchain install gcc-${{ matrix.version }}-psx

@@ -33,7 +33,7 @@ DISCARD = ("*(.reginfo) *(.MIPS.abiflags) *(.MIPS.options) *(.pdr) *(.comment) *
 
 try:
     from decompnet import toolchains
-    from decompnet.compiler import run_in
+    from decompnet.compiler import run_in, compile_source
     from decompnet.project import compiler_config
 except ImportError:
     sys.exit("This build uses decomp.wtf's pinned compilers: install decomp.wtf first (https://decomp.wtf).")
@@ -132,7 +132,7 @@ def trim(path: Path) -> None:
 
 
 def build_objects(todo: list[tuple[str, str, str]]) -> None:
-    cfg = compiler_config(ROOT, {"compiler": B["compiler"]})
+    cfg = build_config()
     as_ = binutils("as")
     for kind, src, obj in todo:
         target = ROOT / obj
@@ -141,12 +141,75 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
             continue
         if kind == "asm":
             run([as_, *B["as_flags"], "-o", obj, src])
+        elif B["platform"] == "psx":
+            result = compile_function(cfg, src)
+            if not result.ok:
+                fail(f"compiling {src} failed:\n{result.log}")
+            fn = next(f for f in B["functions"] if c_source(f) == src)
+            why = validate(fn, result.obj)
+            if why:
+                fail(f"{fn['name']}: not identical to the original:\n{why}")
+            target.write_bytes(result.obj)
+            trim(target)
         else:
             argv = [a.replace("{src}", src).replace("{obj}", obj).replace("{include}", "include") for a in cfg.cmd]
             res = run_in(cfg, ROOT, argv, inputs=[src, "include"], outputs=[obj])
             if res.returncode != 0 or not target.exists():
                 fail(f"compiling {src} failed:\n{(res.stdout + res.stderr)[-3000:]}")
             trim(target)
+
+
+def build_config():
+    # A missing language in an older export always means C, even after a
+    # platform starts defaulting to C++. Preserve the game's external ABI.
+    return compiler_config(ROOT, {"kind": "rom", "platform": B["platform"], "compiler": {
+        **B["compiler"], "language": B["compiler"].get("language", "c"), "include_dirs": ["include"]}})
+
+
+def compile_function(cfg, src):
+    text = (ROOT / src).read_text(encoding="utf-8")
+    m = re.match(r'\s*#include "([^"]+)"[^\S\n]*\n', text)
+    header = (ROOT / "include" / m.group(1)).read_text(encoding="utf-8") if m else ""
+    return compile_source(cfg, header, text[m.end():] if m else text, trusted=True)
+
+
+def validate(fn, obj):
+    """Strictly check PS1 instructions, resolved relocations and owned data before every build."""
+    from decompnet.rom import match, split
+    from decompnet.rom.symbols import Symbol, SymbolTable
+
+    found = [Symbol(s, a, 0, "data") for s, a in B["symbols"].items()]
+    found += [Symbol(f["name"], f["vram"], 0, "func") for f in B["functions"]]
+    for path in (ROOT / "asm" / "data").glob("**/*.s"):
+        text = path.read_text(errors="replace", encoding="utf-8")
+        for m in re.finditer(r"dlabel (\w+)\s*\n\s*/\*\s*(?:[0-9A-F]+\s+)?([0-9A-F]{8})", text):
+            found.append(Symbol(m.group(1), int(m.group(2), 16), 0, "data"))
+    table = SymbolTable(found)
+    big = B["big_endian"]
+    rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
+    target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
+    image = (ROOT / B["image"]).read_bytes()
+
+    def read(addr, n):
+        for seg in B["segments"]:
+            if seg["kind"] == "code":
+                size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
+                if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
+                    at = seg["start"] + addr - seg["vram"]
+                    return image[at:at + n]
+        return None
+
+    linked = match.link(obj, fn["name"], target, table, read)
+    if not linked.exact:
+        return "\n".join(linked.problems) or "the compiled bytes differ"
+    own = {}
+    for section, offsets in linked.placements.items():
+        bases = {addr - off for off, addr in offsets.items()}
+        if len(bases) != 1:
+            return "its own data isn't laid out like the game's"
+        own[section] = bases.pop()
+    fn["own"] = own
+    return None
 
 
 def _size(obj: str, sections: tuple[str, ...]) -> int:
@@ -268,10 +331,6 @@ def build() -> bool:
 
 def check(name: str) -> bool:
     """Compile one function and link it at its address with decomp.wtf's matcher; record where its data goes."""
-    from decompnet.compiler import compile_source
-    from decompnet.rom import match, split
-    from decompnet.rom.symbols import Symbol, SymbolTable
-
     setup()
     fn = next((f for f in B["functions"] if f["name"] == name), None)
     if fn is None:
@@ -280,44 +339,16 @@ def check(name: str) -> bool:
     if not src:
         extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
         fail(f"write it first as src/{fn['seg']}/{name}.{extension}")
-    found = [Symbol(s, a, 0, "data") for s, a in B["symbols"].items()]
-    found += [Symbol(f["name"], f["vram"], 0, "func") for f in B["functions"]]
-    for path in (ROOT / "asm" / "data").glob("**/*.s"):
-        text = path.read_text(errors="replace", encoding="utf-8")
-        for m in re.finditer(r"dlabel (\w+)\s*\n\s*/\*\s*(?:[0-9A-F]+\s+)?([0-9A-F]{8})", text):
-            found.append(Symbol(m.group(1), int(m.group(2), 16), 0, "data"))
-    table = SymbolTable(found)
-    big = B["big_endian"]
-    rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
-    target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
-    image = (ROOT / B["image"]).read_bytes()
-
-    def read(addr: int, n: int) -> bytes | None:
-        for seg in B["segments"]:
-            if seg["kind"] == "code":
-                size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
-                if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
-                    at = seg["start"] + addr - seg["vram"]
-                    return image[at:at + n]
-        return None
-
-    cfg = compiler_config(ROOT, {"compiler": B["compiler"]})
-    text = (ROOT / src).read_text(encoding="utf-8")
-    m = re.match(r'\s*#include "([^"]+)"\s*\n', text)
-    header = (ROOT / "include" / m.group(1)).read_text(encoding="utf-8") if m else ""
-    res = compile_source(cfg, header, text[m.end():] if m else text, trusted=True)
-    if not res.ok:
-        print(res.log)
+    result = compile_function(build_config(), src)
+    if not result.ok:
+        print(result.log)
         return False
-    linked = match.link(res.obj, name, target, table, read)
-    if not linked.exact:
-        print(f"{name}: not identical yet")
-        for p in linked.problems:
-            print(f"  - {p}")
+    why = validate(fn, result.obj)
+    if why:
+        print(f"{name}: not identical yet\n{why}")
         return False
-    fn["c"] = src
-    fn["own"] = {sec: min(a - o for o, a in offs.items()) for sec, offs in linked.placements.items()}
-    (ROOT / "build.json").write_text(json.dumps(B, indent=1), encoding="utf-8")
+    fn["source"] = src
+    (ROOT / "build.json").write_text(json.dumps(B, indent=1), encoding="utf-8", newline="\n")
     print(f"{name}: identical to the original; recorded in build.json")
     return True
 
