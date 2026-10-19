@@ -16,6 +16,8 @@
 #define bcopy(src, dst, n) memmove((dst), (src), (n))
 #define bzero(dst, n) memset((dst), 0, (n))
 #define bcmp(a, b, n) memcmp((a), (b), (n))
+#define index strchr
+#define rindex strrchr
 #endif
 #define MAX_INIT_PRIORITY 65535
 #define MAX_RESERVED_INIT_PRIORITY 100
