@@ -18,6 +18,8 @@ and abort, avoiding an obsolete host `__assert` calling signature. Runtime DLLs 
 beside the executables, including with the existing 5.3 C package, so a separate MSYS installation
 is not required. Linux keeps its original pinned package. The build recipe, compiler source
 archive and corresponding MSYS runtime source accompany the Windows assets.
+The application also supplies a writable Windows temporary directory for every compile, rather
+than relying on an MSYS `/tmp` directory.
 
 The normal project default is C++ for drafts, matching and `.cpp` exports. Plain game functions,
 prototypes and external declarations retain C linkage. Templates, classes, references and helpers

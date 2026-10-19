@@ -122,8 +122,11 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
         return wsl.run(argv, cwd or work, timeout, **stage)
     # in the work folder, never in the app's own: KMC GCC's assembler (binutils 2.6) can't read its input when the
     # current directory is / ("Bad file descriptor"), which it is for decomp.wtf started by a service or in Docker
+    # IDO's native MSYS programs otherwise assume /tmp exists. Give native
+    # Windows compilers a real writable folder, including their child phases.
+    env = {"env": {**os.environ, "TMPDIR": (cwd or work).as_posix()}} if sys.platform == "win32" else {}
     return subprocess.run(_wrap(cfg, work, argv), cwd=cwd or work, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", timeout=timeout)
+                          errors="replace", timeout=timeout, **env)
 
 
 def run_in(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float = 300, *,

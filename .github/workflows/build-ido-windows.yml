@@ -33,9 +33,13 @@ jobs:
           $code = "#ifndef __cplusplus`n#error C++ frontend required`n#endif`ntemplate<class T> class Box { public: T value; };`nextern `"C`" int probe(int x) { Box<int> b; int &r = b.value; r = x + 1; return b.value; }`n"
           [IO.File]::WriteAllText($source, $code, (New-Object Text.UTF8Encoding($false)))
           $env:PATH = Join-Path $env:SystemRoot "System32"
+          # The application sets this per invocation too; a regular Windows
+          # installation has no Unix /tmp directory.
+          $env:TMPDIR = $env:RUNNER_TEMP.Replace('\', '/')
           & (Join-Path $tools "NCC.exe") -c -O2 -mips2 -G 0 -non_shared $source -o $object
           if ($LASTEXITCODE -ne 0 -or !(Test-Path $object)) { throw "The standalone IDO C++ compiler failed" }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: standalone-ido-windows
           path: ${{ runner.temp }}/ido-artifacts/*
