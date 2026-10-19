@@ -5,16 +5,15 @@ import ctypes
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from decompnet import compiler, cpp, seeds
+from decompnet import compiler, cpp, project, seeds, toolchains, wsl
 
 
-@pytest.mark.parametrize("platform,toolchain", [("n64", "gcc-2.7.2-kmc"), ("n64", "ido-7.1"), ("n64", "ido-5.3"), ("gba", "agbcc"), ("psx", "gcc-2.7.2-psx"), ("psx", "gcc-2.8.1-psx")])
+@pytest.mark.parametrize("platform,toolchain", [("n64", "gcc-2.7.2-kmc"), ("n64", "ido-7.1"), ("n64", "ido-5.3"), ("gba", "agbcc"), ("psx", "gcc-2.7.2-psx"), ("psx", "gcc-2.8.1-psx"), ("ps2", "ee-gcc-2.96")])
 def test_verified_roms_default_to_cpp_and_explicit_c_is_respected(platform, toolchain):
     cfg = {"kind": "rom", "platform": platform, "compiler": {"toolchain": toolchain}}
     assert cpp.language(cfg) == "c++"
     cfg["compiler"]["language"] = "c"
     assert cpp.language(cfg) == "c"
-    assert cpp.language({"kind": "rom", "platform": "ps2", "compiler": {"toolchain": "ee-gcc-2.96"}}) == "c"
     assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-kmc"}}) == "c"
     with pytest.raises(ValueError, match="compiler.language"):
         cpp.language({"compiler": {"language": "rust"}})
@@ -75,9 +74,19 @@ def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_p
     assert not result.ok and "Set TMP and TEMP" in result.log
 
 
-@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++")])
+@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++"), ("ee-gcc-2.96", "mipsee-gcc-c++")])
 def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []
     monkeypatch.setattr(seeds, "run_m2c", lambda *args: calls.append(args) or "draft")
     assert seeds.generate_from_asm("asm", "probe", toolchain, language="c++") == "draft"
     assert calls[0][2] == target
+
+
+def test_ps2_cpp_on_windows_reports_the_exact_toolchain_blocker(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECOMP_RUNTIME", "native")
+    monkeypatch.setattr(toolchains, "current_platform", lambda: "windows-x86_64")
+    monkeypatch.setattr(wsl, "status", lambda: pytest.fail("PS2 must not implicitly start WSL"))
+    monkeypatch.setattr(wsl, "run", lambda *a, **kw: pytest.fail("PS2 must not run WSL"))
+    with pytest.raises(toolchains.ToolchainError, match="ee-gcc-2.96.*no native Windows build"):
+        project.compiler_config(tmp_path, {"kind": "rom", "platform": "ps2", "compiler": {
+            "toolchain": "ee-gcc-2.96", "language": "c++"}})

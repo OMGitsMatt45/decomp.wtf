@@ -98,6 +98,11 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     # Context's uninitialized small globals are declarations of
                     # existing game data; keep the C compiler's common storage.
                     cmd.insert(1, "-fconserve-space")
+            elif tc.id == "ee-gcc-2.96":
+                frontend = dirs[0] / "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus"
+                if not frontend.is_file():
+                    raise toolchains.ToolchainError("The EE-GCC 2.96 C++ frontend is missing: reinstall with `decompnet toolchain install ee-gcc-2.96 --force`")
+                cmd[1:1] = ["-x", "c++", "-fno-exceptions", "-fno-rtti", "-fconserve-space"]
             elif tc.id == "agbcc":
                 if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
                     raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")

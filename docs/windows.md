@@ -63,7 +63,10 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
 | EE-GCC 2.96 | No native build in this release; marked unavailable |
 
-EE-GCC 2.96 has no verified matching source available for a Windows source port. The installer does not
+EE-GCC 2.96 C++ is supported on Linux with the original `2.96-ee-001003-1` frontend. Its archive
+contains Linux i386 programs only, and no verified matching source/native Windows binary was found
+for a Windows port. Public EE 2.9 and Windows SN 2.95 packages are different compilers.
+See [PS2 C++ support and concrete alternatives](ps2-cpp.md). The installer does not
 substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and
 rebuild recipes are available in the [compiler assets branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/native-toolchains-v1/toolchains/windows/v1).
 

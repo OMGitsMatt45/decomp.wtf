@@ -18,3 +18,18 @@ Small data is `$gp`-relative (-G8 typical), so declare externs with their real s
 
 Libraries: Sony's libgraph, libdma, libpad, libcdvd, libkernl, libsd and libvu0 are linked as
 libraries; their prototypes are in the project's headers.
+
+ROM projects using `ee-gcc-2.96` default to C++ with the original `2.96-ee-001003-1`
+C++ frontend on Linux x86-64. Native Windows 2.96 is unavailable; do not select a
+2.9/SN compiler as a fallback. Plain game functions/externs keep C linkage;
+classes, templates and explicit `extern "C++"` helpers retain C++ linkage.
+`compiler.language = "c"` keeps C. Exceptions/RTTI are disabled, and no C++
+standard library or runtime/startup implementation is supplied.
+
+Use `0` instead of C's `(void *)0`. Equivalent C++ expressions can produce
+different instructions; for example `(flags & mask) == 0` may match where
+`!(flags & mask)` does not. Change the candidate while retaining exact bytes,
+resolved relocations and owned-data checks. Exports compile `.cpp` units with
+the same frontend and checks, then verify the entire flat payload and rebuilt
+main ELF. The original ELF headers/metadata are retained; discs/overlays are
+not repacked.

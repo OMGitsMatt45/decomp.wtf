@@ -272,6 +272,12 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         "assembly": objects, "segments": layout, "functions": fn_json,
         "symbols": {k: v for k, v in sorted(absolute.items(), key=lambda kv: kv[1])},
     }
+    if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
+        original = (work / program).read_bytes()
+        if original.startswith(b"\x7fELF"):
+            shutil.copyfile(work / program, out / "baserom.elf")
+            build["program"] = {"image": "baserom.elf", "output": "build/game-ps2.elf",
+                                "sha1": hashlib.sha1(original).hexdigest()}
     (out / "build.json").write_text(json.dumps(build, indent=1), encoding="utf-8")
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
     units_json = []
@@ -285,6 +291,12 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                                       encoding="utf-8")
     matched = sum(1 for f in functions if f["kind"] == "c")
     _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback, language)
+    if "program" in build:
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write("\n## PS2 executable\n\nAlso keep your original main ELF as `baserom.elf` (ignored by Git). "
+                       "The build checks the flat payload, then reconstructs `build/game-ps2.elf` using the rebuilt "
+                       "sections and the original ELF headers and metadata. Both must match byte for byte. "
+                       "Separate overlays and disc images are not repacked.\n")
     # everything made from the game itself stays local: build.py regenerates it from your copy
     (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")

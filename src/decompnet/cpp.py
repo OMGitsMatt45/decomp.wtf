@@ -11,7 +11,8 @@ def language(config: dict) -> str:
     platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
     supported = (platform == "n64" and toolchain in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3")) \
         or (platform == "gba" and toolchain == "agbcc") \
-        or (platform == "psx" and toolchain in ("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
+        or (platform == "psx" and toolchain in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")) \
+        or (platform == "ps2" and toolchain == "ee-gcc-2.96")
     default = "c++" if config.get("kind") == "rom" and supported else "c"
     value = compiler.get("language", default)
     if value not in ("c", "c++"):

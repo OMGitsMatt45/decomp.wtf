@@ -34,3 +34,37 @@ def read_elf(data: bytes, boot_name: str = "") -> tuple[bytes, dict]:
         "sha1": hashlib.sha1(data).hexdigest(), "byte_order": "elf", "compiler_guess": "EEGCC", "platform": "ps2",
         "boot": boot_name, "symbols": has_symbols,
     }
+
+
+def rebuild_elf(program: bytes, original_flat: bytes, rebuilt_flat: bytes) -> bytes:
+    """Put rebuilt allocated sections into the owner's original ELF envelope.
+
+    objcopy uses section load addresses, which can differ from virtual addresses.
+    Keep the original headers, file padding and nonallocated metadata verbatim.
+    This rebuilds the main executable, not a disc image or separate overlays.
+    """
+    from io import BytesIO
+    from elftools.elf.elffile import ELFFile
+
+    elf = ELFFile(BytesIO(program))
+    sections = []
+    for section in elf.iter_sections():
+        if not section["sh_flags"] & 2 or section["sh_type"] == "SHT_NOBITS" or not section["sh_size"]:
+            continue
+        address = section["sh_addr"]
+        for segment in elf.iter_segments():
+            if segment["p_type"] == "PT_LOAD" and segment.section_in_segment(section):
+                address += segment["p_paddr"] - segment["p_vaddr"]
+                break
+        sections.append((section, address))
+    if not sections or len(rebuilt_flat) != len(original_flat):
+        raise ValueError("PS2 ELF payload has an incompatible layout or size")
+    base = min(address for _, address in sections)
+    result = bytearray(program)
+    for section, address in sections:
+        start, size = address - base, section["sh_size"]
+        if original_flat[start:start + size] != section.data():
+            raise ValueError(f"PS2 ELF section {section.name} does not match the original flat payload")
+        offset = section["sh_offset"]
+        result[offset:offset + size] = rebuilt_flat[start:start + size]
+    return bytes(result)

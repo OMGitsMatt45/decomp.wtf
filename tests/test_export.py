@@ -36,7 +36,7 @@ DEMOS = {
 def _ready(platform: str) -> bool:
     _, _, tc, _ = DEMOS[platform]
     return (toolchains.installed(tc) is not None and toolchains.installed("binutils-mips") is not None
-            and (platform == "psx" or shutil.which("ld.lld") is not None))
+            and (platform in ("psx", "ps2") or shutil.which("ld.lld") is not None))
 
 
 def _decompile(tmp: Path, platform: str):
@@ -45,7 +45,7 @@ def _decompile(tmp: Path, platform: str):
         subprocess.run([sys.executable, str(build)], check=True)
     net = RomNetwork(tmp / "app.db", tmp)
     slug = net.import_rom(game, confirmed=True, log=lambda *_: None)
-    if platform == "psx":  # legacy C exports remain rebuildable after the default changes
+    if platform in ("psx", "ps2"):  # legacy C exports remain rebuildable after the default changes
         proj = net.project_row(slug)
         cfg = net.cfg(proj)
         cfg["compiler"].update(language="c", sandbox="none")

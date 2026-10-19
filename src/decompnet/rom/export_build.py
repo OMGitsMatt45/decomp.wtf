@@ -141,7 +141,7 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
             continue
         if kind == "asm":
             run([as_, *B["as_flags"], "-o", obj, src])
-        elif B["platform"] == "psx":
+        elif B["platform"] in ("psx", "ps2"):
             result = compile_function(cfg, src)
             if not result.ok:
                 fail(f"compiling {src} failed:\n{result.log}")
@@ -174,7 +174,7 @@ def compile_function(cfg, src):
 
 
 def validate(fn, obj):
-    """Strictly check PS1 instructions, resolved relocations and owned data before every build."""
+    """Strictly check MIPS instructions, resolved relocations and owned data before every build."""
     from decompnet.rom import match, split
     from decompnet.rom.symbols import Symbol, SymbolTable
 
@@ -319,6 +319,18 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
+        if program := B.get("program"):
+            import hashlib
+            from decompnet.rom.ps2 import rebuild_elf
+
+            original = (ROOT / program["image"]).read_bytes()
+            if hashlib.sha1(original).hexdigest() != program["sha1"]:
+                fail("the original PS2 ELF differs from the exported project's input")
+            rebuilt = rebuild_elf(original, base, out)
+            (ROOT / program["output"]).write_bytes(rebuilt)
+            if rebuilt != original:
+                fail("the rebuilt PS2 ELF differs from the original")
+            print(f"identical: {program['output']} matches {program['image']} byte for byte")
         print(f"identical: {B['output']} matches {B['image']} byte for byte "
               f"({c_count} of {len(B['functions'])} functions in {LANGUAGE})")
         return True

@@ -1,0 +1,93 @@
+{
+  "toolchain": "ee-gcc-2.96",
+  "compiler_version": "2.96-ee-001003-1",
+  "archive_sha256": "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a",
+  "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+  "functions": {
+    "ps2_call": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "f0ffbd270000bfff0000000c000000000000838f0000bfdf211043000800e0031000bd27",
+      "relocations": [
+        [
+          8,
+          4,
+          "ps2_callback",
+          0
+        ],
+        [
+          16,
+          7,
+          "ps2_total",
+          0
+        ]
+      ]
+    },
+    "ps2_float": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "a03f013c000881442040013c00008144006301460800e00302600046",
+      "relocations": []
+    },
+    "ps2_overload__FPi": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "0000828c0800e0030b004224",
+      "relocations": []
+    },
+    "ps2_overload__Fi": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "c01004000800e00323104400",
+      "relocations": []
+    },
+    "ps2_string": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "0000023c0800e00300004224",
+      "relocations": [
+        [
+          0,
+          5,
+          ".sdata",
+          0
+        ],
+        [
+          8,
+          6,
+          ".sdata",
+          0
+        ]
+      ]
+    },
+    "ps2_table": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "03008430802004000000023c211044000800e0030000428c",
+      "relocations": [
+        [
+          8,
+          5,
+          "values",
+          0
+        ],
+        [
+          20,
+          6,
+          "values",
+          0
+        ]
+      ]
+    },
+    "ps2_template": {
+      "arch": "mips",
+      "big_endian": false,
+      "code": "03008224f0ffbd270800e0031000bd27",
+      "relocations": []
+    }
+  },
+  "flags": [
+    "-O2",
+    "-G8"
+  ]
+}
