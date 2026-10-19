@@ -60,4 +60,11 @@ cp -r "$package/licenses" "$runtime_dir/"
 cp "$package/BUILD-PACKAGES.txt" "$runtime_dir/"
 tar -czf "$out_dir/ido-windows-runtime-v1.tar.gz" -C "$runtime_dir" .
 cd "$out_dir"
-sha256sum ido-7.1-windows-v1.tar.gz ido-windows-runtime-v1.tar.gz ido-7.1-windows-source-v1.tar.gz "$runtime_source" > SHA256SUMS
+# The complete MSYS source exceeds GitHub's 100 MiB per-file limit. Preserve
+# every byte in numbered parts and provide the original checksum for joining.
+sha256sum "$runtime_source" > "$runtime_source.sha256"
+split -d -b 50M "$runtime_source" "$runtime_source.part-"
+rm "$runtime_source"
+printf 'Reassemble the complete MSYS source:\ncat %s.part-* > %s\nsha256sum -c %s.sha256\n' \
+    "$runtime_source" "$runtime_source" "$runtime_source" > SOURCES.txt
+sha256sum ido-7.1-windows-v1.tar.gz ido-windows-runtime-v1.tar.gz ido-7.1-windows-source-v1.tar.gz "$runtime_source".part-* > SHA256SUMS

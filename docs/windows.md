@@ -57,7 +57,8 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | KMC GCC 2.7.2 / N64 | C++ host port, including the original binutils 2.6 |
 | PlayStation GCC 2.7.2 | Source port, including the original binutils 2.6 |
 | agbcc / Game Boy Advance | Source port and a Python pipeline for preprocessing and assembly |
-| IDO 5.3 / 7.1, CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
+| IDO 5.3 / 7.1 | Original statically recompiled SGI programs with bundled MSYS runtime; 7.1 includes a Windows host-memory fix; explicit license acceptance required |
+| CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
 | PlayStation GCC 2.8.1 and EE-GCC 2.96 | No native build in this release; marked unavailable |
 

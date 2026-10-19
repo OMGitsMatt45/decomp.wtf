@@ -24,6 +24,22 @@ jobs:
       - name: Build the original IDO pipeline with its Windows memory fix
         shell: msys2 {0}
         run: bash tools/windows/build-ido71.sh "$RUNNER_TEMP/ido-build" "$RUNNER_TEMP/ido-artifacts"
+      - name: Compile real C++ without MSYS on PATH
+        shell: powershell
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP "ido-build\package"
+          $source = Join-Path $env:RUNNER_TEMP "IDO build check.cpp"
+          $object = Join-Path $env:RUNNER_TEMP "IDO build check.o"
+          $code = "#ifndef __cplusplus`n#error C++ frontend required`n#endif`ntemplate<class T> class Box { public: T value; };`nextern `"C`" int probe(int x) { Box<int> b; int &r = b.value; r = x + 1; return b.value; }`n"
+          [IO.File]::WriteAllText($source, $code, (New-Object Text.UTF8Encoding($false)))
+          $env:PATH = Join-Path $env:SystemRoot "System32"
+          & (Join-Path $tools "NCC.exe") -c -O2 -mips2 -G 0 -non_shared $source -o $object
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $object)) { throw "The standalone IDO C++ compiler failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-ido-windows
+          path: ${{ runner.temp }}/ido-artifacts/*
+          compression-level: 0
       - name: Publish pinned compiler and corresponding source on the assets branch
         shell: bash
         run: |

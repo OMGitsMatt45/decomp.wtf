@@ -8,8 +8,16 @@ the pinned package. The compiler version is never changed automatically to accep
 
 The existing `decompals/ido-static-recomp` v1.2 archives contain `NCC` and `edgcpfe` on Linux,
 macOS and Windows. `NCC` selects the SGI/EDG 2.19 C++ frontend and feeds its output through IDO's
-original `uopt`, `ugen` and `as1`. Windows uses the native `.exe` programs without WSL. No new
-compiler archive or different optimizer is substituted.
+original `uopt`, `ugen` and `as1`. Windows uses the native `.exe` programs without WSL. The SGI
+compiler programs and target algorithms are unchanged.
+
+The original Windows 7.1 package failed before compilation because its guest libc address,
+`0x0fb4c000`, is not aligned to MSYS's 64 KiB pages. The Windows package is rebuilt from v1.2
+with the containing libc page mapped. Its assertion reporter also uses a portable diagnostic
+and abort, avoiding an obsolete host `__assert` calling signature. Runtime DLLs are bundled
+beside the executables, including with the existing 5.3 C package, so a separate MSYS installation
+is not required. Linux keeps its original pinned package. The build recipe, compiler source
+archive and corresponding MSYS runtime source accompany the Windows assets.
 
 The normal project default is C++ for drafts, matching and `.cpp` exports. Plain game functions,
 prototypes and external declarations retain C linkage. Templates, classes, references and helpers
@@ -20,11 +28,11 @@ target support; the verified examples need no extra runtime functions.
 IDO is still an optional proprietary toolchain with the existing explicit installation choice:
 
 ```console
-decompnet toolchain install ido-7.1 --accept-license
+decompnet toolchain install ido-7.1 --force --accept-license
 ```
 
-Existing installations already contain the frontend. If files are missing, reinstall with
-`--force`. An explicit project setting preserves the original C frontend:
+Reinstall older Windows packages to get the host fix and bundled runtime. An explicit project
+setting preserves the original C frontend:
 
 ```toml
 [compiler]
@@ -42,7 +50,9 @@ with a `__cplusplus` guard; compare eight functions against a pinned Linux C++ c
 reference; and build a homemade ROM using the IDO **C** compiler. Four functions of that C target
 are then matched as C++, including a template/class/reference example, a call and a global data
 reference. The `.cpp` export must rebuild that ROM byte for byte, then rebuild again after removing
-generated assembly, assets and build output. WSL calls fail these tests. Paths include spaces.
+generated assembly, assets and build output. Changed instructions and relocation destinations
+must fail matching. WSL calls fail these tests. Paths include spaces, and Windows tests remove
+MSYS from PATH.
 
 Reference generation (after installing the pinned Linux toolchain):
 
