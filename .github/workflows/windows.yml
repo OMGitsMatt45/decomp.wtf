@@ -199,6 +199,4 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bubblewrap
-          # Elevated outer runner permits namespace creation under Ubuntu's
-          # AppArmor user-namespace policy. Compilation still runs inside bwrap.
-          sudo env "DECOMPNET_TOOLCHAINS=${DECOMPNET_TOOLCHAINS:-$HOME/.local/share/decompnet/toolchains}" .venv/bin/python -m tools.gba_cpp.check_sandbox
+          uv run --no-sync python -m tools.gba_cpp.check_sandbox
