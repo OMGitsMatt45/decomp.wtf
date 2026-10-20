@@ -202,6 +202,12 @@ agree exactly; the template/class/constructor/reference probe also produces iden
 C text byte for byte. The pinned fixtures include multiple declarations and functions
 to catch the allocator regression. QEMU is solely the independent frontend reference.
 
+The [native Windows and Linux CI run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636)
+passed all six integration tests and four configuration checks on each host. The
+[validation record](ido53-cfront-validation.json) pins the tested source commit,
+original input identities, checks and scope. Both installers verified that the
+existing C backend files retained identical SHA-256 values.
+
 The native integration suite checks those fixtures, compiles an m2c C++ draft, matches
 classic C++ against a homemade C-origin ROM, rejects changed instructions and relocation
 destinations, and rebuilds exported `.cpp` files into the identical ROM. It repeats the

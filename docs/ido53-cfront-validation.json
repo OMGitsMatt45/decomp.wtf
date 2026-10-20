@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "date": "2026-10-20",
+  "toolchain": "ido-5.3",
+  "frontend": "classic cfront",
+  "source_commit": "480f99b3d135889afdbe1136ad480471de534cdb",
+  "upstream_revision": "d5aec59932034b8a20f23f471297a55c45dcbc45",
+  "irix_inputs": {
+    "usr/lib/CC": "abb6bbf2910785a0bd6d1b6198c47ad4d061d7e3713618c0aee20efc0d7a3c65",
+    "usr/lib/c++/cfront": "9ebe0d0aa3827f8d671ac6fcee7bd1cc7698b8e35af2905e4b19e3baaec54651",
+    "usr/lib/c++/ptcomp": "34c7db077e506cb1b84152c2eba665bfe631368c59440816202101bfcedc55a3",
+    "usr/lib/c++/markc++": "1616be281460d1be1cdb2f1f0821a90610ad7cf4ee186753fa938cc5374afe7e"
+  },
+  "reference": {
+    "execution": "Unmodified original IRIX cfront under n64decomp/qemu-irix v2.11-deb; original IDO 5.3 backend",
+    "functions": 11,
+    "comparisons": [
+      "exact function machine code",
+      "exact relocation records",
+      "byte-for-byte generated C for the template/class/constructor/reference probe"
+    ]
+  },
+  "integration": {
+    "tests": 6,
+    "skipped": 0,
+    "checks": [
+      "original-IRIX golden corpus",
+      "template/class/reference against C-origin function",
+      "invalid C++ rejection without object",
+      "m2c C++ draft matching",
+      "wrong instruction and relocation destination rejection",
+      "C-origin ROM exported as C++ and rebuilt byte for byte",
+      "second rebuild after generated files removed and Git autocrlf checkout"
+    ]
+  },
+  "configuration_tests": 4,
+  "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636",
+  "platforms": {
+    "linux-x86_64": {
+      "status": "passed",
+      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636/job/118839674055",
+      "execution": "Native Ubuntu 24.04 x86-64; independent original-IRIX frontend comparison under QEMU"
+    },
+    "windows-x86_64": {
+      "status": "passed",
+      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636/job/118839674618",
+      "execution": "Native Windows Server 2022 x64, bundled MSYS runtime DLLs, System32-only PATH during compilation; no WSL, QEMU or external Unix utilities"
+    }
+  },
+  "installation": "Optional local build overlay; no automatic classic download bundle published.",
+  "scope": "Object compilation, local template instantiation, matching and ROM exports. IRIX executable linking and cross-translation-unit template prelinking are outside this port.",
+  "backend_preservation": "Overlay installer verifies identical SHA-256 values before and after installation for cc, acpp, cfe, uopt, ugen and as1 on both platforms."
+}
