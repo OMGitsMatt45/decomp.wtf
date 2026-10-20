@@ -112,8 +112,9 @@ def test_ido53_retains_its_explicit_c_compiler(tmp_path):
     assert elfobj.extract_function(result.obj, "ido_add").code
 
 
-def test_ido53_never_substitutes_edg_for_a_requested_classic_cfront(tmp_path):
-    with pytest.raises(toolchains.ToolchainError, match="classic cfront driver is not supported"):
+def test_ido53_never_substitutes_edg_for_a_missing_classic_cfront(tmp_path, monkeypatch):
+    monkeypatch.setattr(toolchains, "runtime_dirs", lambda _: [tmp_path / "missing-overlay"])
+    with pytest.raises(toolchains.ToolchainError, match="classic cfront overlay is missing"):
         project.compiler_config(tmp_path, {"kind": "rom", "platform": "n64", "compiler": {
             "toolchain": "ido-5.3", "language": "c++", "cpp_frontend": "cfront", "sandbox": "none"}})
 
@@ -186,7 +187,7 @@ SECTIONS {
 
 
 @pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
-def test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, toolchain):
+def test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, toolchain, frontend="edg"):
     assert toolchains.installed("binutils-mips") is not None
     root = tmp_path / "IDO C++ project with spaces"
     root.mkdir()
@@ -200,10 +201,11 @@ def test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, toolchai
     # that prohibit the network namespaces used by bubblewrap.
     cfg = net.cfg(proj)
     cfg["compiler"]["sandbox"] = "none"
+    cfg["compiler"]["cpp_frontend"] = frontend
     with net.store.tx() as db:
         db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), pid))
     assert net.overview(slug)["compiler"]["language"] == "c++"
-    assert net.overview(slug)["compiler"]["cpp_frontend"] == "edg"
+    assert net.overview(slug)["compiler"]["cpp_frontend"] == frontend
     for name in sorted(C_FUNCTIONS, key=symbols.get):
         addr = symbols[name]
         row = net.store.one("SELECT name, vram FROM functions WHERE project_id=? AND vram<=? AND vram+size>?", pid, addr, addr)
@@ -234,7 +236,7 @@ def test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, toolchai
     assert not list((tree / "src").rglob("*.c"))
     build = json.loads((tree / "build.json").read_text())
     assert build["compiler"]["toolchain"] == toolchain and build["compiler"]["language"] == "c++"
-    assert build["compiler"]["cpp_frontend"] == "edg"
+    assert build["compiler"]["cpp_frontend"] == frontend
     for generated in ("asm", "assets", "build"):
         shutil.rmtree(tree / generated, ignore_errors=True)
     # Simulate Git for Windows restoring a clone with autocrlf enabled. Its

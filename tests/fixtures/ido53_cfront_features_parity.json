@@ -1,0 +1,36 @@
+{
+  "toolchain": "ido-5.3",
+  "cpp_frontend": "cfront",
+  "language": "c++",
+  "irix_frontend_sha256": "9ebe0d0aa3827f8d671ac6fcee7bd1cc7698b8e35af2905e4b19e3baaec54651",
+  "source_sha256": "134eb8ac526d64923f691f8674397d82ca2d0947f5bd34367b8a12ef2c628132",
+  "flags": [
+    "-O2",
+    "-mips2",
+    "-G",
+    "0",
+    "-non_shared",
+    "-Xcpluscomm",
+    "-Wab,-r4300_mul"
+  ],
+  "functions": {
+    "feature_constructor": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "03e0000800851021",
+      "relocations": []
+    },
+    "feature_reference": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "8c8e000025c2000303e00008ac820000",
+      "relocations": []
+    },
+    "feature_template": {
+      "arch": "mips",
+      "big_endian": true,
+      "code": "03e0000824820001",
+      "relocations": []
+    }
+  }
+}
