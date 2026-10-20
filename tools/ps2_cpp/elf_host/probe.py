@@ -33,6 +33,7 @@ def cases(work: Path) -> list[dict]:
                       'extern "C" const char *message() { return MESSAGE; }\n',
         "include.cpp": '#include "one.h"\n#include "two.h"\n'
                        'extern "C" int includes() { return ONE + TWO; }\n',
+        "pipeline.cpp": 'extern "C" int pipeline_table[] = {' + ','.join(str(i) for i in range(6000)) + '};\n',
         "invalid.cpp": "template <class T> T broken( { return ; }\n",
         "missing.cpp": '#include "does-not-exist.h"\n',
         "floating.cpp": 'extern "C" double precise(double x) { return (x + 0.1) * 1.2345678901234567; }\n'
@@ -58,6 +59,13 @@ def cases(work: Path) -> list[dict]:
         dict(name="missing-header", source="missing.cpp", language="c++", flags=[], success=False),
         dict(name="cpp-rejected-as-c", source="features.cpp", language="c", flags=[], success=False),
         dict(name="preprocessor", source="include.cpp", language="c++", flags=["-O2", "-Iinclude space"], success=True, preprocess=True),
+    ]
+    result += [
+        dict(name="pipe-cpp", source="extended.cpp", language="c++", flags=["-pipe", "-O2"], success=True),
+        dict(name="pipe-c", source="game.c", language="c", flags=["-pipe", "-O2"], success=True),
+        dict(name="pipe-large", source="pipeline.cpp", language="c++", flags=["-pipe", "-O2"], success=True),
+        dict(name="pipe-invalid", source="invalid.cpp", language="c++", flags=["-pipe"], success=False),
+        dict(name="pipe-missing-header", source="missing.cpp", language="c++", flags=["-pipe"], success=False),
     ]
     for case in result:
         case["source_sha256"] = digest(sources[case["source"]].encode())
@@ -111,7 +119,7 @@ def main() -> int:
         actual = run(shlex.split(args.candidate_command), case, work, "candidate")
         passed = actual["exit_code"] == expected["exit_code"] and actual["object_present"] == case["success"]
         if case["success"]:
-            passed = passed and (case.get("preprocess") or actual.get("functions", 0) > 0) \
+            passed = passed and (case.get("preprocess") or case["name"] == "pipe-large" or actual.get("functions", 0) > 0) \
                 and actual.get("object_sha256") == expected["object_sha256"]
         results.append(dict(case=case["name"], passed=passed, candidate=actual))
         print(f"{case['name']}: {'PASS' if passed else 'FAIL'}", flush=True)

@@ -57,7 +57,7 @@ def build(archive: Path, output: Path, cc: str, objcopy: str) -> None:
         report["tools"][tool] = generate(output / tool, work / "image.h")
         shutil.copyfile(output / tool, work / "payload.elf")
         subprocess.run([objcopy, "-I", "binary", "-O", "pe-i386", "-B", "i386",
-                        "--rename-section", ".data=.rdata,alloc,load,readonly,data,contents",
+                        "--rename-section", ".data=.eepay,alloc,load,readonly,data,contents",
                         "payload.elf", "payload.o"], cwd=work, check=True)
         # The pinned GNU helpers contain K&R definitions, removed in C23.
         # Modern MinGW may default to gnu23; select a compatible host dialect.

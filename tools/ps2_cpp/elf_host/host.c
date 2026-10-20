@@ -371,68 +371,113 @@ static int access_path(const char *p, int mode) {
 
 /* The original driver otherwise needs fork. Replace only libiberty's host
  * process boundary, retaining its option specs and all compiler algorithms. */
-static int child_status, child_serial = 100;
+static struct child_process { int id; HANDLE handle; struct child_process *next; } *children;
+static int child_serial = 100;
+static HANDLE pipeline_input;
 static char *quote_argument(const char *s) {
   char *out = malloc(2 * strlen(s) + 3), *p = out;
+  if (!out) return NULL;
   *p++ = '"';
   while (*s) {
     unsigned slash = 0;
-    while (*s == '\\') {
-      slash++;
-      s++;
-    }
+    while (*s == '\\') { slash++; s++; }
     unsigned copies = (*s == '"' || !*s) ? slash * 2 : slash;
-    while (copies--)
-      *p++ = '\\';
-    if (!*s)
-      break;
-    if (*s == '"')
-      *p++ = '\\';
+    while (copies--) *p++ = '\\';
+    if (!*s) break;
+    if (*s == '"') *p++ = '\\';
     *p++ = *s++;
   }
-  *p++ = '"';
-  *p = 0;
+  *p++ = '"'; *p = 0;
   return out;
 }
 static int execute_child(const char *program, char *const *argv,
                          const char *name, const char *temp, char **fmt,
                          char **arg, int flags) {
-  (void)name;
-  (void)temp;
-  if ((flags & 3) != 3)
-    unsupported("compiler process pipelines (-pipe)");
+  (void)name; (void)temp;
+  HANDLE next_input = NULL, output = NULL;
   char exe[MAX_PATH * 4];
+  char *command = NULL;
+  struct child_process *child = NULL;
+  SECURITY_ATTRIBUTES security = {sizeof(security), NULL, TRUE};
+  if (flags & 1) {
+    if (pipeline_input) CloseHandle(pipeline_input);
+    pipeline_input = NULL;
+  }
   if (snprintf(exe, sizeof(exe), "%s.exe", program) >= (int)sizeof(exe)) {
-    errno = ENAMETOOLONG;
-    return -1;
+    errno = ENAMETOOLONG; goto failed;
   }
-  unsigned count = 0;
-  while (argv[count])
-    count++;
-  char **quoted = calloc(count + 1, sizeof(*quoted));
-  for (unsigned i = 0; i < count; i++)
-    quoted[i] = quote_argument(argv[i]);
-  intptr_t result = (flags & 4)
-                        ? _spawnvp(_P_WAIT, exe, (const char *const *)quoted)
-                        : _spawnv(_P_WAIT, exe, (const char *const *)quoted);
-  for (unsigned i = 0; i < count; i++)
-    free(quoted[i]);
-  free(quoted);
-  if (result < 0) {
-    *fmt = "cannot execute %s";
-    *arg = (char *)program;
-    return -1;
+  size_t capacity = 1;
+  for (unsigned i = 0; argv[i]; i++) capacity += 2 * strlen(argv[i]) + 4;
+  command = calloc(capacity, 1);
+  child = calloc(1, sizeof(*child));
+  if (!command || !child) { errno = ENOMEM; goto failed; }
+  for (unsigned i = 0; argv[i]; i++) {
+    char *quoted = quote_argument(argv[i]);
+    if (!quoted) { errno = ENOMEM; goto failed; }
+    if (i) strcat(command, " ");
+    strcat(command, quoted); free(quoted);
   }
-  if (result > 255)
-    unsupported("child exit status outside POSIX range");
-  child_status = (int)result << 8;
-  return ++child_serial;
+  if (!(flags & 2)) {
+    if (!CreatePipe(&next_input, &output, &security, 0) ||
+        !SetHandleInformation(next_input, HANDLE_FLAG_INHERIT, 0)) {
+      errno = EIO; goto failed;
+    }
+  }
+  if (pipeline_input && !SetHandleInformation(pipeline_input, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
+    errno = EIO; goto failed;
+  }
+  STARTUPINFOA startup = {0};
+  startup.cb = sizeof(startup);
+  startup.dwFlags = STARTF_USESTDHANDLES;
+  startup.hStdInput = pipeline_input ? pipeline_input : GetStdHandle(STD_INPUT_HANDLE);
+  startup.hStdOutput = output ? output : GetStdHandle(STD_OUTPUT_HANDLE);
+  startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+  PROCESS_INFORMATION process = {0};
+  /* SEARCH asks CreateProcess to use PATH; other programs have exact paths.
+   * lpApplicationName avoids executable path ambiguity when directories contain spaces. */
+  char resolved[MAX_PATH * 4];
+  const char *application = exe;
+  if (flags & 4) {
+    DWORD length = SearchPathA(NULL, exe, NULL, sizeof(resolved), resolved, NULL);
+    if (!length || length >= sizeof(resolved)) { errno = ENOENT; goto failed; }
+    application = resolved;
+  }
+  if (!CreateProcessA(application, command, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &process)) {
+    DWORD error = GetLastError();
+    errno = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? ENOENT :
+            error == ERROR_ACCESS_DENIED ? EACCES : ENOEXEC;
+    goto failed;
+  }
+  CloseHandle(process.hThread);
+  if (pipeline_input) CloseHandle(pipeline_input);
+  if (output) CloseHandle(output);
+  pipeline_input = next_input;
+  child->id = ++child_serial; child->handle = process.hProcess;
+  child->next = children; children = child;
+  free(command);
+  return child->id;
+failed:
+  if (pipeline_input) CloseHandle(pipeline_input);
+  pipeline_input = NULL;
+  if (next_input) CloseHandle(next_input);
+  if (output) CloseHandle(output);
+  free(command); free(child);
+  *fmt = "cannot execute %s"; *arg = (char *)program;
+  return -1;
 }
 static int wait_child(int pid, int *status, int flags) {
   (void)flags;
-  if (pid != child_serial)
-    unsupported("unknown child process");
-  *status = child_status;
+  struct child_process **link = &children;
+  while (*link && (*link)->id != pid) link = &(*link)->next;
+  if (!*link) { errno = ECHILD; return -1; }
+  struct child_process *child = *link;
+  DWORD code;
+  if (WaitForSingleObject(child->handle, INFINITE) != WAIT_OBJECT_0 ||
+      !GetExitCodeProcess(child->handle, &code)) { errno = EIO; return -1; }
+  /* POSIX wait status: ordinary exits occupy the high byte; Windows fatal
+   * exceptions are reported as a signal so the original driver rejects them. */
+  *status = code <= 255 ? (int)code << 8 : 11;
+  CloseHandle(child->handle); *link = child->next; free(child);
   return pid;
 }
 static void detour(unsigned address, void *target) {
@@ -635,6 +680,10 @@ static void *resolve(const char *name, int data) {
 }
 
 int main(int argc, char **argv, char **envp) {
+  if (payload_end - payload_start < 16 || memcmp(payload_start, "\177ELF\1\1", 6)) {
+    fprintf(stderr, "ee-elf-host: missing or invalid pinned ELF payload; reinstall the toolchain\n");
+    return 2;
+  }
   char payload[MAX_PATH * 4];
   if (!GetModuleFileNameA(NULL, payload, sizeof(payload)))
     return 2;

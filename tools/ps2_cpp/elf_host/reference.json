@@ -233,6 +233,59 @@
       "success": true,
       "preprocess": true,
       "source_sha256": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2"
+    },
+    {
+      "name": "pipe-cpp",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-pipe",
+        "-O2"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "pipe-c",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-pipe",
+        "-O2"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "pipe-large",
+      "source": "pipeline.cpp",
+      "language": "c++",
+      "flags": [
+        "-pipe",
+        "-O2"
+      ],
+      "success": true,
+      "source_sha256": "cc2d816df4b17a2f5450f1624f633c45acc42da1fb0f8b6cbd42e49fa884bdf9"
+    },
+    {
+      "name": "pipe-invalid",
+      "source": "invalid.cpp",
+      "language": "c++",
+      "flags": [
+        "-pipe"
+      ],
+      "success": false,
+      "source_sha256": "dfe1c4f9deabb09d00f39a7dbc4cc1cbac73a94d3440bba2c6b56eddb8245ca2"
+    },
+    {
+      "name": "pipe-missing-header",
+      "source": "missing.cpp",
+      "language": "c++",
+      "flags": [
+        "-pipe"
+      ],
+      "success": false,
+      "source_sha256": "4a53dc44b7a8d84226bbb9dbc2961af24408cb21d077057bd9d341659fe7f6be"
     }
   ],
   "inputs": {
@@ -246,6 +299,7 @@
     "include.cpp": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2",
     "invalid.cpp": "dfe1c4f9deabb09d00f39a7dbc4cc1cbac73a94d3440bba2c6b56eddb8245ca2",
     "missing.cpp": "4a53dc44b7a8d84226bbb9dbc2961af24408cb21d077057bd9d341659fe7f6be",
+    "pipeline.cpp": "cc2d816df4b17a2f5450f1624f633c45acc42da1fb0f8b6cbd42e49fa884bdf9",
     "quoted.cpp": "49b969ccb167869c52b1bf148307ce119835f22ddf80840a94b99edf9c16bb6e"
   },
   "results": [
@@ -395,6 +449,37 @@
       "log": "In file included from include.cpp:1:\ninclude space/one.h:1:9: warning: #pragma once is obsolete\nIn file included from include.cpp:2:\ninclude space/two.h:1:9: warning: #pragma once is obsolete\n",
       "object_present": true,
       "object_sha256": "2161b6458958af3d980fbfedec920ab1b7be0fcc6976ff9d3cc81bc6e8f250ef"
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "3d6e51f4ba495f123e1bdbef2ba60eabc6ee531b0acd991b791c8e304fcbb442",
+      "functions": 30
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "d69a72f0563a849f513cb78fb636d4fd4bba1bc6ec97846a72c4afbc19483067",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "pipeline.cpp:1: warning: `pipeline_table' initialized and declared `extern'\n",
+      "object_present": true,
+      "object_sha256": "bd895440b2578b38b0536222d4b8490c8a443e84b044169f3d49389dca579d16",
+      "functions": 0
+    },
+    {
+      "exit_code": 1,
+      "log": "invalid.cpp:1: parse error before '{' token\n",
+      "object_present": false
+    },
+    {
+      "exit_code": 1,
+      "log": "missing.cpp:1:28: does-not-exist.h: No such file or directory\n",
+      "object_present": false
     }
   ]
 }

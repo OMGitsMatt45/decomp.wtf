@@ -378,6 +378,12 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                         if f.is_file():
                             os.chmod(f, 0o755)
             pinned.append({"url": part["url"], "sha256": digest})
+        if tid == "ee-gcc-2.96" and not linux and current_platform() == "windows-x86_64":
+            from .ee_native import materialize
+            try:
+                materialize(dest)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise ToolchainError(f"Cannot assemble the pinned native EE compiler: {error}") from error
         if linux and "runtime-i386" in tc.dependencies(linux):  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")

@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/check-ee-windows-host.yml"
       - "tools/ps2_cpp/elf_host/**"
+      - "src/decompnet/ee_native.py"
+      - "tests/test_ee_templates.py"
       - "src/decompnet/toolchains.*"
       - "src/decompnet/project.py"
       - "tests/test_ee_native_local.py"
@@ -13,6 +15,8 @@ on:
     paths:
       - ".github/workflows/check-ee-windows-host.yml"
       - "tools/ps2_cpp/elf_host/**"
+      - "src/decompnet/ee_native.py"
+      - "tests/test_ee_templates.py"
       - "src/decompnet/toolchains.*"
       - "src/decompnet/project.py"
       - "tests/test_ee_native_local.py"
@@ -29,7 +33,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
       - name: Check the local native toolchain configuration
-        run: uv run --no-sync python -m pytest -q tests/test_ee_native_local.py
+        run: uv run --no-sync python -m pytest -q tests/test_ee_native_local.py tests/test_ee_templates.py
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
@@ -53,6 +57,13 @@ jobs:
             --cc "$bin/gcc.exe" `
             --objcopy "$bin/objcopy.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Building the Windows hosts failed; see build summary' }
+      - name: Package payload-free templates and reconstruct exact executables
+        shell: pwsh
+        run: |
+          uv run --no-sync python tools/ps2_cpp/elf_host/package.py "$env:RUNNER_TEMP/EE host with spaces" "$env:RUNNER_TEMP/ee-packages"
+          if ($LASTEXITCODE -ne 0) { throw 'Host packaging failed' }
+          uv run --no-sync python -c "import os, pathlib, tarfile; from decompnet.ee_native import materialize; root=pathlib.Path(os.environ['RUNNER_TEMP']); dest=root/'EE host with spaces'; tarfile.open(root/'ee-packages/ee-windows-templates-v1.tar.gz').extractall(dest, filter='data'); materialize(dest)"
+          if ($LASTEXITCODE -ne 0) { throw 'Host reconstruction failed' }
       - name: Require complete object parity on native Windows
         shell: pwsh
         run: |
@@ -93,3 +104,41 @@ jobs:
             ${{ runner.temp }}/native EE integration with spaces/results.xml
             ${{ runner.temp }}/native EE integration with spaces/output.log
           if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ee-windows-host-package
+          path: ${{ runner.temp }}/ee-packages/*.tar.gz
+          compression-level: 0
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/compiler-completion'
+    needs: native-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: ee-windows-host-package
+          path: /tmp/ee-packages
+      - name: Publish verified payload-free hosts and complete host source
+        run: |
+          set -euo pipefail
+          branch=ee-windows-host-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/ee-windows-host
+          cp /tmp/ee-packages/*.tar.gz toolchains/ee-windows-host/
+          (cd toolchains/ee-windows-host && sha256sum *.tar.gz > SHA256SUMS)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolchains/ee-windows-host
+          git diff --cached --quiet || git commit -m "Package verified native EE host templates and corresponding host source"
+          git push origin "$branch"
