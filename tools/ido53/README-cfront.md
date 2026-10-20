@@ -1,7 +1,7 @@
 # Classic IDO 5.3 host overlay
 
 `build-cfront.sh` builds the original classic `CC`, `cfront`, `ptcomp` and
-`markc++` from `decompals/ido-static-recomp` revision
+`markc++` and `ptlink` from `decompals/ido-static-recomp` revision
 `d5aec59932034b8a20f23f471297a55c45dcbc45`. `native-cfront.patch` contains the
 runtime/recompiler changes; `cfront_host.h` implements the driver's observed
 host utility operations. The classic driver is installed as `classic-CC` (`classic-CC.exe` on Windows),
@@ -11,7 +11,7 @@ copying the overlay. The existing EDG build recipe is independent.
 
 The original compiler inputs are proprietary SGI programs. Their SHA-256
 identities are recorded in `cfront-build.json` and checked on installation.
-The build emits both the optional overlay and a corresponding source/input
+The build emits both the overlay and a corresponding source/input
 archive. The existing 5.3 package supplies its original backend and bundled
 Windows runtime, with the corresponding runtime source described in
 [the application documentation](../../docs/ido-cpp.md).
@@ -34,7 +34,8 @@ The tests also require the pinned `binutils-mips` and `m2c` toolchains.
 PowerShell sets the switch with `$env:DECOMP_TEST_IDO_CFRONT = '1'`.
 They compile with only System32 on PATH on Windows, reject WSL calls, check
 original-IRIX code/relocation references, match a C-origin target and rebuild a
-clean exported ROM. No compiler binary is published by the check workflow.
+clean exported ROM. Verified packages and corresponding sources are published after both native hosts pass.
+The regular `ido-5.3` installation includes this overlay; local builds remain optional.
 
 `verify_cfront.py` independently checks the fixtures against the unmodified
 IRIX cfront under checksum-pinned QEMU IRIX `v2.11-deb`. The IRIX root needs
@@ -42,6 +43,10 @@ IRIX cfront under checksum-pinned QEMU IRIX `v2.11-deb`. The IRIX root needs
 QEMU and the reference shell wrapper are test-only. The application uses host
 executables and its Python adapter; it has no WSL, QEMU or shell dependency.
 
-The supported pipeline emits objects for matching and ROM rebuilding. Local
-template instantiation and repository processing are included. IRIX executable
-linking and cross-unit template prelinking (`ptlink`) are not part of this port.
+The supported pipeline emits objects for matching and ROM rebuilding. Native
+`ptlink` handles cross-unit instantiation, dependency/checksum invalidation and
+invalid definitions. `python -m decompnet.ido_prelink --work PROJECT --output combined.o left.o right.o`
+supplies its control files and uses the pinned N64 GNU linker for relocatable
+output, preserving previous output on failure. See the application documentation
+for include/flag arguments and the original argument grammar's limits.
+IRIX application executable/startup/shared-library processing remains separate.

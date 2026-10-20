@@ -131,11 +131,11 @@ C++ syntax can produce different bytes from the same C expression. Matching stil
 bytes; for example, an absolute-value function may need an explicit conditional assignment in C++.
 Existing matched sources are checked again during export, with reported assembly fallbacks if
 compilation or matching fails. Explicit `compiler.language = "c"` keeps a project's C compilation.
-A separate optional classic 5.3 `cfront` overlay can be built locally and selected with
-`compiler.cpp_frontend = "cfront"`. The normal installer supplies EDG; missing classic components
-fail explicitly. Reinstall `ido-5.3 --force --accept-license` to update the standard EDG overlay.
-See [IDO C++ support](ido-cpp.md) for the classic build recipe, original-IRIX comparisons and
-matching/export validation.
+The normal IDO 5.3 installer also supplies classic `cfront` and native `ptlink`.
+Select classic compilation with `compiler.cpp_frontend = "cfront"`; EDG remains the default.
+Reinstall `ido-5.3 --force --accept-license` to update both frontend choices. See
+[IDO C++ support](ido-cpp.md) for cross-unit prelinking, optional local builds,
+original-IRIX comparisons and matching/export validation.
 
 ## GBA C++ game output
 

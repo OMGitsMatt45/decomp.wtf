@@ -4,8 +4,9 @@ This is a new approach to the missing Windows compiler, separate from the failed
 source reconstruction. It builds **Win32 PE executables containing the original
 Linux i386 compiler programs**. Their original x86 instructions run on the CPU;
 there is no MIPS translation, CPU interpreter, WSL, Linux VM, or replacement GCC
-backend in this host. The app can select a locally built host explicitly through
-`DECOMP_EE_NATIVE_ROOT`; an automatic Windows download bundle is not published.
+backend in this host. The regular installer now assembles verified Windows hosts automatically from
+pinned templates and the original upstream compiler archive. `DECOMP_EE_NATIVE_ROOT`
+remains available for an explicitly selected local build.
 
 ## What changed at the host boundary
 
@@ -28,7 +29,9 @@ original binary instructions. Detour addresses and every original payload hash
 are recorded in `host-build.json`.
 
 Unimplemented imports fail with exit 126 **if called**, naming the operation;
-they never return manufactured success. `-pipe` is explicitly unsupported.
+they never return manufactured success. `-pipe` uses native asynchronous Windows
+processes and anonymous pipes. The parent closes unused pipe handles, waits for
+each child separately and propagates process failures through POSIX wait status.
 
 ## Why the supplied projects did not directly solve the compiler problem
 
@@ -62,7 +65,12 @@ The archive is the existing decomp.me `compilers/ee-gcc2.96.tar.xz`, SHA-256
 The script builds the original driver, C frontend, C++ frontend, preprocessor
 and assembler, plus their driver aliases. Nothing is installed into the app.
 GNU obstack/getopt source, checksums and generated metadata accompany the local
-research build. No compiler binary package is published by this workflow.
+build. `package.py` removes every original compiler payload from the published
+PE templates and records payload, template and final executable SHA-256 values.
+The installer restores the verified bytes in a dedicated read-only `.eepay` section.
+Complete host/helper sources and GNU licenses accompany the templates. The matching
+GNUPro source is still missing, so these host assets contain no original compiler
+instructions; installation obtains those only from the already pinned upstream archive.
 
 ## Validation and limits
 
@@ -106,7 +114,8 @@ files and restoring sources with Git autocrlf. See the
 [integration summary](results/integration-wibo-linux.json) and
 [current-run JUnit results](results/integration-wibo-linux.xml).
 
-`integration.py` uses the application's real local-build configuration on Windows.
+`integration.py --managed` uses the registered Windows installation without an override.
+Its default mode still exercises the application's real local-build configuration.
 Linux measurements use a temporary research provider and shell launch shim for
 wibo. It does not edit the registry file, disable matching assertions or change
 the tests. Its test bodies already select the native/no-sandbox
@@ -119,7 +128,18 @@ python tools/ps2_cpp/elf_host/integration.py `
   --work 'C:/path/to/fresh integration results'
 ```
 
-## Use the local build in the app
+## Install normally
+
+```powershell
+decompnet toolchain install ee-gcc-2.96
+```
+
+This requires no MinGW, MSYS, WSL, QEMU or local compiler build. The Windows host
+source and licenses install alongside the original compiler and PE programs.
+Checksums pin every downloaded part. The installer stages templates separately,
+verifies every payload and final executable, and removes incomplete installations.
+
+## Use a separately built host in the app
 
 On Windows x64, select the **absolute** output directory from the verified build:
 
@@ -137,6 +157,6 @@ refuses to delete a user-managed local host; rebuild into a fresh directory.
 Other platforms and the default toolchain location are unaffected.
 
 The compiler driver imports only KERNEL32 and MSVCRT. Unsupported ABI
-paths, locale/Unicode edge cases, process pipelines and address-space conflicts
-are not established by this finite corpus. Without the explicit local-build
-setting, Windows still reports the missing downloadable EE compiler package.
+paths, locale/Unicode edge cases and address-space conflicts are not established
+by this finite corpus. Native Windows CI now also checks `-pipe` C/C++, a large
+assembly stream, invalid source and missing headers: all 27 corpus cases pass.

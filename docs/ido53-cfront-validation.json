@@ -3,13 +3,14 @@
   "date": "2026-10-20",
   "toolchain": "ido-5.3",
   "frontend": "classic cfront",
-  "source_commit": "480f99b3d135889afdbe1136ad480471de534cdb",
+  "source_commit": "20abab7576c0e061e9224e44a5e063a75346567a",
   "upstream_revision": "d5aec59932034b8a20f23f471297a55c45dcbc45",
   "irix_inputs": {
     "usr/lib/CC": "abb6bbf2910785a0bd6d1b6198c47ad4d061d7e3713618c0aee20efc0d7a3c65",
     "usr/lib/c++/cfront": "9ebe0d0aa3827f8d671ac6fcee7bd1cc7698b8e35af2905e4b19e3baaec54651",
     "usr/lib/c++/ptcomp": "34c7db077e506cb1b84152c2eba665bfe631368c59440816202101bfcedc55a3",
-    "usr/lib/c++/markc++": "1616be281460d1be1cdb2f1f0821a90610ad7cf4ee186753fa938cc5374afe7e"
+    "usr/lib/c++/markc++": "1616be281460d1be1cdb2f1f0821a90610ad7cf4ee186753fa938cc5374afe7e",
+    "usr/lib/c++/ptlink": "7b00bdda3ab68240335ca8eb5c0955a73961dd370378ea0e434b93ecfead880e"
   },
   "reference": {
     "execution": "Unmodified original IRIX cfront under n64decomp/qemu-irix v2.11-deb; original IDO 5.3 backend",
@@ -17,11 +18,12 @@
     "comparisons": [
       "exact function machine code",
       "exact relocation records",
-      "byte-for-byte generated C for the template/class/constructor/reference probe"
+      "byte-for-byte generated C for the template/class/constructor/reference probe",
+      "byte-for-byte generated C for cross-unit template instantiation"
     ]
   },
   "integration": {
-    "tests": 6,
+    "tests": 7,
     "skipped": 0,
     "checks": [
       "original-IRIX golden corpus",
@@ -30,24 +32,36 @@
       "m2c C++ draft matching",
       "wrong instruction and relocation destination rejection",
       "C-origin ROM exported as C++ and rebuilt byte for byte",
-      "second rebuild after generated files removed and Git autocrlf checkout"
+      "second rebuild after generated files removed and Git autocrlf checkout",
+      "cross-unit template instantiation with separate callers/definition",
+      "N64 relocatable linking resolves template calls",
+      "template dependency/checksum invalidation",
+      "invalid-template rejection preserves prior linked output"
     ]
   },
   "configuration_tests": 4,
-  "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636",
+  "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491288285",
   "platforms": {
     "linux-x86_64": {
       "status": "passed",
-      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636/job/118839674055",
+      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491288285/job/118864832566",
       "execution": "Native Ubuntu 24.04 x86-64; independent original-IRIX frontend comparison under QEMU"
     },
     "windows-x86_64": {
       "status": "passed",
-      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636/job/118839674618",
+      "job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491288285/job/118864832208",
       "execution": "Native Windows Server 2022 x64, bundled MSYS runtime DLLs, System32-only PATH during compilation; no WSL, QEMU or external Unix utilities"
     }
   },
-  "installation": "Optional local build overlay; no automatic classic download bundle published.",
-  "scope": "Object compilation, local template instantiation, matching and ROM exports. IRIX executable linking and cross-translation-unit template prelinking are outside this port.",
-  "backend_preservation": "Overlay installer verifies identical SHA-256 values before and after installation for cc, acpp, cfe, uopt, ugen and as1 on both platforms."
+  "installation": "Normal pinned ido-5.3 installation includes classic cfront and ptlink on Windows/Linux x86-64, with explicit license acceptance; complete corresponding source/input archives published separately.",
+  "scope": "Object compilation, local/cross-unit template instantiation, matching, ROM exports and relocatable N64 object linking. Full IRIX executable startup/shared-library processing is separate.",
+  "backend_preservation": "Overlay installer verifies identical SHA-256 values before and after installation for cc, acpp, cfe, uopt, ugen and as1 on both platforms.",
+  "assets_commit": "5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7",
+  "managed_installation_validation": {
+    "source_commit": "93bb8c899041e20b3eda827cd3d3f019ff43400b",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491624174",
+    "linux_job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491624174/job/118865978987",
+    "windows_job": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491624174/job/118865978508",
+    "checks": "Required EDG and classic integration suites pass using the normal registered packages, without a locally built overlay."
+  }
 }

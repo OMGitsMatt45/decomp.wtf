@@ -145,32 +145,16 @@ unsupported `sgisysinfo(106)` query when the frontend's verbose banner is enable
 completes, and the final code and relocation comparisons pass. Source-built replacement cfront
 or a switch to 7.1/KMC is unnecessary for this supported 5.3 EDG path.
 
-## Classic IDO 5.3 cfront: optional native object compilation
+## Classic IDO 5.3 cfront and template prelinking
 
-Classic cfront is a distinct pipeline. The optional overlay recompiles the original
-`usr/lib/CC`, `usr/lib/c++/cfront`, `ptcomp` and `markc++` for the host. It uses the
-already installed, unchanged 5.3 `acpp`, `cc`, `cfe`, `uopt`, `ugen` and `as1`.
-The normal installer continues to supply the EDG overlay; classic cfront currently
-requires a local build. EDG remains the default.
-
-Build on Linux, or in an MSYS2 build shell on Windows with `gcc make git python tar`
-installed. MSYS2 is a build dependency; execution uses the runtime DLLs already
-bundled with the installed 5.3 C suite. No WSL or QEMU is used by the application.
+The normal `ido-5.3` installation now includes both original frontend choices on
+Windows and Linux x86-64. EDG remains the default. Refresh an older installation:
 
 ```console
-bash tools/ido53/build-cfront.sh /path/to/fresh-build /path/to/artifacts
-decompnet toolchain install ido-5.3 --accept-license
-python -m tools.ido53.install_cfront /path/to/fresh-build/package
+decompnet toolchain install ido-5.3 --force --accept-license
 ```
 
-The build emits an overlay archive, its corresponding recompiler/IRIX input source
-archive and checksums. Installation validates the original-input manifest and copies
-only the four classic programs and their manifest. The original CC driver is installed
-as `classic-CC.exe`, keeping it distinct from `cc.exe` on Windows filesystems.
-Reinstalling the base suite with
-`--force` removes a manually added overlay, so install it again afterwards.
-
-Select it explicitly in the project:
+Select classic cfront explicitly:
 
 ```toml
 [compiler]
@@ -179,49 +163,60 @@ language = "c++"
 cpp_frontend = "cfront"
 ```
 
-The host adapter copies `.cpp` sources to the `.C` suffix recognized by the original
-CC driver, within a private working directory. It rebases include paths and isolates
-intermediate files and the template repository. The original CC driver still performs
-preprocessing, cfront translation, repository processing, C compilation and object
-marking. Exports retain `.cpp` files and record `cpp_frontend = "cfront"`.
+Classic support recompiles the original `usr/lib/CC`, `cfront`, `ptcomp`,
+`markc++` and `ptlink`. It retains the installed, unchanged 5.3 `acpp`, `cc`,
+`cfe`, `uopt`, `ugen` and `as1`. The classic driver is named `classic-CC.exe`,
+keeping it distinct from `cc.exe` on case-insensitive Windows filesystems.
+Missing classic components fail explicitly; EDG is never substituted.
 
-The port fixes a patched zero-address load, resolves quickstarted external functions
-through their actual GOT entries and dispatches indirect signal callbacks. It supplies
-the missing IRIX environment, stdio, file-lock and libC vector services. Temporary
-names stay short and relative to the private work folder, fitting IRIX buffers
-and avoiding a system `/tmp` dependency on Windows. In particular,
-cfront defines its own clearing `operator new`; both direct calls and libC vector
-allocation must preserve that definition. Replacing it with ordinary allocation
-corrupted later declarations even when a single-function smoke test passed.
-The driver's observed `grep`, `sort` and `rm` operations run through bounded host
-implementations, without external utilities or a shell.
+The application adapter copies `.cpp` sources to the `.C` suffix accepted by the
+original driver, isolates intermediate files and rebases include paths. Exports
+retain `.cpp` files and `cpp_frontend = "cfront"`. Original compiler algorithms
+perform preprocessing, C++ translation, repository processing, C compilation
+and object marking. Host fixes cover quickstarted GOT imports, a legitimate
+zero-address load, callback dispatch, IRIX environment and stdio, file locking,
+short relative temporary names and libC vector services. In particular, cfront's
+own clearing `operator new` must remain active for direct and vector allocation;
+ordinary allocation corrupted later declarations in multi-function inputs.
 
-Verification compares 11 functions with the **unmodified original IRIX cfront** under
-QEMU, through the same original 5.3 backend. Final instructions and relocation records
-agree exactly; the template/class/constructor/reference probe also produces identical
-C text byte for byte. The pinned fixtures include multiple declarations and functions
-to catch the allocator regression. QEMU is solely the independent frontend reference.
-
-The [native Windows and Linux CI run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39484029636)
-passed all six integration tests and four configuration checks on each host. The
-[validation record](ido53-cfront-validation.json) pins the tested source commit,
-original input identities, checks and scope. Both installers verified that the
-existing C backend files retained identical SHA-256 values.
-
-The native integration suite checks those fixtures, compiles an m2c C++ draft, matches
-classic C++ against a homemade C-origin ROM, rejects changed instructions and relocation
-destinations, and rebuilds exported `.cpp` files into the identical ROM. It repeats the
-build after deleting generated files and restoring sources through Git with
-`core.autocrlf=true`. Windows checks remove MSYS from PATH and reject WSL calls.
+The original `ptlink` now supports separate template declarations, definitions
+and callers. For a project compiled with `classic-CC -c` into a shared
+`ptrepository`, prelink and combine its objects with:
 
 ```console
-DECOMP_TEST_IDO_CFRONT=1 python -m pytest tests/test_ido_cfront.py
-python -m tools.ido53.verify_cfront --irix-root /path/to/ido/5.3 --qemu /path/to/qemu-irix
+python -m decompnet.ido_prelink --work /path/to/project --output combined.o left.o right.o
 ```
 
-The IRIX reference needs `libC.so`, linked from the supplied original `libC.a` as described
-above. Classic support here covers object compilation, local template instantiation,
-application matching and ROM exports. The original IRIX executable linker, `ptlink`
-and cross-translation-unit template prelinking are outside this port. Runtime-dependent
-game features still require their original target libraries; there are no host C++
-standard headers or a modern C++ dialect.
+Add `--include include` for additional include directories. Flags after `--`
+replace the default IDO flags. The working directory may contain spaces; relative
+object, repository and include arguments must fit the original driver's grammar
+and contain no whitespace. The command supplies the original prelinker's control
+files, then invokes the pinned N64 GNU linker with `-r`. It replaces the requested
+output only after successful instantiation and linking. The previous output
+survives invalid template definitions or other prelink failures.
+
+Cross-unit prelinking is a shared-project operation. The application's independent
+function compilations continue to isolate their repositories. This does not add
+a full IRIX executable environment, `c++patch` startup processing, or IRIX shared
+library linking. Target runtime references still need the game's compatible
+libraries; no modern host C++ standard library or dialect is supplied.
+
+The [native Windows/Linux compiler and prelink verification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39491288285)
+passes seven integration tests and four configuration checks per host, with zero
+required skips. Coverage includes original-IRIX code/relocation fixtures, C++ m2c
+drafts, C-origin ROM matching, wrong-code/relocation rejection, clean exported
+rebuilds after deleting generated files and Git autocrlf checkout, and cross-unit
+template dependency invalidation. Windows removes MSYS from PATH and rejects WSL.
+The original C backend hashes remain identical after overlay installation.
+
+Independent reference checks compare 11 functions and the generated C text with
+unmodified IRIX cfront under QEMU. The cross-unit instantiation C text also matches
+byte for byte. QEMU is only the reference harness, never an application dependency.
+See the [validation record](ido53-cfront-validation.json) and
+[compiler completion record](compiler-completion.md).
+
+The [immutable classic binary/source packages](https://github.com/OMGitsMatt45/decomp.wtf/tree/5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7/toolchains/ido53-cfront)
+include corresponding recompiler sources and original IRIX inputs. For a local
+rebuild, use `tools/ido53/build-cfront.sh` in a fresh directory; MSYS2 is a Windows
+build dependency, while normal installation only needs the bundled runtime DLLs.
+The [build guide](../tools/ido53/README-cfront.md) documents that optional workflow.

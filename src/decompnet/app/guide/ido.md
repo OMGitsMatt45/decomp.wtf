@@ -13,10 +13,12 @@ Source language
 - Explicit `compiler.language = "c"` selects the original C frontend. Each IDO version uses its
   own SGI/EDG 2.19 binary and original backend; never switch 5.3 to 7.1 to accept C++ syntax.
 - Exports record the selected `cpp_frontend`. IDO 5.3 can explicitly select `"cfront"` after
-  installing its optional locally built classic overlay. This retains the original CC driver,
+  installing/updating `ido-5.3` normally. This retains the original classic CC driver,
   cfront, repository helpers and 5.3 backend. Missing classic components fail; EDG is never
-  substituted. Classic support covers object compilation and ROM exports, not IRIX executable
-  linking or cross-translation-unit template prelinking.
+  substituted. Native `ptlink` supports cross-unit instantiation; `python -m decompnet.ido_prelink`
+  supplies its control files and links a relocatable N64 object for shared projects.
+  Individual app function compilations keep private repositories. Full IRIX executable
+  startup/shared-library processing remains outside this ROM toolchain.
 
 Traits
 - Unconditional jumps inside functions are `b label` (`beq $zero, $zero`).

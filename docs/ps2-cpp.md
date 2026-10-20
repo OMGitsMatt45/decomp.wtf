@@ -111,7 +111,7 @@ Concrete alternatives investigated:
 | Use existing Windows SN ProDG | decomp.me packages include 2.95.3-136 with a C++ frontend. It is a different compiler/backend and cannot establish 2.96 byte parity. It would need its own explicit toolchain and matching tests. |
 | Run original Linux 2.96 through emulation/container tooling | [decomp-compat-kit](https://github.com/LinuxJessi/decomp-compat-kit) and [recompile-toolchains](https://github.com/maci0/recompile-toolchains) retain original Linux binaries in Docker/QEMU. They do not provide a native Windows compiler. An explicit emulator could avoid WSL but would still be emulation, requiring Windows process, filesystem and parity validation. |
 | Statically recompile the exact Linux binaries | Could preserve compiler identity without missing source, but would require an i386 ELF translator and Linux/libc compatibility layer for the driver and its children. No working verified Windows package was located; the SGI/MIPS IDO translator cannot directly translate these i386 programs. |
-| Obtain exact 2.96 source or an authentic Windows build | Preferred path to complete native Windows support; then build/audit its process support and verify code, relocations and full exports against the original Linux compiler. |
+| Obtain exact 2.96 source or an authentic Windows build | Still needed for a conventional source port. The native host already runs the pinned compiler on Windows; any future replacement must pass the same parity and export checks. |
 
 A direct comparison of `ee-gcc2.9-991111.tar.xz` (SHA-256
 `99cb5db603cd985b50fc6851157020ad69489f2227309ccf825bd43ac7bc19dd`)
@@ -120,10 +120,9 @@ found different function code/relocations for the template, floating-point and
 constant-table probes (three of seven functions). Even this small fixture rules
 out treating the available 2.9 source as an exact 2.96 replacement.
 
-Without a valid local build, Windows availability checks fail explicitly and
-never start WSL or select 2.9, SN, modern GCC or Clang automatically. Support for the
-other consoles remains available. Classic IDO 5.3 investigation and PlayStation
-PR #2 remain separate.
+The native host now supplies the working Windows path independently of source
+reconstruction. A missing or invalid installation fails explicitly; the app never
+selects 2.9, SN, modern GCC, Clang or WSL as an implicit replacement.
 
 ## Verification
 
@@ -137,11 +136,12 @@ complete owned tables and small data, per-unit headers, paths with spaces, clean
 C/C++ exports after deleting generated files, and Git `core.autocrlf=true`.
 A separate Linux check compiles with the original driver inside bubblewrap.
 
-The [dedicated native Windows run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39446829628)
-requires 22 complete-object/preprocessor/rejection parity checks and all 16 PS2
+The [dedicated native Windows run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39490389942)
+requires 27 complete-object/preprocessor/rejection parity checks and all 16 PS2
 integration tests, including C/C++ matching and clean whole-game exports, with
-zero skips. The compiler has System32-only PATH. Default-configuration checks
-continue to verify the unavailable-download error when no local build is selected.
+zero skips. The compiler has System32-only PATH. The matching/export checks install
+and use the regular pinned Windows package in a directory with spaces, without
+`DECOMP_EE_NATIVE_ROOT`. Configuration checks reject missing installations without WSL.
 
 The [native Linux validation run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39341473279)
 checks the implementation in `998cb672843735e8e5e2ee0e0869ad17fb6f275e`:
