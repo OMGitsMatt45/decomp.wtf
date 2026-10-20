@@ -8,7 +8,7 @@ an explicit `compiler.language = "c"` also preserves C compilation.
 ## Compiler identity
 
 The original pret package contains C frontends only. decomp.wtf adds a **separate
-`agbcc-cpp` executable**: the GNU GCC 2.95.3 C++ frontend restored against
+`agbcc-cpp` and `old_agbcc-cpp` executables**: the GNU GCC 2.95.3 C++ frontend restored against
 pret/agbcc's existing Thumb backend. This is a frontend extension, not an original
 Nintendo C++ compiler binary. It does not replace agbcc's backend with modern GCC
 or claim that every unchanged C expression will produce identical C++ output.
@@ -30,7 +30,7 @@ The build uses MinGW on Linux to produce the standalone Windows executable.
 Immutable, SHA-256-pinned packages include complete corresponding GPL sources,
 licenses, patches and the build recipe in `cpp-source/`. See
 [`tools/gba_cpp`](../tools/gba_cpp) and the
-[verified binary/source packages](https://github.com/OMGitsMatt45/decomp.wtf/tree/05b4893dcded97f392aa1e999855d7c0bc4bf8aa/toolchains/gba-cpp).
+[verified binary/source packages](https://github.com/OMGitsMatt45/decomp.wtf/tree/b288e989321250f5e0976a3cf88382ba514bf708/toolchains/gba-cpp).
 Reinstall an older toolchain with:
 
 ```sh
@@ -44,9 +44,14 @@ references and overloaded helpers are available. Exceptions and RTTI are disable
 by default. No modern C++ standard library or GBA C++ runtime/startup library is
 provided. Code requiring `new`/`delete`, exception handling, global dynamic
 initializers or other runtime support needs the game's compatible implementation;
-this conversion does not establish that support. ARM-mode and `old_agbcc` C++
-frontends are not included; the restored frontend targets the normal agbcc Thumb
-pipeline.
+this conversion does not establish that support.
+
+Both normal and old Thumb variants are available. Set `agbcc_variant = "old"` in
+`[compiler]` to select `old_agbcc-cpp` for C++, or unchanged `bin/old_agbcc` for C.
+The default is `"normal"`. Every old-variant frontend and backend object is rebuilt
+with `OLD_COMPILER`; normal objects are never reused. Exports retain this selection.
+ARM mode comes from the distinct `gcc_arm` 2.9 source tree and still needs a separate
+C++/native Windows port; selecting it is an explicit error, without substitution.
 
 Plain game functions, prototypes and external variables retain C linkage.
 Classes, templates, static helpers and explicit `extern "C++"` declarations keep
@@ -86,3 +91,8 @@ Arm GNU suite. They fail if the integration tests are skipped. Coverage includes
 
 This validates the supported pipeline on a redistributable test game. It does
 not guarantee that arbitrary commercial ROM functions already match as C++.
+
+The [variant package verification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39489803504)
+checks both Thumb variants on native Windows and Linux, including templates, classes,
+constructors, references, call/data relocations, invalid C++ and explicit variant
+selection through the application configuration. Windows runs with System32-only PATH.

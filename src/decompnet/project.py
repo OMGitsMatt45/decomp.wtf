@@ -120,7 +120,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             elif tc.id == "agbcc":
                 frontend = "old_agbcc-cpp" if agbcc_variant == "old" else "agbcc-cpp"
                 if not (dirs[0] / f"{frontend}{suffix}").is_file():
-                    raise toolchains.ToolchainError(f"The {frontend} frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
+                    raise toolchains.ToolchainError(f"The {frontend} C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
                 # The isolated script needs only Python's standard library. A
                 # module invocation would require the app's entire environment
                 # inside bubblewrap, and a venv interpreter can point outside

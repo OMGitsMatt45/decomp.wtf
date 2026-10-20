@@ -57,18 +57,18 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | KMC GCC 2.7.2 / N64 | C++ host port, including the original binutils 2.6 |
 | PlayStation GCC 2.7.2 | Native C/C++ source port, including the original binutils 2.6 |
 | PlayStation GCC 2.8.1 | Native original C/C++ frontends with pinned compatible MIPS binutils |
-| agbcc / Game Boy Advance | C compiler plus a restored GCC 2.95.3 C++ frontend using the agbcc Thumb backend |
+| agbcc / Game Boy Advance | C compilers plus distinct restored C++ frontends for normal and old agbcc Thumb backends |
 | IDO 5.3 / 7.1 | Original statically recompiled SGI programs with bundled MSYS runtime; 7.1 includes a Windows host-memory fix; explicit license acceptance required |
 | CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
-| EE-GCC 2.96 | Verified local Win32 host of the original compiler; automatic download bundle not published |
+| EE-GCC 2.96 | Pinned downloadable Win32 hosts of the original C/C++ compiler; no WSL or local build required |
 
 EE-GCC 2.96 now also has a native Windows x86 host that executes the original
 `2.96-ee-001003-1` compiler instructions with Windows libc/process adapters.
 Native Windows CI verifies C/C++ parity, matching and clean exports without WSL.
-Build it with the documented MinGW recipe, then set `DECOMP_EE_NATIVE_ROOT` to
-its absolute output directory before launching the app. No automatic Windows
-download bundle is published yet. The exact corresponding GNUPro source remains
+Install it normally with `decompnet toolchain install ee-gcc-2.96`. The installer
+combines pinned payload-free hosts with the unchanged upstream compiler archive.
+The exact corresponding GNUPro source remains
 missing; the host avoids replacing the compiler. EE 2.9 and SN 2.95 are different
 compilers. See [PS2 C++ support and local Windows setup](ps2-cpp.md). The installer does not
 substitute another compiler version or silently enable WSL for it. Binary packages, corresponding source and

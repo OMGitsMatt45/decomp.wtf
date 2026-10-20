@@ -124,7 +124,7 @@ platform = "PS2"
 arch = "mipsel"
 license = "GPL-2.0"
 source = "decompme/compilers release 'compilers'"
-description = "Original EE-GCC 2.96-ee-001003-1 C/C++ frontends and EE assembler. Linux x86 build, or a verified local Windows host selected by DECOMP_EE_NATIVE_ROOT; no automatic Windows download bundle."
+description = "Original EE-GCC 2.96-ee-001003-1 C/C++ frontends and EE assembler. Native Windows hosts are assembled from pinned payload-free templates and the unchanged original archive; Linux uses the original i386 programs."
 requires = ["runtime-i386"]
 cc = ["{tc}/bin/ee-gcc", "-c"]
 windows_requires = []
@@ -397,13 +397,13 @@ sha256 = "bcf0197e3e27d8e08506a142e25fa68ea7f6679a98347a6406804eb3f9ff4d29"
 platforms = ["linux-x86_64"]
 
 [[agbcc.parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/05b4893dcded97f392aa1e999855d7c0bc4bf8aa/toolchains/gba-cpp/agbcc-cpp-linux-x86_64.tar.gz"
-sha256 = "c829d4c48eb20eefeb94dc68308877e130f4c32dc4c4e32d39b2011714faa3e1"
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/b288e989321250f5e0976a3cf88382ba514bf708/toolchains/gba-cpp/agbcc-cpp-linux-x86_64.tar.gz"
+sha256 = "10c5b7deb91b9e2450963f31c2ba59e261048f7a85ac083a429a5a47a0db5ae4"
 platforms = ["linux-x86_64"]
 
 [[agbcc.parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/05b4893dcded97f392aa1e999855d7c0bc4bf8aa/toolchains/gba-cpp/agbcc-cpp-windows-x86_64.tar.gz"
-sha256 = "1e473236f0e62c149b9fbc4213d2d441f48d79a1cb882a65da49143b997ce8c4"
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/b288e989321250f5e0976a3cf88382ba514bf708/toolchains/gba-cpp/agbcc-cpp-windows-x86_64.tar.gz"
+sha256 = "e99dcab3e6c002baaf10a991e6d1482b9198aa8a9cd54c153c25c2638362d84c"
 platforms = ["windows-x86_64"]
 
 [maspsx]

@@ -1,10 +1,10 @@
-# PS2 C++ game output: Linux and native Windows local builds
+# PS2 C++ game output: Linux and native Windows
 
 PS2 projects using `ee-gcc-2.96` default to genuine C++ drafts, matching and
 `.cpp` exports on Linux x86-64. `compiler.language = "c"` retains C, and older
 exports without a language field remain C. Native Windows can now use an
-explicitly selected local x86 host of the same original compiler binaries.
-An automatic Windows download bundle is not published.
+a pinned native x86 host of the same original compiler binaries, installed through
+the regular toolchain installer. No local compiler build or WSL is required.
 
 ## Original compiler and compatible tools
 
@@ -67,13 +67,18 @@ linker. Disc images and separate overlay files are not repacked.
 
 The [native x86 ELF host](../tools/ps2_cpp/elf_host/README.md) runs the exact
 original compiler instructions in Win32 executables with libc/process ABI
-adapters. Native Windows CI passed all 22 parity checks and all 16 PS2 matching
-and clean-export tests with zero skips. It needs neither WSL nor CPU emulation.
-After building it, set `DECOMP_EE_NATIVE_ROOT` to the absolute output directory
-before starting the app. The app validates the original archive identity and
-the five Windows executables, then uses the same EE compiler C/C++ settings.
-The linked guide contains the build and startup commands. A user-managed local
-build is never deleted or refreshed by `toolchain install --force`.
+adapters. Native Windows CI passed all 27 parity checks, including `-pipe`, and
+all 16 PS2 matching and clean-export tests with zero skips. It needs neither WSL
+nor CPU emulation. The regular installer downloads the unchanged original archive,
+payload-free Windows host templates and complete host source. It validates every
+input, inserts each pinned ELF into its dedicated read-only PE section and checks
+the final executable checksum. No original compiler payload is published in the
+host-template package. Templates extract into a separate staging folder so they
+cannot replace the original archive's `bin` or `lib` directories.
+
+A separately built host can still be selected with `DECOMP_EE_NATIVE_ROOT` set to
+its absolute output directory. This user-managed build is never deleted or refreshed
+by `toolchain install --force`. The default installation needs no override.
 
 The subsequent [source reconstruction experiment](ps2-cpp-reconstruction.md)
 built Linux ELF32 and Windows PE32 frontends from available sources, but its
