@@ -124,9 +124,11 @@ platform = "PS2"
 arch = "mipsel"
 license = "GPL-2.0"
 source = "decompme/compilers release 'compilers'"
-description = "Original EE-GCC 2.96-ee-001003-1 C/C++ frontends and EE assembler. Linux x86 only; no verified native Windows build or corresponding source for a Windows port."
+description = "Original EE-GCC 2.96-ee-001003-1 C/C++ frontends and EE assembler. Linux x86 build, or a verified local Windows host selected by DECOMP_EE_NATIVE_ROOT; no automatic Windows download bundle."
 requires = ["runtime-i386"]
 cc = ["{tc}/bin/ee-gcc", "-c"]
+windows_requires = []
+windows_cc = ["{tc}/bin/ee-gcc.exe", "-c"]
 flags = ["-O2", "-G0"]
 [["ee-gcc-2.96".parts]]
 url = "https://github.com/decompme/compilers/releases/download/compilers/ee-gcc2.96.tar.xz"

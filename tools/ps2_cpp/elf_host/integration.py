@@ -1,9 +1,9 @@
-"""Run existing PS2 integration tests with an explicit research-only provider.
+"""Run existing PS2 integration tests against the locally built Windows host.
 
-No production registry or installation manifest is modified. A temporary Python
-bootstrap exposes the locally built, unregistered host to the tests and their
-export/build subprocesses. Linux execution requires an explicit wibo runner;
-it must never be reported as native Windows validation.
+Windows uses the application's DECOMP_EE_NATIVE_ROOT configuration. Linux uses
+a temporary research provider for compatibility-runner measurements only.
+No registry file or installation manifest is modified. Linux execution requires
+an explicit wibo runner and is never reported as native Windows validation.
 """
 
 import argparse
@@ -30,6 +30,13 @@ def activate() -> None:
         raise ValueError("Not a research build of the pinned original compiler")
     if any((root / (p + ".exe")).read_bytes()[:2] != b"MZ" for p in metadata["tools"]):
         raise ValueError("Missing Windows compiler host executable")
+    if sys.platform == "win32":
+        # Exercise the application's real local-build configuration, without
+        # replacing registry functions on the platform we are validating.
+        os.environ[toolchains.EE_NATIVE_ROOT] = str(root)
+        if toolchains.require("ee-gcc-2.96") != root or toolchains.get("ee-gcc-2.96").via_wsl:
+            raise ValueError("The app did not select the configured native Windows host")
+        return
     get = toolchains.get
     path = toolchains.path
     installed = toolchains.installed
@@ -105,7 +112,7 @@ def main() -> int:
     skipped = sum(int(s.get("skipped", 0)) for s in suites)
     summary = dict(execution="native Windows" if sys.platform == "win32" else "Windows PE under wibo on Linux",
                    original_archive_sha256=ARCHIVE_SHA, exit_code=result.returncode,
-                   tests=count, skipped=skipped, research_provider=True, production_registry_changed=False)
+                   tests=count, skipped=skipped, research_provider=sys.platform != "win32", production_registry_changed=False)
     (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     if result.returncode and os.environ.get("GITHUB_ACTIONS"):
         diagnostic = (work / "output.log").read_text()[-6000:]

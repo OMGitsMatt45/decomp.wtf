@@ -6,8 +6,9 @@ of `cc1`, `cc1plus`, `xgcc` and `cpp0`. **It did not reconstruct a compatible
 no matching or clean exported-project rebuild is established with either one.
 They are not registered, installed or selected by decomp.wtf.
 
-The original Linux compiler remains the supported PS2 backend. Native Windows
-PS2 C++ support remains blocked. The source-build experiment below is separate
+The reconstructed source remains incompatible. A separate
+[original-binary Windows host](../tools/ps2_cpp/elf_host/README.md) now provides
+native Windows support without reconstructing the missing source. The source-build experiment below is separate
 from the functioning [original-compiler implementation](ps2-cpp.md).
 
 ## Source inputs and work completed

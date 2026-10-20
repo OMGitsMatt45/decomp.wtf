@@ -311,7 +311,7 @@ the game.
 | **GameCube · Wii** | ★ **Recommended** | ✓ disc (ISO, RVZ, WBFS…) or DOL | CodeWarrior GC 1.0 – Wii 1.7 | ✓ dtk-template | ✓ |
 | **Nintendo 64** | ★ **Recommended** | ✓ ROM | KMC GCC 2.7.2 · IDO 5.3 / 7.1 | ✓ export | ✓ |
 | **PlayStation** | Beta | ✓ disc (.bin, .iso, .chd) or EXE | GCC 2.7.2 / 2.8.1 C/C++ (PSY-Q era) | ✓ export | ✓ |
-| **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.96 C/C++ (Linux; Windows unavailable) | ✓ export | ✓ |
+| **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.96 C/C++ (Linux; local native Windows host) | ✓ export | ✓ |
 | **Game Boy Advance** | Beta | ✓ ROM | agbcc C/C++ | ✓ export | ✓ |
 | **Nintendo DS** | Beta | ✓ ROM (.nds) | CodeWarrior for DS 1.2 – DSi 1.6 | ✓ ds-decomp | ✓ |
 | **3DS · PSP · Switch · PC · Xbox · Xbox 360** | coming | | | | ✓ |
@@ -361,8 +361,9 @@ Native Windows and Linux builds, strict relocation/data checks and clean exporte
 See [GBA C++ support](docs/gba-cpp.md). PS1 projects using GCC 2.7.2 or 2.8.1 also generate, match and export
 real C++ using each version's original PS1-patched C++ frontend, preserving game symbol linkage.
 See [PS1 C++ support and release verification](docs/psx-cpp.md). PS2 EE-GCC 2.96 projects now generate,
-match and export genuine C++ on Linux using the original `2.96-ee-001003-1` frontend. Native Windows
-2.96 remains blocked by missing matching source/binaries; no compiler substitution is made.
+match and export genuine C++ using the original `2.96-ee-001003-1` frontend. A verified local
+Windows host now runs the same compiler instructions without WSL; select its build with
+`DECOMP_EE_NATIVE_ROOT`. An automatic Windows download bundle is not published yet.
 See [PS2 C++ support, validation and Windows alternatives](docs/ps2-cpp.md).
 Public decomps use whatever language the project does.
 

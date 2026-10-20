@@ -4,7 +4,8 @@ This is a new approach to the missing Windows compiler, separate from the failed
 source reconstruction. It builds **Win32 PE executables containing the original
 Linux i386 compiler programs**. Their original x86 instructions run on the CPU;
 there is no MIPS translation, CPU interpreter, WSL, Linux VM, or replacement GCC
-backend in this host. The application does not register or select it yet.
+backend in this host. The app can select a locally built host explicitly through
+`DECOMP_EE_NATIVE_ROOT`; an automatic Windows download bundle is not published.
 
 ## What changed at the host boundary
 
@@ -80,9 +81,11 @@ complete object files, one identical standalone-preprocessor output, and three
 matching failure/no-output checks. This includes floating constants after
 explicit x87 initialization. See [the measured report](results/wibo-linux.json)
 for binary hashes, metadata and actual execution labels. These are compatibility
-runner results, **not a native Windows execution claim**. The dedicated GitHub workflow builds and runs the
-same corpus on native Windows with System32-only PATH. It must pass before this
-can be considered for registration.
+runner results. The subsequent
+[native Windows validation](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702)
+passed **all 22 parity checks and all 16 matching/export tests with zero skips**
+on Windows Server 2022 x64. The compiler runs with System32-only PATH. No WSL,
+wibo, QEMU or system MSYS runtime is involved in that native execution.
 
 ```sh
 python tools/ps2_cpp/elf_host/probe.py \
@@ -103,11 +106,10 @@ files and restoring sources with Git autocrlf. See the
 [integration summary](results/integration-wibo-linux.json) and
 [current-run JUnit results](results/integration-wibo-linux.xml).
 
-`integration.py` uses a temporary, explicitly requested research provider so
-the tests and exported-build subprocesses can resolve this unregistered backend.
-It does not edit the production registry, disable matching assertions or change
-the tests. Linux uses a shell launch shim for wibo; native Windows directly
-uses the PE executable. Its test bodies already select the native/no-sandbox
+`integration.py` uses the application's real local-build configuration on Windows.
+Linux measurements use a temporary research provider and shell launch shim for
+wibo. It does not edit the registry file, disable matching assertions or change
+the tests. Its test bodies already select the native/no-sandbox
 compiler mode. Install `binutils-mips`, `m2c` and prepare the zlib demo sources
 before running it, as the dedicated workflow does. Example on Windows:
 
@@ -117,8 +119,24 @@ python tools/ps2_cpp/elf_host/integration.py `
   --work 'C:/path/to/fresh integration results'
 ```
 
-Native Windows execution of both suites remains required before registration.
-The local compiler driver imports only KERNEL32 and MSVCRT. Unsupported ABI
+## Use the local build in the app
+
+On Windows x64, select the **absolute** output directory from the verified build:
+
+```powershell
+$env:DECOMP_EE_NATIVE_ROOT = 'C:/DecompTools/EE host'
+uv run --no-sync decomp --no-browser
+```
+
+The app checks the build metadata's original archive identity and all five
+Windows executables. It uses the original EE compiler's C/C++ settings and
+Windows driver directly, without the Linux runtime dependency. A configured
+local host takes priority over the optional legacy WSL bridge for this compiler.
+An incomplete build reports an explicit error. `toolchain install --force`
+refuses to delete a user-managed local host; rebuild into a fresh directory.
+Other platforms and the default toolchain location are unaffected.
+
+The compiler driver imports only KERNEL32 and MSVCRT. Unsupported ABI
 paths, locale/Unicode edge cases, process pipelines and address-space conflicts
-are not established by this finite corpus. Existing production Windows PS2
-availability remains unchanged; there is no automatic fallback to this host.
+are not established by this finite corpus. Without the explicit local-build
+setting, Windows still reports the missing downloadable EE compiler package.

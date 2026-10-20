@@ -30,6 +30,10 @@ MANIFEST = ".decompnet-toolchain.json"
 LINUX = "linux-x86_64"
 # Parts for WSL: Linux programs packed in a format Windows can unpack (a .deb, not a .zst)
 WSL_PLATFORM = "wsl-x86_64"
+EE_NATIVE_ROOT = "DECOMP_EE_NATIVE_ROOT"
+EE_ARCHIVE_SHA256 = "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a"
+EE_HOST_PROGRAMS = ("bin/ee-gcc", "bin/ee-as", "lib/gcc-lib/ee/2.96-ee-001003-1/cc1",
+                    "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus", "lib/gcc-lib/ee/2.96-ee-001003-1/cpp0")
 
 
 class ToolchainError(RuntimeError):
@@ -71,6 +75,8 @@ class Toolchain:
     @property
     def via_wsl(self) -> bool:
         """A Linux-only toolchain on Windows: installed from its Linux build and run inside WSL 2 (see wsl.py)."""
+        if self.id == "ee-gcc-2.96" and _ee_native_root() is not None:
+            return False
         return wsl.wanted() and not self.git and not self.parts_for() and bool(self.parts_for(LINUX))
 
     def linux_parts(self) -> list[dict]:
@@ -84,6 +90,10 @@ class Toolchain:
 
     @property
     def unsupported_reason(self) -> str | None:
+        if self.id == "ee-gcc-2.96" and _ee_native_root() is not None:
+            return None if _ee_native_manifest() is not None else (
+                f"{EE_NATIVE_ROOT} must point to a complete Windows host build of the pinned original EE-GCC 2.96 using an absolute path; "
+                "see tools/ps2_cpp/elf_host/README.md")
         if not (self.git or self.parts_for() or self.via_wsl):
             why = unsupported_cpu()
             native = "native Windows " if current_platform().startswith("windows-") else ""
@@ -117,6 +127,32 @@ def unsupported_cpu() -> str | None:
         return None
     return (f"decomp.wtf needs a 64-bit Intel or AMD PC for now (the games' compilers are x86 programs; this "
             f"computer's processor is {machine})")
+
+
+def _ee_native_root() -> Path | None:
+    """Explicitly selected local Windows build, never an implicit Linux fallback."""
+    value = os.environ.get(EE_NATIVE_ROOT, "").strip()
+    return Path(value).expanduser() if value and current_platform() == "windows-x86_64" else None
+
+
+def _ee_native_manifest() -> dict | None:
+    root = _ee_native_root()
+    if root is None:
+        return None
+    try:
+        if not root.is_absolute():
+            return None
+        data = json.loads((root / "host-build.json").read_text(encoding="utf-8"))
+        if data.get("archive_sha256") != EE_ARCHIVE_SHA256 or not isinstance(data.get("tools"), dict) \
+                or set(data["tools"]) != set(EE_HOST_PROGRAMS):
+            return None
+        for program in EE_HOST_PROGRAMS:
+            with (root / (program + ".exe")).open("rb") as executable:
+                if executable.read(2) != b"MZ":
+                    return None
+        return {**data, "platform": "windows-x86_64", "local_build": True, "wsl": False}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
 
 
 @functools.cache
@@ -153,12 +189,16 @@ def path(tid: str, linux: bool | None = None) -> Path:
     """Where a toolchain is installed. `linux`: its Linux build for WSL (default: when that's how it runs here)."""
     if linux is None:
         linux = tid in _registry_data() and get(tid).via_wsl
+    if tid == "ee-gcc-2.96" and not linux and (local := _ee_native_root()) is not None:
+        return local
     return root() / "wsl" / tid if linux else root() / tid
 
 
 def installed(tid: str, linux: bool | None = None) -> dict | None:
     if linux is None:
         linux = get(tid).via_wsl if tid in registry() else False
+    if tid == "ee-gcc-2.96" and not linux and _ee_native_root() is not None:
+        return _ee_native_manifest()
     m = path(tid, linux) / MANIFEST
     if not m.exists():
         return None
@@ -284,6 +324,11 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             raise ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {why}")
     elif why := tc.unsupported_reason:
         raise ToolchainError(why)
+    if tid == "ee-gcc-2.96" and not linux and _ee_native_root() is not None:
+        if force:
+            raise ToolchainError("A local EE Windows host is user-managed; rebuild into a fresh directory instead of --force")
+        log(f"{tid}: using local Windows host at {path(tid, linux)}")
+        return path(tid, linux)
     parts = tc.linux_parts() if linux else tc.parts_for()
     for dep in tc.dependencies(linux):
         if installed(dep, linux) is None or force:

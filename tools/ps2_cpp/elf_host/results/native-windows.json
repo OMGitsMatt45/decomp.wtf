@@ -1,0 +1,22 @@
+{
+  "execution": "Native Windows Server 2022 x64; Win32 original-i386 host",
+  "run_url": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702",
+  "commit": "f677d1e",
+  "observation": "Public GitHub Actions job/step conclusions; required scripts fail on mismatches, skipped tests, or empty runs",
+  "build": "success",
+  "parity": {
+    "status": "success",
+    "checks": 22,
+    "complete_object_matches": 18,
+    "preprocessing_matches": 1,
+    "failure_checks": 3
+  },
+  "integration": {
+    "status": "success",
+    "tests": 16,
+    "skipped": 0,
+    "provider": "temporary research provider; later application local-build configuration has a separate gate"
+  },
+  "compiler_path": "System32-only PATH; no WSL/wibo/QEMU/system MSYS runtime",
+  "production_download_bundle_published": false
+}
