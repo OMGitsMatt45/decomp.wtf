@@ -82,7 +82,7 @@ matching failure/no-output checks. This includes floating constants after
 explicit x87 initialization. See [the measured report](results/wibo-linux.json)
 for binary hashes, metadata and actual execution labels. These are compatibility
 runner results. The subsequent
-[native Windows validation](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702)
+[native Windows validation](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39446829628)
 passed **all 22 parity checks and all 16 matching/export tests with zero skips**
 on Windows Server 2022 x64. The compiler runs with System32-only PATH. No WSL,
 wibo, QEMU or system MSYS runtime is involved in that native execution.

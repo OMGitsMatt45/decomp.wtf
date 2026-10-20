@@ -132,7 +132,7 @@ complete owned tables and small data, per-unit headers, paths with spaces, clean
 C/C++ exports after deleting generated files, and Git `core.autocrlf=true`.
 A separate Linux check compiles with the original driver inside bubblewrap.
 
-The [dedicated native Windows run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702)
+The [dedicated native Windows run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39446829628)
 requires 22 complete-object/preprocessor/rejection parity checks and all 16 PS2
 integration tests, including C/C++ matching and clean whole-game exports, with
 zero skips. The compiler has System32-only PATH. Default-configuration checks

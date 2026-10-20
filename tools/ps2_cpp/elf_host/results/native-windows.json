@@ -1,7 +1,7 @@
 {
   "execution": "Native Windows Server 2022 x64; Win32 original-i386 host",
-  "run_url": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702",
-  "commit": "f677d1e",
+  "run_url": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39446829628",
+  "commit": "90d3ee0d1db93e2b04fae963431bd67584b6ce5b",
   "observation": "Public GitHub Actions job/step conclusions; required scripts fail on mismatches, skipped tests, or empty runs",
   "build": "success",
   "parity": {
@@ -15,8 +15,14 @@
     "status": "success",
     "tests": 16,
     "skipped": 0,
-    "provider": "temporary research provider; later application local-build configuration has a separate gate"
+    "provider": "Application local-build configuration; no registry function override"
   },
   "compiler_path": "System32-only PATH; no WSL/wibo/QEMU/system MSYS runtime",
-  "production_download_bundle_published": false
+  "production_download_bundle_published": false,
+  "initial_native_run_url": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39445366702",
+  "configuration": {
+    "status": "success",
+    "tests": 8,
+    "setting": "DECOMP_EE_NATIVE_ROOT"
+  }
 }
