@@ -107,6 +107,10 @@ def main() -> int:
                    original_archive_sha256=ARCHIVE_SHA, exit_code=result.returncode,
                    tests=count, skipped=skipped, research_provider=True, production_registry_changed=False)
     (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    if result.returncode and os.environ.get("GITHUB_ACTIONS"):
+        diagnostic = (work / "output.log").read_text()[-6000:]
+        diagnostic = diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print("::error title=EE integration failed::" + diagnostic, flush=True)
     if step_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(step_summary).open("a", encoding="utf-8") as stream:
             stream.write("## EE integration\n\n```json\n" + json.dumps(summary, indent=2) + "\n```\n")

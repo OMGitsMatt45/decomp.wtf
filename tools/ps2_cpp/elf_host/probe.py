@@ -138,4 +138,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        if os.environ.get("GITHUB_ACTIONS"):
+            diagnostic = str(error).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error title=EE parity runner::{type(error).__name__}: {diagnostic}", flush=True)
+        raise
