@@ -11,7 +11,7 @@ from decompnet.elfobj import extract_function
 from decompnet.project import compiler_config
 
 
-def main():
+def check(variant):
     package = Path(sys.argv[1]).resolve()
     tc = toolchains.require("agbcc")
     arm = toolchains.require("arm-gnu")
@@ -19,12 +19,12 @@ def main():
     cfg = compiler_config(Path.cwd(), {"compiler": {"toolchain": "agbcc", "language": "c", "sandbox": "none"}})
     pipeline = [
         sys.executable, "-m", "decompnet.agbcc", "--cpp", str(arm / f"bin/arm-none-eabi-cpp{suffix}"),
-        "--cc", str(tc / f"bin/agbcc{suffix}"), "--as", str(arm / f"bin/arm-none-eabi-as{suffix}"),
+        "--cc", str(tc / f"bin/{variant}{suffix}"), "--as", str(arm / f"bin/arm-none-eabi-as{suffix}"),
         "--builtin-include", str(tc / "include"), "--src", "{src}",
         "--obj", "{obj}", "--include", "{include}", "--", "-mthumb-interwork", "-O2"]
     cfg = replace(cfg, cmd=pipeline)
     cpp = replace(cfg, language="c++", c_linkage=True, cmd=[
-        a.replace(str(tc / f"bin/agbcc{suffix}"), str(package / f"agbcc-cpp{suffix}"))
+        a.replace(str(tc / f"bin/{variant}{suffix}"), str(package / f"{variant}-cpp{suffix}"))
         for a in pipeline[:-3]] + ["--language", "c++", "--", "-mthumb-interwork", "-O2", "-fno-exceptions", "-fno-rtti"])
     if sys.platform == "win32":
         os.environ["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
@@ -52,8 +52,9 @@ int probe(int x) { return callback(next(x)) + total; }
     assert {r.symbol for r in converted.relocs} >= {"callback", "total"}
     assert not compiler.compile_source(cfg, header, cpp_source).ok, "C frontend accepted C++ syntax"
     assert not compiler.compile_source(cpp, "", "int broken() { int &ref = 1; return ref; }").ok
-    print("Native agbcc-cpp: templates, constructors, classes and references; C code and relocation parity; invalid C++ rejected")
+    print(f"Native {variant}-cpp: templates, constructors, classes and references; C code and relocation parity; invalid C++ rejected")
 
 
 if __name__ == "__main__":
-    main()
+    for variant in ("agbcc", "old_agbcc"):
+        check(variant)

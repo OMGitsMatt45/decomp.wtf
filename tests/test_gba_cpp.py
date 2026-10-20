@@ -129,3 +129,25 @@ def test_strict_cpp_match_rejects_wrong_instruction_relocation_and_owned_data(c_
     assert not c_target("gba_call", call.replace("callback(x)", "other(x)")).exact
     assert c_target("gba_table", TABLE).exact
     assert not c_target("gba_table", TABLE.replace("47", "48")).exact
+
+
+@pytest.mark.parametrize("variant", ["normal", "old"])
+def test_each_thumb_cpp_variant_uses_its_corresponding_c_backend(tmp_path, variant, monkeypatch):
+    if os.name == "nt":
+        monkeypatch.setenv("PATH", str(Path(os.environ["SystemRoot"]) / "System32"))
+        start = subprocess.Popen
+        def native_only(args, *positional, **kwargs):
+            assert Path(args[0]).stem.lower() not in ("wsl", "bash", "sh")
+            return start(args, *positional, **kwargs)
+        monkeypatch.setattr(subprocess, "Popen", native_only)
+    def configured(language):
+        return project.compiler_config(tmp_path, {"kind": "rom", "platform": "gba", "compiler": {
+            "toolchain": "agbcc", "language": language, "agbcc_variant": variant, "sandbox": "none"}})
+    c = compiler.compile_source(configured("c"), HEADER, "int gba_add(int x) { return callback(x + 1) + total; }")
+    cpp = compiler.compile_source(configured("c++"), HEADER, CPP.replace("return next(x);", "return callback(next(x)) + total;"))
+    assert c.ok and cpp.ok, c.log + cpp.log
+    original, candidate = [elfobj.extract_function(r.obj, "gba_add") for r in (c, cpp)]
+    assert candidate.code == original.code and candidate.relocs == original.relocs
+    assert {r.symbol for r in candidate.relocs} >= {"callback", "total"}
+    if variant == "old":
+        assert any(Path(a).stem == "old_agbcc-cpp" for a in configured("c++").cmd)

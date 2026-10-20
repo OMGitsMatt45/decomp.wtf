@@ -41,13 +41,20 @@ make -C "$source_dir/gcc" -j1 "${keep[@]}" CC="$compiler" BASE_CFLAGS="$flags" \
     rtl.o bitmap.o obstack.o print-rtl.o rtlanal.o cpp
 cp "$source_dir/gcc/agbcc-cpp$suffix" "$work/package/agbcc-cpp$suffix"
 "$strip" "$work/package/agbcc-cpp$suffix"
+# OLD_COMPILER changes target optimization rules, so build every object afresh.
+find "$source_dir/gcc" -type f -name '*.o' -delete
+make -C "$source_dir/gcc" -j1 "${keep[@]}" CC="$compiler" BASE_CFLAGS="$flags -DOLD_COMPILER" \
+    rtl.o bitmap.o obstack.o print-rtl.o rtlanal.o cpp
+cp "$source_dir/gcc/agbcc-cpp$suffix" "$work/package/old_agbcc-cpp$suffix"
+"$strip" "$work/package/old_agbcc-cpp$suffix"
+
 cp "$source_dir/gcc/COPYING" "$work/package/COPYING-CPP"
 # Complete pristine corresponding sources plus every transformation and recipe.
 cp "$work/downloads/agbcc.tar.gz" "$work/package/cpp-source/agbcc-$agbcc.tar.gz"
 cp "$work/downloads/gcc.tar.gz" "$work/package/cpp-source/gcc-2.95.3-$gcc.tar.gz"
 cp -R "$recipe" "$work/package/cpp-source/recipe"
 cat > "$work/package/CPP-SOURCE.txt" <<EOF
-decomp.wtf agbcc-cpp: GCC 2.95.3 C++ frontend + pret/agbcc Thumb backend.
+decomp.wtf agbcc-cpp / old_agbcc-cpp: GCC 2.95.3 C++ frontend + pret/agbcc Thumb backends.
 GCC revision: $gcc
 agbcc revision: $agbcc
 This is an explicitly restored frontend, not an original Nintendo C++ binary.

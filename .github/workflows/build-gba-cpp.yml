@@ -2,6 +2,10 @@ name: Build native GBA C++
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'tools/gba_cpp/**'
+      - '.github/workflows/build-gba-cpp.yml'
 
 permissions:
   contents: read
@@ -50,8 +54,11 @@ jobs:
           mkdir overlay
           tar -xzf artifacts/agbcc-cpp-${{ matrix.platform }}.tar.gz -C overlay
           uv run --no-sync python -m tools.gba_cpp.smoke overlay
+          uv run --no-sync python -c "import pathlib,shutil; from decompnet import toolchains; tc=toolchains.require('agbcc'); [shutil.copy2(p,tc/p.name) for p in pathlib.Path('overlay').glob('*cpp*') if p.is_file()]"
+          DECOMP_TEST_GBA_CPP=1 uv run --no-sync python -m pytest -q tests/test_gba_cpp.py -k each_thumb
   publish:
     needs: verify
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/codex/compiler-completion'
     runs-on: ubuntu-latest
     permissions:
       contents: write

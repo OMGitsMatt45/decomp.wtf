@@ -87,6 +87,20 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         else:
             base = [*cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", sys.executable) for a in base]
+        agbcc_variant = c.get("agbcc_variant", "normal")
+        if tc.id == "agbcc":
+            if agbcc_variant not in ("normal", "old"):
+                raise toolchains.ToolchainError("agbcc_variant must be 'normal' or 'old'; ARM-mode C++ needs a separate compiler port")
+            if language == "c" and agbcc_variant == "old" and not c.get("cmd"):
+                suffix = ".exe" if windows else ""
+                pipeline = Path(__file__).with_name("agbcc.py").resolve()
+                ro_paths += [str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
+                cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline),
+                       "--cpp", f"{{tc:arm-gnu}}/bin/arm-none-eabi-cpp{suffix}",
+                       "--cc", f"{tc_dir}/bin/old_agbcc{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
+                       "--builtin-include", f"{tc_dir}/include", "--src", "{src}", "--obj", "{obj}",
+                       "--include", "{include}", "--", *flags]
+
         if language == "c++" and not c.get("cmd"):
             suffix = ".exe" if windows else ""
             if tc.id in ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx"):
@@ -104,8 +118,9 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     raise toolchains.ToolchainError("The EE-GCC 2.96 C++ frontend is missing: reinstall with `decompnet toolchain install ee-gcc-2.96 --force`")
                 cmd[1:1] = ["-x", "c++", "-fno-exceptions", "-fno-rtti", "-fconserve-space"]
             elif tc.id == "agbcc":
-                if not (dirs[0] / f"agbcc-cpp{suffix}").is_file():
-                    raise toolchains.ToolchainError("The agbcc C++ frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
+                frontend = "old_agbcc-cpp" if agbcc_variant == "old" else "agbcc-cpp"
+                if not (dirs[0] / f"{frontend}{suffix}").is_file():
+                    raise toolchains.ToolchainError(f"The {frontend} frontend is missing: reinstall with `decompnet toolchain install agbcc --force`")
                 # The isolated script needs only Python's standard library. A
                 # module invocation would require the app's entire environment
                 # inside bubblewrap, and a venv interpreter can point outside
@@ -113,7 +128,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                 pipeline = Path(__file__).with_name("agbcc.py").resolve()
                 ro_paths += [str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
                 cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline), "--cpp", f"{{tc:arm-gnu}}/bin/arm-none-eabi-cpp{suffix}",
-                       "--cc", f"{tc_dir}/agbcc-cpp{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
+                       "--cc", f"{tc_dir}/{frontend}{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
                        "--language", "c++", "--builtin-include", f"{tc_dir}/include", "--src", "{src}",
                        "--obj", "{obj}", "--include", "{include}", "--", "-fno-exceptions", "-fno-rtti", *flags]
             elif tc.id in ("ido-5.3", "ido-7.1"):
