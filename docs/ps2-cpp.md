@@ -65,8 +65,11 @@ linker. Disc images and separate overlay files are not repacked.
 ## Precise Windows blocker and alternatives
 
 See the [source/Windows acquisition investigation](ps2-cpp-source-search.md) for
-verified hashes of a mislabeled Windows candidate, historical source filenames,
-and the new archive lead awaiting inspection.
+verified hashes of a mislabeled Windows candidate and the inspected user upload.
+The upload recovers Sony's incremental patch and build configuration, but its
+`sce/ee/gcc/src/` directory is empty: the matching GNUPro EE base source archive
+`src/src.tar.gz` is still missing. Its compiler frontends are the same Linux
+ELF32 binaries already pinned here; there is no native Windows executable.
 
 The exact 2.96 archive contains **Linux ELF32 programs only**, not Windows PE
 executables. No matching Sony EE-patched 2.96 source or original native Windows
@@ -75,8 +78,9 @@ The separate `ps2_compilers.tar.xz` collection was also inspected (SHA-256
 `f337a65a4fbab5cf0e335efe266dcbc7cf69b19c665c6b3a8924736df151a02a`):
 it contains Windows 2.95-family and Metrowerks tools, with no 2.96 entry.
 This prevents a verified Windows source port of the original C++ frontend and
-backend. General GNU GCC sources from October 2000 do not contain Sony's exact
-EE target patches.
+backend. The recovered patch assumes existing `2.96-ee-001003` EE support and
+updates it to `2.96-ee-001003-1`; it does not supply the entire EE port. General
+GNU GCC sources from October 2000 do not contain Sony's exact EE target patches.
 
 Concrete alternatives investigated:
 

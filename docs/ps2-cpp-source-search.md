@@ -45,25 +45,85 @@ ps2dev's public EE branches contain later homebrew GCC versions. They do not
 provide a verified replacement for the target source. The current decomp.me
 2.96 package supplies the Linux binary tools already used by decomp.wtf.
 
-## New archive lead: contents not yet verified
+## Uploaded archive inspected: patch recovered, base source absent
 
 The preserved [PS2 SDK collection file listing](https://archive.org/download/ps2_sdks/)
 lists **[`ee001003_1.tgz`](https://archive.org/download/ps2_sdks/ee001003_1.tgz)**
-at 36.0 MB. It also lists a `SCE Tool-Libs 2.4.2 - DTL-S2324_broken.zip`
-collection. These are acquisition leads, not confirmed source distributions.
-The filename alone cannot establish their contents or compatibility.
+at 36.0 MB. The user supplied a smaller recompression, **`ee001003_1.7z`**,
+which was successfully downloaded and inspected. Its identity is:
 
-The current research workspace's outbound allowlist denies Archive.org downloads
-with HTTP 403 at the proxy. Consequently the `.tgz` has not been downloaded,
-hashed, listed or classified. Public web indexing exposes the collection listing
-but has not exposed this archive's members. Access to `archive.org` and its
-normal download subdomains is needed to inspect it, or the relevant source
-bundle can be supplied from an existing copy. No access restriction was bypassed.
+- Size: **12,873,050 bytes**.
+- SHA-256: `858912fc80f4c2d993f693fbc72afec273372f5a2547aeff9e96196e416d7a72`.
+- 2,417 members: 2,347 regular files and 70 directories; 140,200,481
+  uncompressed bytes, under `ee001003_1/`.
 
-On acquisition, inspect the archive without executing its files. Look for the
-source archive, matching Sony patches and configuration script. Check the actual
-GCC version and target changes, including the C++ frontend. A genuine Windows
-candidate must be a PE executable whose own identity is correct; its generated
-instructions, relocations and data must then agree with the pinned Linux
-compiler. Finally run the PS2 C++ matching and clean export suite on native
-Windows and Linux. Until those checks pass, no new compatibility is claimed.
+Every regular member was read and hashed with libarchive. File headers identify
+52 host executables as Linux i386 ELF32 and eight target objects as MIPS ELF32;
+no regular member has a Windows MZ/PE executable header. The original `.tgz`
+was not independently downloaded or hashed, so these facts apply specifically
+to the supplied `.7z`. Archive documentation was treated as evidence; its setup
+scripts and commands were not executed.
+
+The upload recovers **`sce/ee/gcc/sce-patch`** (170,044 bytes) and
+**`sce/ee/gcc/config.sh`** (134 bytes). However, **`sce/ee/gcc/src/` is empty**:
+there is no `src/src.tar.gz`, unpacked compiler source, or C++ frontend source.
+The build document `sce/1st_read/bldgcc_e.txt` specifically requires that missing
+archive before applying the patch. Installed headers and library template
+implementation files are not compiler source.
+
+The driver and both frontends are byte-identical to the pinned decomp.me Linux
+compiler:
+
+| Path relative to `sce/ee/gcc` | SHA-256 |
+| :-- | :-- |
+| `bin/ee-gcc` | `b8c284d16c9c0a0e8788e9522c46881e224ad01fa1c732aed43f821cc32f168b` |
+| `lib/gcc-lib/ee/2.96-ee-001003-1/cc1` | `59ec92b3f9f3513e0633331af304733e3094de30884e662a8cb584a51c1c42b5` |
+| `lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus` | `560e6f276134d109e2b4c05ee9c72d4f9215ffc86d784eb4491a3dadf316bf9a` |
+
+### Why the recovered patch does not complete a Windows source port
+
+This is an incremental patch to **already EE-patched GNUPro source**. Its
+`gcc/version.c` hunk changes `2.96-ee-001003` to `2.96-ee-001003-1`; it is not
+a patch from stock GNU GCC to the EE compiler. It changes 44 files, including
+13 GCC files, and assumes existing R5900 target support. For example, its
+`gcc/config/mips/mips.c` change is a single hunk around line 9675. It does not
+provide the complete backend, configuration or C++ frontend.
+
+As a concrete alternative check, the GCC portion was dry-run against the
+available [2.9 source at `b595ded6`](https://github.com/SSXModding/ps2-ee-toolchain/tree/b595ded606227e93b8c4a447446c1d2ac093827d/ee/gcc)
+using `patch --dry-run --batch --forward --fuzz=0 -p3`. It failed: 15 hunks
+failed and three were ignored because `cpplex.c` and `config/float-r5900.h`
+are missing. The version and MIPS backend hunks fail as well. Some common
+runtime changes apply, but that does not establish a matching compiler tree.
+The source checkout was not modified.
+
+The uploaded `cc1plus` was also invoked explicitly under QEMU i386 on Linux
+with the existing PS2 C++ fixture and original driver/assembler. All seven
+functions' code and relocations agree with `tests/fixtures/ps2_cpp_parity.json`,
+including templates, references and overloads. This is a supplemental identity
+check under emulation, **not native Windows or native Linux validation** and
+not an exported-project rebuild. The prior native Linux CI evidence remains
+documented in [PS2 C++ support](ps2-cpp.md#verification).
+
+The compact [upload audit record](ps2-cpp-upload-audit.json) preserves hashes,
+patch targets, configuration, dry-run results and compilation probe results.
+It contains no SDK binaries or patch payload.
+
+### Exact remaining acquisition target
+
+Obtain **`sce/ee/gcc/src/src.tar.gz` corresponding to this release**, or its
+unpacked GNUPro EE `2.96-ee-001003` base tree, to use with the recovered patch
+and configuration. The patch SHA-256 is
+`1fba1eae60d1625d9cab841267766bccea54ee0080f6257294798e51a85b4735`;
+the configuration SHA-256 is
+`ac76c7386224262c3c84bb7d09ba69e0a38da44bc6399922519bc7416ee01511`.
+The separately listed `SCE Tool-Libs 2.4.2 - DTL-S2324_broken.zip` remains
+an unverified lead; its member listing could not be retrieved. No matching
+base source was acquired in the follow-up search.
+
+An authentic native Windows build of this exact frontend/backend is the other
+accepted input. A candidate must be a PE executable with the correct identity,
+then pass instruction, relocation and data parity against the pinned Linux
+compiler, followed by strict matching and clean exported-project rebuilds on
+native Windows and Linux. The recovered patch/configuration narrow the missing
+input, but **native Windows support remains blocked and is not advertised**.

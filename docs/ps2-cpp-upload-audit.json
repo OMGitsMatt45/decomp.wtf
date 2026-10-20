@@ -1,0 +1,218 @@
+{
+  "description": "Audit of the user-supplied recompression; the original ee001003_1.tgz was not independently downloaded or hashed. No archive scripts were executed.",
+  "archive": {
+    "name": "ee001003_1.7z",
+    "size": 12873050,
+    "sha256": "858912fc80f4c2d993f693fbc72afec273372f5a2547aeff9e96196e416d7a72"
+  },
+  "archive_prefix": "ee001003_1/",
+  "members": 2417,
+  "regular_files": 2347,
+  "directories": 70,
+  "uncompressed_bytes": 140200481,
+  "host_executables": {
+    "format": "ELF32 little-endian i386 ET_EXEC",
+    "count": 52,
+    "mz_pe_candidates": 0
+  },
+  "target_objects": {
+    "format": "ELF32 little-endian MIPS ET_REL",
+    "count": 8
+  },
+  "source": {
+    "directory": "sce/ee/gcc/src/",
+    "directory_members": 0,
+    "expected_archive": "sce/ee/gcc/src/src.tar.gz",
+    "archive_present": false,
+    "compiler_source_present": false
+  },
+  "key_files": [
+    {
+      "path": "bin/ee-gcc",
+      "size": 333402,
+      "sha256": "b8c284d16c9c0a0e8788e9522c46881e224ad01fa1c732aed43f821cc32f168b",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "bin/ee-c++",
+      "size": 337854,
+      "sha256": "95eaf8a117e5db4fe98bf0d06a33878b359e2050101e4250989378caa606b44c",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "bin/ee-as",
+      "size": 2169068,
+      "sha256": "b8cfdb6ecb6931642914020f92a62e653378f57230eed4895f69afa050d47b5e",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "lib/gcc-lib/ee/2.96-ee-001003-1/cc1",
+      "size": 5526661,
+      "sha256": "59ec92b3f9f3513e0633331af304733e3094de30884e662a8cb584a51c1c42b5",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus",
+      "size": 6826033,
+      "sha256": "560e6f276134d109e2b4c05ee9c72d4f9215ffc86d784eb4491a3dadf316bf9a",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "lib/gcc-lib/ee/2.96-ee-001003-1/cpp0",
+      "size": 421478,
+      "sha256": "f6f6b598f39649edfe171d6da8c7f91d07f2b87c2aeeffffbc5f566bfb1a39a9",
+      "binary": {
+        "format": "ELF",
+        "class": 32,
+        "endian": 1,
+        "type": 2,
+        "machine": 3
+      }
+    },
+    {
+      "path": "config.sh",
+      "size": 134,
+      "sha256": "ac76c7386224262c3c84bb7d09ba69e0a38da44bc6399922519bc7416ee01511"
+    },
+    {
+      "path": "sce-patch",
+      "size": 170044,
+      "sha256": "1fba1eae60d1625d9cab841267766bccea54ee0080f6257294798e51a85b4735"
+    }
+  ],
+  "pinned_linux_binary_comparison": {
+    "package_url": "https://github.com/decompme/compilers/releases/download/compilers/ee-gcc2.96.tar.xz",
+    "package_sha256": "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a",
+    "byte_identical": [
+      "bin/ee-gcc",
+      "lib/gcc-lib/ee/2.96-ee-001003-1/cc1",
+      "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus"
+    ]
+  },
+  "patch": {
+    "file": "sce/ee/gcc/sce-patch",
+    "base_version": "2.96-ee-001003",
+    "result_version": "2.96-ee-001003-1",
+    "files": [
+      "Makefile.in",
+      "binutils/configure",
+      "gas/configure",
+      "gas/gasp.c",
+      "gas/config/tc-dvp.c",
+      "gas/config/tc-mips.c",
+      "gcc/c-lex.c",
+      "gcc/configure.in",
+      "gcc/cpplex.c",
+      "gcc/dbxout.c",
+      "gcc/gthr-eekernel.h",
+      "gcc/mbchar.c",
+      "gcc/real.c",
+      "gcc/version.c",
+      "gcc/config/float-r5900.h",
+      "gcc/config/fp-bit.c",
+      "gcc/config/mips/mips.c",
+      "gcc/config/mips/mips.md",
+      "gcc/config/mips/t-r5900",
+      "gdb/Makefile.in",
+      "gdb/mdebugread.c",
+      "gdb/remote-deci2.c",
+      "gdb/config/mips/tm-txvu.h",
+      "gdb/config/mips/txvu.mt",
+      "gdb/gdbtk/library/interface.tcl",
+      "gdb/gdbtk/library/targetselection.itb",
+      "include/opcode/mips.h",
+      "ld/configure",
+      "libgloss/mips/crt0.S",
+      "libstdc++/Makefile.in",
+      "newlib/libc/machine/r5900/memcpy.S",
+      "newlib/libc/machine/r5900/memmove.S",
+      "newlib/libc/machine/r5900/memset.S",
+      "newlib/libc/machine/r5900/strcat.S",
+      "newlib/libc/machine/r5900/strcpy.S",
+      "newlib/libc/machine/r5900/strlen.S",
+      "newlib/libc/machine/r5900/strncat.S",
+      "newlib/libc/machine/r5900/strncpy.S",
+      "newlib/libc/stdlib/calloc.c",
+      "newlib/libc/stdlib/malign.c",
+      "newlib/libc/stdlib/malloc.c",
+      "newlib/libc/stdlib/mlock.c",
+      "newlib/libc/stdlib/realloc.c",
+      "opcodes/mips-opc.c"
+    ],
+    "gcc_files_count": 13,
+    "provides_complete_ee_backend": false
+  },
+  "configuration": "../src/configure --prefix=/usr/local/sce/ee/gcc --target=ee --enable-c-cpplib --without-sim --disable-sim --enable-c-mbchar",
+  "available_2_9_source_dry_run": {
+    "repository": "https://github.com/SSXModding/ps2-ee-toolchain",
+    "commit": "b595ded606227e93b8c4a447446c1d2ac093827d",
+    "source_subdirectory": "ee/gcc",
+    "patch_selection": "GNUPro/src/gcc/ entries only",
+    "command": "patch --dry-run --batch --forward --fuzz=0 -p3 -d <source_subdirectory> -i <gcc-only-sce-patch>",
+    "exit_code": 1,
+    "failed_hunks": 15,
+    "ignored_hunks_missing_files": 3,
+    "missing_files": [
+      "cpplex.c",
+      "config/float-r5900.h"
+    ],
+    "matching_source_established": false
+  },
+  "cpp_probe": {
+    "execution": "QEMU i386 on Linux (supplemental; not a native Windows or native Linux validation)",
+    "uploaded_cc1plus_sha256": "560e6f276134d109e2b4c05ee9c72d4f9215ffc86d784eb4491a3dadf316bf9a",
+    "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+    "flags": [
+      "-O2",
+      "-G8",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fconserve-space"
+    ],
+    "c_linkage": true,
+    "uploaded_frontend_invoked": true,
+    "golden_functions_matched": 7,
+    "function_names": [
+      "ps2_call",
+      "ps2_float",
+      "ps2_overload__FPi",
+      "ps2_overload__Fi",
+      "ps2_string",
+      "ps2_table",
+      "ps2_template"
+    ],
+    "code_and_relocations_equal_to_pinned_fixture": true
+  },
+  "native_windows_compilation_verified": false,
+  "native_windows_export_rebuild_verified": false
+}
