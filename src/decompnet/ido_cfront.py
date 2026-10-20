@@ -29,12 +29,12 @@ def manifest_error(root: Path) -> str | None:
     try:
         manifest = json.loads((root / "cfront-build.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return "The IDO 5.3 classic cfront build manifest is missing or invalid; rebuild the optional overlay."
+        return "The IDO 5.3 classic cfront build manifest is missing or invalid; reinstall ido-5.3 with --force --accept-license."
     if not isinstance(manifest, dict) or manifest.get("format") != 1 \
             or manifest.get("frontend") != "cfront" or manifest.get("toolchain") != "ido-5.3" \
             or manifest.get("upstream_revision") != "d5aec59932034b8a20f23f471297a55c45dcbc45" \
             or manifest.get("irix_inputs") != IRIX_INPUTS:
-        return "The classic cfront overlay does not identify the pinned original IDO 5.3 inputs; rebuild it."
+        return "The classic cfront overlay does not identify the pinned original IDO 5.3 inputs; reinstall ido-5.3 with --force --accept-license."
     return None
 
 

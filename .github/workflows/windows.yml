@@ -120,12 +120,13 @@ jobs:
       - name: Verify native IDO C++ compilation and exported rebuilds
         env:
           DECOMP_TEST_IDO_CPP: "1"
+          DECOMP_TEST_IDO_CFRONT: "1"
         run: |
           foreach ($tool in @("ido-7.1", "ido-5.3", "m2c")) {
             uv run --no-sync decompnet toolchain install $tool --accept-license
             if ($LASTEXITCODE -ne 0) { throw "Installing native $tool failed" }
           }
-          uv run --no-sync python -m pytest -q tests/test_ido_cpp.py --junitxml=ido-cpp-results.xml
+          uv run --no-sync python -m pytest -q tests/test_ido_cpp.py tests/test_ido_cfront.py --junitxml=ido-cpp-results.xml
           if ($LASTEXITCODE -ne 0) { throw "Native IDO C++ integration failed" }
           [xml]$results = Get-Content -Raw ido-cpp-results.xml
           if ([int]$results.testsuites.testsuite.skipped -ne 0) { throw "Required IDO C++ tests were skipped" }
@@ -201,11 +202,12 @@ jobs:
       - name: Verify IDO C++ compilation and exported rebuilds
         env:
           DECOMP_TEST_IDO_CPP: "1"
+          DECOMP_TEST_IDO_CFRONT: "1"
         run: |
           uv run --no-sync decompnet toolchain install ido-7.1 --accept-license
           uv run --no-sync decompnet toolchain install ido-5.3 --accept-license
           uv run --no-sync decompnet toolchain install m2c
-          uv run --no-sync python -m pytest -q tests/test_ido_cpp.py --junitxml=ido-cpp-results.xml
+          uv run --no-sync python -m pytest -q tests/test_ido_cpp.py tests/test_ido_cfront.py --junitxml=ido-cpp-results.xml
           uv run --no-sync python -c "import xml.etree.ElementTree as E; root=E.parse('ido-cpp-results.xml').getroot(); assert sum(int(s.get('skipped', 0)) for s in root.iter('testsuite')) == 0, 'Required IDO C++ checks were skipped'"
       - name: Verify GBA C++ drafts, matching and clean exported rebuilds
         env:

@@ -203,6 +203,16 @@ url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/c69498c622bfa77
 sha256 = "cc331829361dbd008767763e0940fe98e9f38952aa29f0f7fabb52b420e2fef8"
 platforms = ["windows-x86_64"]
 
+[["ido-5.3".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7/toolchains/ido53-cfront/ido53-cfront-linux-x86_64-v1.tar.gz"
+sha256 = "87a73f625ff66f798fc4881307743eb8ecb9e63382b7cbf69da6ee0e11c8f69e"
+platforms = ["linux-x86_64"]
+
+[["ido-5.3".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7/toolchains/ido53-cfront/ido53-cfront-windows-x86_64-v1.tar.gz"
+sha256 = "ac6bf7e2b90f066211735968ba7f25d02999af57a9e7d13fc83c32abc885f5ad"
+platforms = ["windows-x86_64"]
+
 [m2c]
 name = "m2c decompiler"
 kind = "tool"

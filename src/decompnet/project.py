@@ -139,7 +139,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                 if frontend == "cfront" and tc.id == "ido-5.3":
                     required = ("classic-CC", "cfront", "ptcomp", "markc++")
                     if not all((dirs[0] / f"{name}{suffix}").is_file() for name in required):
-                        raise toolchains.ToolchainError("The optional IDO 5.3 classic cfront overlay is missing. Build tools/ido53/build-cfront.sh and copy its package into the installed ido-5.3 directory; EDG is not substituted.")
+                        raise toolchains.ToolchainError("The IDO 5.3 classic cfront overlay is missing: reinstall with `decompnet toolchain install ido-5.3 --force --accept-license`; EDG is not substituted.")
                     if why := ido_cfront.manifest_error(dirs[0]):
                         raise toolchains.ToolchainError(why)
                     pipeline = Path(__file__).with_name("ido_cfront.py").resolve()

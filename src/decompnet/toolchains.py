@@ -387,6 +387,10 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 shutil.rmtree(dest / "windows-host-templates")
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise ToolchainError(f"Cannot assemble the pinned native EE compiler: {error}") from error
+        if tid == "ido-5.3" and (linux or current_platform() in ("linux-x86_64", "windows-x86_64")):
+            from .ido_cfront import manifest_error
+            if error := manifest_error(dest):
+                raise ToolchainError(error)
         if linux and "runtime-i386" in tc.dependencies(linux):  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
