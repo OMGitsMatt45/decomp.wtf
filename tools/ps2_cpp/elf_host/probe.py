@@ -8,6 +8,7 @@ Negative cases require a nonzero exit AND no object. Result files are fresh.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -119,6 +120,13 @@ def main() -> int:
                               preprocessing_checks=sum(c.get("preprocess", False) for c in selected)), runs=results)
     (work / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     (work / "reference.json").write_text(json.dumps(dict(cases=selected, inputs=inputs, results=reference_results), indent=2) + "\n")
+    if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+        text = f"## EE compiler parity\n\n{report['counts']['passed']}/{len(results)} passed. Execution: {args.execution}.\n"
+        for result in results:
+            if not result["passed"]:
+                text += f"\n### {result['case']}\n\n```json\n{json.dumps(result['candidate'], indent=2)[-6000:]}\n```\n"
+        with Path(summary).open("a", encoding="utf-8") as stream:
+            stream.write(text)
     return 0 if report["all_passed"] else 1
 
 
