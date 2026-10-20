@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import time
 
-from decompnet import compiler
+from decompnet import compiler, ido_prelink
 from decompnet.elfobj import extract_function
 from tests.fixtures.generate_native_compiler_parity import describe_functions
 
@@ -70,4 +70,21 @@ def run(work: Path, tc: Path, *, ptlink: list[str] | None = None, nm: str = '/us
     path.write_text(DEFINITION.replace('value + 1', 'value + ;'), encoding='utf-8', newline='\n')
     os.utime(path, (future + 5, future + 5))
     execute(command, success=False)
+    # The user-facing native prelink adapter supplies control files and commits
+    # its linked output only after successful instantiation and linking.
+    path.write_text(DEFINITION, encoding='utf-8', newline='\n')
+    os.utime(path, (future + 10, future + 10))
+    linked = work / 'combined-api.o'
+    ido_prelink.prelink(work, tc, ['left.o', 'right.o'], linked, flags=flags)
+    previous = linked.read_bytes()
+    assert {'left', 'right', 'next__16Counter__pt__2_iCFv'} <= set(describe_functions(previous))
+    path.write_text(DEFINITION.replace('value + 1', 'value + ;'), encoding='utf-8', newline='\n')
+    os.utime(path, (future + 15, future + 15))
+    try:
+        ido_prelink.prelink(work, tc, ['left.o', 'right.o'], linked, flags=flags)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('The prelink adapter accepted an invalid template definition')
+    assert linked.read_bytes() == previous, 'A failed prelink overwrote the previous output'
     return dict(functions=functions, changed_functions=describe_functions(changed), outputs=outputs)
