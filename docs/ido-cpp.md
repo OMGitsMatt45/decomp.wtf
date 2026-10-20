@@ -187,7 +187,9 @@ marking. Exports retain `.cpp` files and record `cpp_frontend = "cfront"`.
 
 The port fixes a patched zero-address load, resolves quickstarted external functions
 through their actual GOT entries and dispatches indirect signal callbacks. It supplies
-the missing IRIX environment, stdio, file-lock and libC vector services. In particular,
+the missing IRIX environment, stdio, file-lock and libC vector services. Temporary
+names stay short and relative to the private work folder, fitting IRIX buffers
+and avoiding a system `/tmp` dependency on Windows. In particular,
 cfront defines its own clearing `operator new`; both direct calls and libC vector
 allocation must preserve that definition. Replacing it with ordinary allocation
 corrupted later declarations even when a single-function smoke test passed.

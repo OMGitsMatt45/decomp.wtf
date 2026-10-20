@@ -1,19 +1,19 @@
 diff --git a/libc_impl.c b/libc_impl.c
-index a2d58b5..d3caa8d 100644
+index a2d58b5..d7e69ca 100644
 --- a/libc_impl.c
 +++ b/libc_impl.c
 @@ -39,6 +39,7 @@
- 
+
  #include "libc_impl.h"
  #include "helpers.h"
 +#include "cfront_host.h"
- 
+
  #define MIN(a, b) ((a) < (b) ? (a) : (b))
  #define MAX(a, b) ((a) > (b) ? (a) : (b))
 @@ -384,6 +385,18 @@ bool redirect_path(char* out, const char* path, const char* from, const char* to
      return false;
  }
- 
+
 +static bool redirect_program(char* out, const char* path) {
 +    if (strcmp(path, "cc") == 0 || strcmp(path, "/usr/bin/cc") == 0) {
 +        int n = snprintf(out, PATH_MAX + 1, "%s/cc", usr_lib_redirect);
@@ -31,7 +31,7 @@ index a2d58b5..d3caa8d 100644
      char** argv;
 @@ -494,7 +507,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
  }
- 
+
  void setup_libc_data(uint8_t* mem) {
 -    memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));
 +    memory_allocate(mem, TRUNC_PAGE(LIBC_ADDR), ROUND_PAGE(LIBC_ADDR + LIBC_SIZE));
@@ -39,7 +39,7 @@ index a2d58b5..d3caa8d 100644
          MEM_U8(CTYPE_ADDR + i) = ctype[i];
      }
 @@ -541,6 +554,7 @@ static char* strcpy_mem2str(uint8_t* mem, char* dest, uint32_t src_addr) {
- 
+
  uint32_t wrapper_sbrk(uint8_t* mem, int increment) {
      uint32_t old = cur_sbrk;
 +    if (increment == 0) return old;
@@ -84,7 +84,7 @@ index a2d58b5..d3caa8d 100644
          } else if (c == '\0') {
 @@ -1058,7 +1085,7 @@ int wrapper_open(uint8_t* mem, uint32_t path_addr, int flags, int mode) {
      char* pathPtr = path;
- 
+
      if (redirect_path(rpath, path, "/usr/include", usr_include_redirect) ||
 -        redirect_path(rpath, path, "/usr/lib", usr_lib_redirect) ||
 +        redirect_program(rpath, path) ||
@@ -92,7 +92,7 @@ index a2d58b5..d3caa8d 100644
          pathPtr = rpath;
      }
 @@ -1097,7 +1124,8 @@ int wrapper_creat(uint8_t* mem, uint32_t pathname_addr, int mode) {
- 
+
  int wrapper_access(uint8_t* mem, uint32_t pathname_addr, int mode) {
      STRING(pathname)
 -    int ret = access(pathname, mode);
@@ -104,21 +104,21 @@ index a2d58b5..d3caa8d 100644
 @@ -1498,8 +1526,7 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
          char rpath[PATH_MAX + 1];
          const char* pathPtr = path;
- 
+
 -        if (redirect_path(rpath, path, "/usr/lib/DCC", usr_lib_redirect) ||
 -            redirect_path(rpath, path, "/usr/lib", usr_lib_redirect)) {
 +        if (redirect_program(rpath, path)) {
              pathPtr = rpath;
          }
- 
+
 @@ -2091,11 +2118,14 @@ int wrapper_setvbuf(uint8_t* mem, uint32_t fp_addr, uint32_t buf_addr, int mode,
  }
- 
+
  int wrapper___semgetc(uint8_t* mem, uint32_t fp_addr) {
 -    assert(0);
 +    return wrapper_fgetc(mem, fp_addr);
  }
- 
+
  int wrapper___semputc(uint8_t* mem, int c, uint32_t fp_addr) {
 -    assert(0);
 +    struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
@@ -126,10 +126,10 @@ index a2d58b5..d3caa8d 100644
 +    MEM_U8(f->_ptr_addr++) = (uint8_t)c;
 +    return (uint8_t)c;
  }
- 
+
  int wrapper_fgetc(uint8_t* mem, uint32_t fp_addr) {
 @@ -2169,13 +2199,19 @@ int wrapper___filbuf(uint8_t* mem, uint32_t fp_addr) {
- 
+
  int wrapper___flsbuf(uint8_t* mem, int ch, uint32_t fp_addr) {
      struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
 +    if (!(f->_flag & IOWRT)) {
@@ -150,7 +150,7 @@ index a2d58b5..d3caa8d 100644
      ++f->_ptr_addr;
      --f->_cnt;
 @@ -2263,10 +2299,14 @@ uint32_t wrapper_fread(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t
- 
+
  uint32_t wrapper_fwrite(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t count, uint32_t fp_addr) {
      struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
 -    if (size > 0 && count > 0 && f->_base_addr == 0) {
@@ -169,16 +169,16 @@ index a2d58b5..d3caa8d 100644
      while (count--) {
 @@ -2458,7 +2498,7 @@ void wrapper_exit(uint8_t* mem, int status) {
  }
- 
+
  void wrapper__exit(uint8_t* mem, int status) {
 -    assert(0 && "_exit not implemented"); // exit() is already overridden
 +    _exit(status);
  }
- 
+
  void wrapper__cleanup(uint8_t* mem) {
 @@ -2583,8 +2623,29 @@ int wrapper_ioctl(uint8_t* mem, int fd, uint32_t request, uint32_t sp) {
  }
- 
+
  int wrapper_fcntl(uint8_t* mem, int fd, int cmd, uint32_t sp) {
 -    assert(0 && "fcntl not implemented");
 -    return 0;
@@ -206,11 +206,11 @@ index a2d58b5..d3caa8d 100644
 +    if (result == -1) MEM_U32(ERRNO_ADDR) = errno;
 +    return result;
  }
- 
+
  static void signal_handler(int signum) {
 @@ -2597,7 +2658,15 @@ static void signal_handler(int signum) {
  }
- 
+
  uint32_t wrapper_signal(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t handler_addr, uint32_t sp) {
 -    return 0;
 +    // The frontend installs handlers; retain their guest addresses for queries.
@@ -223,12 +223,39 @@ index a2d58b5..d3caa8d 100644
 +    else signal(signum, signal_handler);
 +    return previous;
  }
- 
+
  uint32_t wrapper_sigset(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t disp_addr, uint32_t sp) {
-@@ -2758,7 +2827,14 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
+@@ -2668,15 +2737,20 @@ uint32_t wrapper_tempnam(uint8_t* mem, uint32_t dir_addr, uint32_t pfx_addr) {
+ }
+
+ uint32_t wrapper_tmpnam(uint8_t* mem, uint32_t str_addr) {
+-    char buf[1024];
++    // CC's original L_tmpnam buffer is small. A native Windows temporary
++    // directory may exceed it; the adapter already provides a private,
++    // writable cwd, so return a short relative name in that directory.
++    char buf[] = ".ido53-XXXXXX";
+     assert(str_addr != 0 && "s NULL not implemented for tmpnam");
+-    char* ret = tmpnam(buf);
+-    if (ret == NULL) {
++    int fd = mkstemp(buf);
++    if (fd < 0) {
++        MEM_U32(ERRNO_ADDR) = errno;
+         return 0;
+-    } else {
+-        strcpy_str2mem(mem, str_addr, ret);
+-        return str_addr;
+     }
++    close(fd);
++    if (unlink(buf)) { MEM_U32(ERRNO_ADDR) = errno; return 0; }
++    strcpy_str2mem(mem, str_addr, buf);
++    return str_addr;
+ }
+
+ uint32_t wrapper_mktemp(uint8_t* mem, uint32_t template_addr) {
+@@ -2758,7 +2832,14 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
      }
      char** argv = make_argv_from_mem(mem, argc, argv_addr);
- 
+
 -    execv(pathname, argv);
 +    classic_exec_utility(pathname, argv);
 +    char redirected[PATH_MAX + 1];
@@ -239,22 +266,22 @@ index a2d58b5..d3caa8d 100644
 +    }
 +    execv(redirect_program(redirected, pathname) ? redirected : pathname, argv);
      MEM_U32(ERRNO_ADDR) = errno;
- 
+
      free_argv(argc, argv);
-@@ -2773,14 +2849,20 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
+@@ -2773,14 +2854,20 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
      }
      char** argv = make_argv_from_mem(mem, argc, argv_addr);
- 
+
 +    classic_exec_utility(file, argv);
      char rfile[PATH_MAX + 1];
      char* filePtr = file;
- 
+
 -    if (redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect) ||
 -        redirect_path(rfile, file, "/usr/lib", usr_lib_redirect)) {
 +    if (redirect_program(rfile, file)) {
          filePtr = rfile;
      }
- 
+
 +    if (getenv("IDO_TRACE_EXEC")) {
 +        fprintf(stderr, "EXECVP");
 +        for (uint32_t i = 0; i < argc; i++) fprintf(stderr, " [%s]", argv[i]);
@@ -262,9 +289,9 @@ index a2d58b5..d3caa8d 100644
 +    }
 +
      execvp(filePtr, argv);
- 
+
      MEM_U32(ERRNO_ADDR) = errno;
-@@ -3070,7 +3152,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
+@@ -3070,7 +3157,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
      #ifdef __FreeBSD__
      __assert(assertion, file, line, NULL);
      #else
@@ -272,9 +299,9 @@ index a2d58b5..d3caa8d 100644
 +    fprintf(stderr, "Assertion failed: %s, file %s, line %d\n", assertion, file, line); abort();
      #endif
  }
- 
-@@ -3086,24 +3168,15 @@ int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t fl
- 
+
+@@ -3086,24 +3173,15 @@ int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t fl
+
  // https://linux.die.net/man/3/mkdir
  int32_t wrapper_mkdir(uint8_t* mem, uint32_t path_addr, uint32_t mode) {
 -    assert(0 && "mkdir not implemented");
@@ -283,7 +310,7 @@ index a2d58b5..d3caa8d 100644
 +    if (result) MEM_U32(ERRNO_ADDR) = errno;
 +    return result;
  }
- 
+
  // https://en.cppreference.com/w/c/io/fputc
  int32_t wrapper_fputc(uint8_t* mem, int32_t ch, uint32_t stream_addr) {
 -    int32_t ret;
@@ -301,10 +328,10 @@ index a2d58b5..d3caa8d 100644
 -    return ret;
 +    return wrapper___semputc(mem, ch, stream_addr);
  }
- 
+
  // https://linux.die.net/man/3/getopt
-@@ -3183,7 +3256,10 @@ int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t
- 
+@@ -3183,7 +3261,10 @@ int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t
+
  // https://linux.die.net/man/2/link
  int32_t wrapper_link(uint8_t* mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
 -    assert(0 && "link not implemented");
@@ -313,18 +340,18 @@ index a2d58b5..d3caa8d 100644
 +    if (result) MEM_U32(ERRNO_ADDR) = errno;
 +    return result;
  }
- 
+
  // https://en.cppreference.com/w/c/io/vfprintf
-@@ -3213,7 +3289,7 @@ int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
- 
+@@ -3213,7 +3294,7 @@ int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
+
  // https://linux.die.net/man/3/sleep
  uint32_t wrapper_sleep(uint8_t* mem, uint32_t seconds) {
 -    assert(0 && "sleep not implemented");
 +    return sleep(seconds);
  }
- 
+
  // https://linux.die.net/man/2/socket
-@@ -3289,3 +3365,66 @@ double double_from_memory(uint8_t* mem, uint32_t address) {
+@@ -3289,3 +3370,66 @@ double double_from_memory(uint8_t* mem, uint32_t address) {
      val.ww |= MEM_U32(address + 4);
      return val.d;
  }
@@ -396,7 +423,7 @@ index 34fa0e2..0cb5c69 100644
 --- a/libc_impl.h
 +++ b/libc_impl.h
 @@ -15,6 +15,17 @@ typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint
- 
+
  void mmap_initial_data_range(uint8_t *mem, uint32_t start, uint32_t end);
  void setup_libc_data(uint8_t *mem);
 +void setup_environment(uint8_t *mem, uint32_t address);
@@ -410,7 +437,7 @@ index 34fa0e2..0cb5c69 100644
 +uint32_t wrapper___vec_new(uint8_t *mem, uint32_t base, uint32_t count, uint32_t size, fptr_trampoline trampoline, uint32_t ctor, uint32_t sp);
 +void wrapper___vec_ct(uint8_t *mem, uint32_t base, uint32_t count, uint32_t size, fptr_trampoline trampoline, uint32_t ctor, uint32_t sp);
 +void wrapper___vec_dt(uint8_t *mem, uint32_t base, uint32_t count, uint32_t size, fptr_trampoline trampoline, uint32_t dtor, uint32_t sp);
- 
+
  uint32_t wrapper_sbrk(uint8_t *mem, int increment);
  uint32_t wrapper_malloc(uint8_t *mem, uint32_t size);
 diff --git a/recomp.cpp b/recomp.cpp
@@ -419,13 +446,13 @@ index da44c77..1c8cb7e 100644
 +++ b/recomp.cpp
 @@ -148,7 +148,7 @@ struct Insn {
      }
- 
+
      uint32_t getAddress() const {
 -        if (this->patched && this->patched_addr != 0) {
 +        if (this->patched && (this->instruction.getUniqueId() == UniqueId_cpu_la || this->patched_addr != 0)) {
              return this->patched_addr;
          }
- 
+
 @@ -466,6 +466,15 @@ const struct ExternFunction {
      // C++ functions
      { "__nw__FUi", "pu", 0 },
@@ -440,7 +467,7 @@ index da44c77..1c8cb7e 100644
 +    { "getuid", "u", FLAG_NO_MEM },
 +    { "chown", "ipuu", 0 },
  };
- 
+
  void disassemble(void) {
 @@ -843,6 +852,13 @@ void pass1(void) {
                              // Special hard case in copt where the initial sltiu is in another basic block
@@ -472,7 +499,7 @@ index da44c77..1c8cb7e 100644
                              if ((lw == 208681) && (addu_index == 208680)) {
 @@ -2092,7 +2115,9 @@ void dump_jal(int i, uint32_t imm) {
      const ExternFunction* found_fn = nullptr;
- 
+
      // Check for an external function at the address in the immediate. If it does not exist, function is internal
 -    if (it != symbol_names.end()) {
 +    if (it != symbol_names.end() &&
@@ -484,7 +511,7 @@ index da44c77..1c8cb7e 100644
 @@ -3230,7 +3255,7 @@ void dump_c(void) {
          }
      }
- 
+
 -    if (!data_function_pointers.empty() || !la_function_pointers.empty()) {
 +    if (true) { // Extern callbacks also require a trampoline (e.g. signal in ptcomp).
          printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, "
@@ -493,7 +520,7 @@ index da44c77..1c8cb7e 100644
 @@ -3270,7 +3295,13 @@ void dump_c(void) {
              }
          }
- 
+
 -        printf("default: abort();");
 +        for (auto& symbol : symbol_names) {
 +            if (symbol.second == "signal" || symbol.second == "sigset") {
@@ -507,7 +534,7 @@ index da44c77..1c8cb7e 100644
      }
 @@ -3312,6 +3343,17 @@ void dump_c(void) {
             "MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
- 
+
      printf("setup_libc_data(mem);\n");
 +    if (symbol_names_inv.count("__nw__FUi")) {
 +        uint32_t allocator = symbol_names_inv.at("__nw__FUi");
@@ -520,13 +547,13 @@ index da44c77..1c8cb7e 100644
 +    } else if (symbol_names_inv.count("environ")) {
 +        printf("setup_environment(mem, 0x%x);\n", symbol_names_inv.at("environ"));
 +    }
- 
+
      // printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
- 
+
 @@ -3705,6 +3747,15 @@ void parse_elf(const uint8_t* data, size_t file_len) {
- 
+
              uint8_t type = ELF32_ST_TYPE(sym->st_info);
- 
+
 +            // A quickstarted undefined function can have st_value == 0 while
 +            // its GOT slot already contains its original shared-library VA.
 +            if (i >= first_got_sym && type == STT_FUNC && addr == 0 &&
@@ -541,7 +568,7 @@ index da44c77..1c8cb7e 100644
              } else if (!strcmp(name, "_procedure_table_size")) {
 @@ -3737,6 +3788,12 @@ void parse_elf(const uint8_t* data, size_t file_len) {
                      }
- 
+
                      symbol_names[addr] = name;
 +                    if (strcmp(name, "__nw__FUi") == 0) {
 +                        // libC vector allocation uses the executable's own
@@ -551,4 +578,4 @@ index da44c77..1c8cb7e 100644
 +                    }
                  }
              }
- 
+
