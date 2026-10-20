@@ -7,10 +7,12 @@ this never installs, registers, or substitutes an application toolchain.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+import traceback
 import urllib.request
 
 from prepare import generate
@@ -57,11 +59,17 @@ def build(archive: Path, output: Path, cc: str, objcopy: str) -> None:
         subprocess.run([objcopy, "-I", "binary", "-O", "pe-i386", "-B", "i386",
                         "--rename-section", ".data=.rdata,alloc,load,readonly,data,contents",
                         "payload.elf", "payload.o"], cwd=work, check=True)
-        command = [cc, "-O2", "-g", "-DHAVE_STDLIB_H", "-DHAVE_STRING_H", "-include", "stdlib.h",
+        # The pinned GNU helpers contain K&R definitions, removed in C23.
+        # Modern MinGW may default to gnu23; select a compatible host dialect.
+        command = [cc, "-std=gnu11", "-O2", "-g", "-DHAVE_STDLIB_H", "-DHAVE_STRING_H", "-include", "stdlib.h",
                    "-include", "string.h", "-I" + str(work), str(work / "host.c"),
                    *[str(work / name) for name in ("obstack.c", "getopt.c", "getopt1.c")],
                    str(work / "payload.o"), "-o", str(output / (tool + ".exe"))]
-        subprocess.run(command, check=True)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if result.stdout:
+            print(result.stdout, flush=True)
+        if result.returncode:
+            raise RuntimeError(f"Host compiler failed for {tool} (exit {result.returncode}):\n{result.stdout[-14000:]}")
         shutil.copyfile(work / "image.h", work / (Path(tool).name + "-image.h"))
         print("Built " + tool + ".exe", flush=True)
     # The exact original driver searches these aliases relative to its prefix.
@@ -77,4 +85,10 @@ if __name__ == "__main__":
     parser.add_argument("--cc", required=True)
     parser.add_argument("--objcopy", required=True)
     args = parser.parse_args()
-    build(args.archive.resolve(), args.output.resolve(), args.cc, args.objcopy)
+    try:
+        build(args.archive.resolve(), args.output.resolve(), args.cc, args.objcopy)
+    except Exception:
+        if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+            with Path(summary).open("a", encoding="utf-8") as stream:
+                stream.write("## EE host build failed\n\n```text\n" + traceback.format_exc()[-16000:] + "\n```\n")
+        raise

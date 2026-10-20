@@ -23,6 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW32
           path-type: inherit
@@ -32,13 +33,18 @@ jobs:
         run: |
           uv run --no-sync python -c "import os, pathlib, urllib.request; urllib.request.urlretrieve('https://github.com/decompme/compilers/releases/download/compilers/ee-gcc2.96.tar.xz', pathlib.Path(os.environ['RUNNER_TEMP']) / 'ee-gcc2.96.tar.xz')"
       - name: Build the Windows hosts (archive and helper checksums required)
-        shell: msys2 {0}
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          uv run --no-sync python tools/ps2_cpp/elf_host/build.py \
-            --archive "$RUNNER_TEMP/ee-gcc2.96.tar.xz" \
-            --output "$RUNNER_TEMP/EE host with spaces" \
-            --cc "$(cygpath -m /mingw32/bin/gcc.exe)" \
-            --objcopy "$(cygpath -m /mingw32/bin/objcopy.exe)"
+          $bin = Join-Path $env:MSYS2_LOCATION 'mingw32/bin'
+          $env:PATH = "$bin;$env:PATH"
+          uv run --no-sync python tools/ps2_cpp/elf_host/build.py `
+            --archive "$env:RUNNER_TEMP/ee-gcc2.96.tar.xz" `
+            --output "$env:RUNNER_TEMP/EE host with spaces" `
+            --cc "$bin/gcc.exe" `
+            --objcopy "$bin/objcopy.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Building the Windows hosts failed; see build summary' }
       - name: Require complete object parity on native Windows
         shell: pwsh
         run: |
