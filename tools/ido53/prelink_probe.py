@@ -1,9 +1,9 @@
 """Exercise original classic template prelinking across translation units."""
 from pathlib import Path
 import os
-import subprocess
 import time
 
+from decompnet import compiler
 from decompnet.elfobj import extract_function
 from tests.fixtures.generate_native_compiler_parity import describe_functions
 
@@ -28,9 +28,12 @@ def run(work: Path, tc: Path, *, ptlink: list[str] | None = None, nm: str = '/us
         (work / (name + '.C')).write_text('#include "counter.h"\nextern "C" int ' + name +
             '(int x) { Counter<int> c(x); return c.next()' + extra + '; }\n', encoding='utf-8', newline='\n')
     def execute(command, *, success=True):
-        proc = subprocess.run(list(map(str, command)), cwd=work, capture_output=True, timeout=90,
-                              env={**os.environ, "TMPDIR": "."})
-        log = (proc.stdout + proc.stderr).decode(errors='replace')
+        # Use the same Windows temporary-directory contract as application
+        # compilation. The original C driver expands a relative TMPDIR to its
+        # space-containing cwd before constructing internal phase commands.
+        cfg = compiler.CompilerConfig([], sandbox="none", relative_paths=True)
+        proc = compiler._exec(cfg, work, list(map(str, command)), 90)
+        log = proc.stdout + proc.stderr
         assert (proc.returncode == 0) == success, (command, proc.returncode, log)
         assert 'warning: nm' not in log, log
         return log
