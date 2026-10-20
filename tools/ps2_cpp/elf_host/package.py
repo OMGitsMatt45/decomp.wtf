@@ -38,7 +38,7 @@ def package(build: Path, output: Path) -> None:
         for path in sorted(Path(__file__).parent.iterdir()):
             if path.suffix in ('.py', '.c', '.md', '.json'): archive.add(path, arcname='recipe/' + path.name)
         for path in sorted((build / 'host-source').iterdir()):
-            if path.suffix in ('.c', '.h'): archive.add(path, arcname='host-source/' + path.name)
+            if path.suffix in ('.c', '.h') or path.name.startswith('COPYING'): archive.add(path, arcname='host-source/' + path.name)
         archive.add(ROOT / 'src/decompnet/ee_native.py', arcname='installer/ee_native.py')
     for path in sorted(output.glob('*.tar.gz')):
         print(sha256(path.read_bytes()), path.name)

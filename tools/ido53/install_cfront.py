@@ -20,7 +20,7 @@ def main():
     if manifest["platform"] != toolchains.current_platform():
         parser.error("the classic overlay was built for a different host platform")
     suffix = ".exe" if sys.platform == "win32" else ""
-    files = [f"{name}{suffix}" for name in ("classic-CC", "cfront", "ptcomp", "markc++")]
+    files = [f"{name}{suffix}" for name in ("classic-CC", "cfront", "ptcomp", "markc++", "ptlink")]
     for name in files:
         if not (args.package / name).is_file():
             parser.error(f"the classic overlay is missing {name}")

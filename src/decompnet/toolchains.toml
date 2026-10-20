@@ -162,6 +162,7 @@ name = "IDO 5.3 (static recompilation)"
 platform = "N64"
 arch = "mips"
 license = "proprietary"
+requires = ["binutils-mips"]
 source = "decompals/ido-static-recomp v1.2 C suite; original 5.3 SGI/EDG C++ frontend recompiled at d5aec599 (Windows/Linux x86-64)"
 description = "The earlier SGI compiler used by early N64 titles, with its own SGI/EDG 2.19 C++ frontend and original 5.3 backend. Proprietary: install only if you accept the licensing risk."
 cc = ["{tc}/cc", "-c"]

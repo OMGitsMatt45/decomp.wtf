@@ -143,3 +143,41 @@ jobs:
             ${{ runner.temp }}/ido53-cfront-build.log
             ${{ runner.temp }}/ido53-cfront-build/package/cfront-build.json
           if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ido53-cfront-package-${{ matrix.os }}
+          path: ${{ runner.temp }}/ido53-cfront-artifacts/*.tar.gz
+          compression-level: 0
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/compiler-completion'
+    needs: native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ido53-cfront-package-*
+          path: /tmp/ido53-cfront-packages
+      - name: Publish verified classic compiler and corresponding source inputs
+        run: |
+          set -euo pipefail
+          branch=ido53-cfront-assets
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+          else
+            git switch -c "$branch" origin/main
+          fi
+          mkdir -p toolchains/ido53-cfront
+          cp /tmp/ido53-cfront-packages/ido53-cfront-package-*/*.tar.gz toolchains/ido53-cfront/
+          (cd toolchains/ido53-cfront && sha256sum *.tar.gz > SHA256SUMS)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolchains/ido53-cfront
+          git diff --cached --quiet || git commit -m "Package verified classic IDO 5.3 including template prelinking and source"
+          git push origin "$branch"

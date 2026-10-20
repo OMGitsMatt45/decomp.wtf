@@ -13,20 +13,20 @@ git checkout --detach "$revision"
 git apply "$recipe_dir/native-cfront.patch"
 cp "$recipe_dir/cfront_host.h" .
 make -j2 RELEASE=1 setup
-make -j2 RELEASE=1 VERSION=5.3 IDO_TC='CC cfront ptcomp markc++' LDFLAGS='-static-libgcc -lm'
+make -j2 RELEASE=1 VERSION=5.3 IDO_TC='CC cfront ptcomp markc++ ptlink' LDFLAGS='-static-libgcc -lm'
 platform=linux-x86_64
 suffix=
 if [[ ${OS:-} == Windows_NT ]]; then platform=windows-x86_64; suffix=.exe; fi
 package="$build_dir/package"
 mkdir -p "$package"
 cp "build/5.3/out/CC$suffix" "$package/classic-CC$suffix"
-for name in cfront ptcomp markc++; do cp "build/5.3/out/$name$suffix" "$package/"; done
+for name in cfront ptcomp markc++ ptlink; do cp "build/5.3/out/$name$suffix" "$package/"; done
 python - "$package" "$revision" "$platform" <<'PY'
 import hashlib, json
 from pathlib import Path
 import sys
 package, revision, platform = sys.argv[1:]
-inputs = ['usr/lib/CC', 'usr/lib/c++/cfront', 'usr/lib/c++/ptcomp', 'usr/lib/c++/markc++']
+inputs = ['usr/lib/CC', 'usr/lib/c++/cfront', 'usr/lib/c++/ptcomp', 'usr/lib/c++/markc++', 'usr/lib/c++/ptlink']
 manifest = {'format': 1, 'frontend': 'cfront', 'toolchain': 'ido-5.3', 'upstream_revision': revision,
             'platform': platform, 'irix_inputs': {p: hashlib.sha256((Path('ido/5.3') / p).read_bytes()).hexdigest() for p in inputs}}
 (Path(package) / 'cfront-build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8', newline='\n')

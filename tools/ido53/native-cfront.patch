@@ -1,5 +1,5 @@
 diff --git a/libc_impl.c b/libc_impl.c
-index a2d58b5..d7e69ca 100644
+index a2d58b5..ddbf257 100644
 --- a/libc_impl.c
 +++ b/libc_impl.c
 @@ -39,6 +39,7 @@
@@ -10,11 +10,28 @@ index a2d58b5..d7e69ca 100644
 
  #define MIN(a, b) ((a) < (b) ? (a) : (b))
  #define MAX(a, b) ((a) > (b) ? (a) : (b))
-@@ -384,6 +385,18 @@ bool redirect_path(char* out, const char* path, const char* from, const char* to
+@@ -384,6 +385,35 @@ bool redirect_path(char* out, const char* path, const char* from, const char* to
      return false;
  }
 
 +static bool redirect_program(char* out, const char* path) {
++    if (!strcmp(path, "/usr/bin/nm") || !strcmp(path, "nm")) {
++        const char *override = getenv("IDO_NM");
++        int n = override ? snprintf(out, PATH_MAX + 1, "%s", override) :
++            snprintf(out, PATH_MAX + 1, "%s/../binutils-mips/mips-ps2-decompals-nm", usr_lib_redirect);
++        if (n < 0 || n > PATH_MAX) abort();
++        return true;
++    }
++    if (!strcmp(path, "/usr/bin/ld") || !strcmp(path, "/usr/bin/strip")) {
++        int n = snprintf(out, PATH_MAX + 1, "%s/%s", usr_lib_redirect, strrchr(path, '/') + 1);
++        if (n < 0 || n > PATH_MAX) abort();
++        return true;
++    }
++    if (!strcmp(path, "classic-CC")) {
++        int n = snprintf(out, PATH_MAX + 1, "%s/classic-CC", usr_lib_redirect);
++        if (n < 0 || n > PATH_MAX) abort();
++        return true;
++    }
 +    if (strcmp(path, "cc") == 0 || strcmp(path, "/usr/bin/cc") == 0) {
 +        int n = snprintf(out, PATH_MAX + 1, "%s/cc", usr_lib_redirect);
 +        if (n < 0 || n > PATH_MAX) abort();
@@ -29,7 +46,7 @@ index a2d58b5..d7e69ca 100644
  typedef struct GlobalArgs {
      int argc;
      char** argv;
-@@ -494,7 +507,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
+@@ -494,7 +524,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
  }
 
  void setup_libc_data(uint8_t* mem) {
@@ -38,7 +55,7 @@ index a2d58b5..d7e69ca 100644
      for (size_t i = 0; i < sizeof(ctype); i++) {
          MEM_U8(CTYPE_ADDR + i) = ctype[i];
      }
-@@ -541,6 +554,7 @@ static char* strcpy_mem2str(uint8_t* mem, char* dest, uint32_t src_addr) {
+@@ -541,6 +571,7 @@ static char* strcpy_mem2str(uint8_t* mem, char* dest, uint32_t src_addr) {
 
  uint32_t wrapper_sbrk(uint8_t* mem, int increment) {
      uint32_t old = cur_sbrk;
@@ -46,19 +63,27 @@ index a2d58b5..d7e69ca 100644
      size_t alignedInc = ROUND_PAGE(old + increment) - old;
      memory_allocate(mem, old, old + alignedInc);
      cur_sbrk += alignedInc;
-@@ -709,7 +723,7 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
+@@ -709,15 +740,33 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
              for (;;) {
                  ch = wrapper_fgetc(mem, fp_addr);
                  if (ch == -1) {
 -                    return ret;
 +                    return ret ? ret : EOF;
                  }
-                 if (!isspace(ch)) {
+-                if (!isspace(ch)) {
++                if (c == 'c' || !isspace((unsigned char)ch)) {
                      break;
-@@ -718,6 +732,18 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
+                 }
+             }
              bool l = false;
          continue_format:
              switch (c) {
++                case 'c': {
++                    MEM_U8(MEM_U32(sp)) = ch;
++                    sp += 4;
++                    ret++;
++                    break;
++                }
 +                case 's': {
 +                    uint32_t string_addr = MEM_U32(sp);
 +                    sp += 4;
@@ -74,7 +99,7 @@ index a2d58b5..d7e69ca 100644
                  case 'l':
                      assert(!l && "ll not implemented in fscanf");
                      l = true;
-@@ -760,6 +786,7 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
+@@ -760,6 +809,7 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
                      break;
                  }
                  default:
@@ -82,7 +107,7 @@ index a2d58b5..d7e69ca 100644
                      assert(0 && "fscanf format not implemented");
              }
          } else if (c == '\0') {
-@@ -1058,7 +1085,7 @@ int wrapper_open(uint8_t* mem, uint32_t path_addr, int flags, int mode) {
+@@ -1058,7 +1108,7 @@ int wrapper_open(uint8_t* mem, uint32_t path_addr, int flags, int mode) {
      char* pathPtr = path;
 
      if (redirect_path(rpath, path, "/usr/include", usr_include_redirect) ||
@@ -91,7 +116,7 @@ index a2d58b5..d7e69ca 100644
          redirect_path(rpath, path, "/lib", usr_lib_redirect) ) {
          pathPtr = rpath;
      }
-@@ -1097,7 +1124,8 @@ int wrapper_creat(uint8_t* mem, uint32_t pathname_addr, int mode) {
+@@ -1097,7 +1147,8 @@ int wrapper_creat(uint8_t* mem, uint32_t pathname_addr, int mode) {
 
  int wrapper_access(uint8_t* mem, uint32_t pathname_addr, int mode) {
      STRING(pathname)
@@ -101,7 +126,7 @@ index a2d58b5..d7e69ca 100644
      if (ret != 0) {
          MEM_U32(ERRNO_ADDR) = errno;
      }
-@@ -1498,8 +1526,7 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
+@@ -1498,8 +1549,7 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
          char rpath[PATH_MAX + 1];
          const char* pathPtr = path;
 
@@ -111,7 +136,7 @@ index a2d58b5..d7e69ca 100644
              pathPtr = rpath;
          }
 
-@@ -2091,11 +2118,14 @@ int wrapper_setvbuf(uint8_t* mem, uint32_t fp_addr, uint32_t buf_addr, int mode,
+@@ -2091,11 +2141,14 @@ int wrapper_setvbuf(uint8_t* mem, uint32_t fp_addr, uint32_t buf_addr, int mode,
  }
 
  int wrapper___semgetc(uint8_t* mem, uint32_t fp_addr) {
@@ -128,7 +153,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  int wrapper_fgetc(uint8_t* mem, uint32_t fp_addr) {
-@@ -2169,13 +2199,19 @@ int wrapper___filbuf(uint8_t* mem, uint32_t fp_addr) {
+@@ -2169,13 +2222,19 @@ int wrapper___filbuf(uint8_t* mem, uint32_t fp_addr) {
 
  int wrapper___flsbuf(uint8_t* mem, int ch, uint32_t fp_addr) {
      struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
@@ -149,7 +174,7 @@ index a2d58b5..d7e69ca 100644
      MEM_U8(f->_ptr_addr) = ch;
      ++f->_ptr_addr;
      --f->_cnt;
-@@ -2263,10 +2299,14 @@ uint32_t wrapper_fread(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t
+@@ -2263,10 +2322,14 @@ uint32_t wrapper_fread(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t
 
  uint32_t wrapper_fwrite(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t count, uint32_t fp_addr) {
      struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
@@ -167,7 +192,7 @@ index a2d58b5..d7e69ca 100644
      }
      uint32_t num_written = 0;
      while (count--) {
-@@ -2458,7 +2498,7 @@ void wrapper_exit(uint8_t* mem, int status) {
+@@ -2458,7 +2521,7 @@ void wrapper_exit(uint8_t* mem, int status) {
  }
 
  void wrapper__exit(uint8_t* mem, int status) {
@@ -176,7 +201,22 @@ index a2d58b5..d7e69ca 100644
  }
 
  void wrapper__cleanup(uint8_t* mem) {
-@@ -2583,8 +2623,29 @@ int wrapper_ioctl(uint8_t* mem, int fd, uint32_t request, uint32_t sp) {
+@@ -2571,10 +2634,10 @@ int wrapper_getpagesize(uint8_t* mem) {
+ }
+
+ int wrapper_strerror(uint8_t* mem, int errnum) {
+-    errno = errnum;
+-    perror("strerror");
+-    assert(0 && "strerror not implemented");
+-    return 0;
++    const char *message = strerror(errnum);
++    uint32_t result = wrapper_malloc(mem, strlen(message) + 1);
++    for (size_t i = 0; i <= strlen(message); i++) MEM_U8(result + i) = message[i];
++    return result;
+ }
+
+ int wrapper_ioctl(uint8_t* mem, int fd, uint32_t request, uint32_t sp) {
+@@ -2583,8 +2646,29 @@ int wrapper_ioctl(uint8_t* mem, int fd, uint32_t request, uint32_t sp) {
  }
 
  int wrapper_fcntl(uint8_t* mem, int fd, int cmd, uint32_t sp) {
@@ -208,7 +248,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  static void signal_handler(int signum) {
-@@ -2597,7 +2658,15 @@ static void signal_handler(int signum) {
+@@ -2597,7 +2681,15 @@ static void signal_handler(int signum) {
  }
 
  uint32_t wrapper_signal(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t handler_addr, uint32_t sp) {
@@ -225,7 +265,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  uint32_t wrapper_sigset(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t disp_addr, uint32_t sp) {
-@@ -2668,15 +2737,20 @@ uint32_t wrapper_tempnam(uint8_t* mem, uint32_t dir_addr, uint32_t pfx_addr) {
+@@ -2668,15 +2760,20 @@ uint32_t wrapper_tempnam(uint8_t* mem, uint32_t dir_addr, uint32_t pfx_addr) {
  }
 
  uint32_t wrapper_tmpnam(uint8_t* mem, uint32_t str_addr) {
@@ -252,7 +292,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  uint32_t wrapper_mktemp(uint8_t* mem, uint32_t template_addr) {
-@@ -2758,7 +2832,14 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
+@@ -2758,7 +2855,14 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
      }
      char** argv = make_argv_from_mem(mem, argc, argv_addr);
 
@@ -268,7 +308,7 @@ index a2d58b5..d7e69ca 100644
      MEM_U32(ERRNO_ADDR) = errno;
 
      free_argv(argc, argv);
-@@ -2773,14 +2854,20 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
+@@ -2773,14 +2877,20 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
      }
      char** argv = make_argv_from_mem(mem, argc, argv_addr);
 
@@ -291,7 +331,7 @@ index a2d58b5..d7e69ca 100644
      execvp(filePtr, argv);
 
      MEM_U32(ERRNO_ADDR) = errno;
-@@ -3070,7 +3157,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
+@@ -3070,7 +3180,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
      #ifdef __FreeBSD__
      __assert(assertion, file, line, NULL);
      #else
@@ -300,7 +340,7 @@ index a2d58b5..d7e69ca 100644
      #endif
  }
 
-@@ -3086,24 +3173,15 @@ int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t fl
+@@ -3086,24 +3196,15 @@ int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t fl
 
  // https://linux.die.net/man/3/mkdir
  int32_t wrapper_mkdir(uint8_t* mem, uint32_t path_addr, uint32_t mode) {
@@ -330,7 +370,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  // https://linux.die.net/man/3/getopt
-@@ -3183,7 +3261,10 @@ int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t
+@@ -3183,7 +3284,10 @@ int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t
 
  // https://linux.die.net/man/2/link
  int32_t wrapper_link(uint8_t* mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
@@ -342,7 +382,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  // https://en.cppreference.com/w/c/io/vfprintf
-@@ -3213,7 +3294,7 @@ int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
+@@ -3213,7 +3317,7 @@ int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
 
  // https://linux.die.net/man/3/sleep
  uint32_t wrapper_sleep(uint8_t* mem, uint32_t seconds) {
@@ -351,7 +391,7 @@ index a2d58b5..d7e69ca 100644
  }
 
  // https://linux.die.net/man/2/socket
-@@ -3289,3 +3370,66 @@ double double_from_memory(uint8_t* mem, uint32_t address) {
+@@ -3289,3 +3393,109 @@ double double_from_memory(uint8_t* mem, uint32_t address) {
      val.ww |= MEM_U32(address + 4);
      return val.d;
  }
@@ -418,8 +458,51 @@ index a2d58b5..d7e69ca 100644
 +    if (base && ctor) wrapper___vec_ct(mem, base, count, size, trampoline, ctor, sp);
 +    return base;
 +}
++
++/* ptlink uses popen only to enumerate repository name maps. Handle that
++ * observed command directly, with no dependency on a Unix shell or ls. */
++uint32_t wrapper_popen(uint8_t *mem, uint32_t command_addr, uint32_t mode_addr) {
++    STRING(command)
++    STRING(mode)
++    const char *prefix = "/bin/ls ", *suffix = "/nmap* 2>/dev/null";
++    size_t length = strlen(command), start = strlen(prefix), end = strlen(suffix);
++    if (strcmp(mode, "r") || strncmp(command, prefix, start) || length <= start + end ||
++        strcmp(command + length - end, suffix)) {
++        fprintf(stderr, "Unsupported classic popen: %s\n", command);
++        MEM_U32(ERRNO_ADDR) = EINVAL;
++        return 0;
++    }
++    command[length - end] = 0;
++    const char *directory_path = command + start;
++    DIR *directory = opendir(directory_path);
++    if (!directory) { MEM_U32(ERRNO_ADDR) = errno; return 0; }
++    char filename[] = ".ido-popen-XXXXXX";
++    int fd = mkstemp(filename);
++    if (fd < 0) { closedir(directory); MEM_U32(ERRNO_ADDR) = errno; return 0; }
++    unlink(filename);
++    FILE *output = fdopen(dup(fd), "w");
++    if (!output) { close(fd); closedir(directory); MEM_U32(ERRNO_ADDR) = errno; return 0; }
++    char **names = NULL;
++    size_t count = 0;
++    struct dirent *entry;
++    while ((entry = readdir(directory))) {
++        if (strncmp(entry->d_name, "nmap", 4)) continue;
++        char **next = realloc(names, (count + 1) * sizeof(*names));
++        if (!next) abort();
++        names = next; names[count++] = strdup(entry->d_name);
++    }
++    closedir(directory);
++    if (count > 1) qsort(names, count, sizeof(*names), classic_compare_lines);
++    for (size_t i = 0; i < count; i++) { fprintf(output, "%s/%s\n", directory_path, names[i]); free(names[i]); }
++    free(names);
++    int error = ferror(output);
++    if (fclose(output)) error = 1;
++    if (error || lseek(fd, 0, SEEK_SET) < 0) { close(fd); MEM_U32(ERRNO_ADDR) = EIO; return 0; }
++    return init_file(mem, fd, -1, NULL, "r");
++}
++int wrapper_pclose(uint8_t *mem, uint32_t fp_addr) { return wrapper_fclose(mem, fp_addr); }
 diff --git a/libc_impl.h b/libc_impl.h
-index 34fa0e2..0cb5c69 100644
+index 34fa0e2..2f7e590 100644
 --- a/libc_impl.h
 +++ b/libc_impl.h
 @@ -15,6 +15,17 @@ typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint
@@ -440,8 +523,17 @@ index 34fa0e2..0cb5c69 100644
 
  uint32_t wrapper_sbrk(uint8_t *mem, int increment);
  uint32_t wrapper_malloc(uint8_t *mem, uint32_t size);
+@@ -151,6 +162,8 @@ int wrapper_munmap(uint8_t *mem, uint32_t addr, uint32_t length);
+ int wrapper_mprotect(uint8_t *mem, uint32_t addr, uint32_t length, int prot);
+ int wrapper_sysconf(uint8_t *mem, int name);
+ int wrapper_getpagesize(uint8_t *mem);
++uint32_t wrapper_popen(uint8_t *mem, uint32_t command_addr, uint32_t mode_addr);
++int wrapper_pclose(uint8_t *mem, uint32_t fp_addr);
+ int wrapper_strerror(uint8_t *mem, int errnum);
+ int wrapper_ioctl(uint8_t *mem, int fd, uint32_t request, uint32_t sp);
+ int wrapper_fcntl(uint8_t *mem, int fd, int cmd, uint32_t sp);
 diff --git a/recomp.cpp b/recomp.cpp
-index da44c77..1c8cb7e 100644
+index da44c77..443e913 100644
 --- a/recomp.cpp
 +++ b/recomp.cpp
 @@ -148,7 +148,7 @@ struct Insn {
@@ -453,7 +545,16 @@ index da44c77..1c8cb7e 100644
              return this->patched_addr;
          }
 
-@@ -466,6 +466,15 @@ const struct ExternFunction {
+@@ -418,6 +418,8 @@ const struct ExternFunction {
+     { "sysconf", "ii", 0 },
+     { "getpagesize", "i", 0 },
+     { "strerror", "pi", 0 },
++    { "popen", "ppp", 0 },
++    { "pclose", "ip", 0 },
+     { "ioctl", "iiu", FLAG_VARARG },
+     { "fcntl", "iii", FLAG_VARARG },
+     { "signal", "pit", 0 },
+@@ -466,6 +468,15 @@ const struct ExternFunction {
      // C++ functions
      { "__nw__FUi", "pu", 0 },
      { "__dl__FPv", "vp", 0 },
@@ -469,7 +570,7 @@ index da44c77..1c8cb7e 100644
  };
 
  void disassemble(void) {
-@@ -843,6 +852,13 @@ void pass1(void) {
+@@ -843,6 +854,13 @@ void pass1(void) {
                              // Special hard case in copt where the initial sltiu is in another basic block
                              found = true;
                              num_cases = 12;
@@ -483,7 +584,7 @@ index da44c77..1c8cb7e 100644
                          } else if (i == 37743) {
                              // Special hard case in edgcpfe where the initial sltiu is in another basic block
                              if ((lw == 37740) && (addu_index == 37739)) {
-@@ -853,6 +869,13 @@ void pass1(void) {
+@@ -853,6 +871,13 @@ void pass1(void) {
                                      num_cases = 6;
                                  }
                              }
@@ -497,7 +598,7 @@ index da44c77..1c8cb7e 100644
                          } else if (i == 208684) {
                              // Special hard case in edgcpfe where the initial sltiu is in another basic block
                              if ((lw == 208681) && (addu_index == 208680)) {
-@@ -2092,7 +2115,9 @@ void dump_jal(int i, uint32_t imm) {
+@@ -2092,7 +2117,9 @@ void dump_jal(int i, uint32_t imm) {
      const ExternFunction* found_fn = nullptr;
 
      // Check for an external function at the address in the immediate. If it does not exist, function is internal
@@ -508,7 +609,7 @@ index da44c77..1c8cb7e 100644
          name = it->second;
          for (auto& fn : extern_functions) {
              if (name == fn.name) {
-@@ -3230,7 +3255,7 @@ void dump_c(void) {
+@@ -3230,7 +3257,7 @@ void dump_c(void) {
          }
      }
 
@@ -517,7 +618,7 @@ index da44c77..1c8cb7e 100644
          printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, "
                 "uint32_t fp_dest) {\n");
          printf("switch (fp_dest) {\n");
-@@ -3270,7 +3295,13 @@ void dump_c(void) {
+@@ -3270,7 +3297,13 @@ void dump_c(void) {
              }
          }
 
@@ -532,7 +633,7 @@ index da44c77..1c8cb7e 100644
          printf("}\n");
          printf("}\n");
      }
-@@ -3312,6 +3343,17 @@ void dump_c(void) {
+@@ -3312,6 +3345,17 @@ void dump_c(void) {
             "MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
 
      printf("setup_libc_data(mem);\n");
@@ -550,7 +651,7 @@ index da44c77..1c8cb7e 100644
 
      // printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
 
-@@ -3705,6 +3747,15 @@ void parse_elf(const uint8_t* data, size_t file_len) {
+@@ -3705,6 +3749,15 @@ void parse_elf(const uint8_t* data, size_t file_len) {
 
              uint8_t type = ELF32_ST_TYPE(sym->st_info);
 
@@ -566,7 +667,7 @@ index da44c77..1c8cb7e 100644
              if (!strcmp(name, "_procedure_table")) {
                  procedure_table_start = addr;
              } else if (!strcmp(name, "_procedure_table_size")) {
-@@ -3737,6 +3788,12 @@ void parse_elf(const uint8_t* data, size_t file_len) {
+@@ -3737,6 +3790,12 @@ void parse_elf(const uint8_t* data, size_t file_len) {
                      }
 
                      symbol_names[addr] = name;

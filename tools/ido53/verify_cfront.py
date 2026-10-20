@@ -72,6 +72,21 @@ def main():
         translations = [subprocess.run(c, input=preprocessed, capture_output=True, check=True).stdout for c in commands]
         assert translations[0] == translations[1]
         print("Classic cfront C translation matches the original IRIX output byte for byte")
+        from tools.ido53.prelink_probe import run, DEFINITION
+        work = reference / "cross-unit"
+        run(work, tc)
+        (work / "counter.c").write_text(DEFINITION, encoding="utf-8", newline="\n")
+        generated = "ptrepository/Counter__pt__2_i.c"
+        preprocessed = subprocess.run([tc / "classic-CC", "-E", "-I.", generated], cwd=work,
+                                      capture_output=True, check=True).stdout
+        options = ["+n", "+fCounter__pt__2_i.c", "+Tprelink-temp/instfile"]
+        translations = [subprocess.run([*c, *options], cwd=work, input=preprocessed,
+                                        capture_output=True, check=True).stdout
+                        for c in ([tc / "cfront"], command)]
+        assert translations[0] == translations[1]
+        assert b"next__16Counter__pt__2_iCFv" in translations[0]
+        print("Cross-unit template instantiation C translation matches original IRIX byte for byte")
+
 
 
 if __name__ == "__main__":

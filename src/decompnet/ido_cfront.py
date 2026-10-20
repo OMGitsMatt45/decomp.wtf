@@ -21,6 +21,7 @@ IRIX_INPUTS = {
     "usr/lib/c++/cfront": "9ebe0d0aa3827f8d671ac6fcee7bd1cc7698b8e35af2905e4b19e3baaec54651",
     "usr/lib/c++/ptcomp": "34c7db077e506cb1b84152c2eba665bfe631368c59440816202101bfcedc55a3",
     "usr/lib/c++/markc++": "1616be281460d1be1cdb2f1f0821a90610ad7cf4ee186753fa938cc5374afe7e",
+    "usr/lib/c++/ptlink": "7b00bdda3ab68240335ca8eb5c0955a73961dd370378ea0e434b93ecfead880e",
 }
 
 

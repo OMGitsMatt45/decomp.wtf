@@ -32,6 +32,22 @@ static int classic_compare_lines(const void *a, const void *b) {
 static int classic_utility(const char *file, char **argv) {
     const char *name = strrchr(file, '/');
     name = name ? name + 1 : file;
+    if (!strcmp(name, "mv") || !strcmp(name, "cp")) {
+        if (!argv[1] || !argv[2] || argv[3]) return 2;
+        if (!strcmp(name, "mv")) return rename(argv[1], argv[2]) ? 1 : 0;
+        FILE *input = fopen(argv[1], "rb");
+        if (!input) return 1;
+        FILE *output = fopen(argv[2], "wb");
+        if (!output) { fclose(input); return 1; }
+        char buffer[16384]; size_t count; int error = 0;
+        while ((count = fread(buffer, 1, sizeof(buffer), input))) {
+            if (fwrite(buffer, 1, count, output) != count) { error = 1; break; }
+        }
+        if (ferror(input)) error = 1;
+        if (fclose(input)) error = 1;
+        if (fclose(output)) error = 1;
+        return error;
+    }
     if (!strcmp(name, "rm")) {
         int i = 1;
         bool recursive = false;

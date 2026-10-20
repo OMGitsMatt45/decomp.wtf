@@ -21,6 +21,8 @@ HERE = Path(__file__).resolve().parent
 ARCHIVE_SHA256 = "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a"
 REVISION = "597c1b349fcbda26ba75a4e3a4fb136c26887d7a"
 HELPERS = {
+    "COPYING": "dcc100d4161cc0b7177545ab6e47216f84857cda3843847c792a25289852dcaa",
+    "COPYING.LIB": "d7bf9d064ac3e5840f9dd02422b7eeec4f1fd03f37fadbd043602be5e882304f",
     "libiberty/obstack.c": "23095bce268a8c30871cd1c836c2ce87db2a1e90f789cd15158ac52f4b877b19",
     "include/obstack.h": "ed45d84bb4f3c8a62b4228042ca31fe0f6ffd3150ccb6a8f1000fabd2a0be351",
     "libiberty/getopt.c": "cff01bf0e5c6abeb6bfdaf899d49cbdcd2efdb75f813c1b981dcdcbaeecf5073",
