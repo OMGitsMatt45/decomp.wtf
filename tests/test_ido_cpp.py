@@ -67,9 +67,9 @@ def native_only(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", native_process)
 
 
-def config(root, language=None, toolchain="ido-7.1"):
+def config(root, language=None, toolchain="ido-7.1", frontend="edg"):
     assert toolchains.installed(toolchain) is not None
-    values = {"toolchain": toolchain, "sandbox": "none"}
+    values = {"toolchain": toolchain, "sandbox": "none", "cpp_frontend": frontend}
     if language is not None:
         values["language"] = language
     cfg = project.compiler_config(root, {"kind": "rom", "platform": "n64", "compiler": values})
@@ -129,7 +129,7 @@ def test_ido53_cpp_features_match_the_original_irix_frontend(tmp_path):
 
 
 @pytest.mark.parametrize("toolchain", ["ido-5.3", "ido-7.1"])
-def test_real_cpp_draft_compiles_and_matches_the_c_target(tmp_path, toolchain):
+def test_real_cpp_draft_compiles_and_matches_the_c_target(tmp_path, toolchain, frontend="edg"):
     assert toolchains.installed("m2c") is not None
     original = compiler.compile_source(config(tmp_path, "c", toolchain), "", C_FUNCTIONS["ido_add"])
     assert original.ok, original.log
@@ -137,7 +137,7 @@ def test_real_cpp_draft_compiles_and_matches_the_c_target(tmp_path, toolchain):
     draft = seeds.generate_from_asm(seeds.gnu_asm(target), "ido_add", toolchain, language="c++", valid=True)
     assert draft, "m2c did not produce a C++ draft"
     header = "typedef signed char s8; typedef short s16; typedef int s32;\n" + seeds.M2C_MACROS
-    result = compiler.compile_source(config(tmp_path, toolchain=toolchain), header, draft)
+    result = compiler.compile_source(config(tmp_path, toolchain=toolchain, frontend=frontend), header, draft)
     assert result.ok, result.log
     function = elfobj.extract_function(result.obj, "ido_add")
     assert function.code == target.code and function.relocs == target.relocs

@@ -55,3 +55,7 @@ def test_classic_invalid_source_fails_without_an_object(tmp_path):
 
 def test_classic_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path):
     shared.test_cpp_export_rebuilds_a_c_origin_rom_from_a_clean_tree(tmp_path, "ido-5.3", frontend="cfront")
+
+
+def test_classic_m2c_cpp_draft_matches_a_c_origin_function(tmp_path):
+    shared.test_real_cpp_draft_compiles_and_matches_the_c_target(tmp_path, "ido-5.3", frontend="cfront")

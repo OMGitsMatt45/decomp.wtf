@@ -42,6 +42,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
       - run: uv run --no-sync python -m pytest -q tests/test_ido_cfront_config.py
+      - name: Isolate native Windows toolchains in a directory with spaces
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'IDO native toolchains with spaces'
+          "DECOMPNET_TOOLCHAINS=$tools" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
         with:
@@ -66,15 +72,34 @@ jobs:
             exit 1
           fi
       - name: Install pinned original 5.3 stages and the local classic overlay
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           uv run --no-sync decompnet toolchain install ido-5.3 --accept-license
           uv run --no-sync decompnet toolchain install binutils-mips
+          uv run --no-sync decompnet toolchain install m2c
           uv run --no-sync python -m tools.ido53.install_cfront "$RUNNER_TEMP/ido53-cfront-build/package"
       - name: Require classic parity, matching and clean exported rebuilds without WSL
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           uv run --no-sync python -m pytest -q tests/test_ido_cfront.py --junitxml="$RUNNER_TEMP/ido53-cfront-results.xml"
+      - name: Install native Windows stages and the local classic overlay
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($tool in @('ido-5.3', 'binutils-mips', 'm2c')) {
+            uv run --no-sync decompnet toolchain install $tool --accept-license
+            if ($LASTEXITCODE -ne 0) { throw "Installing $tool failed" }
+          }
+          uv run --no-sync python -m tools.ido53.install_cfront "$env:RUNNER_TEMP/ido53-cfront-build/package"
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the classic overlay failed' }
+      - name: Require classic compiler tests on native Windows outside MSYS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          uv run --no-sync python -m pytest -q tests/test_ido_cfront.py --junitxml="$env:RUNNER_TEMP/ido53-cfront-results.xml"
+          if ($LASTEXITCODE -ne 0) { throw 'Native classic compiler checks failed' }
       - name: Require no skipped compiler tests and expose failures
         if: always()
         shell: bash
