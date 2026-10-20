@@ -12,7 +12,7 @@ def setup_overlay(tmp_path, monkeypatch):
     monkeypatch.setattr(toolchains, "runtime_dirs", lambda _: [tmp_path])
     monkeypatch.setattr(wsl, "run", lambda *a, **kw: pytest.fail("classic cfront must not use WSL"))
     suffix = ".exe" if toolchains.current_platform().startswith("windows-") else ""
-    for name in ("CC", "cfront", "ptcomp", "markc++", "NCC", "edgcpfe"):
+    for name in ("classic-CC", "cfront", "ptcomp", "markc++", "NCC", "edgcpfe"):
         (tmp_path / (name + suffix)).touch()
     manifest = {"format": 1, "toolchain": "ido-5.3", "frontend": "cfront",
                 "upstream_revision": "d5aec59932034b8a20f23f471297a55c45dcbc45",
@@ -30,7 +30,7 @@ def test_a_pinned_classic_overlay_selects_its_original_driver(tmp_path, monkeypa
     suffix, _ = setup_overlay(tmp_path, monkeypatch)
     cfg = configure(tmp_path)
     assert not cfg.wsl
-    assert Path(cfg.cmd[cfg.cmd.index("--driver") + 1]).name == "CC" + suffix
+    assert Path(cfg.cmd[cfg.cmd.index("--driver") + 1]).name == "classic-CC" + suffix
     assert not any(Path(a).stem in ("NCC", "edgcpfe") for a in cfg.cmd)
 
 

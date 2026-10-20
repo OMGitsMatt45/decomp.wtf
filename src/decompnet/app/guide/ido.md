@@ -12,8 +12,11 @@ Source language
   the C and C++ frontends; matching still requires the original bytes and relocated data.
 - Explicit `compiler.language = "c"` selects the original C frontend. Each IDO version uses its
   own SGI/EDG 2.19 binary and original backend; never switch 5.3 to 7.1 to accept C++ syntax.
-- Exports record `cpp_frontend = "edg"`. The classic 5.3 cfront/CC driver is a separate unsupported
-  pipeline. An explicit `cpp_frontend = "cfront"` fails; never claim EDG output is cfront-compatible.
+- Exports record the selected `cpp_frontend`. IDO 5.3 can explicitly select `"cfront"` after
+  installing its optional locally built classic overlay. This retains the original CC driver,
+  cfront, repository helpers and 5.3 backend. Missing classic components fail; EDG is never
+  substituted. Classic support covers object compilation and ROM exports, not IRIX executable
+  linking or cross-translation-unit template prelinking.
 
 Traits
 - Unconditional jumps inside functions are `b label` (`beq $zero, $zero`).

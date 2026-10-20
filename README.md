@@ -353,7 +353,8 @@ and continued with any tool or agent.
 names goes into `.cpp` files, drafts come out as C++, and agents get a guide to classes, vtables, constructors,
 inlines and name mangling. N64 KMC and IDO 5.3/7.1 ROM projects also generate, match and export real C++ while
 preserving original game symbol linkage. IDO uses each version's original SGI/EDG frontend and backend,
-including native Windows builds without WSL; the separate classic 5.3 cfront driver remains unsupported.
+including native Windows builds without WSL. A separate, locally built classic 5.3 cfront overlay
+adds explicit `cpp_frontend = "cfront"` object compilation, matching and C++ ROM exports.
 See [IDO C++ validation and compiler choices](docs/ido-cpp.md). GBA ROM projects now generate, match and export
 real C++ using a separately restored GCC 2.95.3 frontend with agbcc's original Thumb backend. This is an explicit
 frontend extension; Arm GNU supplies preprocessing and assembly, without substituting its modern compiler.

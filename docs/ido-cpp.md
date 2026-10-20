@@ -3,8 +3,9 @@
 IDO 5.3 and 7.1 N64 ROM projects generate, judge and export real C++ using each version's
 original SGI/EDG frontend and original IDO backend. Both run natively on Windows and Linux
 without WSL. The app identifies the frontend as **SGI/EDG 2.19**, and exported `build.json`
-records `cpp_frontend = "edg"`. The classic AT&T-derived `cfront` pipeline remains unsupported;
-requesting it explicitly fails instead of substituting EDG or another compiler.
+records `cpp_frontend = "edg"` by default. A separate optional classic AT&T-derived
+`cfront` overlay can be built for IDO 5.3. Missing classic components fail explicitly;
+the application never substitutes EDG or another compiler.
 
 ## IDO 7.1
 
@@ -144,23 +145,75 @@ unsupported `sgisysinfo(106)` query when the frontend's verbose banner is enable
 completes, and the final code and relocation comparisons pass. Source-built replacement cfront
 or a switch to 7.1/KMC is unnecessary for this supported 5.3 EDG path.
 
-## Classic 5.3 cfront investigation
+## Classic IDO 5.3 cfront: optional native object compilation
 
-This is a distinct compiler pipeline, not an alias for EDG. The native investigation fixed a
-patched zero-address load, unresolved quickstarted imports and indirect `signal` calls, then
-implemented the guest vector constructor/destructor/allocation callbacks from 5.3 `libC.a`.
-A native classic cfront translated a template/class/reference probe into exactly the same C
-text as the original IRIX cfront under QEMU.
+Classic cfront is a distinct pipeline. The optional overlay recompiles the original
+`usr/lib/CC`, `usr/lib/c++/cfront`, `ptcomp` and `markc++` for the host. It uses the
+already installed, unchanged 5.3 `acpp`, `cc`, `cfe`, `uopt`, `ugen` and `as1`.
+The normal installer continues to supply the EDG overlay; classic cfront currently
+requires a local build. EDG remains the default.
 
-That proves one frontend translation, not a complete portable classic compiler. The original
-5.3 `CC` driver also needs direct environment access, process/path redirection, additional
-stdio operations and template repository management. It invokes `grep`, `sort`, `rm` and
-`ptcomp`; these are absent from a regular Windows installation. The driver also ignores `.cpp`
-while accepting `.C`. Its pipeline, template instantiation/prelinking and standalone Windows
-execution are not verified. Those experimental runtime changes are not in the shipped overlay.
+Build on Linux, or in an MSYS2 build shell on Windows with `gcc make git python tar`
+installed. MSYS2 is a build dependency; execution uses the runtime DLLs already
+bundled with the installed 5.3 C suite. No WSL or QEMU is used by the application.
 
-Projects requiring classic cfront output must not treat the EDG frontend as equivalent:
-`compiler.cpp_frontend = "cfront"` fails explicitly. Completing that driver/runtime port or
-proving a source-built cfront's dialect, ABI and output equivalence remains separate work.
-Neither selecting a different frontend nor renaming source files establishes a byte-matching
-conversion; the strict matcher remains the authority.
+```console
+bash tools/ido53/build-cfront.sh /path/to/fresh-build /path/to/artifacts
+decompnet toolchain install ido-5.3 --accept-license
+python -m tools.ido53.install_cfront /path/to/fresh-build/package
+```
+
+The build emits an overlay archive, its corresponding recompiler/IRIX input source
+archive and checksums. Installation validates the original-input manifest and copies
+only the four classic programs and their manifest. The original CC driver is installed
+as `classic-CC.exe`, keeping it distinct from `cc.exe` on Windows filesystems.
+Reinstalling the base suite with
+`--force` removes a manually added overlay, so install it again afterwards.
+
+Select it explicitly in the project:
+
+```toml
+[compiler]
+toolchain = "ido-5.3"
+language = "c++"
+cpp_frontend = "cfront"
+```
+
+The host adapter copies `.cpp` sources to the `.C` suffix recognized by the original
+CC driver, within a private working directory. It rebases include paths and isolates
+intermediate files and the template repository. The original CC driver still performs
+preprocessing, cfront translation, repository processing, C compilation and object
+marking. Exports retain `.cpp` files and record `cpp_frontend = "cfront"`.
+
+The port fixes a patched zero-address load, resolves quickstarted external functions
+through their actual GOT entries and dispatches indirect signal callbacks. It supplies
+the missing IRIX environment, stdio, file-lock and libC vector services. In particular,
+cfront defines its own clearing `operator new`; both direct calls and libC vector
+allocation must preserve that definition. Replacing it with ordinary allocation
+corrupted later declarations even when a single-function smoke test passed.
+The driver's observed `grep`, `sort` and `rm` operations run through bounded host
+implementations, without external utilities or a shell.
+
+Verification compares 11 functions with the **unmodified original IRIX cfront** under
+QEMU, through the same original 5.3 backend. Final instructions and relocation records
+agree exactly; the template/class/constructor/reference probe also produces identical
+C text byte for byte. The pinned fixtures include multiple declarations and functions
+to catch the allocator regression. QEMU is solely the independent frontend reference.
+
+The native integration suite checks those fixtures, compiles an m2c C++ draft, matches
+classic C++ against a homemade C-origin ROM, rejects changed instructions and relocation
+destinations, and rebuilds exported `.cpp` files into the identical ROM. It repeats the
+build after deleting generated files and restoring sources through Git with
+`core.autocrlf=true`. Windows checks remove MSYS from PATH and reject WSL calls.
+
+```console
+DECOMP_TEST_IDO_CFRONT=1 python -m pytest tests/test_ido_cfront.py
+python -m tools.ido53.verify_cfront --irix-root /path/to/ido/5.3 --qemu /path/to/qemu-irix
+```
+
+The IRIX reference needs `libC.so`, linked from the supplied original `libC.a` as described
+above. Classic support here covers object compilation, local template instantiation,
+application matching and ROM exports. The original IRIX executable linker, `ptlink`
+and cross-translation-unit template prelinking are outside this port. Runtime-dependent
+game features still require their original target libraries; there are no host C++
+standard headers or a modern C++ dialect.

@@ -19,7 +19,8 @@ suffix=
 if [[ ${OS:-} == Windows_NT ]]; then platform=windows-x86_64; suffix=.exe; fi
 package="$build_dir/package"
 mkdir -p "$package"
-for name in CC cfront ptcomp markc++; do cp "build/5.3/out/$name$suffix" "$package/"; done
+cp "build/5.3/out/CC$suffix" "$package/classic-CC$suffix"
+for name in cfront ptcomp markc++; do cp "build/5.3/out/$name$suffix" "$package/"; done
 python - "$package" "$revision" "$platform" <<'PY'
 import hashlib, json
 from pathlib import Path

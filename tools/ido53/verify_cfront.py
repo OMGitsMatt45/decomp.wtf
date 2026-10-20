@@ -34,7 +34,7 @@ def main():
         # The original CC driver and 5.3 backend stay identical. Only the
         # candidate cfront process is replaced by the unmodified IRIX program.
         reference = Path(temporary)
-        for name in ("CC", "cc", "acpp", "cfe", "uopt", "ugen", "as1", "ptcomp", "markc++", "err.english.cc"):
+        for name in ("classic-CC", "cc", "acpp", "cfe", "uopt", "ugen", "as1", "ptcomp", "markc++", "err.english.cc"):
             shutil.copy2(tc / name, reference / name)
         wrapper = reference / "cfront"
         # Fit QEMU's guest reservation inside the application's normal 2 GiB
@@ -43,7 +43,7 @@ def main():
         wrapper.write_text("#!/bin/sh\nexec " + shlex.join(list(map(str, command))) + ' "$@"\n', encoding="utf-8")
         wrapper.chmod(0o755)
         ref_cmd = cfg.cmd.copy()
-        ref_cmd[ref_cmd.index("--driver") + 1] = str(reference / "CC")
+        ref_cmd[ref_cmd.index("--driver") + 1] = str(reference / "classic-CC")
         original_cfg = dataclasses.replace(cfg, cmd=ref_cmd)
         for name in SOURCES:
             source = (fixtures / name).read_text(encoding="utf-8")
@@ -67,7 +67,7 @@ def main():
             print(f"Classic IDO 5.3: {len(functions)} functions match IRIX exactly, including relocations ({name})")
         # Also compare the intermediate C text; no normalization or bit masks.
         source = fixtures / "ido_cpp_features.cpp"
-        preprocessed = subprocess.run([tc / "CC", "-E", source], capture_output=True, check=True).stdout
+        preprocessed = subprocess.run([tc / "classic-CC", "-E", source], capture_output=True, check=True).stdout
         commands = [[tc / "cfront", "+n", "+ffeatures.C"], [*command, "+n", "+ffeatures.C"]]
         translations = [subprocess.run(c, input=preprocessed, capture_output=True, check=True).stdout for c in commands]
         assert translations[0] == translations[1]

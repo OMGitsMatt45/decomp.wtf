@@ -122,7 +122,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                 # separate compiler pipeline and must never fall through here.
                 frontend = cpp.ido_frontend(cfg)
                 if frontend == "cfront" and tc.id == "ido-5.3":
-                    required = ("CC", "cfront", "ptcomp", "markc++")
+                    required = ("classic-CC", "cfront", "ptcomp", "markc++")
                     if not all((dirs[0] / f"{name}{suffix}").is_file() for name in required):
                         raise toolchains.ToolchainError("The optional IDO 5.3 classic cfront overlay is missing. Build tools/ido53/build-cfront.sh and copy its package into the installed ido-5.3 directory; EDG is not substituted.")
                     if why := ido_cfront.manifest_error(dirs[0]):
@@ -130,7 +130,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     pipeline = Path(__file__).with_name("ido_cfront.py").resolve()
                     ro_paths += [str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
                     cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline),
-                           "--driver", f"{tc_dir}/CC{suffix}", "--src", "{src}",
+                           "--driver", f"{tc_dir}/classic-CC{suffix}", "--src", "{src}",
                            "--obj", "{obj}", "--include", "{include}", "--", *flags]
                 elif frontend != "edg":
                     raise toolchains.ToolchainError(f"{tc.name} has no verified setup for cpp_frontend = {frontend!r}; EDG is not substituted.")

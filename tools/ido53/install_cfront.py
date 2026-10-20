@@ -1,6 +1,7 @@
 """Install a locally built classic overlay into an already accepted IDO 5.3 suite."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -19,13 +20,18 @@ def main():
     if manifest["platform"] != toolchains.current_platform():
         parser.error("the classic overlay was built for a different host platform")
     suffix = ".exe" if sys.platform == "win32" else ""
-    files = [f"{name}{suffix}" for name in ("CC", "cfront", "ptcomp", "markc++")]
+    files = [f"{name}{suffix}" for name in ("classic-CC", "cfront", "ptcomp", "markc++")]
     for name in files:
         if not (args.package / name).is_file():
             parser.error(f"the classic overlay is missing {name}")
     destination = toolchains.require("ido-5.3")
+    backend = [destination / (name + suffix) for name in ("cc", "acpp", "cfe", "uopt", "ugen", "as1")]
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in backend}
     for name in [*files, "cfront-build.json"]:
         shutil.copy2(args.package / name, destination / name)
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in backend}
+    if before != after:
+        parser.error("the original IDO backend changed during overlay installation")
     print(f"Installed classic cfront overlay in {destination}; original C and EDG stages retained")
 
 
