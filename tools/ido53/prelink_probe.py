@@ -29,7 +29,7 @@ def run(work: Path, tc: Path, *, ptlink: list[str] | None = None, nm: str = '/us
             '(int x) { Counter<int> c(x); return c.next()' + extra + '; }\n', encoding='utf-8', newline='\n')
     def execute(command, *, success=True):
         proc = subprocess.run(list(map(str, command)), cwd=work, capture_output=True, timeout=90,
-                              env={**os.environ, "TMPDIR": work.as_posix()})
+                              env={**os.environ, "TMPDIR": "."})
         log = (proc.stdout + proc.stderr).decode(errors='replace')
         assert (proc.returncode == 0) == success, (command, proc.returncode, log)
         assert 'warning: nm' not in log, log
@@ -48,6 +48,12 @@ def run(work: Path, tc: Path, *, ptlink: list[str] | None = None, nm: str = '/us
     obj = (work / outputs[0]).read_bytes()
     functions = describe_functions(obj)
     assert {f for f in functions} >= {'__ct__16Counter__pt__2_iFi', 'next__16Counter__pt__2_iCFv'}
+    binutils = tc.parent / 'binutils-mips'
+    execute([binutils / ('mips-ps2-decompals-ld' + suffix), '-melf32ebmip', '-r', '-o', 'combined.o',
+             'left.o', 'right.o', outputs[0]])
+    undefined = execute([binutils / ('mips-ps2-decompals-nm' + suffix), '-u', 'combined.o'])
+    assert 'Counter__pt__' not in undefined, undefined
+    assert {'left', 'right', 'next__16Counter__pt__2_iCFv'} <= set(describe_functions((work / 'combined.o').read_bytes()))
     before = extract_function(obj, 'next__16Counter__pt__2_iCFv').code
     # Exercise dependency/checksum invalidation, not only an empty repository.
     path = work / 'counter.c'
