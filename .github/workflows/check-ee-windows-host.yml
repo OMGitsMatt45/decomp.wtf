@@ -76,6 +76,10 @@ jobs:
             --execution 'Native Windows Server 2022 x64, Win32 host; System32-only PATH; no WSL/wibo/QEMU' `
             --work "$env:RUNNER_TEMP/native EE parity with spaces"
           if ($LASTEXITCODE -ne 0) { throw 'Original EE compiler parity failed on native Windows' }
+      - name: Use a managed installation directory containing spaces
+        shell: pwsh
+        run: |
+          "DECOMPNET_TOOLCHAINS=$env:RUNNER_TEMP/Managed EE toolchains with spaces" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Prepare matching and export test dependencies
         shell: pwsh
         run: |
@@ -85,11 +89,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing m2c failed' }
           uv run --no-sync python projects/zlib-n64/prepare.py
           if ($LASTEXITCODE -ne 0) { throw 'Preparing the redistributable demo failed' }
+      - name: Install the registered Windows package without a local build override
+        shell: pwsh
+        run: |
+          Remove-Item Env:DECOMP_EE_NATIVE_ROOT -ErrorAction SilentlyContinue
+          uv run --no-sync decompnet toolchain install ee-gcc-2.96
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the registered native EE package failed' }
+          uv run --no-sync python -c "from decompnet import toolchains; tc=toolchains.get('ee-gcc-2.96'); m=toolchains.installed(tc.id); assert tc.supported and not tc.via_wsl and not tc.dependencies() and m and not m.get('local_build') and not m.get('wsl'); print(toolchains.require(tc.id))"
+          if ($LASTEXITCODE -ne 0) { throw 'Managed EE installation is not native' }
       - name: Require native Windows matching and clean exported rebuilds
         shell: pwsh
         run: |
           uv run --no-sync python tools/ps2_cpp/elf_host/integration.py `
-            --toolchain "$env:RUNNER_TEMP/EE host with spaces" `
+            --managed --toolchain "$env:DECOMPNET_TOOLCHAINS/ee-gcc-2.96" `
             --work "$env:RUNNER_TEMP/native EE integration with spaces"
           if ($LASTEXITCODE -ne 0) { throw 'Native Windows PS2 integration failed' }
       - name: Save reports (no compiler binaries published)

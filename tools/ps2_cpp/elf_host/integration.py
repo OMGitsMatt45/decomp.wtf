@@ -33,7 +33,10 @@ def activate() -> None:
     if sys.platform == "win32":
         # Exercise the application's real local-build configuration, without
         # replacing registry functions on the platform we are validating.
-        os.environ[toolchains.EE_NATIVE_ROOT] = str(root)
+        if os.environ.get("DECOMP_EE_HOST_MANAGED") == "1":
+            os.environ.pop(toolchains.EE_NATIVE_ROOT, None)
+        else:
+            os.environ[toolchains.EE_NATIVE_ROOT] = str(root)
         if toolchains.require("ee-gcc-2.96") != root or toolchains.get("ee-gcc-2.96").via_wsl:
             raise ValueError("The app did not select the configured native Windows host")
         return
@@ -65,6 +68,7 @@ def activate() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--toolchain", required=True, type=Path)
+    parser.add_argument("--managed", action="store_true", help="test the registered Windows installation without a local-root override")
     parser.add_argument("--runner", default="", help="required explicit wibo prefix on Linux")
     parser.add_argument("--work", required=True, type=Path)
     args = parser.parse_args()
@@ -92,6 +96,8 @@ def main() -> int:
     env = os.environ.copy()
     env.update(DECOMP_EE_HOST_TEST_ROOT=str(root), DECOMP_TEST_PS2_CPP="1", DECOMP_UPDATES="off",
                PYTHONPATH=os.pathsep.join([str(bootstrap), str(ROOT), str(ROOT / "src"), env.get("PYTHONPATH", "")]))
+    if args.managed:
+        env["DECOMP_EE_HOST_MANAGED"] = "1"
     results = work / "results.xml"
     command = [sys.executable, "-m", "pytest", "-q", "tests/test_ps2.py", "tests/test_ps2_cpp.py",
                "--junitxml=" + str(results)]
@@ -112,7 +118,7 @@ def main() -> int:
     skipped = sum(int(s.get("skipped", 0)) for s in suites)
     summary = dict(execution="native Windows" if sys.platform == "win32" else "Windows PE under wibo on Linux",
                    original_archive_sha256=ARCHIVE_SHA, exit_code=result.returncode,
-                   tests=count, skipped=skipped, research_provider=sys.platform != "win32", production_registry_changed=False)
+                   tests=count, skipped=skipped, research_provider=sys.platform != "win32", production_registry_changed=False, managed_installation=args.managed)
     (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     if result.returncode and os.environ.get("GITHUB_ACTIONS"):
         diagnostic = (work / "output.log").read_text()[-6000:]

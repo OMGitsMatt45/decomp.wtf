@@ -82,11 +82,11 @@ def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     assert calls[0][2] == target
 
 
-def test_ps2_cpp_on_windows_reports_the_exact_toolchain_blocker(tmp_path, monkeypatch):
+def test_ps2_cpp_on_windows_requires_installation_of_its_native_package(tmp_path, monkeypatch):
     monkeypatch.setenv("DECOMP_RUNTIME", "native")
     monkeypatch.setattr(toolchains, "current_platform", lambda: "windows-x86_64")
     monkeypatch.setattr(wsl, "status", lambda: pytest.fail("PS2 must not implicitly start WSL"))
     monkeypatch.setattr(wsl, "run", lambda *a, **kw: pytest.fail("PS2 must not run WSL"))
-    with pytest.raises(toolchains.ToolchainError, match="ee-gcc-2.96.*no native Windows build"):
+    with pytest.raises(toolchains.ToolchainError, match="ee-gcc-2.96.*is not installed"):
         project.compiler_config(tmp_path, {"kind": "rom", "platform": "ps2", "compiler": {
             "toolchain": "ee-gcc-2.96", "language": "c++"}})

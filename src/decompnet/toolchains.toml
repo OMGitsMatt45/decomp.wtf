@@ -133,7 +133,17 @@ flags = ["-O2", "-G0"]
 [["ee-gcc-2.96".parts]]
 url = "https://github.com/decompme/compilers/releases/download/compilers/ee-gcc2.96.tar.xz"
 sha256 = "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a"
-platforms = ["linux-x86_64"]
+platforms = ["linux-x86_64", "windows-x86_64"]
+
+[["ee-gcc-2.96".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/193e0f9bbf07594f289f8f942183a250b94465b7/toolchains/ee-windows-host/ee-windows-templates-v1.tar.gz"
+sha256 = "9081b7e0f3f6f17f869c1a84352190803f02578e49ee62c9d13e874a69a40152"
+platforms = ["windows-x86_64"]
+
+[["ee-gcc-2.96".parts]]
+url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/193e0f9bbf07594f289f8f942183a250b94465b7/toolchains/ee-windows-host/ee-windows-host-source-v1.tar.gz"
+sha256 = "866489de5ec2c640d2fbf147f222bf439a0b9fd377d9a83c8e504357a44c8428"
+platforms = ["windows-x86_64"]
 
 ["ido-7.1"]
 name = "IDO 7.1 (static recompilation)"

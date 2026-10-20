@@ -30,6 +30,13 @@ def windows(tmp_path, monkeypatch):
     monkeypatch.setenv("DECOMP_WSL", str(fake))
     monkeypatch.setattr(toolchains, "current_platform", lambda: "windows-x86_64")
     monkeypatch.setattr(wsl, "_status", None)
+    # Preserve coverage of the legacy Linux-only bridge with a synthetic
+    # registry entry now that the real EE compiler has a native Windows build.
+    registry = toolchains._registry_data()
+    ee = {**registry["ee-gcc-2.96"], "parts": [p for p in registry["ee-gcc-2.96"]["parts"]
+          if "linux-x86_64" in p.get("platforms", [])]}
+    ee["parts"] = [{**p, "platforms": ["linux-x86_64"]} for p in ee["parts"]]
+    monkeypatch.setattr(toolchains, "_registry_data", lambda: {**registry, "ee-gcc-2.96": ee})
     root = tmp_path / "toolchains"
     (root / ".downloads").mkdir(parents=True)
     for name in (EE, DEB):

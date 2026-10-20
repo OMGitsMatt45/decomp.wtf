@@ -28,7 +28,8 @@ def run(work: Path, tc: Path, *, ptlink: list[str] | None = None, nm: str = '/us
         (work / (name + '.C')).write_text('#include "counter.h"\nextern "C" int ' + name +
             '(int x) { Counter<int> c(x); return c.next()' + extra + '; }\n', encoding='utf-8', newline='\n')
     def execute(command, *, success=True):
-        proc = subprocess.run(list(map(str, command)), cwd=work, capture_output=True, timeout=90)
+        proc = subprocess.run(list(map(str, command)), cwd=work, capture_output=True, timeout=90,
+                              env={**os.environ, "TMPDIR": work.as_posix()})
         log = (proc.stdout + proc.stderr).decode(errors='replace')
         assert (proc.returncode == 0) == success, (command, proc.returncode, log)
         assert 'warning: nm' not in log, log
