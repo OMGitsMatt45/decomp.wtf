@@ -94,7 +94,7 @@ def main() -> int:
         parser.error("Use a fresh --work directory")
     work.mkdir(parents=True)
     selected = cases(work)
-    inputs = {str(p.relative_to(work)): digest(p.read_bytes()) for p in sorted(work.rglob("*")) if p.is_file()}
+    inputs = {p.relative_to(work).as_posix(): digest(p.read_bytes()) for p in sorted(work.rglob("*")) if p.is_file()}
     golden = json.loads(args.golden.read_text()) if args.golden else None
     if golden and (golden.get("cases") != selected or golden.get("inputs") != inputs):
         if os.environ.get("GITHUB_ACTIONS"):
