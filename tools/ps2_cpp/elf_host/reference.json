@@ -1,0 +1,400 @@
+{
+  "cases": [
+    {
+      "name": "features--O2--G8",
+      "source": "features.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "features--O2--G0",
+      "source": "features.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "success": true,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "features--O0--G8",
+      "source": "features.cpp",
+      "language": "c++",
+      "flags": [
+        "-O0",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "features--O1--G8",
+      "source": "features.cpp",
+      "language": "c++",
+      "flags": [
+        "-O1",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "features--Os--G8",
+      "source": "features.cpp",
+      "language": "c++",
+      "flags": [
+        "-Os",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "extended--O2--G8",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "extended--O2--G0",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "extended--O0--G8",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-O0",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "extended--O1--G8",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-O1",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "extended--Os--G8",
+      "source": "extended.cpp",
+      "language": "c++",
+      "flags": [
+        "-Os",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38"
+    },
+    {
+      "name": "game--O2--G8",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-O2",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "game--O2--G0",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "game--O0--G8",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-O0",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "game--O1--G8",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-O1",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "game--Os--G8",
+      "source": "game.c",
+      "language": "c",
+      "flags": [
+        "-Os",
+        "-G8"
+      ],
+      "success": true,
+      "source_sha256": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e"
+    },
+    {
+      "name": "floating",
+      "source": "floating.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2"
+      ],
+      "success": true,
+      "source_sha256": "956bfa693996b320bc820c32d471119a9a3cc6d3cc5d81cb6785bc07788ad9c9"
+    },
+    {
+      "name": "quoted",
+      "source": "quoted.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-DTYPE=unsigned int",
+        "-DMESSAGE=\"space and \\\"quotes\\\"\""
+      ],
+      "success": true,
+      "source_sha256": "49b969ccb167869c52b1bf148307ce119835f22ddf80840a94b99edf9c16bb6e"
+    },
+    {
+      "name": "includes",
+      "source": "include.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-Iinclude space"
+      ],
+      "success": true,
+      "source_sha256": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2"
+    },
+    {
+      "name": "invalid-cpp",
+      "source": "invalid.cpp",
+      "language": "c++",
+      "flags": [],
+      "success": false,
+      "source_sha256": "dfe1c4f9deabb09d00f39a7dbc4cc1cbac73a94d3440bba2c6b56eddb8245ca2"
+    },
+    {
+      "name": "missing-header",
+      "source": "missing.cpp",
+      "language": "c++",
+      "flags": [],
+      "success": false,
+      "source_sha256": "4a53dc44b7a8d84226bbb9dbc2961af24408cb21d077057bd9d341659fe7f6be"
+    },
+    {
+      "name": "cpp-rejected-as-c",
+      "source": "features.cpp",
+      "language": "c",
+      "flags": [],
+      "success": false,
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2"
+    },
+    {
+      "name": "preprocessor",
+      "source": "include.cpp",
+      "language": "c++",
+      "flags": [
+        "-O2",
+        "-Iinclude space"
+      ],
+      "success": true,
+      "preprocess": true,
+      "source_sha256": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2"
+    }
+  ],
+  "inputs": {
+    "extended.cpp": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+    "features.cpp": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+    "floating.cpp": "956bfa693996b320bc820c32d471119a9a3cc6d3cc5d81cb6785bc07788ad9c9",
+    "game.c": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e",
+    "game.h": "6292e654e712740d694066f3d2bd2ae1da921c150e55c8201ddbdbb97eb1bfc1",
+    "include space/one.h": "6c0e766a2c16931629577edf17201cb067bd9818d756cb155288111d98a7db2a",
+    "include space/two.h": "3d3420e2469fcf4748a18cec481db2393056e9cb928da30b91c8037c90552c63",
+    "include.cpp": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2",
+    "invalid.cpp": "dfe1c4f9deabb09d00f39a7dbc4cc1cbac73a94d3440bba2c6b56eddb8245ca2",
+    "missing.cpp": "4a53dc44b7a8d84226bbb9dbc2961af24408cb21d077057bd9d341659fe7f6be",
+    "quoted.cpp": "49b969ccb167869c52b1bf148307ce119835f22ddf80840a94b99edf9c16bb6e"
+  },
+  "results": [
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "71be442ad3b34d8c7e038f1ebbe64396f3d0c5a2c3cbde3889bdfe7c720185a9",
+      "functions": 7
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "de457282895068015db20904cedec60e4637a3e8c1acbddda2fb0397c63aac20",
+      "functions": 7
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "98b1bd6089fd6e3e047de227be63aabf427426fb21cf79b6a84cb5b110760a6c",
+      "functions": 9
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "cd8058792df8b0d8cccac1d2d14ceca28771141d5366666d8de3bf3cbf3a5393",
+      "functions": 7
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "954c38f2d59356a0d8daf967933fc87c5cb86f08a07fc16e58f1271589577c5b",
+      "functions": 7
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "3d6e51f4ba495f123e1bdbef2ba60eabc6ee531b0acd991b791c8e304fcbb442",
+      "functions": 30
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "1425a6cec372c2c9be8d2e07bd7c481100e71542e6c9c035fe80bf9d2bc5ddf9",
+      "functions": 30
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "4dc4ca2ce36cce1bdbe95bf32fded93dc9ab96c946be9bc07923ade649a76413",
+      "functions": 32
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "d4b3c6ea8493b63f45c0a8ac6c972dc1f9a4b595fed480af3f55d91f2c7e405e",
+      "functions": 30
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "a22d8fbb5e2774ff034c07dfd84cb97cb3f01dbb3f70f20d46ce102be708f53f",
+      "functions": 30
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "d69a72f0563a849f513cb78fb636d4fd4bba1bc6ec97846a72c4afbc19483067",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "c77ba3140b4720cbf75aa353a795c4aa7f110c1501fd497ad0abc67d7e523910",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "a6df55ca9a91cc7ead46dd696c3257b89c6b91055758b42fb05dea4650f528c3",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "5fa50e3804db83974e7447dffcb2d07aa736948688e454f5a00be2bc37e5c56b",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "60027163fc426d2cf7d6c2a83431d0d468ecec09d9442a968fefd636ed843510",
+      "functions": 13
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "269a134f34198f73ff29ea19190b1eb1a798f430aa1f2faf4d2ab80f90a5a3f1",
+      "functions": 3
+    },
+    {
+      "exit_code": 0,
+      "log": "",
+      "object_present": true,
+      "object_sha256": "80298cd3dd1dd56ff686434cf22ded33f4df4e673ecfbfc8ea85c69483724803",
+      "functions": 2
+    },
+    {
+      "exit_code": 0,
+      "log": "In file included from include.cpp:1:\ninclude space/one.h:1:9: warning: #pragma once is obsolete\nIn file included from include.cpp:2:\ninclude space/two.h:1:9: warning: #pragma once is obsolete\n",
+      "object_present": true,
+      "object_sha256": "cea12a5eca33ea866bbac536cd8ee947f74d7e08aa360d1ff26e526009167656",
+      "functions": 1
+    },
+    {
+      "exit_code": 1,
+      "log": "invalid.cpp:1: parse error before '{' token\n",
+      "object_present": false
+    },
+    {
+      "exit_code": 1,
+      "log": "missing.cpp:1:28: does-not-exist.h: No such file or directory\n",
+      "object_present": false
+    },
+    {
+      "exit_code": 1,
+      "log": "features.cpp:2:2: #error This translation unit requires the original PS2 C++ frontend\nfeatures.cpp:5: parse error before '<' token\nfeatures.cpp:8: parse error before \"initial\"\nfeatures.cpp: In function `get':\nfeatures.cpp:9: parse error before '{' token\nfeatures.cpp:13: `Cell' undeclared (first use in this function)\nfeatures.cpp:13: (Each undeclared identifier is reported only once\nfeatures.cpp:13: for each function it appears in.)\nfeatures.cpp:13: parse error before \"int\"\nfeatures.cpp:15: `reference' undeclared (first use in this function)\nfeatures.cpp:16: `cell' undeclared (first use in this function)\nfeatures.cpp: At top level:\nfeatures.cpp:31: parse error before string constant\n",
+      "object_present": false
+    },
+    {
+      "exit_code": 0,
+      "log": "In file included from include.cpp:1:\ninclude space/one.h:1:9: warning: #pragma once is obsolete\nIn file included from include.cpp:2:\ninclude space/two.h:1:9: warning: #pragma once is obsolete\n",
+      "object_present": true,
+      "object_sha256": "2161b6458958af3d980fbfedec920ab1b7be0fcc6976ff9d3cc81bc6e8f250ef"
+    }
+  ]
+}

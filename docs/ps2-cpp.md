@@ -64,6 +64,13 @@ linker. Disc images and separate overlay files are not repacked.
 
 ## Precise Windows blocker and alternatives
 
+A separate [native x86 ELF-host experiment](../tools/ps2_cpp/elf_host/README.md)
+now runs the exact original compiler instructions in Win32 executables with
+libc/process ABI adapters. Its initial full-pipeline parity corpus passes under
+wibo on Linux. Native Windows execution and application/export integration have
+their own gates; this research backend is not registered or selected by the app.
+This does not recover the missing source or change the production status above.
+
 The subsequent [source reconstruction experiment](ps2-cpp-reconstruction.md)
 built Linux ELF32 and Windows PE32 frontends from available sources, but its
 C++ corpus failed on both candidates. It does not supply a compatible native

@@ -1,0 +1,309 @@
+{
+  "experimental": true,
+  "execution": "Final Win32 host under wibo on Linux; checked-in QEMU i386 reference",
+  "inputs": {
+    "extended.cpp": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+    "features.cpp": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+    "floating.cpp": "956bfa693996b320bc820c32d471119a9a3cc6d3cc5d81cb6785bc07788ad9c9",
+    "game.c": "5d18d59ba08e73417caff8e4b43ecbab79d3f89a5c99f8c6c286d68d46c36c4e",
+    "game.h": "6292e654e712740d694066f3d2bd2ae1da921c150e55c8201ddbdbb97eb1bfc1",
+    "include space/one.h": "6c0e766a2c16931629577edf17201cb067bd9818d756cb155288111d98a7db2a",
+    "include space/two.h": "3d3420e2469fcf4748a18cec481db2393056e9cb928da30b91c8037c90552c63",
+    "include.cpp": "0aafa595b7ad114709dcc8861f12b3b651ac04a7fadaea9d48fab7e57ecf7fb2",
+    "invalid.cpp": "dfe1c4f9deabb09d00f39a7dbc4cc1cbac73a94d3440bba2c6b56eddb8245ca2",
+    "missing.cpp": "4a53dc44b7a8d84226bbb9dbc2961af24408cb21d077057bd9d341659fe7f6be",
+    "quoted.cpp": "49b969ccb167869c52b1bf148307ce119835f22ddf80840a94b99edf9c16bb6e"
+  },
+  "candidate_command": [
+    "/workspace/.local/share/decompnet/toolchains/wibo/wibo",
+    "/workspace/scratch/ee-native/review Windows toolchain/bin/ee-gcc.exe"
+  ],
+  "all_passed": true,
+  "counts": {
+    "passed": 22,
+    "total": 22,
+    "successful_compilations": 18,
+    "preprocessing_checks": 1
+  },
+  "runs": [
+    {
+      "case": "features--O2--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "71be442ad3b34d8c7e038f1ebbe64396f3d0c5a2c3cbde3889bdfe7c720185a9",
+        "functions": 7
+      }
+    },
+    {
+      "case": "features--O2--G0",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "de457282895068015db20904cedec60e4637a3e8c1acbddda2fb0397c63aac20",
+        "functions": 7
+      }
+    },
+    {
+      "case": "features--O0--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "98b1bd6089fd6e3e047de227be63aabf427426fb21cf79b6a84cb5b110760a6c",
+        "functions": 9
+      }
+    },
+    {
+      "case": "features--O1--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "cd8058792df8b0d8cccac1d2d14ceca28771141d5366666d8de3bf3cbf3a5393",
+        "functions": 7
+      }
+    },
+    {
+      "case": "features--Os--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "954c38f2d59356a0d8daf967933fc87c5cb86f08a07fc16e58f1271589577c5b",
+        "functions": 7
+      }
+    },
+    {
+      "case": "extended--O2--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "3d6e51f4ba495f123e1bdbef2ba60eabc6ee531b0acd991b791c8e304fcbb442",
+        "functions": 30
+      }
+    },
+    {
+      "case": "extended--O2--G0",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "1425a6cec372c2c9be8d2e07bd7c481100e71542e6c9c035fe80bf9d2bc5ddf9",
+        "functions": 30
+      }
+    },
+    {
+      "case": "extended--O0--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "4dc4ca2ce36cce1bdbe95bf32fded93dc9ab96c946be9bc07923ade649a76413",
+        "functions": 32
+      }
+    },
+    {
+      "case": "extended--O1--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "d4b3c6ea8493b63f45c0a8ac6c972dc1f9a4b595fed480af3f55d91f2c7e405e",
+        "functions": 30
+      }
+    },
+    {
+      "case": "extended--Os--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "a22d8fbb5e2774ff034c07dfd84cb97cb3f01dbb3f70f20d46ce102be708f53f",
+        "functions": 30
+      }
+    },
+    {
+      "case": "game--O2--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "d69a72f0563a849f513cb78fb636d4fd4bba1bc6ec97846a72c4afbc19483067",
+        "functions": 13
+      }
+    },
+    {
+      "case": "game--O2--G0",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "c77ba3140b4720cbf75aa353a795c4aa7f110c1501fd497ad0abc67d7e523910",
+        "functions": 13
+      }
+    },
+    {
+      "case": "game--O0--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "a6df55ca9a91cc7ead46dd696c3257b89c6b91055758b42fb05dea4650f528c3",
+        "functions": 13
+      }
+    },
+    {
+      "case": "game--O1--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "5fa50e3804db83974e7447dffcb2d07aa736948688e454f5a00be2bc37e5c56b",
+        "functions": 13
+      }
+    },
+    {
+      "case": "game--Os--G8",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "60027163fc426d2cf7d6c2a83431d0d468ecec09d9442a968fefd636ed843510",
+        "functions": 13
+      }
+    },
+    {
+      "case": "floating",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "269a134f34198f73ff29ea19190b1eb1a798f430aa1f2faf4d2ab80f90a5a3f1",
+        "functions": 3
+      }
+    },
+    {
+      "case": "quoted",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "",
+        "object_present": true,
+        "object_sha256": "80298cd3dd1dd56ff686434cf22ded33f4df4e673ecfbfc8ea85c69483724803",
+        "functions": 2
+      }
+    },
+    {
+      "case": "includes",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "In file included from include.cpp:1:\r\ninclude space/one.h:1:9: warning: #pragma once is obsolete\r\nIn file included from include.cpp:2:\r\ninclude space/two.h:1:9: warning: #pragma once is obsolete\r\n",
+        "object_present": true,
+        "object_sha256": "cea12a5eca33ea866bbac536cd8ee947f74d7e08aa360d1ff26e526009167656",
+        "functions": 1
+      }
+    },
+    {
+      "case": "invalid-cpp",
+      "passed": true,
+      "candidate": {
+        "exit_code": 1,
+        "log": "invalid.cpp:1: parse error before '{' token\r\n",
+        "object_present": false
+      }
+    },
+    {
+      "case": "missing-header",
+      "passed": true,
+      "candidate": {
+        "exit_code": 1,
+        "log": "missing.cpp:1:28: does-not-exist.h: No such file or directory\r\n",
+        "object_present": false
+      }
+    },
+    {
+      "case": "cpp-rejected-as-c",
+      "passed": true,
+      "candidate": {
+        "exit_code": 1,
+        "log": "features.cpp:2:2: #error This translation unit requires the original PS2 C++ frontend\r\nfeatures.cpp:5: parse error before '<' token\r\nfeatures.cpp:8: parse error before \"initial\"\r\nfeatures.cpp: In function `get':\r\nfeatures.cpp:9: parse error before '{' token\r\nfeatures.cpp:13: `Cell' undeclared (first use in this function)\r\nfeatures.cpp:13: (Each undeclared identifier is reported only once\r\nfeatures.cpp:13: for each function it appears in.)\r\nfeatures.cpp:13: parse error before \"int\"\r\nfeatures.cpp:15: `reference' undeclared (first use in this function)\r\nfeatures.cpp:16: `cell' undeclared (first use in this function)\r\nfeatures.cpp: At top level:\r\nfeatures.cpp:31: parse error before string constant\r\n",
+        "object_present": false
+      }
+    },
+    {
+      "case": "preprocessor",
+      "passed": true,
+      "candidate": {
+        "exit_code": 0,
+        "log": "In file included from include.cpp:1:\r\ninclude space/one.h:1:9: warning: #pragma once is obsolete\r\nIn file included from include.cpp:2:\r\ninclude space/two.h:1:9: warning: #pragma once is obsolete\r\n",
+        "object_present": true,
+        "object_sha256": "2161b6458958af3d980fbfedec920ab1b7be0fcc6976ff9d3cc81bc6e8f250ef"
+      }
+    }
+  ],
+  "build": {
+    "archive_sha256": "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a",
+    "host_compiler": "i686-w64-mingw32-gcc-win32 (GCC) 14-win32",
+    "host_source_sha256": "2ab55006a940021ccd626debf49a65c90c2c99113629be78ccc8691ccb95c336",
+    "tools": {
+      "bin/ee-gcc": {
+        "sha256": "b8c284d16c9c0a0e8788e9522c46881e224ad01fa1c732aed43f821cc32f168b",
+        "main": 134548048,
+        "host_detours": {
+          "pwait": 134567348,
+          "pexecute": 134566896
+        }
+      },
+      "bin/ee-as": {
+        "sha256": "b8cfdb6ecb6931642914020f92a62e653378f57230eed4895f69afa050d47b5e",
+        "main": 134530284,
+        "host_detours": {}
+      },
+      "lib/gcc-lib/ee/2.96-ee-001003-1/cc1": {
+        "sha256": "59ec92b3f9f3513e0633331af304733e3094de30884e662a8cb584a51c1c42b5",
+        "main": 134709592,
+        "host_detours": {}
+      },
+      "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus": {
+        "sha256": "560e6f276134d109e2b4c05ee9c72d4f9215ffc86d784eb4491a3dadf316bf9a",
+        "main": 135078216,
+        "host_detours": {}
+      },
+      "lib/gcc-lib/ee/2.96-ee-001003-1/cpp0": {
+        "sha256": "f6f6b598f39649edfe171d6da8c7f91d07f2b87c2aeeffffbc5f566bfb1a39a9",
+        "main": 134518272,
+        "host_detours": {}
+      }
+    }
+  },
+  "binaries": {
+    "bin/ee-gcc": "8f5f276fbe53bd8c63eb382573b624ea1434c7992785cfea8ef3669e4ed952b4",
+    "bin/ee-as": "7c62b34a8f82e83ea75339edfdcec22a21fdc2e3b52ffa27325fc47a8a6d38d9",
+    "lib/gcc-lib/ee/2.96-ee-001003-1/cc1": "9a892411bf2de83fefd08b0a297213c07e01d2774086f84b7e96cae1b0b6880f",
+    "lib/gcc-lib/ee/2.96-ee-001003-1/cc1plus": "2bdfbd79cb6678126fe3099d29e18f438ca11c4c06fb385c764bdf7b2b113afb",
+    "lib/gcc-lib/ee/2.96-ee-001003-1/cpp0": "9dd0f031f11d37b993cc2652ea1c902f06b6cee20f847e22ce3f660454fec060"
+  },
+  "native_windows_executed": false,
+  "application_toolchain_registered": false
+}

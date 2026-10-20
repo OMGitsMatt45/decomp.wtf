@@ -1,0 +1,9 @@
+{
+  "execution": "Windows PE under wibo on Linux",
+  "original_archive_sha256": "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a",
+  "exit_code": 0,
+  "tests": 16,
+  "skipped": 0,
+  "research_provider": true,
+  "production_registry_changed": false
+}

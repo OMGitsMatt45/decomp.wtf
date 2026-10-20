@@ -1,0 +1,81 @@
+name: Experimental native Windows EE host
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/check-ee-windows-host.yml"
+      - "tools/ps2_cpp/elf_host/**"
+  pull_request:
+    paths:
+      - ".github/workflows/check-ee-windows-host.yml"
+      - "tools/ps2_cpp/elf_host/**"
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          path-type: inherit
+          install: mingw-w64-i686-gcc mingw-w64-i686-binutils
+      - name: Download the original compiler archive
+        shell: pwsh
+        run: |
+          uv run --no-sync python -c "import os, pathlib, urllib.request; urllib.request.urlretrieve('https://github.com/decompme/compilers/releases/download/compilers/ee-gcc2.96.tar.xz', pathlib.Path(os.environ['RUNNER_TEMP']) / 'ee-gcc2.96.tar.xz')"
+      - name: Build the Windows hosts (archive and helper checksums required)
+        shell: msys2 {0}
+        run: |
+          uv run --no-sync python tools/ps2_cpp/elf_host/build.py \
+            --archive "$RUNNER_TEMP/ee-gcc2.96.tar.xz" \
+            --output "$RUNNER_TEMP/EE host with spaces" \
+            --cc "$(cygpath -m /mingw32/bin/gcc.exe)" \
+            --objcopy "$(cygpath -m /mingw32/bin/objcopy.exe)"
+      - name: Require complete object parity on native Windows
+        shell: pwsh
+        run: |
+          $python = Join-Path $env:GITHUB_WORKSPACE '.venv/Scripts/python.exe'
+          $candidate = (Join-Path $env:RUNNER_TEMP 'EE host with spaces/bin/ee-gcc.exe').Replace('\', '/')
+          $env:PATH = Join-Path $env:SystemRoot 'System32'
+          & $python tools/ps2_cpp/elf_host/probe.py `
+            --candidate-command "'$candidate'" `
+            --golden tools/ps2_cpp/elf_host/reference.json `
+            --execution 'Native Windows Server 2022 x64, Win32 host; System32-only PATH; no WSL/wibo/QEMU' `
+            --work "$env:RUNNER_TEMP/native EE parity with spaces"
+          if ($LASTEXITCODE -ne 0) { throw 'Original EE compiler parity failed on native Windows' }
+      - name: Prepare matching and export test dependencies
+        shell: pwsh
+        run: |
+          uv run --no-sync decompnet toolchain install binutils-mips
+          if ($LASTEXITCODE -ne 0) { throw 'Installing MIPS binutils failed' }
+          uv run --no-sync decompnet toolchain install m2c
+          if ($LASTEXITCODE -ne 0) { throw 'Installing m2c failed' }
+          uv run --no-sync python projects/zlib-n64/prepare.py
+          if ($LASTEXITCODE -ne 0) { throw 'Preparing the redistributable demo failed' }
+      - name: Require native Windows matching and clean exported rebuilds
+        shell: pwsh
+        run: |
+          uv run --no-sync python tools/ps2_cpp/elf_host/integration.py `
+            --toolchain "$env:RUNNER_TEMP/EE host with spaces" `
+            --work "$env:RUNNER_TEMP/native EE integration with spaces"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows PS2 integration failed' }
+      - name: Save reports (no compiler binaries published)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ee-host-reports
+          path: |
+            ${{ runner.temp }}/native EE parity with spaces/report.json
+            ${{ runner.temp }}/EE host with spaces/host-build.json
+            ${{ runner.temp }}/native EE integration with spaces/summary.json
+            ${{ runner.temp }}/native EE integration with spaces/results.xml
+            ${{ runner.temp }}/native EE integration with spaces/output.log
+          if-no-files-found: warn
