@@ -372,7 +372,9 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 shutil.copyfile(archive, dest / part["binary"])
                 os.chmod(dest / part["binary"], 0o755)
             else:
-                _extract(archive, dest, part.get("subdir"))
+                extract_dest = dest / "windows-host-templates" if part.get("ee_host_templates") else dest
+                extract_dest.mkdir(parents=True, exist_ok=True)
+                _extract(archive, extract_dest, part.get("subdir"))
                 if part.get("executable"):  # archives that don't record the executable bit
                     for f in dest.rglob("*"):
                         if f.is_file():
@@ -381,7 +383,8 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
         if tid == "ee-gcc-2.96" and not linux and current_platform() == "windows-x86_64":
             from .ee_native import materialize
             try:
-                materialize(dest)
+                materialize(dest, dest / "windows-host-templates")
+                shutil.rmtree(dest / "windows-host-templates")
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise ToolchainError(f"Cannot assemble the pinned native EE compiler: {error}") from error
         if linux and "runtime-i386" in tc.dependencies(linux):  # WSL systems rarely have a 32-bit loader: bring ours

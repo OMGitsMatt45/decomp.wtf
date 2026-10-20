@@ -62,3 +62,40 @@ def test_corrupt_input_does_not_modify_any_host(tmp_path, altered):
     with pytest.raises(ValueError):
         ee_native.materialize(tmp_path)
     assert before == {name: (tmp_path / (name + '.exe')).read_bytes() for name in ee_native.PROGRAMS}
+
+
+def test_registered_install_preserves_original_files_when_extracting_templates(tmp_path, monkeypatch):
+    import tarfile
+    from decompnet import toolchains, wsl
+    build = tmp_path / 'build'
+    build.mkdir()
+    originals = templates(build)
+    (build / 'host-build.json').write_text(json.dumps(dict(archive_sha256=ee_native.ARCHIVE_SHA256,
+        tools={name: {} for name in ee_native.PROGRAMS})))
+    (build / 'bin/runtime-sentinel.dat').write_bytes(b'preserve original archive files')
+    root = tmp_path / 'managed toolchains with spaces'
+    downloads = root / '.downloads'
+    downloads.mkdir(parents=True)
+    parts = []
+    for kind, names in [('original', [*ee_native.PROGRAMS, 'bin/runtime-sentinel.dat']),
+                        ('templates', [*(name + '.exe' for name in ee_native.PROGRAMS),
+                                       'host-templates.json', 'host-build.json'])]:
+        archive = downloads / (kind + '.tar.gz')
+        with tarfile.open(archive, 'w:gz') as output:
+            for name in names: output.add(build / name, arcname=name)
+        parts.append(dict(url='https://invalid.test/' + archive.name, sha256=ee_native.sha256(archive.read_bytes()),
+                          platforms=['windows-x86_64'], **({'ee_host_templates': True} if kind == 'templates' else {})))
+    monkeypatch.setenv('DECOMPNET_TOOLCHAINS', str(root))
+    monkeypatch.delenv(toolchains.EE_NATIVE_ROOT, raising=False)
+    monkeypatch.setattr(toolchains, 'current_platform', lambda: 'windows-x86_64')
+    monkeypatch.setattr(toolchains, '_registry_data', lambda: {'ee-gcc-2.96': dict(name='EE fixture',
+        license='GPL-2.0', source='fixture', parts=parts, windows_requires=[])})
+    monkeypatch.setattr(wsl, 'status', lambda: pytest.fail('native installation used WSL'))
+    monkeypatch.setattr(toolchains, '_download', lambda *a: pytest.fail('fixture should use verified cached archives'))
+    destination = toolchains.install('ee-gcc-2.96', log=lambda *a: None)
+    for name, image in originals.items():
+        assert (destination / name).read_bytes() == (build / name).read_bytes()
+        assert (destination / (name + '.exe')).read_bytes() == image
+    assert (destination / 'bin/runtime-sentinel.dat').read_bytes() == b'preserve original archive files'
+    assert not (destination / 'windows-host-templates').exists()
+    assert toolchains.installed('ee-gcc-2.96')['platform'] == 'windows-x86_64'

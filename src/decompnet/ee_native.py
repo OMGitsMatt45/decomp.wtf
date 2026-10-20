@@ -45,17 +45,24 @@ def payload_section(executable: bytes) -> tuple[int, int]:
     return matches[0]
 
 
-def materialize(root: Path) -> None:
-    manifest = json.loads((root / 'host-templates.json').read_text(encoding='utf-8'))
+def materialize(root: Path, templates: Path | None = None) -> None:
+    templates = root if templates is None else templates
+    manifest = json.loads((templates / 'host-templates.json').read_text(encoding='utf-8'))
     if manifest.get('format') != 1 or manifest.get('archive_sha256') != ARCHIVE_SHA256 \
             or set(manifest.get('tools', {})) != set(PROGRAMS):
         raise ValueError('EE templates do not identify the pinned compiler')
+    report = None
+    if templates != root:
+        report = (templates / 'host-build.json').read_bytes()
+        identity = json.loads(report)
+        if identity.get('archive_sha256') != ARCHIVE_SHA256 or set(identity.get('tools', {})) != set(PROGRAMS):
+            raise ValueError('EE host build report does not identify the pinned compiler')
     # Validate every input before modifying any executable.
     images = {}
     for name in PROGRAMS:
         record = manifest['tools'][name]
         payload = (root / name).read_bytes()
-        template = (root / (name + '.exe')).read_bytes()
+        template = (templates / (name + '.exe')).read_bytes()
         offset, size = payload_section(template)
         if payload[:6] != b'\x7fELF\x01\x01' or sha256(payload) != record['payload_sha256'] \
                 or sha256(template) != record['template_sha256'] or size != len(payload) \
@@ -71,4 +78,6 @@ def materialize(root: Path) -> None:
         target = root / (alias + '.exe')
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(root / (name + '.exe'), target)
-    (root / 'host-templates.json').unlink()
+    if report is not None:
+        (root / 'host-build.json').write_bytes(report)
+    (templates / 'host-templates.json').unlink()

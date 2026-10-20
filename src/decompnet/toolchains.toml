@@ -138,6 +138,7 @@ platforms = ["linux-x86_64", "windows-x86_64"]
 [["ee-gcc-2.96".parts]]
 url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/193e0f9bbf07594f289f8f942183a250b94465b7/toolchains/ee-windows-host/ee-windows-templates-v1.tar.gz"
 sha256 = "9081b7e0f3f6f17f869c1a84352190803f02578e49ee62c9d13e874a69a40152"
+ee_host_templates = true
 platforms = ["windows-x86_64"]
 
 [["ee-gcc-2.96".parts]]
