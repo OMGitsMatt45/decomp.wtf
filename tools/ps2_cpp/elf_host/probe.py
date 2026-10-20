@@ -25,10 +25,10 @@ def digest(data: bytes) -> str:
 
 def cases(work: Path) -> list[dict]:
     sources = {
-        "features.cpp": (ROOT / "tests/fixtures/ps2_cpp_features.cpp").read_text(),
-        "extended.cpp": (ROOT / "tools/ps2_cpp/reconstruction/extended.cpp").read_text(),
-        "game.c": (ROOT / "projects/demo-n64/original/game.c").read_text(),
-        "game.h": (ROOT / "projects/demo-n64/original/game.h").read_text(),
+        "features.cpp": (ROOT / "tests/fixtures/ps2_cpp_features.cpp").read_text(encoding="utf-8"),
+        "extended.cpp": (ROOT / "tools/ps2_cpp/reconstruction/extended.cpp").read_text(encoding="utf-8"),
+        "game.c": (ROOT / "projects/demo-n64/original/game.c").read_text(encoding="utf-8"),
+        "game.h": (ROOT / "projects/demo-n64/original/game.h").read_text(encoding="utf-8"),
         "quoted.cpp": 'typedef TYPE T; extern "C" int size() { return sizeof(T); }\n'
                       'extern "C" const char *message() { return MESSAGE; }\n',
         "include.cpp": '#include "one.h"\n#include "two.h"\n'
@@ -97,6 +97,9 @@ def main() -> int:
     inputs = {str(p.relative_to(work)): digest(p.read_bytes()) for p in sorted(work.rglob("*")) if p.is_file()}
     golden = json.loads(args.golden.read_text()) if args.golden else None
     if golden and (golden.get("cases") != selected or golden.get("inputs") != inputs):
+        if os.environ.get("GITHUB_ACTIONS"):
+            changed = [p for p, sha in inputs.items() if golden.get("inputs", {}).get(p) != sha]
+            print("::error title=EE corpus mismatch::Reference input hashes differ: " + ", ".join(changed), flush=True)
         parser.error("Reference corpus/flags/source hashes differ")
     reference_results = []
     results = []
@@ -112,6 +115,10 @@ def main() -> int:
                 and actual.get("object_sha256") == expected["object_sha256"]
         results.append(dict(case=case["name"], passed=passed, candidate=actual))
         print(f"{case['name']}: {'PASS' if passed else 'FAIL'}", flush=True)
+        if not passed and os.environ.get("GITHUB_ACTIONS"):
+            diagnostic = json.dumps(actual, ensure_ascii=True)[-3000:]
+            diagnostic = diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error title=EE parity {case['name']}::{diagnostic}", flush=True)
     report = dict(experimental=True, execution=args.execution, inputs=inputs,
                   candidate_command=shlex.split(args.candidate_command),
                   all_passed=all(r["passed"] for r in results),
