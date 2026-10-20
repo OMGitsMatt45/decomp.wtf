@@ -5,6 +5,11 @@ backend. This investigation has not acquired verified corresponding source or
 an authentic native Windows build. The existing Linux implementation remains
 supported; native Windows availability is unchanged.
 
+The follow-up [source reconstruction experiment](ps2-cpp-reconstruction.md)
+now provides pinned preparation/build recipes and original-compiler comparison
+records. Both host frontend builds completed, but the C++ probes failed; the
+missing exact source has not been reconstructed successfully.
+
 ## A mislabeled Windows candidate was ruled out
 
 The [SDK 2.4 snapshot at `5c8bdf31`](https://github.com/AngheloAlf/sce_ps2_sdk_24/tree/5c8bdf31f6bdd82ba4456413594198b5bd469f43/local/sce/ee/gcc/lib/gcc-lib/ee/2.96-ee-001003-1)

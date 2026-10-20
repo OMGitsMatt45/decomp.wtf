@@ -1,0 +1,61 @@
+{
+  "experimental": true,
+  "date_utc": "2026-10-20",
+  "build_system": "Debian GNU/Linux 13 x86-64",
+  "build_recipe": "tools/ps2_cpp/reconstruction/build.py",
+  "input_manifest_sha256": "2e81b7a61d7b520efef6b3d6bb60b6c5f76baa816aa89bcf10e47ee3f5a3344f",
+  "compat_patch_sha256": "4471ff3eb1e6353f215407da28f32c2c57a34360b63e88b61b85caa8105f6cbb",
+  "prepared_source_files_verified": 118,
+  "separate_clean_source_and_build_directories": true,
+  "original_compiler_archive_sha256": "0590d2ca9da8f5903889d66761220d14b47a8d14ba987ca53db84a1650a1fd0a",
+  "native_bison": {
+    "version": "GNU Bison version 1.25",
+    "source": "SSXModding/ps2-ee-toolchain ee/bison at pinned manifest commit",
+    "binary_sha256": "25f00418317170f82bf0d2cb3e109581066bcbee0ae282eeb52ef46c10e8044d"
+  },
+  "host_cflags": [
+    "-O0",
+    "-w",
+    "-fno-strict-aliasing",
+    "-fwrapv"
+  ],
+  "builds": {
+    "linux32": {
+      "completed": true,
+      "host_cc": "GNU GCC 14.2.0 -m32 with local Debian i386 sysroot",
+      "format": "Linux i386 ELF32",
+      "programs_sha256": {
+        "cc1": "e1393171a3f42c01cae64170eca9cab465dbbb3784a69acbf8638ec273d23c68",
+        "cc1plus": "fbfd9e1888d9e06f2cfd6d662e4c383f54b8389075d9b5d2a278eafd79bd0984",
+        "xgcc": "cb646c7ad85c541b2a36c07a4bc6fc6588109181bf646b2a12cac5d69edfb379",
+        "cpp0": "28c9c722cd6ebdb2f4af0372ec1dab125b963ae4d445e9ec16ee740061eb4b29"
+      }
+    },
+    "windows": {
+      "completed": true,
+      "host_cc": "i686-w64-mingw32-gcc 14-posix",
+      "format": "Windows i386 PE32",
+      "programs_sha256": {
+        "cc1.exe": "79a41f5ad5a3fa2fc3db166125d374030c9014cfafb8e510d5a66b2ac30d1127",
+        "cc1plus.exe": "411e77ade4a86908cd633aaa36c98b328f744caa31e63b1697be11911c3fb58c",
+        "xgcc.exe": "98a59b080b19533cf5f329e478cd51e1561a97d2faaf1385f9a22adcdd9ebd25",
+        "cpp0.exe": "1ee1f98d28b4635cb62c0da0c6fbbcc12e8561de66f732b27ecae18d4d67c9d3"
+      },
+      "cc1plus_imports": [
+        "ADVAPI32.dll",
+        "KERNEL32.dll",
+        "msvcrt.dll"
+      ]
+    }
+  },
+  "native_windows_verified": false,
+  "native_linux_verified": false,
+  "candidate_clean_exports_verified": false,
+  "production_backend_changed": false,
+  "production_regressions": {
+    "command": "DECOMP_TEST_PS2_CPP=1 python -m pytest -q tests/test_ps2.py tests/test_ps2_cpp.py",
+    "passed": 16,
+    "skipped": 0,
+    "compiler_execution": "Pinned original Linux i386 compiler through QEMU on Linux; not native execution"
+  }
+}

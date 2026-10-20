@@ -1,0 +1,529 @@
+--- a/config.sub
++++ b/config.sub
+@@ -255,7 +255,7 @@
+ 	      | we32k-* | cydra-* | ns16k-* | pn-* | np1-* | xps100-* \
+ 	      | clipper-* | orion-* \
+ 	      | sparclite-* | pdp11-* | sh-* | powerpc-* | powerpcle-* \
+-	      | sparc64-* | sparcv9-* | sparc86x-* | mips16-* | mips64-* | mipsel-* \
++	      | sparc64-* | sparcv9-* | sparc86x-* | mips16-* | mips64-* | mips64r5900-* | mipsel-* \
+ 	      | mips64el-* | mips64orion-* | mips64orionel-* \
+ 	      | mips64vr4100-* | mips64vr4100el-* | mips64vr4300-* | mips64vr4300el-* \
+ 	      | mipstx39-* | mipstx39el-* | mcore-* \
+--- a/gcc/config/i386/xm-i386.h
++++ b/gcc/config/i386/xm-i386.h
+@@ -30,7 +30,11 @@
+ #define HOST_BITS_PER_CHAR 8
+ #define HOST_BITS_PER_SHORT 16
+ #define HOST_BITS_PER_INT 32
++#ifdef __SIZEOF_LONG__
++#define HOST_BITS_PER_LONG (__SIZEOF_LONG__ * 8)
++#else
+ #define HOST_BITS_PER_LONG 32
++#endif
+ #define HOST_BITS_PER_LONGLONG 64
+ 
+ /* Arguments to use with `exit'.  */
+--- a/gcc/config/mips/elf5900.h
++++ b/gcc/config/mips/elf5900.h
+@@ -45,6 +45,10 @@
+ 
+ #include "mips/elfl64.h"
+ #include "mips/abi64.h"
++
++/* Observed original EE defaults: GNU assembler and split addresses. */
++#undef TARGET_DEFAULT
++#define TARGET_DEFAULT (MASK_FLOAT64 | MASK_64BIT | MASK_GAS | MASK_SPLIT_ADDR)
+ 
+ /* Override default STACK_BOUNDARY and MIPS_STACK_ALIGN definitions
+    for 128bit lq/sq support.  */
+--- a/gcc/config/mips/mips.c
++++ b/gcc/config/mips/mips.c
+@@ -50,6 +50,7 @@
+ 
+ #include "tree.h"
+ #include "expr.h"
++#include "function.h"
+ #include "flags.h"
+ #include "reload.h"
+ #include "output.h"
+@@ -96,7 +97,7 @@
+ static void block_move_loop			PROTO ((rtx, rtx, int, int,
+ 							rtx, rtx));
+ static void block_move_call			PROTO ((rtx, rtx, rtx));
+-static FILE *make_temp_file			PROTO ((void));
++static FILE *ee_make_temp_file			PROTO ((void));
+ static void save_restore_insns			PROTO ((int, rtx,
+ 							long, FILE *));
+ static void mips16_output_gp_offset		PROTO ((FILE *, rtx));
+@@ -3986,7 +3987,7 @@
+ 	    if (TREE_CODE (field) == FIELD_DECL
+ 		&& TREE_CODE (TREE_TYPE (field)) == REAL_TYPE
+ 		&& TYPE_PRECISION (TREE_TYPE (field)) == BITS_PER_WORD
+-		&& (TREE_INT_CST_LOW (DECL_FIELD_BITPOS (field))
++		&& (int_bit_position (field)
+ 		    % BITS_PER_WORD == 0))
+ 	      break;
+ 
+@@ -4023,12 +4024,12 @@
+ 
+ 		  for (; field; field = TREE_CHAIN (field))
+ 		    if (TREE_CODE (field) == FIELD_DECL
+-			&& (TREE_INT_CST_LOW (DECL_FIELD_BITPOS (field))
++			&& (int_bit_position (field)
+ 			    >= bitpos))
+ 		      break;
+ 
+ 		  if (field
+-		      && TREE_INT_CST_LOW (DECL_FIELD_BITPOS (field)) == bitpos
++		      && int_bit_position (field) == bitpos
+ 		      && TREE_CODE (TREE_TYPE (field)) == REAL_TYPE
+ 		      && TYPE_PRECISION (TREE_TYPE (field)) == BITS_PER_WORD)
+ 		    reg = gen_rtx (REG, DFmode,
+@@ -5382,7 +5383,7 @@
+ #endif
+ 
+ static FILE *
+-make_temp_file ()
++ee_make_temp_file ()
+ {
+   FILE *stream;
+   char *base = getenv ("TMPDIR");
+@@ -5605,7 +5606,7 @@
+   if (TARGET_FILE_SWITCHING && ! TARGET_MIPS16)
+     {
+       asm_out_data_file = stream;
+-      asm_out_text_file = make_temp_file ();
++      asm_out_text_file = ee_make_temp_file ();
+     }
+ 
+   else
+@@ -5996,9 +5997,10 @@
+ 
+ static
+ void
+-mips_check_reg_mode (x, set)
++mips_check_reg_mode (x, set, unused)
+      rtx x;
+      rtx set;
++     void *unused;
+ {
+   if (GET_CODE (x) == REG 
+       && REGNO (x) <= GP_REG_LAST
+@@ -6055,7 +6057,7 @@
+       for (insn = get_insns (); insn != NULL_RTX; insn = NEXT_INSN (insn))
+ 	{
+ 	  if (GET_RTX_CLASS (GET_CODE (insn)) == 'i')
+-	    note_stores (PATTERN (insn), mips_check_reg_mode);
++	    note_stores (PATTERN (insn), mips_check_reg_mode, NULL);
+ 	}
+       pop_topmost_sequence ();
+       
+@@ -7459,9 +7461,9 @@
+ 	      enum machine_mode second_mode
+ 		= TYPE_MODE (TREE_TYPE (fields[1]));
+ 	      int first_offset
+-		= TREE_INT_CST_LOW (DECL_FIELD_BITPOS (fields[0]));
++		= int_bit_position (fields[0]);
+ 	      int second_offset
+-		= TREE_INT_CST_LOW (DECL_FIELD_BITPOS (fields[1]));
++		= int_bit_position (fields[1]);
+ 
+ 	      return gen_rtx (PARALLEL, mode,
+ 			      gen_rtvec (2,
+--- a/gcc/config/mips/mips.h
++++ b/gcc/config/mips/mips.h
+@@ -31,11 +31,11 @@
+ extern char    *asm_file_name;
+ extern char	call_used_regs[];
+ extern int	current_function_calls_alloca;
+-extern char    *language_string;
++extern const char * const language_string;
+ extern int	may_call_alloca;
+ extern char   **save_argv;
+ extern int	target_flags;
+-extern char    *version_string;
++extern const char *const version_string;
+ 
+ /* MIPS external variables defined in mips.c.  */
+ 
+@@ -1569,7 +1569,7 @@
+    avoiding errors in certain cases of mismatch, it also makes for
+    better code on certain machines. */
+ 
+-#define PROMOTE_PROTOTYPES
++#define PROMOTE_PROTOTYPES 1
+ 
+ /* Define if operations between registers always perform the operation
+    on the full register even if a narrower mode is specified.  */
+@@ -2453,7 +2453,7 @@
+ 
+    It is not proper to define both `PUSH_ROUNDING' and
+    `ACCUMULATE_OUTGOING_ARGS'.  */
+-#define ACCUMULATE_OUTGOING_ARGS
++#define ACCUMULATE_OUTGOING_ARGS 1
+ 
+ /* Offset from the argument pointer register to the first argument's
+    address.  On some machines it may depend on the data type of the
+@@ -4920,6 +4920,6 @@
+ 
+ /* Hook to reorder the list of ready instructions.  */
+ /* Gross.  Passing in the function unit array.  */
+-#define MD_SCHED_REORDER(STREAM, VERBOSE, READY, N_READY) \
+-mips_sched_reorder (STREAM, VERBOSE, READY, N_READY)
+-
++#define MD_SCHED_REORDER(STREAM, VERBOSE, READY, N_READY, CLOCK, MORE) \
++do { (MORE) = ISSUE_RATE; mips_sched_reorder (STREAM, VERBOSE, READY, N_READY); } while (0)
++
+--- a/gcc/config/mips/mips.md
++++ b/gcc/config/mips/mips.md
+@@ -5563,7 +5563,7 @@
+ ;; instruction can be generated by save_restore_insns.
+ 
+ (define_insn ""
+-  [(set (match_operand:DI 0 "memory_operand" "R,m")
++  [(set (match_operand:DI 0 "memory_operand" "=R,m")
+ 	(reg:DI 31))]
+   "TARGET_MIPS16 && TARGET_64BIT"
+   "*
+@@ -6105,7 +6105,7 @@
+ ;; instruction can be generated by save_restore_insns.
+ 
+ (define_insn ""
+-  [(set (match_operand:SI 0 "memory_operand" "R,m")
++  [(set (match_operand:SI 0 "memory_operand" "=R,m")
+ 	(reg:SI 31))]
+   "TARGET_MIPS16"
+   "*
+@@ -6979,7 +6979,7 @@
+    (use (match_operand:SI 2 "small_int" "I"))		;; # bytes to move
+    (use (match_operand:SI 3 "small_int" "I"))		;; alignment
+    (use (const_int 0))]					;; normal block move
+-  ""
++  "!TARGET_MIPS16"
+   "* return output_block_move (insn, operands, 4, BLOCK_MOVE_NORMAL);"
+   [(set_attr "type"	"store")
+    (set_attr "mode"	"none")
+@@ -6990,58 +6990,20 @@
+ ;; byte loads.
+ 
+ (define_insn ""
+-  [(set (match_operand:BLK 0 "memory_operand" "=d")	;; destination
+-	(match_operand:BLK 1 "memory_operand" "d"))	;; source
+-   (clobber (match_scratch:SI 4 "=&d"))			;; temp 1
+-   (clobber (match_scratch:SI 5 "=&d"))			;; temp 2
+-   (clobber (match_scratch:SI 6 "=&d"))			;; temp 3
+-   (clobber (match_scratch:SI 7 "=&d"))			;; temp 4
+-   (use (match_operand:SI 2 "small_int" "I"))		;; # bytes to move
+-   (use (match_operand:SI 3 "small_int" "I"))		;; alignment
++  [(set (match_operand:BLK 0 "memory_operand" "=d,d,o")	;; destination
++	(match_operand:BLK 1 "memory_operand" "d,o,d"))	;; source
++   (clobber (match_scratch:SI 4 "=&d,&d,&d"))			;; temp 1
++   (clobber (match_scratch:SI 5 "=&d,&d,&d"))			;; temp 2
++   (clobber (match_scratch:SI 6 "=&d,&d,&d"))			;; temp 3
++   (clobber (match_scratch:SI 7 "=&d,&d,&d"))			;; temp 4
++   (use (match_operand:SI 2 "small_int" "I,I,I"))		;; # bytes to move
++   (use (match_operand:SI 3 "small_int" "I,I,I"))		;; alignment
+    (use (const_int 0))]					;; normal block move
+   "TARGET_MIPS16"
+   "* return output_block_move (insn, operands, 4, BLOCK_MOVE_NORMAL);"
+   [(set_attr "type"	"multi")
+    (set_attr "mode"	"none")
+    (set_attr "length"	"20")])
+-
+-(define_insn ""
+-  [(set (match_operand:BLK 0 "memory_operand" "=d")	;; destination
+-	(match_operand:BLK 1 "memory_operand" "o"))	;; source
+-   (clobber (match_scratch:SI 4 "=&d"))			;; temp 1
+-   (clobber (match_scratch:SI 5 "=&d"))			;; temp 2
+-   (clobber (match_scratch:SI 6 "=&d"))			;; temp 3
+-   (clobber (match_scratch:SI 7 "=&d"))			;; temp 4
+-   (use (match_operand:SI 2 "small_int" "I"))		;; # bytes to move
+-   (use (match_operand:SI 3 "small_int" "I"))		;; alignment
+-   (use (const_int 0))]					;; normal block move
+-  "TARGET_MIPS16"
+-  "* return output_block_move (insn, operands, 4, BLOCK_MOVE_NORMAL);"
+-  [(set_attr "type"	"multi")
+-   (set_attr "mode"	"none")
+-   (set_attr "length"	"20")])
+-
+-(define_insn ""
+-  [(set (match_operand:BLK 0 "memory_operand" "=o")	;; destination
+-	(match_operand:BLK 1 "memory_operand" "d"))	;; source
+-   (clobber (match_scratch:SI 4 "=&d"))			;; temp 1
+-   (clobber (match_scratch:SI 5 "=&d"))			;; temp 2
+-   (clobber (match_scratch:SI 6 "=&d"))			;; temp 3
+-   (clobber (match_scratch:SI 7 "=&d"))			;; temp 4
+-   (use (match_operand:SI 2 "small_int" "I"))		;; # bytes to move
+-   (use (match_operand:SI 3 "small_int" "I"))		;; alignment
+-   (use (const_int 0))]					;; normal block move
+-  "TARGET_MIPS16"
+-  "* return output_block_move (insn, operands, 4, BLOCK_MOVE_NORMAL);"
+-  [(set_attr "type"	"multi")
+-   (set_attr "mode"	"none")
+-   (set_attr "length"	"20")])
+-
+-;; Split a block move into 2 parts, the first part is everything
+-;; except for the last move, and the second part is just the last
+-;; store, which is exactly 1 instruction (ie, not a usw), so it can
+-;; fill a delay slot.  This also prevents a bug in delayed branches
+-;; from showing up, which reuses one of the registers in our clobbers.
+ 
+ (define_split
+   [(set (mem:BLK (match_operand:SI 0 "register_operand" ""))
+@@ -10005,7 +9967,7 @@
+ (define_expand "tablejump_internal3"
+   [(parallel [(set (pc)
+ 		   (plus:SI (match_operand:SI 0 "register_operand" "d")
+-			    (label_ref:SI (match_operand:SI 1 "" ""))))
++			    (label_ref:SI (match_operand 1 "" ""))))
+ 	      (use (label_ref:SI (match_dup 1)))])]
+   ""
+   "")
+@@ -10013,7 +9975,7 @@
+ (define_expand "tablejump_mips161"
+   [(set (pc) (plus:SI (sign_extend:SI
+ 		       (match_operand:HI 0 "register_operand" "d"))
+-		      (label_ref:SI (match_operand:SI 1 "" ""))))]
++		      (label_ref:SI (match_operand 1 "" ""))))]
+   "TARGET_MIPS16 && !(Pmode == DImode)"
+   "
+ {
+@@ -10035,7 +9997,7 @@
+ (define_expand "tablejump_mips162"
+   [(set (pc) (plus:DI (sign_extend:DI
+ 		       (match_operand:HI 0 "register_operand" "d"))
+-		      (label_ref:DI (match_operand:SI 1 "" ""))))]
++		      (label_ref:DI (match_operand 1 "" ""))))]
+   "TARGET_MIPS16 && Pmode == DImode"
+   "
+ {
+@@ -10064,7 +10026,7 @@
+ (define_insn ""
+   [(set (pc)
+ 	(plus:SI (match_operand:SI 0 "register_operand" "d")
+-		 (label_ref:SI (match_operand:SI 1 "" ""))))
++		 (label_ref:SI (match_operand 1 "" ""))))
+    (use (label_ref:SI (match_dup 1)))]
+   "!(Pmode == DImode) && next_active_insn (insn) != 0
+    && GET_CODE (PATTERN (next_active_insn (insn))) == ADDR_DIFF_VEC
+@@ -10083,7 +10045,7 @@
+ (define_expand "tablejump_internal4"
+   [(parallel [(set (pc)
+ 		   (plus:DI (match_operand:DI 0 "se_register_operand" "d")
+-			    (label_ref:DI (match_operand:SI 1 "" ""))))
++			    (label_ref:DI (match_operand 1 "" ""))))
+ 	      (use (label_ref:DI (match_dup 1)))])]
+   ""
+   "")
+@@ -10095,7 +10057,7 @@
+ (define_insn ""
+   [(set (pc)
+ 	(plus:DI (match_operand:DI 0 "se_register_operand" "d")
+-		 (label_ref:DI (match_operand:SI 1 "" ""))))
++		 (label_ref:DI (match_operand 1 "" ""))))
+    (use (label_ref:DI (match_dup 1)))]
+   "Pmode == DImode && next_active_insn (insn) != 0
+    && GET_CODE (PATTERN (next_active_insn (insn))) == ADDR_DIFF_VEC
+@@ -10168,7 +10130,7 @@
+ 	(mem:SI (plus:SI (mult:SI (match_operand:SI 0 "register_operand" "d")
+ 				  (const_int 4))
+ 			 (label_ref (match_operand 1 "" "")))))
+-   (clobber (match_operand:SI 2 "register_operand" "d"))
++   (clobber (match_operand:SI 2 "register_operand" "=d"))
+    (clobber (reg:SI 31))]
+   "TARGET_EMBEDDED_PIC"
+   "*
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -581,6 +581,7 @@
+ cross_compiling=$ac_cv_prog_cc_cross
+ 
+ ac_exeext=
++case "$host$host_alias" in *mingw*) ac_exeext=.exe ;; esac
+ ac_objext=o
+ if (echo "testing\c"; echo 1,2,3) | grep c >/dev/null; then
+   # Stardent Vistra SVR4 grep lacks -e, says ghazi@caip.rutgers.edu.
+@@ -6012,6 +6013,7 @@
+ 		tm_file="mips/elf5900.h libgloss.h"
+ 		tmake_file=mips/t-r5900
+ 		use_collect2=yes
++		target_requires_64bit_host_wide_int=yes
+ 		;;
+ 	mips64-*-elf*)
+ 		tm_file="mips/elf64.h"
+@@ -7054,6 +7056,11 @@
+ 
+ xm_file="gansidecl.h ${xm_file}"
+ tm_file="gansidecl.h ${tm_file}"
++
++if test x$target_requires_64bit_host_wide_int = xyes; then
++  host_xm_file="host_wint.h ${host_xm_file}"
++  build_xm_file="host_wint.h ${build_xm_file}"
++fi
+ 
+ vars="host_xm_file tm_file tm_p_file xm_file build_xm_file"
+ links="config.h tm.h tm_p.h tconfig.h hconfig.h"
+--- a/gcc/configure.in
++++ b/gcc/configure.in
+@@ -3036,6 +3036,7 @@
+ 		tm_file="mips/elf5900.h libgloss.h"
+ 		tmake_file=mips/t-r5900
+ 		use_collect2=yes
++		target_requires_64bit_host_wide_int=yes
+ 		;;
+ 	mips64-*-elf*)
+ 		tm_file="mips/elf64.h"
+@@ -4098,6 +4099,11 @@
+ 
+ xm_file="gansidecl.h ${xm_file}"
+ tm_file="gansidecl.h ${tm_file}"
++
++if test x$target_requires_64bit_host_wide_int = xyes; then
++  host_xm_file="host_wint.h ${host_xm_file}"
++  build_xm_file="host_wint.h ${build_xm_file}"
++fi
+ 
+ vars="host_xm_file tm_file tm_p_file xm_file build_xm_file"
+ links="config.h tm.h tm_p.h tconfig.h hconfig.h"
+--- a/gcc/cp/cp-tree.h
++++ b/gcc/cp/cp-tree.h
+@@ -2713,9 +2713,8 @@
+    pointer to member function.  TYPE_PTRMEMFUNC_P _must_ be true,
+    before using this macro.  */
+ #define TYPE_PTRMEMFUNC_FN_TYPE(NODE) \
+-  (flag_new_abi                       \
+-   ? (TREE_TYPE (TYPE_FIELDS (NODE))) \
+-   : (TREE_TYPE (TYPE_FIELDS (TREE_TYPE (TREE_CHAIN (TREE_CHAIN (TYPE_FIELDS (NODE))))))))
++  (*(flag_new_abi ? &TREE_TYPE (TYPE_FIELDS (NODE)) \
++     : &TREE_TYPE (TYPE_FIELDS (TREE_TYPE (TREE_CHAIN (TREE_CHAIN (TYPE_FIELDS (NODE))))))))
+ 
+ /* Returns `A' for a type like `int (A::*)(double)' */
+ #define TYPE_PTRMEMFUNC_OBJECT_TYPE(NODE) \
+--- a/gcc/cp/decl.c
++++ b/gcc/cp/decl.c
+@@ -514,10 +514,7 @@
+ 
+ /* The binding level currently in effect.  */
+ 
+-#define current_binding_level			\
+-  (cfun						\
+-   ? cp_function_chain->bindings   		\
+-   : scope_chain->bindings)
++#define current_binding_level (*(cfun ? &cp_function_chain->bindings : &scope_chain->bindings))
+ 
+ /* The binding level of the current class, if any.  */
+ 
+--- a/gcc/cppfiles.c
++++ b/gcc/cppfiles.c
+@@ -363,9 +363,11 @@
+ {
+   if (inc->buffer)
+     {
++#ifdef HAVE_MMAP_FILE
+       if (inc->mapped)
+-	munmap ((caddr_t) inc->buffer, inc->st.st_size);
++	munmap ((void *) inc->buffer, inc->st.st_size);
+       else
++#endif
+ 	free ((PTR) inc->buffer);
+       inc->buffer = NULL;
+     }
+--- a/gcc/gcc.c
++++ b/gcc/gcc.c
+@@ -3327,9 +3327,9 @@
+ #endif
+ #if defined(HAVE_EXECUTABLE_SUFFIX) || defined(HAVE_OBJECT_SUFFIX)
+ 	      if (p[1] == 0)
+-		argv[i+1] = convert_filename (argv[i+1], ! have_c);
++		((const char **) argv)[i+1] = convert_filename (argv[i+1], ! have_c);
+ 	      else
+-		argv[i] = convert_filename (argv[i], ! have_c);
++		((const char **) argv)[i] = convert_filename (argv[i], ! have_c);
+ #endif
+ 	      goto normal_switch;
+ 
+@@ -3605,7 +3605,7 @@
+       else
+ 	{
+ #ifdef HAVE_OBJECT_SUFFIX
+-	  argv[i] = convert_filename (argv[i], 0);
++	  ((const char **) argv)[i] = convert_filename (argv[i], 0);
+ #endif
+ 
+ 	  if (strcmp (argv[i], "-") != 0 && access (argv[i], R_OK) < 0)
+--- a/gcc/system.h
++++ b/gcc/system.h
+@@ -388,7 +388,7 @@
+ extern void free PARAMS ((PTR));
+ #endif
+ 
+-#if defined (HAVE_DECL_GETCWD) && !HAVE_DECL_GETCWD
++#if defined (HAVE_DECL_GETCWD) && !HAVE_DECL_GETCWD && !defined (_WIN32)
+ extern char *getcwd PARAMS ((char *, size_t));
+ #endif
+ 
+@@ -428,7 +428,7 @@
+    libiberty but no declaration is supplied. */
+ #if defined (HAVE_DECL_STRSIGNAL) && !HAVE_DECL_STRSIGNAL
+ # ifndef strsignal
+-extern const char *strsignal PARAMS ((int));
++extern char *strsignal PARAMS ((int));
+ # endif
+ #endif
+ 
+@@ -622,7 +622,7 @@
+ #endif
+ 
+ /* GCC now gives implicit declaration warnings for undeclared builtins.  */
+-#if defined(__GNUC__) && defined (__SIZE_TYPE__)
++#if defined(__GNUC__) && defined (__SIZE_TYPE__) && !defined (alloca)
+ extern void *alloca (__SIZE_TYPE__);
+ #endif
+ 
+--- a/include/obstack.h
++++ b/include/obstack.h
+@@ -425,7 +425,7 @@
+ ({ struct obstack *__o = (OBSTACK);					\
+    if (__o->next_free + sizeof (void *) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (void *));				\
+-   *((void **)__o->next_free)++ = ((void *)datum);			\
++   *((void **)(__o->next_free += sizeof(void *)) - 1) = ((void *)datum);			\
+    (void) 0; })
+ 
+ # define obstack_int_grow(OBSTACK,datum)				\
+@@ -433,11 +433,11 @@
+ ({ struct obstack *__o = (OBSTACK);					\
+    if (__o->next_free + sizeof (int) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (int));				\
+-   *((int *)__o->next_free)++ = ((int)datum);				\
++   *((int *)(__o->next_free += sizeof(int)) - 1) = ((int)datum);				\
+    (void) 0; })
+ 
+-# define obstack_ptr_grow_fast(h,aptr) (*((void **) (h)->next_free)++ = (void *)aptr)
+-# define obstack_int_grow_fast(h,aint) (*((int *) (h)->next_free)++ = (int) aint)
++# define obstack_ptr_grow_fast(h,aptr) (*((void **)((h)->next_free += sizeof(void *)) - 1) = (void *)aptr)
++# define obstack_int_grow_fast(h,aint) (*((int *)((h)->next_free += sizeof(int)) - 1) = (int) aint)
+ 
+ # define obstack_blank(OBSTACK,length)					\
+ __extension__								\
+@@ -545,8 +545,8 @@
+    ? (_obstack_newchunk ((h), sizeof (int)), 0) : 0),			\
+   (*((int *) (((h)->next_free+=sizeof(int))-sizeof(int))) = ((int) datum)))
+ 
+-# define obstack_ptr_grow_fast(h,aptr) (*((char **) (h)->next_free)++ = (char *) aptr)
+-# define obstack_int_grow_fast(h,aint) (*((int *) (h)->next_free)++ = (int) aint)
++# define obstack_ptr_grow_fast(h,aptr) (*((char **)((h)->next_free += sizeof(char *)) - 1) = (char *) aptr)
++# define obstack_int_grow_fast(h,aint) (*((int *)((h)->next_free += sizeof(int)) - 1) = (int) aint)
+ 
+ # define obstack_blank(h,length)					\
+ ( (h)->temp = (length),							\
+--- a/libiberty/configure
++++ b/libiberty/configure
+@@ -513,6 +513,7 @@
+ cross_compiling=$ac_cv_prog_cc_cross
+ 
+ ac_exeext=
++case "$host" in *mingw*) ac_exeext=.exe ;; esac
+ ac_objext=o
+ if (echo "testing\c"; echo 1,2,3) | grep c >/dev/null; then
+   # Stardent Vistra SVR4 grep lacks -e, says ghazi@caip.rutgers.edu.

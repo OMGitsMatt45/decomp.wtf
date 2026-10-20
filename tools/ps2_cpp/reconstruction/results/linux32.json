@@ -1,0 +1,150 @@
+{
+  "experimental": true,
+  "execution": "QEMU i386 on Linux; not native Linux validation; clean recipe build",
+  "frontend_sha256": "fbfd9e1888d9e06f2cfd6d662e4c383f54b8389075d9b5d2a278eafd79bd0984",
+  "source_manifest_sha256": "2e81b7a61d7b520efef6b3d6bb60b6c5f76baa816aa89bcf10e47ee3f5a3344f",
+  "runs": [
+    {
+      "fixture": "ps2_cpp_features.cpp",
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+      "flags": [
+        "-O2",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "deb1ec7e107af613af1af1fd1237350d1796c1c97f59b0c2028be5b9481a8b0c",
+      "reference_function_count": 7,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "ps2_cpp_features.cpp",
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "4e771ca2b4c24f32e6d825a6fb50fa49da4b2b1af8de740143d5a5b20083f32f",
+      "reference_function_count": 7,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "ps2_cpp_features.cpp",
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+      "flags": [
+        "-O0",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "cfd7c9ded583c85e9a158b98102973c61136118d0427cc90a4602059e2b49c25",
+      "reference_function_count": 9,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "ps2_cpp_features.cpp",
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+      "flags": [
+        "-O1",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "71c8fffeeb3a722c0879271d1d24a8169c25649b3bb3f66cdd13063284fec540",
+      "reference_function_count": 7,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "ps2_cpp_features.cpp",
+      "source_sha256": "55e0116069863a510b7380e4f398e04d922d9968e91288e8929a697a734368d2",
+      "flags": [
+        "-Os",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "deb1ec7e107af613af1af1fd1237350d1796c1c97f59b0c2028be5b9481a8b0c",
+      "reference_function_count": 7,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "extended.cpp",
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+      "flags": [
+        "-O2",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "8113baa5d49adbbc3e734de1f8205cecb81eb83c6a41598e526f3a944a619fc1",
+      "reference_function_count": 30,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "extended.cpp",
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "2c38562d5fc9701f574a7df62cbdace538afc8461b56e170800f3c12cea75dd2",
+      "reference_function_count": 30,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "extended.cpp",
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+      "flags": [
+        "-O0",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "a4604062491586e7b33643be38d3de6b4a5d4cc9c3333ead57927b3ff621b9ba",
+      "reference_function_count": 32,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "extended.cpp",
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+      "flags": [
+        "-O1",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "e920eefabec8bdc3ee96a3c1f1b29250a8bc3d27fcba4e7b02a11048cab97a8d",
+      "reference_function_count": 30,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    },
+    {
+      "fixture": "extended.cpp",
+      "source_sha256": "20ba8f60554373a2c69bb0fec9ad899a7af53e641b96f902213392eb5a2edd38",
+      "flags": [
+        "-Os",
+        "-G8"
+      ],
+      "reference_ok": true,
+      "reference_description_sha256": "99e5f9ec8c4c474d50873703f5b3295ef0cd8bc74e96dde658f3cfd65dfd5ec4",
+      "reference_function_count": 30,
+      "candidate_ok": false,
+      "log": "qemu: uncaught target signal 8 (Floating point exception) - core dumped\nee-gcc.real: Internal error: Floating point exception (program cc1plus)\nPlease submit a full bug report.\nSee <URL:http://www.gnu.org/software/gcc/bugs.html> for instructions.\n",
+      "parity": false
+    }
+  ],
+  "candidate_invocations": 10,
+  "all_parity": false
+}

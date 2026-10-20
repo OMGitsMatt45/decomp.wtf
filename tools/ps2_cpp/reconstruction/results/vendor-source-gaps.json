@@ -1,0 +1,41 @@
+{
+  "original_cc1plus_sha256": "560e6f276134d109e2b4c05ee9c72d4f9215ffc86d784eb4491a3dadf316bf9a",
+  "evidence": "ELF .stab N_SO source names and N_FUN function names; neither source file exists in pinned GNU GCC tree",
+  "files": {
+    "cppobscure.c": [
+      "_cpp_generate_obscured",
+      "_cpp_cleanup_obscured",
+      "hashstr",
+      "write_obscured_header",
+      "write_unobscured_header",
+      "_cpp_detect_obscured",
+      "fgetstr",
+      "_cpp_decode_obscured",
+      "key_known",
+      "initiate_unobscured_header",
+      "_cpp_open_obscured",
+      "get_obscured_file_name",
+      "obscured_header_up_to_date",
+      "_cpp_handle_genobscured",
+      "_cpp_handle_useobscured",
+      "get_obscured_header_directory_name",
+      "get_obscured_header_key"
+    ],
+    "range.c": [
+      "calculate_loop_depth",
+      "range_mark",
+      "range_basic_mark",
+      "range_basic_insn",
+      "range_compare",
+      "range_bad_insn",
+      "range_print_flags",
+      "live_range_print",
+      "range_inner",
+      "range_scan_blocks",
+      "range_update_basic_block",
+      "range_finish",
+      "live_range",
+      "init_live_range"
+    ]
+  }
+}

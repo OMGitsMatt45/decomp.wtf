@@ -64,6 +64,11 @@ linker. Disc images and separate overlay files are not repacked.
 
 ## Precise Windows blocker and alternatives
 
+The subsequent [source reconstruction experiment](ps2-cpp-reconstruction.md)
+built Linux ELF32 and Windows PE32 frontends from available sources, but its
+C++ corpus failed on both candidates. It does not supply a compatible native
+Windows backend; reproducible recipes and measured failures are preserved.
+
 See the [source/Windows acquisition investigation](ps2-cpp-source-search.md) for
 verified hashes of a mislabeled Windows candidate and the inspected user upload.
 The upload recovers Sony's incremental patch and build configuration, but its
