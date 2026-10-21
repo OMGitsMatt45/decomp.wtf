@@ -169,24 +169,6 @@
       "status": "Xbox 360 appears in public-project metadata and the compiler pack contains related MSVC tools. Neither fact establishes a raw-game importer or verified Xbox 360 matching/export support."
     },
     {
-      "slug": "pc",
-      "title": "[Future work] PC: qualify executable analysis and reproducible matching builds",
-      "head": "codex/future-pc",
-      "expected_head": "a4cde727cf01a1985f121ae27251ac5eee422d9a",
-      "body": "Existing public-project integration and optional Ghidra x86/AArch64 drafts can help PC projects. There is no generic PE/ELF raw-game importer or guaranteed compiler reconstruction.\n\nThis draft adds `docs/future/pc.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Define bounded PE/COFF and ELF targets, x86/x86-64 first, with explicit executable versus object matching.\n- [ ] Track imports, dynamic relocations, TLS, debug/symbol information and compiler/linker provenance.\n- [ ] Keep source recovery, binary matching and a runnable port as separate milestones.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
-      "path": "docs/future/pc.md",
-      "status": "Existing public-project integration and optional Ghidra x86/AArch64 drafts can help PC projects. There is no generic PE/ELF raw-game importer or guaranteed compiler reconstruction."
-    },
-    {
-      "slug": "other-classic",
-      "title": "[Future work] Other classic consoles: qualify non-Sega CPU and cartridge families",
-      "head": "codex/future-other-classic",
-      "expected_head": "b80f4d4d4d39ea783aa822f9f991ca2227e446e1",
-      "body": "Absent: Atari 2600/5200/7800/Lynx/Jaguar, PC Engine/TurboGrafx-16, Neo Geo, WonderSwan, Virtual Boy, Neo Geo Pocket, 3DO, ColecoVision, Intellivision and related non-Sega families have no integrated workflows.\n\nThis draft adds `docs/future/other-classic.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Produce a per-family feasibility matrix: CPU, format/mapping, sound/co-processors, existing assembler/disassembler, actual Windows/Linux assets and license.\n- [ ] Prioritize PC Engine HuC6280, Atari 6502 families and Neo Geo 68000/Z80 when a legal fixture and reproducible assembler are available.\n- [ ] Keep Lynx 65C02, Jaguar GPU/DSP, WonderSwan x86, Virtual Boy V810, Neo Geo Pocket TLCS-900H, 3DO ARM, ColecoVision Z80 and Intellivision CP1610 as distinct qualification targets.\n- [ ] Build only missing format, mapper, decoder or export adapters; qualify or port upstream CPU tools before considering a new assembler/decompiler from scratch.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
-      "path": "docs/future/other-classic.md",
-      "status": "Absent: Atari 2600/5200/7800/Lynx/Jaguar, PC Engine/TurboGrafx-16, Neo Geo, WonderSwan, Virtual Boy, Neo Geo Pocket, 3DO, ColecoVision, Intellivision and related non-Sega families have no integrated workflows."
-    },
-    {
       "slug": "modern-consoles",
       "title": "[Future work] Modern consoles: record PS4/PS5 and Xbox One/Series feasibility gates",
       "head": "codex/future-modern-consoles",
@@ -204,5 +186,6 @@
       "path": "docs/future/draft-backends.md",
       "status": "m2c is the integrated first-draft backend for supported MIPS/PowerPC/ARM paths; Ghidra is optional for broader architectures. splat/spimdisasm, luvdis, dtk, dsd and RGBDS provide analysis/assembly roles, not interchangeable source decompilers."
     }
-  ]
+  ],
+  "scope": "Nintendo, Xbox and PlayStation consoles; shared decompiler tooling for those consoles"
 }

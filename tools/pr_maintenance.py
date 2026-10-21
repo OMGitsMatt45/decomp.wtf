@@ -4,6 +4,8 @@ PLAN=pathlib.Path('docs/maintenance/pr-plan.json')
 RESULT=pathlib.Path('docs/maintenance/pr-results.json')
 plan=json.loads(PLAN.read_text())
 repo=plan['repository']
+allowed_slugs = ['3ds', 'draft-backends', 'gb-gbc', 'gba', 'gc-wii', 'modern-consoles', 'n64', 'nds', 'nes', 'ps1', 'ps2', 'ps3', 'psp', 'snes', 'switch', 'vita', 'wii-u', 'xbox', 'xbox360']
+assert len(plan["create"]) == 19 and {row["slug"] for row in plan["create"]} == set(allowed_slugs), "Unexpected platform scope; re-review required"
 assert repo=='OMGitsMatt45/decomp.wtf' and os.environ['GITHUB_REPOSITORY']==repo
 results={'repository':repo,'baseline':plan['base_sha'],'closed':[],'preserved':[],'created':[],'errors':[]}
 def gh(*args):
