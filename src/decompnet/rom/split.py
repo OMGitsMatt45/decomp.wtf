@@ -239,7 +239,7 @@ def parse_data(path: Path) -> list[DataSymbol]:
             current.size = max(current.size, end - current.vram)
             syms.append(current)
 
-    bss = path.name.endswith(".bss.s")
+    bss = path.name.endswith((".bss.s", ".sbss.s"))
     for raw in path.read_text(encoding="utf-8").splitlines():
         m = _DLABEL.match(raw)
         if m:
@@ -345,6 +345,51 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
     return image
 
 
+def overlay_contexts(cfg: dict) -> bool:
+    """Keep mutually exclusive programs out of the resident symbol namespace."""
+    segments = [s for s in cfg.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
+    overlays = [s for s in segments if s.get("name", "").startswith("ovl_")]
+    if not overlays:
+        return False
+    for seg in overlays:
+        seg["exclusive_ram_id"] = "playstation_overlays"
+        seg["symbol_name_format"] = "$SEG_$VRAM"
+        seg["symbol_name_format_no_rom"] = "$SEG_$VRAM"
+    # Some boot discs contain several alternative resident executables.
+    for seg in segments:
+        if seg in overlays:
+            continue
+        if any(int(other["vram"]) == int(seg["vram"]) for other in overlays):
+            seg["exclusive_ram_id"] = "playstation_overlays"
+    return True
+
+
+def namespace_overlay_labels(workdir: Path) -> None:
+    """Scope aliases that disassembly still shares between exclusive programs."""
+    from collections import defaultdict
+
+    files = list((workdir / "asm" / "nonmatchings").glob("*/*.s"))
+    files += list((workdir / "asm" / "data").glob("*/*.s"))
+    texts = {p: p.read_text(encoding="utf-8") for p in files}
+    definitions = defaultdict(list)
+    for path, text in texts.items():
+        for name in re.findall(r"^\s*(?:glabel|dlabel|jlabel|alabel|ehlabel)\s+(\w+)", text, re.M):
+            definitions[name].append((path.parent.name, path.stem == name))
+    renames = defaultdict(dict)
+    for name, owners in definitions.items():
+        if len({owner for owner, _ in owners}) < 2:
+            continue
+        keep = next((owner for owner, primary in owners if primary), sorted(owners)[0][0])
+        for owner, _ in owners:
+            if owner != keep:
+                renames[owner][name] = f"{owner}_{name}"
+    for path, text in texts.items():
+        names = renames[path.parent.name]
+        if names:
+            text = re.sub(r"\b(?:" + "|".join(map(re.escape, names)) + r")\b", lambda m: names[m[0]], text)
+            path.write_text(text, encoding="utf-8", newline="\n")
+
+
 def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str, bytes, int, int]], log=print) -> str:
     """PlayStation overlays (overlays.py): each appended to a working copy of the program's image, as a code segment
     of its own at the address it's loaded at. Returns the image splat reads."""
@@ -367,6 +412,7 @@ def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str
     out = f"{Path(image).stem}.overlays{Path(image).suffix}"
     (workdir / out).write_bytes(data)
     cfg["segments"] = segs
+    overlay_contexts(cfg)
     cfg.setdefault("options", {})["target_path"] = out
     cfg["sha1"] = hashlib.sha1(bytes(data)).hexdigest()
     config.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=None), encoding="utf-8")
@@ -395,6 +441,11 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
     config = configs[0]
     image = (yaml.safe_load(config.read_text(encoding="utf-8")).get("options") or {}).get("target_path") or rom_name
     compiler, platform, gp = _patch_config(config)
+    if platform == "ps2":
+        from . import ps2
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        if ps2.bss_layout(cfg, (workdir / rom_name).read_bytes()):
+            config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     big_endian = platform == "n64"
     if platform == "n64":
         image = _add_code_segments(config, workdir, image, log)
@@ -402,6 +453,8 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         image = _add_overlays(config, workdir, image, overlays, log)
     log("disassembling every function")
     out += "\n" + _splat(["split", config.name], workdir)
+    if overlays:
+        namespace_overlay_labels(workdir)
 
     functions = []
     for path in sorted((workdir / "asm" / "nonmatchings").glob("*/*.s")):

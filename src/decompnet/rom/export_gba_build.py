@@ -46,7 +46,9 @@ def run(argv: list[str]) -> None:
 
 
 def arm(tool: str) -> str:
-    return str(toolchains.ensure("arm-gnu", log=lambda *_: None) / "bin" / f"arm-none-eabi-{tool}")
+    tid = "arm-gnu" if toolchains.installed("arm-gnu") is not None else "binutils-arm"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    return str(toolchains.ensure(tid, log=lambda *_: None) / "bin" / f"arm-none-eabi-{tool}{suffix}")
 
 
 def setup() -> None:
@@ -81,7 +83,14 @@ def disassemble() -> None:
             first = next((m.group(1) for l in lines if (m := _START.match(l))), None)
             name = first if first and addr.get(first) == cur else "rom_header" if cur == B["base"] else f"_{cur:08X}"
             path = asm / f"{name}.s"
-            path.write_text('.syntax unified\n.include "macros.inc"\n.text\n' + "\n".join(lines) + "\n",
+            body = "\n".join(lines) + "\n"
+            # Thumb literal loads must resolve while assembling. An undefined
+            # label in another piece cannot be encoded as a PC-relative load.
+            # Define its section-relative address locally without emitting it.
+            own = set(re.findall(r"^(_[0-9A-F]{8}):", body, re.M))
+            relative = "".join(f".set {label}, .text + ({int(label[1:], 16) - cur})\n"
+                               for label in sorted(set(_LABEL.findall(body)) - own))
+            path.write_text('.syntax unified\n.include "macros.inc"\n.text\n.thumb\n' + relative + body,
                             encoding="utf-8")
             pieces.append({"addr": cur, "src": path.relative_to(ROOT).as_posix(), "name": name})
 
@@ -176,12 +185,14 @@ def build_objects() -> tuple[list[dict], dict[str, str]]:
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists() or target.stat().st_mtime < (ROOT / p["src"]).stat().st_mtime:
             run([arm("as"), *AS_FLAGS, "-o", p["obj"], p["src"]])
-    cfg = build_config()
+    cfg = None
     c_objs = {}
     for fn in B["functions"]:
         src = c_source(fn)
         if not src:
             continue
+        if cfg is None:
+            cfg = build_config()
         obj = f"build/{Path(src).with_suffix('.o').as_posix()}"
         (ROOT / obj).parent.mkdir(parents=True, exist_ok=True)
         res = compile_function(cfg, src)

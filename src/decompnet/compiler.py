@@ -69,6 +69,14 @@ def check_assembly(source: str) -> None:
             raise SourceRejected("assembly SECTION names must be plain quoted ASCII names")
 
 
+def check_gnu_assembly(source: str) -> None:
+    """GNU submissions cannot read files or manufacture assembler directives."""
+    if len(source.encode()) > MAX_SOURCE_BYTES:
+        raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
+    if re.search(r"\.(?:include|incbin|macro|endm|altmacro|irp|irpc|rept|purgem|mri)\b|[\\\x00]", source, re.I):
+        raise SourceRejected("GNU assembly must be self-contained: file includes, macros and escapes are not allowed")
+
+
 @dataclass
 class CompilerConfig:
     cmd: list[str]
@@ -82,6 +90,7 @@ class CompilerConfig:
     language: str = "c"
     c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     relative_paths: bool = False  # IDO's legacy driver cannot preserve absolute output paths with spaces
+    assembly_dialect: str = "rgbds"
 
 
 @dataclass
@@ -116,8 +125,19 @@ def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
     if mode == "docker":
         if not cfg.image:
             raise RuntimeError("sandbox = 'docker' needs compiler.image")
-        return ["docker", "run", "--rm", "--network", "none", "--memory", "512m", "--pids-limit", "64",
-                "-v", f"{work}:/work", "-w", "/work", cfg.image, *argv]
+        cmd = ["docker", "run", "--rm", "--network", "none", "--memory", "512m", "--pids-limit", "64",
+               "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
+               "--tmpfs", "/tmp:rw,nosuid,nodev", "-v", f"{work}:/work", "-w", "/work"]
+        if hasattr(os, "getuid"):
+            cmd += ["--user", f"{os.getuid()}:{os.getgid()}"]
+        # Pinned tools live outside the image, just as they do with bubblewrap.
+        for path in dict.fromkeys(cfg.ro_paths):
+            cmd += ["-v", f"{path}:{path}:ro"]
+        if cfg.runtime32:
+            cmd += ["-v", f"{cfg.runtime32}:/opt/rt32:ro",
+                    "-v", f"{cfg.runtime32}/ld-linux.so.2:/lib/ld-linux.so.2:ro",
+                    "-e", "LD_LIBRARY_PATH=/opt/rt32"]
+        return [*cmd, cfg.image, *argv]
     if mode == "bwrap":
         # /tmp first, so read-only mounts of paths that live under /tmp are not hidden by it.
         cmd = ["bwrap", "--tmpfs", "/tmp", "--ro-bind", "/usr", "/usr", "--symlink", "usr/lib64", "/lib64",
@@ -181,8 +201,9 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
     if not trusted:
         try:
             if cfg.language == "asm":
-                check_assembly(context_header)
-                check_assembly(source)
+                check = check_gnu_assembly if cfg.assembly_dialect == "gnu" else check_assembly
+                check(context_header)
+                check(source)
             else:
                 check_source(source)
         except SourceRejected as e:
@@ -200,7 +221,8 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         filename = "func.asm" if cfg.language == "asm" else "func.cpp" if cfg.language == "c++" else "func.c"
         context = "context.inc" if cfg.language == "asm" else "context.h"
         (inc / context).write_text(context_header, encoding="utf-8", newline="\n")
-        prefix = 'INCLUDE "context.inc"\n' if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
+        prefix = ('.include "context.inc"\n' if cfg.assembly_dialect == "gnu" else 'INCLUDE "context.inc"\n') \
+            if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
         (work / filename).write_text(prefix + source + "\n", encoding="utf-8", newline="\n")
 
         root = _root(cfg, work)

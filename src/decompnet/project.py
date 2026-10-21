@@ -171,6 +171,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         language=language,
         c_linkage=language == "c++" and cfg.get("kind") == "rom",
         relative_paths=relative_paths,
+        assembly_dialect=c.get("assembly_dialect", "rgbds"),
         timeout=float(c.get("timeout", 15)),
         sandbox=c.get("sandbox", "auto"),
         image=c.get("image"),
