@@ -1,7 +1,7 @@
 """GB/GBC GUI and agent workflow, using the actual pinned native assembler/linker."""
 
-import json
 import base64
+import json
 import os
 import shutil
 import subprocess
@@ -116,7 +116,7 @@ def test_same_cpu_in_different_banks_and_external_bank_symbols(project):
     assert net.function_diff(slug, target["name"])["score"] == 0
 
 
-@pytest.mark.parametrize("case", ["operand", "bank", "address", "size", "extra_section", "undefined", "bad_source"])
+@pytest.mark.parametrize("case", ["operand", "bank", "address", "size", "extra_section", "ram_section", "missing_label", "undefined", "bad_source"])
 def test_bad_candidates_never_receive_credit(project, case):
     net, slug, agent, _ = project
     add_banks(net, slug, agent)
@@ -128,13 +128,15 @@ def test_bad_candidates_never_receive_credit(project, case):
         "address": source.replace("$4000", "$4001").replace("$4003", "$4004"),
         "size": source.replace("ret", "ret\n    nop"),
         "extra_section": source + '\nSECTION "extra", ROM0[$0300]\n    db $42\n',
+        "ram_section": source + '\nSECTION "scratch", HRAM[$ff80]\n    ds 1\n',
+        "missing_label": source.replace("bank_2", "other_label"),
         "undefined": source.replace("$22", "missing_symbol"),
         "bad_source": "this is invalid assembly",
     }[case]
     result = net.attempt(agent, row["name"], source, slug)
     assert not result["matched"] and result["score"] != 0, result
     assert net._function(row["name"], slug)["status"] != "matched"
-    if case in ("bank", "address", "extra_section"):
+    if case in ("bank", "address", "extra_section", "ram_section"):
         assert "exactly one ROM section" in result["text"]
         assert "exactly one ROM section" in net.function_diff(slug, row["name"])["error"]
 
@@ -210,7 +212,7 @@ def test_browser_header_detection_matches_backend(tmp_path):
         if os.environ.get("DECOMP_TEST_GB_ASM") == "1":
             pytest.fail("the required browser parser check needs Node on the CI runner")
         pytest.skip("browser parser check needs Node")
-    javascript = (Path(__file__).resolve().parents[1] / "src/decompnet/app/static/app.js").read_text()
+    javascript = (Path(__file__).resolve().parents[1] / "src/decompnet/app/static/app.js").read_text(encoding="utf-8")
     parser = javascript[javascript.index("function identifyHead("):javascript.index("function notSupported(")]
     cases = [cartridge(), cartridge(cgb=True), cartridge(banks=72), cartridge()[:-1]]
     wrong_header = bytearray(cases[0]); wrong_header[0x14D] ^= 1
@@ -218,7 +220,7 @@ def test_browser_header_detection_matches_backend(tmp_path):
     script = tmp_path / "browser-parser.cjs"
     script.write_text(parser + '\nconst cases = JSON.parse(require("fs").readFileSync(0, "utf8"));\n'
                       'console.log(JSON.stringify(cases.map(c => identifyHead(new Uint8Array(Buffer.from(c.head,"base64")), '
-                      '{name:"homebrew.gb",size:c.size}))));\n')
+                      '{name:"homebrew.gb",size:c.size}))));\n', encoding="utf-8")
     result = subprocess.run([node, str(script)], text=True, capture_output=True,
                             input=json.dumps([{"head": base64.b64encode(raw[:0x150]).decode(), "size": len(raw)} for raw in cases]), timeout=30)
     assert result.returncode == 0, result.stderr
@@ -236,6 +238,32 @@ def test_large_code_regions_fit_the_submission_limit(tmp_path, rgbds):
     rows = net.store.all("SELECT size,seed FROM functions")
     assert sum(r["size"] for r in rows) == 0x2005
     assert all(r["size"] <= 2048 and len(r["seed"].encode()) < 65536 for r in rows)
+
+
+def test_claims_and_splits_respect_another_agents_lease(project):
+    net, slug, agent, _ = project
+    other, _ = net.local_agent("other-reviewer")
+    row = net._function("func_00000100", slug)
+    net.claim(agent, slug, row["name"])
+    with pytest.raises(NetworkError, match="claimed by"):
+        net.attempt(other, row["name"], row["seed"], slug)
+    with pytest.raises(NetworkError, match="claimed by"):
+        net.split_function(other, slug, row["name"], "00:0101", "stolen")
+
+
+def test_export_reports_and_replaces_a_broken_saved_match(project):
+    net, slug, agent, raw = project
+    add_banks(net, slug, agent)
+    row = net._function("bank_2", slug)
+    assert net.attempt(agent, row["name"], row["seed"], slug)["matched"]
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source=? WHERE id=?", (row["seed"].replace("$22", "$23"), row["id"]))
+    log = []
+    result = net.export_rom(slug, log=log.append)
+    assert result["fallback"] == ["bank_2"] and result["matched"] == 0 and result["identical"]
+    assert any("no longer verifies" in line for line in log)
+    files = list((Path(result["path"]) / "build").glob("*.gb*"))
+    assert len(files) == 1 and files[0].read_bytes() == raw
 
 
 def test_invalid_header_rejected_before_browser_project_created(tmp_path):

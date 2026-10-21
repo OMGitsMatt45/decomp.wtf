@@ -616,7 +616,7 @@ class RomNetwork(Network):
                 if addr in starts:
                     calls.setdefault(f["vram"], set()).add(addr)
                     called_by.setdefault(addr, set()).add(f["vram"])
-                elif rtype not in (match.R_MIPS_26, 10, 83):  # Thumb/SM83 calls to unknown routines are not data uses
+                elif rtype not in (match.R_MIPS_26, 10) and not (proj["arch"] == "sm83" and rtype == 83):
                     uses.setdefault(f["vram"], set()).add(addr)
                     used_by.setdefault(addr, set()).add(f["vram"])
         self._xrefs[proj["id"]] = {"calls": calls, "called_by": called_by, "uses": uses, "used_by": used_by}
