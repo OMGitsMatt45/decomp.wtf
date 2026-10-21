@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     command = [sys.executable, "-m", "pytest", "-q", "--ignore=tests/test_gb.py", "--ignore=tests/test_gb_app.py",
                "--junitxml=operational-results.xml"]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

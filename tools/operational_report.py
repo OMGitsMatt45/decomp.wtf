@@ -1,10 +1,12 @@
 """Make all failures visible even when GitHub caps individual error annotations."""
 
 from pathlib import Path
+import sys
 import xml.etree.ElementTree as ET
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     path = Path("operational-results.xml")
     if not path.exists():
         return
