@@ -18,7 +18,10 @@ python -m pytest tests/test_n64_native.py tests/test_n64code.py tests/test_overl
 The `--cxx` and `--sysroot` options select a release compiler and compatibility
 sysroot. CI builds the source on Windows and Linux and checks the isolated Windows
 installation loads the DLL. The C ABI owns result buffers until `n64_free`;
-exceptions become an error string at the boundary. The old Python implementations
+exceptions become an error string at the boundary. On Windows the per-thread error
+buffer has no destructor, so ending a Python worker does not run MinGW C++ TLS
+cleanup. `tests/test_native_threads.py` exercises the shipped library across repeated
+worker creation and teardown. The old Python implementations
 are test fixtures used for differential validation.
 
 The separate Windows KMC GCC/binutils suite is a GNU C++98 source port of the
@@ -29,4 +32,5 @@ the compiler archive. See `tools/windows/build_kmc_cpp.py` and
 every shipped project runtime object is built from C++. System MinGW runtime
 libraries retain their upstream implementation languages. N64 KMC and IDO 5.3/7.1 game output default
 to C++ through their original frontends. IDO uses each version's SGI/EDG frontend and unchanged
-backend; the classic 5.3 cfront driver remains unsupported. See [IDO C++ support](../../docs/ido-cpp.md).
+backend; IDO 5.3 also provides the verified classic cfront/prelink pipeline.
+See [IDO C++ support](../../docs/ido-cpp.md).
