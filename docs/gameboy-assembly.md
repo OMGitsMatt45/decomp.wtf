@@ -164,6 +164,7 @@ python -m pytest -q tests/test_gb.py tests/test_gb_app.py tests/test_toolchains.
    this pass validates agents and the editor on one local coordinator.
 3. NES/SNES assembly workflows, with separately pinned native toolchains, CPU
    decoders, layouts and exact rebuild tests. Neither is implemented by the
-   Game Boy decoder or enabled in the browser importer. Sega consoles are outside
-   this fork's roadmap. See the [future-work index](future-work.md) for the
-   prepared platform plans and the remaining GB/GBC work.
+   Game Boy decoder or enabled in the browser importer. The platform roadmap
+   covers Nintendo, Xbox and PlayStation consoles. See the
+   [future-work index](future-work.md) for the platform plans and remaining
+   GB/GBC work.

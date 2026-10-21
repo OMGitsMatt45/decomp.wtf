@@ -96,8 +96,9 @@ The application uses Python and browser JavaScript; the N64 analysis library
 uses C++17. Host implementation language and recovered game language are
 separate facts, documented in the compiler record.
 
-NES, SNES, 3DS, Wii U, Switch, PSP, Vita and other missing families are
-[future work](docs/future-work.md). Sega consoles are outside this fork's roadmap.
+NES, SNES, 3DS, Wii U, Switch, PSP, Vita and additional Xbox/PlayStation targets
+are [future work](docs/future-work.md). The roadmap focuses on Nintendo, Xbox
+and PlayStation consoles.
 
 ## How it works
 
