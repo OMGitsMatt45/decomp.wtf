@@ -76,19 +76,8 @@ jobs:
       - name: Require real platform coverage
         run: uv run --no-sync python tools/check_operational_results.py operational-results.xml
       - name: Report failures
-        if: failure()
-        shell: bash
-        run: |
-          uv run --no-sync python - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as E
-          result = Path('operational-results.xml')
-          if result.exists():
-              for tag in ('failure', 'error'):
-                  for node in E.parse(result).iter(tag):
-                      text = (node.text or node.get('message', ''))[-5000:]
-                      print('::error::' + text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
-          PY
+        if: always()
+        run: uv run --no-sync python tools/operational_report.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

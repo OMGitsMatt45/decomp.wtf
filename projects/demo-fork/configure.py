@@ -1,6 +1,7 @@
 """Check the ROM, extract the targets, write build.ninja and objdiff.json."""
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,8 @@ def main() -> int:
     for unit in UNITS:  # "extract" the targets
         subprocess.run([*cc, "-I", str(ROOT / "include"), str(ROOT / "tools" / "reference" / f"{unit}.c"),
                         "-o", str(ROOT / "build" / "expected" / f"{unit}.o")], check=True, capture_output=True)
-    ninja = ["rule cc", f"  command = {' '.join(cc)} -Iinclude $in -o $out", "  description = cc $in", ""]
+    command = subprocess.list2cmdline(cc) if sys.platform == "win32" else shlex.join(cc)
+    ninja = ["rule cc", f"  command = {command} -Iinclude $in -o $out", "  description = cc $in", ""]
     for unit in UNITS:
         ninja.append(f"build build/src/{unit}.o: cc src/{unit}.c | include/game.h")
     ninja.append("")
