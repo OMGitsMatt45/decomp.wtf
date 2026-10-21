@@ -72,7 +72,7 @@ jobs:
       - name: Install all platform toolchains
         run: uv run --no-sync python -m tools.operational
       - name: Full application and compiler suite (GB/GBC reported separately)
-        run: uv run --no-sync python -m pytest -q --ignore=tests/test_gb.py --ignore=tests/test_gb_app.py --junitxml=operational-results.xml
+        run: uv run --no-sync python tools/run_operational.py
       - name: Require real platform coverage
         run: uv run --no-sync python tools/check_operational_results.py operational-results.xml
       - name: Report failures
@@ -82,7 +82,9 @@ jobs:
         if: always()
         with:
           name: operational-${{ matrix.os }}
-          path: operational-results.xml
+          path: |
+            operational-results.xml
+            operational-output.log
 
   gameboy:
     strategy:

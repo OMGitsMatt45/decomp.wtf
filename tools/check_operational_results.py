@@ -7,7 +7,8 @@ from collections import defaultdict
 
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
-            "test_gc", "test_ds", "test_ds_rom_check", "test_export", "test_rom", "test_app_engine", "test_optional_tools"}
+            "test_gc", "test_ds", "test_ds_rom_check", "test_export", "test_rom", "test_app_engine", "test_optional_tools",
+            "test_fork_judge", "test_fork_link", "test_fork_rooms", "test_collab", "test_bridge", "test_app_server"}
 
 
 def main():
