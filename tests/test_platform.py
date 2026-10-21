@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 import time
 
 import pytest
@@ -82,6 +83,14 @@ def _alive(pid: int) -> bool:
         out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
         return str(pid) in out
     try:
+        if sys.platform.startswith("linux"):
+            try:
+                # A killed grandchild can remain a zombie when a container's
+                # PID 1 does not reap orphans; it is no longer executing.
+                if Path(f"/proc/{pid}/stat").read_text().split(")", 1)[1].split()[0] == "Z":
+                    return False
+            except FileNotFoundError:
+                return False
         os.kill(pid, 0)
         return True
     except OSError:

@@ -24,8 +24,8 @@
 # On a server, decomp.wtf also runs in Docker: docker-compose.yml in the repository.
 set -euo pipefail
 
-VERSION="0.10.6"
-REPO="i12bp8/decomp.wtf"
+VERSION="0.19.0"
+REPO="OMGitsMatt45/decomp.wtf"
 START=1
 SOURCE="${DECOMP_SOURCE:-}"
 [ -z "$SOURCE" ] && [ -n "${DECOMP_BRANCH:-}" ] && SOURCE="branch:${DECOMP_BRANCH}"
@@ -84,7 +84,7 @@ command -v curl >/dev/null || fail "curl is required"
 CHANNEL=release BRANCH="" COMMIT="" SPEC="" SRC_DIR=""
 case "$SOURCE" in
   release)
-    SPEC="decompnet @ ${DECOMP_WHEEL:-https://decomp.wtf/dl/decompnet-${VERSION}-py3-none-any.whl}" ;;
+    SPEC="decompnet @ ${DECOMP_WHEEL:-https://github.com/$REPO/releases/download/v${VERSION}/decompnet-${VERSION}-py3-none-any.whl}" ;;
   branch:*)
     CHANNEL=branch BRANCH="${SOURCE#branch:}"
     [ -n "$BRANCH" ] || fail "--source branch:<name> needs a branch name" ;;
@@ -106,8 +106,8 @@ valid_repo() {
   [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ && "${1#*/}" != . && "${1#*/}" != .. ]]
 }
 
-# Releases keep using upstream. Source installs follow an explicit fork, or the checkout's GitHub origin.
-if [ "$SOURCE" != release ]; then
+# Source installs follow the checkout's GitHub origin; all channels honor an explicit repository.
+if [ -n "${DECOMP_REPO:-}" ] || [ "$SOURCE" != release ]; then
   if [ -n "${DECOMP_REPO:-}" ]; then
     valid_repo "$DECOMP_REPO" || fail "DECOMP_REPO must be a GitHub owner/repository (for example, your-name/decomp.wtf)"
     REPO="$DECOMP_REPO"
@@ -162,10 +162,11 @@ elif [ "$CHANNEL" = branch ]; then
   resolve_branch
   step "installing decomp.wtf from the $BRANCH branch${COMMIT:+ @ ${COMMIT:0:7}}"
 else
-  WHEEL="${DECOMP_WHEEL:-https://decomp.wtf/dl/decompnet-${VERSION}-py3-none-any.whl}"
+  WHEEL="${DECOMP_WHEEL:-https://github.com/$REPO/releases/download/v${VERSION}/decompnet-${VERSION}-py3-none-any.whl}"
+  SPEC="decompnet @ $WHEEL"
   if [ -z "${DECOMP_WHEEL:-}" ] && ! curl -fsSLI --max-time 15 -o /dev/null "$WHEEL" 2>/dev/null; then
-    # decomp.wtf blocked or down (a network filter, an outage): the same release, from GitHub
-    step "decomp.wtf's download can't be reached from here: installing ${VERSION} from GitHub instead"
+    # The same version's source archive is a fallback if its wheel is unavailable.
+    step "the release wheel can't be reached: installing ${VERSION} from its GitHub tag instead"
     SPEC="decompnet @ https://github.com/$REPO/archive/refs/tags/v${VERSION}.tar.gz"
   fi
   step "installing decomp.wtf ${VERSION}"

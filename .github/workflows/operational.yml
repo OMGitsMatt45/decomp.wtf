@@ -48,18 +48,12 @@ jobs:
       - name: Isolate downloaded toolchains
         shell: bash
         run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Operational toolchains with spaces" >> "$GITHUB_ENV"
+      - name: Add Windows LLVM tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
       - name: Install all platform toolchains
-        shell: bash
-        run: |
-          for tool in gcc-2.7.2-kmc gcc-2.7.2-psx gcc-2.8.1-psx ee-gcc-2.96 ido-5.3 ido-7.1 arm-gnu agbcc m2c luvdis binutils-mips gc-wii-binutils objdiff-cli dtk sjiswrap dtk-template mwcc mwccarm dsd; do
-            uv run --no-sync decompnet toolchain install "$tool" --accept-license || exit 1
-          done
-      - name: Build original homebrew fixtures
-        shell: bash
-        run: |
-          uv run --no-sync python projects/zlib-n64/prepare.py
-          uv run --no-sync python projects/demo-ds/build.py
-          uv run --no-sync python projects/demo-gc/build.py
+        run: uv run --no-sync python -m tools.operational
       - name: Full application and compiler suite (GB/GBC reported separately)
         run: uv run --no-sync python -m pytest -q --ignore=tests/test_gb.py --ignore=tests/test_gb_app.py --junitxml=operational-results.xml
       - name: Report failures

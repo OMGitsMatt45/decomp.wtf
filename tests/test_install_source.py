@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 INSTALLER = Path(__file__).resolve().parents[1] / "site/public/install.sh"
-UPSTREAM = "i12bp8/decomp.wtf"
+UPSTREAM = "OMGitsMatt45/decomp.wtf"
 COMMIT = "a" * 40
 HEAD = "b" * 40
 
@@ -122,10 +122,11 @@ def test_branch_archive_and_metadata_use_selected_fork(install):
     assert metadata["--repo"] == "fork-user/decomp.wtf" and metadata["--commit"] == HEAD
 
 
-def test_release_keeps_upstream_even_with_repo_override(install):
-    result, _, metadata = install(source_arg="release", repo="fork-user/decomp.wtf")
+def test_release_honors_the_selected_repository(install):
+    result, calls, metadata = install(source_arg="release", repo="fork-user/decomp.wtf")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert metadata["--channel"] == "release" and metadata["--repo"] == UPSTREAM
+    assert metadata["--channel"] == "release" and metadata["--repo"] == "fork-user/decomp.wtf"
+    assert any(call[0] == "uv" and "github.com/fork-user/decomp.wtf/releases/download/v0.19.0/" in call[-1] for call in calls)
 
 
 def test_source_zip_does_not_inherit_its_parent_checkout(install):

@@ -26,7 +26,8 @@ from pathlib import Path
 
 from .. import __version__, hostenv, toolchains
 
-REPO = "i12bp8/decomp.wtf"
+REPO = "OMGitsMatt45/decomp.wtf"
+UPSTREAM_REPO = "i12bp8/decomp.wtf"
 SITE = "https://decomp.wtf"
 RECHECK = {"release": 3 * 3600, "branch": 15 * 60}  # GitHub allows 60 unauthenticated API calls an hour
 
@@ -78,6 +79,20 @@ def _first_line(message: str) -> str:
 
 
 def _check_release(cur: dict) -> dict:
+    if cur["repo"] != UPSTREAM_REPO:
+        release = _json(f"https://api.github.com/repos/{cur['repo']}/releases/latest")
+        tag = release.get("tag_name", "")
+        if not re.fullmatch(r"v\d+\.\d+\.\d+", tag) or release.get("draft") or release.get("prerelease"):
+            raise ValueError("GitHub did not return a stable release tag")
+        latest = tag[1:]
+        wheel = f"decompnet-{latest}-py3-none-any.whl"
+        has_wheel = any(a.get("name") == wheel for a in release.get("assets", []))
+        url = (f"https://github.com/{cur['repo']}/releases/download/{tag}/{wheel}" if has_wheel else
+               f"https://github.com/{cur['repo']}/archive/refs/tags/{tag}.tar.gz")
+        return {"available": version_key(latest) > version_key(cur["version"]),
+                "latest": {"version": latest, "commit": "", "date": release.get("published_at")},
+                "notes": (release.get("body") or "").splitlines()[:12],
+                "link": f"https://github.com/{cur['repo']}/releases/tag/{tag}", "spec": f"decompnet @ {url}"}
     try:
         text, site = _get(f"{SITE}/install.sh").decode("utf-8", "replace"), True
     except OSError:  # decomp.wtf can't be reached from here (a filter, an outage): the release on GitHub

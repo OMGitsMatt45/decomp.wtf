@@ -63,7 +63,7 @@ def native_helpers(*names):
 $ast = [System.Management.Automation.Language.Parser]::ParseFile({ps_string(NATIVE_INSTALLER)}, [ref]$null, [ref]$null)
 $config = $ast.FindAll({{ param($n)
     $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-    $n.Left.Extent.Text -in @('$DefaultRepo', '$UA')
+    $n.Left.Extent.Text -in @('$DefaultRepo', '$ReleaseVersion', '$UA')
 }}, $true)
 foreach ($item in $config) {{ Invoke-Expression $item.Extent.Text }}
 $names = @({', '.join(ps_string(name) for name in names)})
@@ -181,13 +181,20 @@ def test_native_checkout_installs_own_copy_and_calls_native_commands(native_setu
                                         "--branch": "feature/windows", "--commit": "a" * 40}
 
 
-def test_native_download_defaults_to_fork_main(native_setup):
+def test_native_download_defaults_to_published_fork_release(native_setup):
     outcome, output = native_setup(checkout=False, start=True)
     assert outcome["Error"] is None, output
-    assert outcome["BuildSpec"] == f"decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/archive/{'b' * 40}.tar.gz"
+    assert outcome["BuildSpec"] == "decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/releases/download/v0.19.0/decompnet-0.19.0-py3-none-any.whl"
     assert native_metadata(outcome)["--repo"] == "OMGitsMatt45/decomp.wtf"
-    assert native_metadata(outcome)["--branch"] == "main"
+    assert native_metadata(outcome)["--channel"] == "release"
     assert any(call[0] == "start" and "FakeDecomp" in call for call in outcome["Calls"])
+
+
+def test_native_explicit_release_honors_fork_override(native_setup):
+    outcome, output = native_setup(checkout=False, requested="release", repo="other-fork/decomp.wtf")
+    assert outcome["Error"] is None, output
+    assert outcome["BuildSpec"] == "decompnet @ https://github.com/other-fork/decomp.wtf/releases/download/v0.19.0/decompnet-0.19.0-py3-none-any.whl"
+    assert native_metadata(outcome) == {"--channel": "release", "--repo": "other-fork/decomp.wtf"}
 
 
 def test_native_branch_override_and_api_fallback_use_selected_fork(native_setup):
@@ -219,8 +226,7 @@ def test_native_checkout_explicit_repo_and_branch_override(native_setup):
     assert native_metadata(outcome)["--branch"] == "native-windows"
 
 
-@pytest.mark.parametrize("requested,repo,reason", [("release", None, "predates native Windows"),
-                                                  ("branch:", None, "needs a branch name"),
+@pytest.mark.parametrize("requested,repo,reason", [("branch:", None, "needs a branch name"),
                                                   ("branch:main", "fork-user/..", "owner/name")])
 def test_native_invalid_sources_fail_before_uv_install(native_setup, requested, repo, reason):
     outcome, output = native_setup(checkout=False, requested=requested, repo=repo)

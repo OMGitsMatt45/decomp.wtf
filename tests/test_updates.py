@@ -17,6 +17,7 @@ from decompnet.app import updates
 @pytest.fixture(autouse=True)
 def data_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(updates, "info_file", lambda: tmp_path / "install.json")
     return tmp_path / "data"
 
 
@@ -30,6 +31,7 @@ def test_install_info_round_trip():
 
 
 def test_release_update(monkeypatch):
+    updates.record("release", repo=updates.UPSTREAM_REPO)
     newer = ".".join(str(x + (1 if i == 2 else 0)) for i, x in enumerate(updates.version_key(__version__)))
     monkeypatch.setattr(updates, "_get", lambda url, timeout=15: f'#!/bin/sh\nVERSION="{newer}"\n'.encode())
     found = updates.check()
@@ -41,6 +43,7 @@ def test_release_update(monkeypatch):
 
 def test_release_update_from_github_when_decomp_wtf_is_unreachable(monkeypatch):
     """Issue #15: decomp.wtf blocked or down: the release's version from GitHub, installed from its tag's archive."""
+    updates.record("release", repo=updates.UPSTREAM_REPO)
     def get(url, timeout=15):
         if url.startswith(updates.SITE):
             raise urllib.error.URLError("blocked")
@@ -50,6 +53,27 @@ def test_release_update_from_github_when_decomp_wtf_is_unreachable(monkeypatch):
     found = updates.check()
     assert found["available"] and found["latest"]["version"] == "99.0.0" and found["error"] is None
     assert found["spec"] == "decompnet @ https://github.com/i12bp8/decomp.wtf/archive/refs/tags/v99.0.0.tar.gz"
+
+
+@pytest.mark.parametrize("wheel", [True, False])
+def test_fork_release_uses_its_own_github_assets(monkeypatch, wheel):
+    def release(url):
+        assert url == "https://api.github.com/repos/OMGitsMatt45/decomp.wtf/releases/latest"
+        return {"tag_name": "v99.0.0", "published_at": "2026-10-21T00:00:00Z", "body": "Release notes",
+                "assets": [{"name": "decompnet-99.0.0-py3-none-any.whl"}] if wheel else []}
+    monkeypatch.setattr(updates, "_json", release)
+    found = updates.check()
+    assert found["available"] and found["latest"]["version"] == "99.0.0" and found["error"] is None
+    assert found["notes"] == ["Release notes"]
+    assert found["spec"] == ("decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/" +
+                             ("releases/download/v99.0.0/decompnet-99.0.0-py3-none-any.whl" if wheel else
+                              "archive/refs/tags/v99.0.0.tar.gz"))
+
+
+def test_fork_release_rejects_unstable_or_invalid_tags(monkeypatch):
+    for tag in ("main", "v99.0.0-beta.1", "v99.0.0/evil"):
+        monkeypatch.setattr(updates, "_json", lambda url: {"tag_name": tag})
+        assert "stable release tag" in updates.check()["error"]
 
 
 def test_branch_update(monkeypatch):
@@ -64,7 +88,7 @@ def test_branch_update(monkeypatch):
     monkeypatch.setattr(updates, "_branch_version", lambda repo, sha: "0.10.0")
     found = updates.check()
     assert found["available"] and found["latest"]["commit"] == head and found["notes"] == ["Newest", "Older one"]
-    assert found["spec"] == f"decompnet @ https://github.com/i12bp8/decomp.wtf/archive/{head}.tar.gz"
+    assert found["spec"] == f"decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/archive/{head}.tar.gz"
 
     # installed from a commit newer than the branch (pushed elsewhere): not an "update"
     answers[f"compare/{have}...{head}"] = {"status": "behind", "commits": []}

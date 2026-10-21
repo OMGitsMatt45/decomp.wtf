@@ -2,7 +2,7 @@
 # From a checkout or extracted source ZIP: double-click windows.cmd.
 # PowerShell: irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.ps1 | iex
 # Installs for your Windows user with uv and its managed Python 3.12. Projects live in ~/Decomp.
-# A checkout installs its own source; otherwise this fork's main branch is used.
+# A checkout installs its own source; otherwise this fork's published release is used.
 # DECOMP_SOURCE=<folder|branch:name>, DECOMP_BRANCH=<name>, DECOMP_REPO=<owner/repository> override the source.
 # Uninstall: uv tool uninstall decompnet (your projects remain).
 param([switch]$NoStart, [switch]$NoConnect, [string]$Source = "")
@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $DefaultRepo = "OMGitsMatt45/decomp.wtf"
+$ReleaseVersion = "0.19.0"
 $UA = "decomp.wtf-native-installer (PowerShell)"
 
 function Step($Text) { Write-Host "> " -ForegroundColor Green -NoNewline; Write-Host $Text }
@@ -34,17 +35,16 @@ function Valid-Repo([string]$Repo) {
 
 function Resolve-DecompSource([string]$Requested = "", [string]$Checkout = "") {
     $repo = $DefaultRepo
-    $selected = if ($Requested) { $Requested } elseif ($env:DECOMP_SOURCE) { $env:DECOMP_SOURCE } elseif ($env:DECOMP_BRANCH) { "branch:$($env:DECOMP_BRANCH)" } elseif ($Checkout) { $Checkout } else { "branch:main" }
-    if ($selected -eq "release") {
-        throw "The published release predates native Windows support. Use this checkout or DECOMP_SOURCE=branch:main with the native Windows installer."
-    }
+    $selected = if ($Requested) { $Requested } elseif ($env:DECOMP_SOURCE) { $env:DECOMP_SOURCE } elseif ($env:DECOMP_BRANCH) { "branch:$($env:DECOMP_BRANCH)" } elseif ($Checkout) { $Checkout } else { "release" }
     $channel = "branch"
     $branch = ""
     $commit = ""
     $src = ""
     $spec = ""
     $git = Find-Application "git"
-    if ($selected.StartsWith("branch:")) {
+    if ($selected -eq "release") {
+        $channel = "release"
+    } elseif ($selected.StartsWith("branch:")) {
         $branch = $selected.Substring(7)
         if (-not $branch) { throw "DECOMP_SOURCE=branch:<name> needs a branch name" }
     } else {
@@ -70,7 +70,9 @@ function Resolve-DecompSource([string]$Requested = "", [string]$Checkout = "") {
             if (Valid-Repo $candidate) { $repo = $candidate }
         }
     }
-    if (-not $src) {
+    if (-not $src -and $channel -eq "release") {
+        $spec = "decompnet @ https://github.com/$repo/releases/download/v$ReleaseVersion/decompnet-$ReleaseVersion-py3-none-any.whl"
+    } elseif (-not $src) {
         try {
             $head = Invoke-RestMethod -UseBasicParsing -UserAgent $UA -Headers @{ Accept = "application/vnd.github+json" } -Uri "https://api.github.com/repos/$repo/commits/$branch"
             if ($head.sha -match '^[0-9a-f]{40}$') { $commit = $head.sha }
