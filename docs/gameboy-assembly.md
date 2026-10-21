@@ -89,6 +89,12 @@ wrong bank placement and a mismatched base ROM. Native Windows CI checks PE
 executables and rebuilds with System32-only PATH; Linux rebuilds with empty PATH.
 The dedicated workflow fails rather than skips when RGBDS is missing.
 
+[Native verification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39522570824):
+both Ubuntu 24.04 and Windows Server 2022 passed installation and the required
+assembly checks. The broader local regression selection passed 96 tests; five
+cases for other installed compiler combinations were skipped. All Game Boy
+checks ran, including the standalone builder with only standard-library Python.
+
 ```sh
 decompnet toolchain install rgbds
 python -m pytest -q tests/test_gb.py tests/test_toolchains.py
