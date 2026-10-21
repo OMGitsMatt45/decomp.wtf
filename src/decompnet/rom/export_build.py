@@ -132,7 +132,7 @@ def trim(path: Path) -> None:
 
 
 def build_objects(todo: list[tuple[str, str, str]]) -> None:
-    cfg = build_config()
+    cfg = build_config() if any(kind == "c" for kind, _, _ in todo) else None
     as_ = binutils("as")
     for kind, src, obj in todo:
         target = ROOT / obj

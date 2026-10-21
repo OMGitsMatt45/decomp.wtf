@@ -115,6 +115,12 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     # 1. splat again, with the project's names
     log("writing the assembly with the project's names (splat)")
     shutil.copyfile(configs[0], out / "splat.yaml")
+    if platform == "n64":
+        # A ROM title can contain NULs, quotes or whitespace. Splat's string
+        # form can change those bytes or produce assembly GAS cannot read.
+        config = yaml.safe_load((out / "splat.yaml").read_text(encoding="utf-8"))
+        config.setdefault("options", {})["header_encoding"] = "word"
+        (out / "splat.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     shutil.copyfile(work / image_name, out / image_name)
     for extra in ("reloc_addrs.txt",):
         if (work / extra).exists():
@@ -239,6 +245,12 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                            "pieces": sorted(data, key=lambda d: d["vram"]), "bss": sorted(bss, key=lambda d: d["vram"])})
     syms = net.symbols(proj["id"])
     absolute = {s.name: s.address for s in syms.by_name.values() if s.name not in defined}
+    # Splat can emit a branch into another function as .L<address>. Each
+    # function is a separate object, so that object's local label is hidden
+    # from the caller. Keep the original address available to the linker.
+    for path in (out / "asm").glob("**/*.s"):
+        for label, address in re.findall(r"(\.L([0-9A-F]{8}))\b", path.read_text(encoding="utf-8", errors="replace")):
+            absolute.setdefault(label, int(address, 16))
     for auto in ("undefined_syms_auto.txt", "undefined_funcs_auto.txt"):
         p = out / auto
         if p.exists():
