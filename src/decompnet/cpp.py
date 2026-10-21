@@ -9,6 +9,10 @@ _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
     platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
+    if platform in ("gb", "gbc") or compiler.get("language") == "asm":
+        if platform not in ("gb", "gbc") or toolchain != "rgbds" or compiler.get("language", "asm") != "asm":
+            raise ValueError("GB/GBC assembly projects require RGBDS and compiler.language = 'asm'")
+        return "asm"
     supported = (platform == "n64" and toolchain in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3")) \
         or (platform == "gba" and toolchain == "agbcc") \
         or (platform == "psx" and toolchain in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")) \

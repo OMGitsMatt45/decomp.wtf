@@ -52,6 +52,23 @@ def check_source(source: str) -> None:
             raise SourceRejected(why)
 
 
+def check_assembly(source: str) -> None:
+    """Self-contained RGBDS submissions. File access and generated directive names are excluded.
+
+    The assembler receives only our generated INCLUDE of context.inc. Reject
+    EQUS and string interpolation too, so they cannot manufacture file directives.
+    """
+    if len(source.encode()) > MAX_SOURCE_BYTES:
+        raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
+    # Keep strings for the check: a macro argument must not hide a file directive.
+    code = re.sub(r'"(?:\\.|[^"\\])*"|;[^\n]*', lambda m: '' if m[0].startswith(';') else m[0], source)
+    if re.search(r'\b(INCLUDE|INCBIN|EQUS|MACRO)\b|[{}\\]', code, re.I):
+        raise SourceRejected("assembly must be self-contained: INCLUDE, INCBIN, EQUS, macros, interpolation and escapes are not allowed")
+    for token in re.finditer(r'"[^"\n]*"|\bSECTION\b', code, re.I):
+        if token[0].lower() == "section" and not re.match(r'SECTION\s+"[A-Za-z0-9_. -]+"\s*,', code[token.start():], re.I):
+            raise SourceRejected("assembly SECTION names must be plain quoted ASCII names")
+
+
 @dataclass
 class CompilerConfig:
     cmd: list[str]
@@ -163,7 +180,11 @@ def run_in(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float = 30
 def compile_source(cfg: CompilerConfig, context_header: str, source: str, trusted: bool = False) -> CompileResult:
     if not trusted:
         try:
-            check_source(source)
+            if cfg.language == "asm":
+                check_assembly(context_header)
+                check_assembly(source)
+            else:
+                check_source(source)
         except SourceRejected as e:
             return CompileResult(False, None, f"rejected: {e}")
 
@@ -176,10 +197,11 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         # LF on every platform: to the old GCCs a backslash before CRLF doesn't continue a line ("stray '\' in program")
         if cfg.language == "c++" and cfg.c_linkage:
             context_header, source = cpp.game_abi(context_header), cpp.game_abi(source)
-        filename = "func.cpp" if cfg.language == "c++" else "func.c"
-        (inc / "context.h").write_text(context_header, encoding="utf-8", newline="\n")
-        (work / filename).write_text(f'#include "context.h"\n#line 1 "{filename}"\n' + source + "\n", encoding="utf-8",
-                                     newline="\n")
+        filename = "func.asm" if cfg.language == "asm" else "func.cpp" if cfg.language == "c++" else "func.c"
+        context = "context.inc" if cfg.language == "asm" else "context.h"
+        (inc / context).write_text(context_header, encoding="utf-8", newline="\n")
+        prefix = 'INCLUDE "context.inc"\n' if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
+        (work / filename).write_text(prefix + source + "\n", encoding="utf-8", newline="\n")
 
         root = _root(cfg, work)
         subst = {"{src}": f"{root}/{filename}", "{obj}": f"{root}/func.o", "{include}": f"{root}/include"}

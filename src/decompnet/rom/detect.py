@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 import struct
 from pathlib import Path
 
-from . import chd, gba, n64, overlays, ps2, psx
+from . import chd, gb, gba, n64, overlays, ps2, psx
 from .n64 import RomError
 
-PLATFORMS = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2", "gba": "Game Boy Advance"}
+PLATFORMS = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2", "gba": "Game Boy Advance",
+             "gb": "Game Boy", "gbc": "Game Boy Color"}
 SMALL = 64 * 1024 * 1024  # ROMs and programs are read whole; disc images are read from disk
 
 
@@ -25,6 +26,15 @@ class Picked:
 
 
 def _program(data: bytes, name: str = "") -> Picked | None:
+    if len(data) >= 0x134 and data[0x104:0x134] == gb.LOGO:
+        try:
+            info = gb.read_info(data)
+        except gb.CartridgeError as error:
+            raise RomError(str(error)) from error
+        import hashlib
+        info.update(sha1=hashlib.sha1(data).hexdigest(), game_code="", region="Cartridge",
+                    compiler_guess="RGBDS assembly workflow", byte_order="little")
+        return Picked(info["platform"], data, "rom." + info["platform"], info, False)
     if gba.is_gba(data):
         return Picked("gba", data, "rom.gba", gba.read_info(data), False)
     if data[:4] in n64.MAGIC:

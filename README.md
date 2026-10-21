@@ -70,9 +70,10 @@ Everything runs on your computer. No account, no telemetry, nothing uploaded.
 decomp.wtf runs on **Linux** and **Windows** on Intel or AMD PCs. This fork's Windows installer runs the app and
 available compilers directly on Windows, without WSL, a Linux distribution, or virtualization. macOS isn't supported.
 
-Game Boy and Game Boy Color have a separate [RGBDS assembly workbench](docs/gameboy-assembly.md)
-with bank-aware disassembly and byte-exact rebuilds. Browser import and agent claims for these
-cartridges are still pending.
+Game Boy and Game Boy Color now support browser import, assembly editing and agent claims
+through a [bank-aware RGBDS workflow](docs/gameboy-assembly.md), with byte-exact rebuilds.
+The local command-line assembly workbench is also available. These projects verify assembly;
+they do not recover C/C++ source.
 
 **Linux**
 

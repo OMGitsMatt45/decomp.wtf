@@ -1,9 +1,10 @@
 # Game Boy / Game Boy Color assembly work record
 
-GB/GBC leads the assembly-heavy platform work. This first slice is a local
-assembly workbench: inspect an owner-supplied cartridge, follow direct control
-flow, export editable RGBDS sources, and rebuild the complete cartridge with an
-exact byte comparison. It does not yet create browser projects or agent claims.
+GB/GBC leads the assembly-heavy platform work. The local assembly workbench now
+also connects to browser import, the editor and agent claims: inspect an
+owner-supplied cartridge, follow direct control flow, review RGBDS sources, and
+rebuild the complete cartridge with an exact byte comparison. Assembly projects
+use their own judging path and do not enter C/C++ compilation or m2c.
 
 ## Use it
 
@@ -30,12 +31,49 @@ a machine without decompnet installed, use Python 3.12+ and the pinned RGBDS
 executables: `python build.py game.gb --rgbds /path/to/rgbds-1.0.4`.
 The build script itself uses only Python's standard library.
 
+## Browser and agent workflow
+
+Install RGBDS in **Compilers & tools**, or with the command above. Drop a `.gb`
+or `.gbc` into the app and use the existing ownership confirmation. The browser
+checks the header before import; the server independently checks it again.
+Agents use `project_info`, `claim_function(count=1)`, `get_context`, and
+`compile_and_diff` with **one complete RGBDS section**, including the exact
+exported label shown in the brief. The editor starts with generated assembly
+labelled for review. Guides and built-in agent prompts use SM83 instructions.
+
+`context.inc` contains shared numeric constants, e.g. `DEF VALUE EQU $22`.
+It is included automatically, and edits are rejected when they break a saved
+match. Known external project labels are linked at their recorded banks and CPU
+addresses, including `BANK(label)`. Submissions cannot include files or use
+INCBIN, EQUS, macros, interpolation or escapes. Section names must be plain
+quoted ASCII names. An extra nonempty section, wrong bank/address, wrong size,
+missing label, unresolved symbol or differing operand prevents a match.
+
+`split_function(function="...", at="02:4000", new_name="...")` adds a known
+entry in a switched bank. An address inside an unverified range splits it only
+at an instruction boundary. Generated claim ranges are at most 2048 bytes, so
+large stretches fit the submission limit. Bank/CPU addresses display separately
+from ROM offsets; the internal unique key is `(bank << 16) | CPU` and is never
+used as an instruction operand.
+
+Progress counts **verified assembly bytes over all cartridge bytes**. The app
+also reports disassembled range bytes and bytes retained in the base ROM. Even
+when every discovered range verifies, unknown code/data remains. C/m2c autopilot
+and automatic twin verification are disabled for these projects.
+
+App exports rejudge every saved match, retain annotations and context, compile
+verified ranges as separate units, then compare the entire ROM. Invalid saved
+matches fall back to regenerated baseline assembly with an explicit report.
+Exports go into fresh `source`, `source-2`, etc. directories so edits to previous
+exports are preserved. The original ROM remains an explicit build input.
+
 ## What runs and what it is
 
 | Component | Implementation / language | Native Windows without WSL | Linux x86-64 |
 | --- | --- | --- | --- |
 | RGBDS 1.0.4 `rgbasm` / `rgblink` | Upstream C++20 programs; consume SM83 assembly | Upstream Win64 binaries | Upstream x86-64 binaries |
 | Cartridge inspection and disassembly | Python | Yes | Yes |
+| Browser importer, editor and local agent claims | Python and browser JavaScript; RGBDS for assembly/linking | Yes | Yes |
 | Export builder | Python standard library, invoking RGBDS directly | Yes | Yes |
 | Game sources in this workflow | SM83 assembly (`.asm`), not C/C++ recovery | Assembled by RGBDS | Assembled by RGBDS |
 
@@ -95,18 +133,25 @@ assembly checks. The broader local regression selection passed 96 tests; five
 cases for other installed compiler combinations were skipped. All Game Boy
 checks ran, including the standalone builder with only standard-library Python.
 
+`tests/test_gb_app.py` additionally exercises browser upload/try/export endpoints,
+single claims and credits, native assembly diffs, banked external symbols,
+shared-context regression checks, renames, instruction-boundary splits, added
+entries, assembly-specific agent prompts, browser/server header parity, and clean
+standalone rebuilds containing the saved annotated assembly. Rejection cases
+include an extra one-byte section, a wrong bank/address/operand, wrong extent,
+an undefined symbol, invalid assembly, and prohibited file directives.
+
 ```sh
 decompnet toolchain install rgbds
-python -m pytest -q tests/test_gb.py tests/test_toolchains.py
+python -m pytest -q tests/test_gb.py tests/test_gb_app.py tests/test_toolchains.py
 ```
 
 ## Remaining work, in order
 
-1. GB/GBC browser import, assembly editor/briefs and agent claims; strict assembly
-   candidate judging must use these bank identities and must not enter the C/C++
-   compiler or m2c paths. Assembly verification needs its own progress labels.
-2. Reviewed symbol/data layouts, routine boundaries, mapper-aware cross-bank
+1. Reviewed symbol/data layouts, routine boundaries, mapper-aware cross-bank
    references, hardware register names and handling of RAM-resident code.
+2. GB/GBC room-sharing layout synchronization and broader mapper/game coverage;
+   this pass validates agents and the editor on one local coordinator.
 3. NES/SNES and Mega Drive/Genesis assembly workflows, with separately pinned
    native toolchains, CPU decoders, layouts and exact rebuild tests. None are
    implemented by the Game Boy decoder or enabled in the browser importer.

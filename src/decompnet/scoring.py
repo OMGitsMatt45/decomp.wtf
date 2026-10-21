@@ -61,6 +61,10 @@ def percent_text(p: float | None) -> str:
 
 
 def disassemble(fn: FunctionObj) -> list[Insn]:
+    if fn.arch == "sm83":
+        from .rom.sm83 import disassemble as sm83_disassemble
+        return [Insn(i.address, i.text.split(" ", 1)[0], i.text.partition(" ")[2], i.text)
+                for i in sm83_disassemble(fn.code)]
     arch, mode = _CS[(fn.arch, fn.big_endian)]
     md = capstone.Cs(arch, mode)
     md.detail = True

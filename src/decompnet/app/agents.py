@@ -756,6 +756,8 @@ class Manager:
         if ov.get("kind") == "fork":
             # CodeWarrior's register and stack rules decide most of what's left on GameCube, Wii and DS
             topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") in ("gc", "wii", "nds") else [])]
+        elif ov.get("compiler", {}).get("language") == "asm":
+            topics = ["sm83"]
         else:
             topics = ["workflow", {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
                 "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")]
@@ -777,6 +779,8 @@ class Manager:
                                             guides=", ".join(f'guide("{g}")' for g in guides))
         guide = {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
             "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")
+        if ov.get("compiler", {}).get("language") == "asm":
+            return tools.ASSEMBLY_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
         return tools.WORK_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION), compiler_guide=guide)
 
     def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str]:

@@ -5,6 +5,8 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const hex8 = (n) => "0x" + (n >>> 0).toString(16).toUpperCase().padStart(8, "0");
+const isAssembly = (ov) => ov?.compiler?.language === "asm" || ov?.progress_kind === "assembly";
+const bankAddress = (n) => `${(n >>> 16).toString(16).toUpperCase().padStart(2, "0")}:${(n & 0xffff).toString(16).toUpperCase().padStart(4, "0")}`;
 const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const pctOf = (best, insns) => (best == null ? null : Math.max(0, 1 - best / Math.max(1, insns * 100)));
 /* A match percentage that never reads 100% before the function really matches (99.6% stays 99.6%). */
@@ -195,7 +197,7 @@ async function showHome() {
       : `${esc(p.rom?.game_code || "")}${p.rom?.region ? " · " + esc(p.rom.region) : ""} · ${esc(p.compiler?.name || "")}`;
     a.innerHTML = `<div class="cc-top"><span class="plat">${esc(p.platform_name || "?")}</span><span class="meta">${esc(since(p.last_activity))}</span></div>
       <div><h4>${esc(p.title)}</h4><p class="meta">${meta}</p></div>
-      <div class="meter"><i></i></div><p class="meta"><b>${pctNum(pct)}%</b> of code · ${(p.matched || 0).toLocaleString()} / ${(p.functions || 0).toLocaleString()} functions</p>`;
+      <div class="meter"><i></i></div><p class="meta"><b>${pctNum(pct)}%</b> ${isAssembly(p) ? "of cartridge bytes verified" : "of code"} · ${(p.matched || 0).toLocaleString()} / ${(p.functions || 0).toLocaleString()} ${isAssembly(p) ? "ranges" : "functions"}</p>`;
     box.append(a);
     requestAnimationFrame(() => { a.querySelector(".meter i").style.width = pct + "%"; });
   }
@@ -251,7 +253,7 @@ function parseRom(buf) {
 
 /* What the user dropped, from its first bytes (nothing is uploaded until they confirm). */
 const PLATFORM_NAME = { n64: "Nintendo 64", psx: "PlayStation", ps2: "PlayStation 2", playstation: "PlayStation 1 or 2",
-  gc: "GameCube", wii: "Wii", gcwii: "GameCube or Wii", gba: "Game Boy Advance", nds: "Nintendo DS" };
+  gc: "GameCube", wii: "Wii", gcwii: "GameCube or Wii", gba: "Game Boy Advance", gb: "Game Boy", gbc: "Game Boy Color", nds: "Nintendo DS" };
 const CW_PACK = {
   gcwii: { id: "mwcc", text: "Install CodeWarrior, the compilers GameCube and Wii games were built with (about 80 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
   nds: { id: "mwccarm", text: "Install CodeWarrior for DS, the compilers DS games were built with (about 50 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
@@ -272,6 +274,18 @@ function identifyHead(head, file) {
   const ascii = (a, b) => text(a, b).split("\0")[0].replace(/[^\x20-\x7e]/g, "").trim();
   const stem = file.name.replace(/\.[^.]*$/, "");
   const base = { title: stem, size: file.size };
+  const gbLogo = "ceed6666cc0d000b03730083000c000d0008111f8889000edccc6ee6ddddd999bbbb67636e0eecccdddc999fbbb9333e";
+  if (head.length >= 0x150 && Array.from(head.slice(0x104, 0x134), n => n.toString(16).padStart(2, "0")).join("") === gbLogo) {
+    let checksum = 0;
+    for (let i = 0x134; i < 0x14d; i++) checksum = (checksum - head[i] - 1) & 255;
+    const banks = head[0x148] <= 8 ? 2 << head[0x148] : ({0x52: 72, 0x53: 80, 0x54: 96})[head[0x148]];
+    if (checksum === head[0x14d] && banks * 0x4000 === file.size) {
+      const color = !!(head[0x143] & 0x80);
+      return { ...base, platform: color ? "gbc" : "gb", order: "Banked ROM · RGBDS assembly", entry: 0x100,
+        title: ascii(0x134, color ? 0x13f : 0x144) || stem, banks };
+    }
+    return null;
+  }
   if (text(0, 8) === "PS-X EXE") return { ...base, platform: "psx", order: "PS-X EXE", entry: dv.getUint32(0x10, true) };
   if (head.length > 0xc0 && head[0xb2] === 0x96 && head[3] === 0xea) {  // GBA: fixed byte, header checksum, ARM branch
     let sum = 0;
@@ -310,7 +324,7 @@ function notSupported(head, file) {
   if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf starts from N64, PlayStation 1 and 2, GameCube, Wii, Game Boy Advance and DS games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
-  if (["gb", "gbc"].includes(ext)) return "Game Boy and Game Boy Color have a local RGBDS assembly workbench: use decompnet gb export ROM OUTPUT to create a project. Browser import and agent claims for these cartridges are still to come.";
+  if (["gb", "gbc"].includes(ext)) return "This Game Boy cartridge has an invalid header or ROM size. Use a complete .gb or .gbc image with its original header.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
   if (ext === "cue") return "That's the .cue sheet: pick the .bin file next to it (the track with the game's data, usually Track 1).";
@@ -342,7 +356,7 @@ async function pickFile(file) {
        ["Entry", hex8(info.entry)], ["Looks like", info.compiler === "IDO" ? "IDO" : "GCC (KMC)"]]
     : [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
        info.code ? ["Game ID", info.code] : ["Entry", info.entry != null ? hex8(info.entry) : "from the disc"],
-       ["Project", ["gc", "wii", "gcwii"].includes(p) ? "dtk-template" : p === "nds" ? "ds-decomp" : p === "gba" ? "luvdis" : "splat"]];
+       ["Project", ["gc", "wii", "gcwii"].includes(p) ? "dtk-template" : p === "nds" ? "ds-decomp" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
   $("romFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
   const level = platformStatus(p);
   $("romStatus").hidden = !level;
@@ -364,6 +378,11 @@ function setupCompilers(info) {
   else if (p === "psx") fillCompilers(select, "gcc-2.7.2-psx", "PS1");
   else if (p === "ps2") fillCompilers(select, "ee-gcc-2.96", "PS2");
   else if (p === "gba") fillCompilers(select, "agbcc", "GBA");
+  else if (["gb", "gbc"].includes(p)) {
+    select.innerHTML = '<option value="rgbds">RGBDS 1.0.4 (SM83 assembly)</option>';
+    note.hidden = false;
+    note.textContent = "Assembly ranges are reviewed and verified against your copy. Unknown bytes stay in the base ROM; bank switches may need explicit entries.";
+  }
   else if (p === "playstation") {
     $("compilerRow").hidden = true; note.hidden = false;
     note.textContent = "The compiler is picked from the disc: PSY-Q-era GCC for PlayStation, EE-GCC for PlayStation 2. You can change it later.";
@@ -502,8 +521,8 @@ async function openProject(slug, tab = "overview") {
   document.querySelectorAll("#ptabs [data-ptab]").forEach((a) => { a.href = `#/p/${slug}/${a.dataset.ptab}`; });
   const fork = S.ov.kind === "fork";
   $("mapTitle").textContent = fork ? "Function map" : "ROM map";
-  $("mapHint").textContent = fork ? "Every square is a function, grouped by source file. Click one to see it." : "Every square is a function, in ROM order. Click one to see it.";
-  $("thAddr").textContent = fork ? "File" : "Address";
+  $("mapHint").textContent = isAssembly(S.ov) ? "Each square is a discovered assembly range, in storage bank order. Unknown code and data stay in the base ROM." : fork ? "Every square is a function, grouped by source file. Click one to see it." : "Every square is a function, in ROM order. Click one to see it.";
+  $("thAddr").textContent = fork ? "File" : isAssembly(S.ov) ? "Bank:CPU" : "Address";
   groups.clear(); S.claimSig = "";
   L.q = ""; L.filter = "all"; L.limit = 200; $("fnSearch").value = "";
   $("instrEdit").value = S.ov.instructions || "";
@@ -751,9 +770,12 @@ function linkedText(ov) {
 
 function renderStats(ov) {
   renderHeader(ov);
+  $("progressLabel").textContent = isAssembly(ov) ? "Verified assembly bytes" : "Matched code";
+  $("rangeLabel").textContent = isAssembly(ov) ? "Discovered ranges verified" : "Functions";
   const pct = ov.bytes ? (100 * ov.matched_bytes) / ov.bytes : 0;
   $("pct").textContent = pctNum(pct);
   $("pctSub").textContent = (ov.bytes ? `${bytes(ov.matched_bytes)} of ${bytes(ov.bytes)}` : "") + linkedText(ov) + (S.today ? ` · ${S.today} matched today` : "");
+  if (isAssembly(ov)) $("pctSub").textContent = `${bytes(ov.matched_bytes)} verified of ${bytes(ov.bytes)} in cartridge · ${bytes(ov.base_bytes)} retained in base ROM`;
   $("fnCount").textContent = `${ov.matched.toLocaleString()} / ${ov.functions.toLocaleString()}`;
   renderAutopilot(ov);
   renderSteering(ov);
@@ -849,7 +871,7 @@ function renderNext(ov) {
   const compilerOk = ov.kind === "fork" || ov.compiler.installed;
   if (done) {
     box.hidden = false;
-    box.innerHTML = `<div class="next-text"><b>Every function matches.</b><span class="muted small">Export the project: a source tree that rebuilds your game byte for byte.</span></div><a class="primary small-btn as-btn" href="#/p/${esc(S.slug)}/source">Export</a>`;
+    box.innerHTML = `<div class="next-text"><b>${isAssembly(ov) ? "Every discovered range is verified." : "Every function matches."}</b><span class="muted small">${isAssembly(ov) ? "Unknown code and data remain in the base ROM. Export a verified RGBDS rebuild, or add known bank entries." : "Export the project: a source tree that rebuilds your game byte for byte."}</span></div><a class="primary small-btn as-btn" href="#/p/${esc(S.slug)}/source">Export</a>`;
     return;
   }
   if (ov.kind === "fork" && ov.ready && !ov.functions) {
@@ -1073,7 +1095,7 @@ async function installToolchain(id, proprietary) {
 
 /* ------------------------------------------------------------------ public decomps */
 const PLAT_ORDER = ["gc", "wii", "ps", "ps2", "n64", "gba", "nds", "switch", "win32", "xbox360", "3ds", "xbox", "psp"];
-const PLAT_SHORT = { gc: "GameCube", wii: "Wii", ps: "PS1", psx: "PS1", ps2: "PS2", n64: "N64", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
+const PLAT_SHORT = { gb: "GB", gbc: "GBC", gc: "GameCube", wii: "Wii", ps: "PS1", psx: "PS1", ps2: "PS2", n64: "N64", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
 const cat = { list: null, downloaded: null, plat: "", q: "", done: false };
 
 /* The list decomp.dev had, as this install downloaded it before the directory was retired (none on a new one). */
@@ -1402,7 +1424,7 @@ $("map").addEventListener("mousemove", (ev) => {
   const f = S.map[i];
   const p = pctOf(f.best, f.insns);
   const status = f.status === "matched" ? `matched${f.matched_by ? " by " + esc(f.matched_by) : ""}` : f.status === "working" ? `${esc(f.agent)} is on it` : f.best != null ? `best ${pctText(p)}` : "not started";
-  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : hex8(f.vram);
+  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram);
   tip.innerHTML = `<b>${esc(f.name)}</b><br>${where} · ${f.insns} instructions<br>${status}`;
   tip.hidden = false;
   const wrap = $("mapWrap").getBoundingClientRect();
@@ -1855,7 +1877,7 @@ async function refreshFn(first) {
     S.fnDetail = d;
     $("fnAddr").textContent = S.ov.kind === "fork"
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
-      : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
+      : `${isAssembly(S.ov) ? bankAddress(d.vram) : hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     $("fnName").textContent = d.name;
     fnBadge(d);
     const pinned = (S.ov.priority || []).includes(d.name);
@@ -1874,8 +1896,8 @@ async function refreshFn(first) {
       } catch (e) { toast(esc(e.message), "err"); }
     };
     $("fnAsm").innerHTML = highlightAsm(d.asm);
-    const kinds = { matched: "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)" };
-    $("fnSrcKind").textContent = kinds[d.source_kind] || "No C yet";
+    const kinds = { matched: isAssembly(S.ov) ? "Verified RGBDS assembly" : "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)", assembly: "Generated assembly · review before verifying" };
+    $("fnSrcKind").textContent = kinds[d.source_kind] || (isAssembly(S.ov) ? "No assembly yet" : "No C yet");
     if (!S.editDirty || first) setEditor(d.source || "", d);
     $("copySrc").onclick = () => navigator.clipboard.writeText($("fnEdit").value).then(() => toast("Copied."));
     renderFnChart(d);
@@ -1902,7 +1924,7 @@ function setEditor(source, d) {
 }
 function paintEditor() {
   const ta = $("fnEdit");
-  $("fnSrc").innerHTML = highlightC(ta.value) + "\n";
+  $("fnSrc").innerHTML = (isAssembly(S.ov) ? highlightAsm(ta.value) : highlightC(ta.value)) + "\n";
   $("fnSrc").scrollTop = ta.scrollTop; $("fnSrc").scrollLeft = ta.scrollLeft;
 }
 $("fnEdit").addEventListener("input", () => { S.editDirty = true; paintEditor(); });
@@ -2078,7 +2100,7 @@ function renderList() {
   $("fnFilter").innerHTML = FILTERS.map(([k, label]) => `<button type="button" role="radio" aria-checked="${L.filter === k}" class="${L.filter === k ? "on" : ""}" data-filter="${k}">${label}<span>${counts[k].toLocaleString()}</span></button>`).join("");
   const q = L.q.trim().toLowerCase();
   let rows = S.map.filter((f) => (L.filter === "all" || fnState(f) === L.filter)
-    && (!q || f.name.toLowerCase().includes(q) || hex8(f.vram).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
+    && (!q || f.name.toLowerCase().includes(q) || (isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
   const key = {
     i: (f) => f.i, name: (f) => f.name.toLowerCase(), insns: (f) => f.insns, attempts: (f) => f.attempts || 0,
     best: (f) => (f.status === "matched" ? 2 : f.best == null ? -1 : pctOf(f.best, f.insns)), status: (f) => STATE_RANK[fnState(f)],
@@ -2091,7 +2113,7 @@ function renderList() {
     const best = st === "matched" ? `<span class="ok">100%</span>` : p == null ? `<span class="dim">–</span>` : pctText(p);
     const status = st === "matched" ? `<span class="st matched" title="${esc(f.matched_by ? "by " + f.matched_by : "")}">matched</span>` : st === "asm" ? `<span class="st" title="hand-written assembly: no C compiles to it">assembly</span>` : st === "working" ? `<span class="st working">${esc(f.agent || "working")}</span>`
       : st === "tried" ? `<span class="st tried">tried</span>` : `<span class="st">to do</span>`;
-    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : hex8(f.vram)}</td>
+    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)}</td>
       <td class="mono name">${(S.ov && (S.ov.priority || []).includes(f.name)) ? `<span class="star" title="agents take it next">★</span>` : ""}${esc(f.name)}</td><td class="r mono">${f.insns.toLocaleString()}</td><td class="r mono">${best}</td>
       <td class="r mono">${f.attempts || `<span class="dim">0</span>`}</td><td>${status}</td></tr>`;
   }).join("") || `<tr class="none"><td colspan="6">No function matches${q ? ` “${esc(L.q)}”` : ""}.</td></tr>`;
@@ -2270,6 +2292,7 @@ function renderPrio() {
    function's machine draft through the judge; the permuter works on near misses meanwhile. */
 function renderAutopilot(ov) {
   const box = $("autopilot"), ap = ov.autopilot, tw = ov.twins, pm = ov.permuter;
+  if (isAssembly(ov)) { box.hidden = true; return; }
   const canRun = (ov.kind !== "fork" || ov.ready) && ov.functions - ov.matched > 0;
   box.hidden = !ap && !canRun && !tw && !pm;
   if (box.hidden) return;
@@ -2355,10 +2378,11 @@ function renderSource(ov) {
     return;
   }
   $("srcText").innerHTML = `decomp.wtf writes a complete decompilation project: the matched functions as ${ov.compiler?.language === "c++" ? "C++" : "C"}, everything else as assembly, a linker script and <code>build.py</code>. Then it builds it to prove it rebuilds your game <b>byte for byte</b>. It's the base for ports and mods; game code and data stay out of git, so the tree is safe to put in a repository.`;
+  if (isAssembly(ov)) $("srcText").textContent = `Export editable RGBDS assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base ROM. Every saved match is checked again, then the complete ROM must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.`;
   const stale = ex && ex.matched != null && ex.matched < ov.matched;
   $("srcState").innerHTML = !ex ? `<span class="muted small">Not exported yet.</span>`
     : `<div class="src-line ${ex.identical === false ? "bad" : "ok"}">${ex.identical === false ? "✕ the last rebuild differed" : "✓ rebuilds byte for byte"}</div>
-       <div class="src-line">${ex.matched != null ? `${ex.matched.toLocaleString()} of ${ex.functions.toLocaleString()} functions in ${ex.language === "c++" ? "C++" : "C"}` : ""}${stale ? ` · <b>${ov.matched - ex.matched} new matches since</b>` : ""}</div>
+       <div class="src-line">${ex.matched != null ? `${ex.matched.toLocaleString()} of ${ex.functions.toLocaleString()} ${isAssembly(ov) ? "ranges in verified assembly" : `functions in ${ex.language === "c++" ? "C++" : "C"}`}` : ""}${stale ? ` · <b>${ov.matched - ex.matched} new matches since</b>` : ""}</div>
        ${ex.path ? `<div class="src-line">${esc(ex.path)}</div>` : ""}`;
   $("srcExport").textContent = ex ? "Export again" : "Export project";
 }
@@ -2372,7 +2396,7 @@ $("srcExport").onclick = async () => {
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
-      : `<div class="notice room"><span><b>Rebuilds byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} functions are C.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py`)}`;
+      : `<div class="notice room"><span><b>Rebuilds byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
     wireCopies($("expResult"));
     S.ov = await api(`/api/project?slug=${S.slug}`);
     renderSource(S.ov);
@@ -2384,8 +2408,8 @@ async function renderProjectSettings() {
   const ov = S.ov;
   if (!ov) return;
   const fork = ov.kind === "fork";
-  $("compilerPanel").hidden = fork;
-  if (!fork) {
+  $("compilerPanel").hidden = fork || isAssembly(ov);
+  if (!fork && !isAssembly(ov)) {
     if (!S.st) await loadState();
     fillCompilers($("setTc"), ov.compiler.toolchain, { n64: "N64", psx: "PS1", ps2: "PS2", gba: "GBA" }[ov.platform]);
     $("setFlags").value = ov.compiler.flags.join(" ");

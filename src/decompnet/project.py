@@ -65,6 +65,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     relative_paths = False
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
+        if tc.id == "rgbds" and language != "asm":
+            raise toolchains.ToolchainError("RGBDS assembles GB/GBC sources; it is not a C/C++ compiler")
         if why := tc.unsupported_reason:
             raise toolchains.ToolchainError(why)
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2

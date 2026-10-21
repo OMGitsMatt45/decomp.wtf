@@ -237,6 +237,8 @@ class Network:
                 raise NetworkError(f"{proj['slug']} has one header per source file: pass `function` to get the "
                                    f"header that function compiles against")
             ctx = self._context(proj["id"])
+        if proj["arch"] == "sm83":
+            return f"; context.inc for {proj['slug']} — version {ctx['version']} (included automatically)\n{ctx['header']}"
         return (f"// context.h for {proj['slug']} — version {ctx['version']} "
                 f"(prepended to every compile as #include \"context.h\")\n{ctx['header']}")
 
@@ -313,18 +315,20 @@ class Network:
 
     def _brief(self, fn, agent: Agent | None, header: str) -> str:
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
+        assembly = proj["arch"] == "sm83"
+        fence, context_name = ("```asm", "context.inc") if assembly else ("```c", "context.h")
         ctx = self._context(proj["id"], fn["unit"])
         claim = self.store.one("SELECT * FROM claims WHERE function_id=?", fn["id"])
         lines = [f"## {header}: {proj['slug']}/{fn['name']}",
                  f"size {fn['size']} bytes, {fn['n_insns']} instructions, arch {proj['arch']}, "
-                 f"context.h v{ctx['version']} ({len(ctx['header'].splitlines())} lines)"]
+                 f"{context_name} v{ctx['version']} ({len(ctx['header'].splitlines())} lines)"]
         if claim:
             who = "you" if agent and claim["agent_id"] == agent.id else self._agent_name(claim["agent_id"])
             lines.append(f"claimed by {who}, lease expires in {int(claim['expires_at'] - time.time()) // 60} min "
                          f"(each compile_and_diff renews it)")
         if fn["status"] == "matched":
             lines += [f"MATCHED by {self._agent_name(fn['matched_agent_id'])} {_ago(fn['matched_at'])}:",
-                      "```c", fn["matched_source"].strip(), "```"]
+                      fence, fn["matched_source"].strip(), "```"]
         if self._hash_only(fn):
             lines += ["", "### Target assembly", "This is a hash-only project: the coordinator keeps a one-way fingerprint of "
                       "each function, never its code. Disassemble your own lawful copy with "
@@ -336,10 +340,10 @@ class Network:
             if fn["best_source"]:
                 lines += ["", f"### Best attempt so far: score {fn['best_score']} by "
                               f"{self._agent_name(fn['best_agent_id'])} ({fn['attempts']} attempts total) — "
-                              f"start from this", "```c", fn["best_source"].strip(), "```"]
+                              f"start from this", fence, fn["best_source"].strip(), "```"]
             elif fn["seed"]:
-                lines += ["", "### Machine-generated starting point (m2c: expect wrong types and names; "
-                              "the context header helps)", "```c",
+                lines += ["", ("### Generated assembly starting point (review before verifying)" if assembly else
+                              "### Machine-generated starting point (m2c: expect wrong types and names; the context header helps)"), fence,
                           fn["seed"].strip(), "```"]
         notes = self.store.all(
             "SELECT n.text, n.created_at, a.name FROM notes n LEFT JOIN agents a ON a.id=n.agent_id "
@@ -355,9 +359,12 @@ class Network:
         if fn["unit"] and fn["unit"] in self._unit_contexts(proj["id"]):
             lines.insert(2, f"source unit {fn['unit']}: call get_context with function=\"{fn['name']}\" for its header")
         if header == "CLAIMED":
-            lines += ["", "Next: read context.h with get_context, write C for this function, and iterate with "
+            lines += ["", ("Next: read context.inc with get_context. Submit one complete RGBDS section with the exact "
+                          "exported label, bank, CPU address and size shown above. Iterate with compile_and_diff. "
+                          "context.inc is included automatically; submissions must not include files, INCBIN or EQUS."
+                          if assembly else "Next: read context.h with get_context, write C for this function, and iterate with "
                           "compile_and_diff until score is 0. Submit only the function body (plus any helper "
-                          "declarations); context.h is included automatically."]
+                          "declarations); context.h is included automatically.")]
         return "\n".join(lines)
 
     # --------------------------------------------------------- compile & diff
@@ -399,6 +406,8 @@ class Network:
         cand, verdict, problems = self._evaluate(fn, proj, result.obj)
         if cand is None:
             self._record(fn, agent, None, source, ctx["version"])
+            if problems:
+                return {"text": "❌ Candidate could not be linked:\n" + "\n".join(problems), "score": None, "matched": False}
             return {"text": f"❌ Compiled, but the object has no function named `{fn['name']}`. "
                             f"Define it with exactly that name (non-static).", "score": None, "matched": False}
         if self._hash_only(fn):

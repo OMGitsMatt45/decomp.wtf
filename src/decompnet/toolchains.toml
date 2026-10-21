@@ -436,6 +436,7 @@ license = "MIT"
 source = "gbdev/rgbds v1.0.4"
 description = "Native Game Boy / Game Boy Color assembler and linker. Assembly sources; not a C/C++ compiler."
 binary_name = "rgbasm"
+cmd = ["{tc}/rgbasm", "{flags}", "-I{include}", "-o", "{obj}", "{src}"]
 [[rgbds.parts]]
 url = "https://github.com/gbdev/rgbds/releases/download/v1.0.4/rgbds-linux-x86_64.tar.xz"
 sha256 = "3e19e50ea602e316be709160acaf0a708b1fa6d32d219ec541f244442895dbb7"

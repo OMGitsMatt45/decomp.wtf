@@ -58,7 +58,7 @@ These are recorded separately from completion of the current compiler paths:
 | IRIX application executables | Classic `ptlink` now supplies target objects for N64 linking. A complete IRIX executable environment, original `c++patch`/startup processing and IRIX shared-library linking are not supplied by this ROM toolchain. N64 object/ROM linking uses the pinned target GNU linker. |
 | Target C++ runtime features | Modern standard libraries, exceptions, RTTI, global dynamic initialization and allocation support cannot be inferred from frontend syntax support. These require the particular game's compatible libraries/startup code. |
 | PS2 disc/overlay repacking | Existing exports rebuild and verify the flat payload and original ELF envelope. Repacking whole discs or separate overlays needs a separate format/export implementation. |
-| New consoles / assembly-heavy work | The compiler pass did not add consoles. Subsequent GB/GBC work now has a pinned native RGBDS toolchain, bank-aware local disassembly and exact assembly rebuilds; browser import/claims and later families remain. See the [assembly work record](gameboy-assembly.md). |
+| New consoles / assembly-heavy work | The compiler pass did not add consoles. Subsequent GB/GBC work now has a pinned native RGBDS toolchain, bank-aware disassembly, browser import, assembly claims and exact rebuilds. Mapper analysis and later families remain. See the [assembly work record](gameboy-assembly.md). |
 
 See [PS2](ps2-cpp.md), [IDO](ido-cpp.md), [GBA](gba-cpp.md) and
 [PS1](psx-cpp.md) for the tested language dialects, flags and export behavior.

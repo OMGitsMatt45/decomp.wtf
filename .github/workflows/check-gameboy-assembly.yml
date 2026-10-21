@@ -8,20 +8,36 @@ on:
       - 'src/decompnet/rom/gb*.py'
       - 'src/decompnet/rom/sm83.py'
       - 'src/decompnet/rom/export_gb*.py'
+      - 'src/decompnet/rom/match_gb.py'
+      - 'src/decompnet/app/**'
+      - 'src/decompnet/compiler.py'
+      - 'src/decompnet/project.py'
+      - 'src/decompnet/cpp.py'
+      - 'src/decompnet/network.py'
+      - 'src/decompnet/scoring.py'
       - 'src/decompnet/toolchains.py'
       - 'src/decompnet/toolchains.toml'
       - 'src/decompnet/cli.py'
       - 'tests/test_gb.py'
+      - 'tests/test_gb_app.py'
   pull_request:
     paths:
       - '.github/workflows/check-gameboy-assembly.yml'
       - 'src/decompnet/rom/gb*.py'
       - 'src/decompnet/rom/sm83.py'
       - 'src/decompnet/rom/export_gb*.py'
+      - 'src/decompnet/rom/match_gb.py'
+      - 'src/decompnet/app/**'
+      - 'src/decompnet/compiler.py'
+      - 'src/decompnet/project.py'
+      - 'src/decompnet/cpp.py'
+      - 'src/decompnet/network.py'
+      - 'src/decompnet/scoring.py'
       - 'src/decompnet/toolchains.py'
       - 'src/decompnet/toolchains.toml'
       - 'src/decompnet/cli.py'
       - 'tests/test_gb.py'
+      - 'tests/test_gb_app.py'
 
 permissions:
   contents: read
@@ -46,7 +62,7 @@ jobs:
         run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Game Boy native tools" >> "$GITHUB_ENV"
       - run: uv run --no-sync decompnet toolchain install rgbds
       - name: Required native assembly checks
-        run: uv run --no-sync python -m pytest -q tests/test_gb.py tests/test_toolchains.py --junitxml=gameboy-results.xml
+        run: uv run --no-sync python -m pytest -q tests/test_gb.py tests/test_gb_app.py tests/test_toolchains.py tests/test_cpp_output.py tests/test_agents.py --junitxml=gameboy-results.xml
       - name: Report failures
         if: failure()
         shell: bash

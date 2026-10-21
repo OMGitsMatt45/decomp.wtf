@@ -51,8 +51,15 @@ def build(project: Path, base: Path, *, rgbds: Path | None = None, output: Path 
     with tempfile.TemporaryDirectory(prefix="decomp-gb-") as scratch:
         work = Path(scratch)
         (work / "baserom.gb").write_bytes(raw)
-        _run([assembler, "-I", project.as_posix() + "/", "-o", "project.o", str(project / "main.asm")], work)
-        _run([linker, "-o", "rebuilt.gb", "-m", "rebuilt.map", "-n", "rebuilt.sym", "project.o"], work)
+        objects = []
+        for index, source in enumerate(["main.asm", *manifest.get("units", [])]):
+            path = (project / source).resolve()
+            if not path.is_relative_to(project):
+                raise BuildError("assembly unit must stay inside the exported project")
+            obj = f"unit_{index}.o"
+            _run([assembler, "-I", project.as_posix() + "/", "-o", obj, str(path)], work)
+            objects.append(obj)
+        _run([linker, "-o", "rebuilt.gb", "-m", "rebuilt.map", "-n", "rebuilt.sym", *objects], work)
         rebuilt = (work / "rebuilt.gb").read_bytes()
         if rebuilt != raw:
             first = next((i for i, (a, b) in enumerate(zip(raw, rebuilt)) if a != b), min(len(raw), len(rebuilt)))

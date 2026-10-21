@@ -26,7 +26,7 @@ from pathlib import Path
 from .. import cpp, scoring, seeds, similarity, toolchains
 from ..elfobj import FunctionObj
 from ..network import Agent, Network, NetworkError, _hash_token
-from ..rom import detect, match, split
+from ..rom import detect, gb, match, match_gb, sm83, split
 from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 
 DEFAULT_TOOLCHAIN = {"KMC": "gcc-2.7.2-kmc", "IDO": "ido-7.1", "PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
@@ -36,7 +36,7 @@ DEFAULT_TOOLCHAIN = {"KMC": "gcc-2.7.2-kmc", "IDO": "ido-7.1", "PSYQ": "gcc-2.7.
 # of project as decomp.dev's, linked file by file as it's finished; N64: tested on real games, rebuilt byte for byte).
 # beta: works and is tested on homemade games, less so on real ones yet.
 PLATFORM_STATUS = {"gc": "recommended", "wii": "recommended", "n64": "recommended",
-                   "psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta"}
+                   "psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
 COMPILERS = {
     "gcc-2.7.2-kmc": "many third-party N64 games",
     "ido-7.1": "most later first-party N64 games",
@@ -63,6 +63,7 @@ MW_VERSIONS = {
 
 # Tools shown in Setup besides the compilers.
 TOOLS = {
+    "rgbds": "Game Boy / Game Boy Color assembly verification",
     "m2c": "machine-made first drafts (MIPS, PowerPC, ARM)",
     "objdiff-cli": "judges forks of public decomps, function by function",
     "ghidra": "drafts for PC, Switch and other platforms m2c can't read (540 MB, needs Java 21+)",
@@ -73,7 +74,7 @@ TOOLS = {
 # Functions this small are handed out in batches (claim_function count): agents match most on the first try.
 BATCH_INSNS = 48
 PLATFORM_COMPILERS = {"n64": ["gcc-2.7.2-kmc", "ido-7.1", "ido-5.3"], "psx": ["gcc-2.7.2-psx", "gcc-2.8.1-psx"],
-                      "ps2": ["ee-gcc-2.96"], "gba": ["agbcc"]}
+                      "ps2": ["ee-gcc-2.96"], "gba": ["agbcc"], "gb": ["rgbds"], "gbc": ["rgbds"]}
 _AUTO_TOKEN = re.compile(r"\b(?:func|D|B|jtbl|RO|STR|FLT|DBL)_[0-9A-F]{8}\b")
 _ADDRESS = re.compile(r"^(?:0x)?([0-9A-Fa-f]{8})$")
 
@@ -203,6 +204,16 @@ class RomNetwork(Network):
     def _function(self, name: str, project: str | None):
         """Functions can also be named by address (0x80001234), handy for agents reading assembly, and the way
         agents write names they read elsewhere (see _loose_functions)."""
+        if name and re.fullmatch(r"[0-9A-Fa-fx]+:[0-9A-Fa-fx]+", name.strip()):
+            proj = self._project(project)
+            if proj["arch"] == "sm83":
+                try:
+                    address = gb.Address.parse(name.strip())
+                except gb.CartridgeError as error:
+                    raise NetworkError(str(error)) from error
+                row = self.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], address.key)
+                if row is not None:
+                    return row
         m = _ADDRESS.match(name.strip()) if name else None
         if m:
             proj = self._project(project)
@@ -299,6 +310,8 @@ class RomNetwork(Network):
         return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), cfg.get("gp", 0))
 
     def _target_obj(self, fn, proj):
+        if proj["arch"] == "sm83":
+            return FunctionObj(fn["name"], "sm83", False, fn["target"], [])
         if not self.is_rom(proj):
             return super()._target_obj(fn, proj)
         if self.cfg(proj).get("platform") == "gba":
@@ -306,6 +319,10 @@ class RomNetwork(Network):
         return match.canonical_target(self._rom_target(fn), self.symbols(proj["id"]))
 
     def _evaluate(self, fn, proj, obj: bytes):
+        if proj["arch"] == "sm83":
+            from ..project import compiler_config
+            return match_gb.link(obj, fn["name"], fn["vram"], fn["target"], self.symbols(proj["id"]),
+                                 compiler_config(Path(proj["root"]), self.cfg(proj)))
         if not self.is_rom(proj):
             return super()._evaluate(fn, proj, obj)
         if self.cfg(proj).get("platform") == "gba":
@@ -355,6 +372,8 @@ class RomNetwork(Network):
             compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
             return self.forks.create_scratch(project_file, compiler=compiler, log=log)
         picked = detect.identify(data, name)
+        if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):
+            raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         rom, info = picked.data, picked.info
         for p in self.store.all("SELECT slug, config FROM projects"):
             if json.loads(p["config"]).get("rom", {}).get("sha1") == info["sha1"]:
@@ -370,6 +389,9 @@ class RomNetwork(Network):
         size = f"{info['size'] // (1024 * 1024)} MiB" if info["size"] >= 1 << 20 else f"{info['size'] // 1024} KiB"
         log(f"{detect.PLATFORMS[picked.platform]}: {info['title']} ({info['game_code'] or 'no game code'}, "
             f"{info['region']}), {size}, looks built with {info['compiler_guess']}")
+        if picked.platform in ("gb", "gbc"):
+            from . import gbengine
+            return gbengine.import_rom(self, picked, slug, workdir, log)
         if picked.platform == "gba":
             return self._import_gba(picked, slug, workdir, toolchain, flags, log)
         if picked.overlays:
@@ -527,7 +549,9 @@ class RomNetwork(Network):
     # ------------------------------------------------------------------ drafts
 
     def _seed_for(self, fn, proj) -> str | None:
-        """m2c draft, made the first time someone opens the function (imports stay fast)."""
+        """A draft, made when a function first opens; assembly imports already carry their listing."""
+        if proj["arch"] == "sm83":
+            return fn["seed"]
         if fn["seed"] is not None or not seeds.available():
             return fn["seed"]
         tc = self.cfg(proj)["compiler"]["toolchain"]
@@ -592,13 +616,18 @@ class RomNetwork(Network):
                 if addr in starts:
                     calls.setdefault(f["vram"], set()).add(addr)
                     called_by.setdefault(addr, set()).add(f["vram"])
-                elif rtype not in (match.R_MIPS_26, 10):  # 10: a Thumb call (GBA) to something not known as a function
+                elif rtype not in (match.R_MIPS_26, 10, 83):  # Thumb/SM83 calls to unknown routines are not data uses
                     uses.setdefault(f["vram"], set()).add(addr)
                     used_by.setdefault(addr, set()).add(f["vram"])
         self._xrefs[proj["id"]] = {"calls": calls, "called_by": called_by, "uses": uses, "used_by": used_by}
         return self._xrefs[proj["id"]]
 
     def _extra_brief(self, fn, proj) -> list[str]:
+        if proj["arch"] == "sm83":
+            return ["", "### Assembly range", f"RGBDS SM83 assembly; storage bank/CPU {gb.Address.from_key(fn['vram'])}, "
+                    f"ROM offset ${fn['rom_offset']:x}; exactly {fn['size']} bytes.",
+                    "Known external labels are linked at their recorded banks/CPU addresses. BANK(label) is available.",
+                    "This is a discovered code range, not a proven routine boundary. A match verifies assembly bytes, not C/C++ recovery."]
         if not self.is_rom(proj):
             return []
         syms = self.symbols(proj["id"])
@@ -648,7 +677,8 @@ class RomNetwork(Network):
             key = (r["vram"], r["size"])
             live.add(key)
             if key not in cache:
-                cache[key] = (similarity.thumb_mnemonics(r["target"], r["vram"] or 0) if proj["arch"] == "arm" else
+                cache[key] = ([i.text.split(" ", 1)[0] for i in sm83.disassemble(r["target"])]
+                              if proj["arch"] == "sm83" else similarity.thumb_mnemonics(r["target"], r["vram"] or 0) if proj["arch"] == "arm" else
                               similarity.mips_mnemonics(r["target"], bool(proj["big_endian"]), r["vram"] or 0))
         for key in set(cache) - live:
             del cache[key]
@@ -716,6 +746,11 @@ class RomNetwork(Network):
         syms = self.symbols(proj["id"])
         m = _ADDRESS.match(what.strip())
         addr = int(m.group(1), 16) if m else syms.resolve(what.strip())
+        if proj["arch"] == "sm83" and ":" in what:
+            try:
+                addr = gb.Address.parse(what.strip()).key
+            except gb.CartridgeError as error:
+                raise NetworkError(str(error)) from error
         if addr is None:
             raise NetworkError(f"`{what}` is not an address or a known symbol")
         length = max(4, min(int(length), 512))
@@ -754,6 +789,9 @@ class RomNetwork(Network):
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         if not self.is_rom(proj):
             raise NetworkError("split_function is for ROM projects")
+        if proj["arch"] == "sm83":
+            from . import gbengine
+            return gbengine.split_or_add(self, agent, proj, fn, at, new_name)
         if fn["status"] == "matched":
             raise NetworkError(f"{fn['name']} is matched; it can't be split")
         m = _ADDRESS.match(str(at).strip())
@@ -906,6 +944,10 @@ class RomNetwork(Network):
                 db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                            (proj["id"], new, s.address, s.size, s.kind))
             db.execute("UPDATE functions SET name=? WHERE project_id=? AND (name=? OR vram=?)", (new, proj["id"], old, addr))
+            if proj["arch"] == "sm83":
+                for row in db.execute("SELECT id,asm,seed FROM functions WHERE project_id=?", (proj["id"],)).fetchall():
+                    db.execute("UPDATE functions SET asm=?,seed=? WHERE id=?",
+                               (word.sub(new, row["asm"]), word.sub(new, row["seed"]) if row["seed"] else None, row["id"]))
             for u, header in changed.items():
                 version = self._next_version(db, proj["id"])
                 db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "
@@ -983,6 +1025,8 @@ class RomNetwork(Network):
         neighbours in the same file. Most small functions match on the first try, so an agent writes them all and
         judges them in one compile_and_diff: a fraction of the turns. Big functions come alone."""
         count = max(1, min(int(count or 1), 6))
+        if self._project(project)["arch"] == "sm83":
+            return self.claim(agent, project, None, strategy)
         if count == 1 or self._link(project) is not None:
             return self.claim(agent, project, None, strategy)
         proj = self._project(project)
@@ -1027,6 +1071,8 @@ class RomNetwork(Network):
     def attempt_many(self, agent: Agent, names: list[str], source: str, project: str | None = None) -> str:
         """compile_and_diff for several functions in one source: each judged on its own (a fork's, with the other
         definitions taken out, as its file gets them one by one), in order."""
+        if self._project(project)["arch"] == "sm83":
+            raise NetworkError("submit one RGBDS section and one range name per compile_and_diff")
         fork = self.fork_slug(project)
         out, matched = [], 0
         for name in names:
@@ -1262,11 +1308,14 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         export = export_gba if self.cfg(proj).get("platform") == "gba" else export_rom
+        if proj["arch"] == "sm83":
+            from .gbengine import export_rom as export
         res = export(self, slug, Path(proj["root"]) / "source", log=log)
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             cfg["export"] = {"t": time.time(), "path": str(res["path"]), "identical": res.get("identical"),
                              "matched": res.get("matched"), "functions": res.get("functions"),
+                             "language": res.get("language", cpp.language(cfg)),
                              "fallback": len(res.get("fallback") or [])}
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
         return res
@@ -1310,12 +1359,16 @@ class RomNetwork(Network):
                          "installed": tc.supported and toolchains.installed(tc.id) is not None, "proprietary": tc.proprietary,
                          "supported": tc.supported, "wsl": tc.via_wsl, "language": cpp.language(cfg),
                          "why": tc.unsupported_reason},
-            "functions": agg["total"] or 0, "matched": agg["matched"] or 0, "bytes": agg["bytes"] or 0,
+            "functions": agg["total"] or 0, "matched": agg["matched"] or 0,
+            "bytes": cfg["rom"]["size"] if proj["arch"] == "sm83" else agg["bytes"] or 0,
+            "progress_kind": "assembly" if proj["arch"] == "sm83" else "decompilation",
+            "assembly_bytes": agg["bytes"] or 0,
+            "base_bytes": cfg["rom"]["size"] - (agg["bytes"] or 0) if proj["arch"] == "sm83" else None,
             "matched_bytes": agg["matched_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": self._context(proj["id"])["version"],
             "folder": proj["root"],
             "export": cfg.get("export"),
-            "exportable": cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba"),
+            "exportable": cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }
 
@@ -1416,6 +1469,8 @@ class RomNetwork(Network):
         background. Whatever already matches is saved before any agent spends a token on it; drafts that compile
         become the function's best attempt, so agents start from them. Agents and autopilot never collide: a
         function is held only while its draft compiles, and claimed ones are skipped."""
+        if self._project(slug)["arch"] == "sm83":
+            raise NetworkError("assembly ranges require review and explicit verification; C/m2c autopilot is unavailable")
         state = self.autopilots.get(slug)
         if state and state["state"] == "running":
             return state
@@ -1504,7 +1559,7 @@ class RomNetwork(Network):
     def on_match(self, proj, function_id: int, agent: Agent | None = None) -> None:
         """Its twins get its code, at once. (Not for the full twins pass's own matches while it runs: it tries
         those twins itself.)"""
-        if proj is None:
+        if proj is None or proj["arch"] == "sm83":
             return
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
             return
@@ -1595,7 +1650,7 @@ class RomNetwork(Network):
         else:
             cand, verdict, problems = self._evaluate(fn, proj, result.obj)
             if cand is None:
-                out = {"rows": None, "error": f"the object has no function named `{fn['name']}`", "source": source}
+                out = {"rows": None, "error": "\n".join(problems) if problems else f"the object has no function named `{fn['name']}`", "source": source}
             else:
                 d = scoring.diff(self._target_obj(fn, proj), cand)
                 if verdict is not None:
@@ -1628,11 +1683,14 @@ class RomNetwork(Network):
             fn = self._function(fn["name"], slug)
         return {
             "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
+            "bank": fn["vram"] >> 16 if proj["arch"] == "sm83" else None,
+            "cpu_address": fn["vram"] & 0xffff if proj["arch"] == "sm83" else None,
+            "language": cpp.language(self.cfg(proj)),
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"],
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else
-                           "latest" if latest else "draft" if fn["seed"] else None,
+                           "latest" if latest else ("assembly" if proj["arch"] == "sm83" else "draft") if fn["seed"] else None,
             "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
             "notes": [dict(n) for n in notes],
             "calls": [syms.label(a) for a in sorted(x["calls"].get(fn["vram"], ()))],
@@ -1689,6 +1747,10 @@ class RomNetwork(Network):
         if self.fork_slug(slug):
             raise NetworkError("a fork builds with the project's own compilers and flags")
         proj = self._project(slug)
+        if proj["arch"] == "sm83" and (toolchain != "rgbds" or flags):
+            raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
+        if proj["arch"] == "sm83":
+            return
         tc = toolchains.get(toolchain)
         cfg = self.cfg(proj)
         cfg["compiler"] = {"toolchain": tc.id, "flags": flags or tc.flags, "timeout": 20}

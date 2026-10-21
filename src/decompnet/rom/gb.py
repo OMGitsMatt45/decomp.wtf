@@ -47,6 +47,15 @@ class Address:
     def offset(self) -> int:
         return self.bank * BANK_SIZE + self.cpu % BANK_SIZE
 
+    @property
+    def key(self) -> int:
+        """Unique address in the coordination database; not a CPU pointer."""
+        return self.bank << 16 | self.cpu
+
+    @classmethod
+    def from_key(cls, key: int) -> Address:
+        return cls(key >> 16, key & 0xFFFF)
+
     @classmethod
     def from_offset(cls, offset: int) -> Address:
         if offset < 0:
