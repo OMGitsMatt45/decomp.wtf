@@ -427,6 +427,24 @@ url = "https://github.com/mkst/maspsx/archive/e85ecb373828aabea96d7e6400974d4f91
 sha256 = "9f8ea9827b785ae41437befa8ebdceb8c00f3b1e8f3a90c506948e2df1079bde"
 subdir = "maspsx-e85ecb373828aabea96d7e6400974d4f91ce8c74"
 
+[rgbds]
+name = "RGBDS 1.0.4"
+kind = "tool"
+platform = "GB/GBC"
+arch = "sm83"
+license = "MIT"
+source = "gbdev/rgbds v1.0.4"
+description = "Native Game Boy / Game Boy Color assembler and linker. Assembly sources; not a C/C++ compiler."
+binary_name = "rgbasm"
+[[rgbds.parts]]
+url = "https://github.com/gbdev/rgbds/releases/download/v1.0.4/rgbds-linux-x86_64.tar.xz"
+sha256 = "3e19e50ea602e316be709160acaf0a708b1fa6d32d219ec541f244442895dbb7"
+platforms = ["linux-x86_64"]
+[[rgbds.parts]]
+url = "https://github.com/gbdev/rgbds/releases/download/v1.0.4/rgbds-win64.zip"
+sha256 = "bd1d7e386f290afd57f4ea9a7353bfcd4ae10884a94c5c1f2fc42a75db7f97e6"
+platforms = ["windows-x86_64"]
+
 [ghidra]
 name = "Ghidra"
 kind = "tool"

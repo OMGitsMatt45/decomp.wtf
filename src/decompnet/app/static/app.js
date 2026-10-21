@@ -310,8 +310,9 @@ function notSupported(head, file) {
   if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf starts from N64, PlayStation 1 and 2, GameCube, Wii, Game Boy Advance and DS games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
-  if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. SNES games were written in assembly, not compiled from C, so there's no C source to match.";
-  if (["nes", "gb", "gbc", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Games for that console were written in assembly, not compiled from C, so there's no C source to match.";
+  if (["gb", "gbc"].includes(ext)) return "Game Boy and Game Boy Color have a local RGBDS assembly workbench: use decompnet gb export ROM OUTPUT to create a project. Browser import and agent claims for these cartridges are still to come.";
+  if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
+  if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
   if (ext === "cue") return "That's the .cue sheet: pick the .bin file next to it (the track with the game's data, usually Track 1).";
   if (["zip", "7z", "rar"].includes(ext)) return "That's an archive: unpack it first, then drop the game file inside.";
   if (ext === "apk") return "Android apps aren't supported yet.";
