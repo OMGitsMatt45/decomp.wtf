@@ -1,0 +1,29 @@
+name: Build repaired native analyzer
+
+on:
+  push:
+    branches: [codex/release-operational-check]
+    paths: ['native/n64/**', '.github/workflows/native-repair.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - run: uv run --no-sync python tools/build_n64_native.py
+      - run: uv run --no-sync python tools/run_operational.py tests/test_native_threads.py tests/test_n64_native.py tests/test_n64code.py tests/test_overlays.py
+      - name: Save only the verified DLL on a review branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c codex/n64-thread-fix-binary
+          git add src/decompnet/_native/n64-windows-x86_64.dll
+          git commit -m 'Rebuild the native Windows analyzer with safe worker TLS'
+          git push origin HEAD:refs/heads/codex/n64-thread-fix-binary

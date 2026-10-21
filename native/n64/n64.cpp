@@ -31,7 +31,24 @@ using Decoder = int (*)(std::uint32_t);
 using Inflate = const std::uint8_t* (*)(const std::uint8_t*, std::size_t, std::size_t*, std::size_t*);
 constexpr std::uint32_t return_instruction = 0x03e00008;
 constexpr std::int64_t block_size = 0x400;
+#ifdef _WIN32
+// A statically linked MinGW DLL can outlive Python's short-lived worker threads.
+// Keep TLS trivially destructible: its C++ string destructor corrupts the Windows
+// heap during worker teardown. Error messages need no allocation or destructor.
+struct Error {
+    char text[1024]{};
+    void clear() noexcept { text[0] = '\0'; }
+    Error& operator=(const char* message) noexcept {
+        std::strncpy(text, message, sizeof(text) - 1);
+        text[sizeof(text) - 1] = '\0';
+        return *this;
+    }
+    const char* c_str() const noexcept { return text; }
+};
+thread_local Error error;
+#else
 thread_local std::string error;
+#endif
 
 struct View {
     const std::uint8_t* data;
