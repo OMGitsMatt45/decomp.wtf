@@ -1,0 +1,208 @@
+{
+  "repository": "OMGitsMatt45/decomp.wtf",
+  "base_sha": "11fdfb32c5e9846a6ffe74fc6bc7a2d8f0879f57",
+  "close": [
+    {
+      "number": 2,
+      "expected_head": "3c8911e44add97c08579899d7164ebb28a11082d",
+      "comment": "Closing as superseded by the native PS1 C/C++ integrations and native PS2 EE-GCC 2.96 work now on main and released in v0.19.0. The old PS2-unavailable statement is obsolete. Current compiler status and validation are recorded in docs/compiler-completion.md and https://github.com/OMGitsMatt45/decomp.wtf/releases/tag/v0.19.0 . This closes the outdated proposal without merging its older toolchain configuration."
+    }
+  ],
+  "preserve": [
+    {
+      "number": 1,
+      "expected_head": "2e09e46609c3ec701dedb0035fbb0e5206def432"
+    }
+  ],
+  "create": [
+    {
+      "slug": "n64",
+      "title": "[Future work] Nintendo 64: expand layouts and preserve compiler parity",
+      "head": "codex/future-n64",
+      "expected_head": "339e17e13ad5cbc6315291e306893d182252c52e",
+      "body": "Implemented on native Windows and Linux: KMC GCC 2.7.2, IDO 5.3 SGI/EDG and classic cfront, IDO 7.1, C/C++ matching and fixed-address ROM exports. The v0.19.0 worker lifetime fix is already released.\n\nThis draft adds `docs/future/n64.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Expand reviewed overlay, compressed-segment, TLB and data-layout fixtures; keep uncertain addresses explicit.\n- [ ] Design relocatable or shiftable exports as an additional format, with a relocation inventory and size-growth rules.\n- [ ] Broaden classic cfront template dependency and period C++ runtime coverage without claiming an IRIX application environment.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/n64.md",
+      "status": "Implemented on native Windows and Linux: KMC GCC 2.7.2, IDO 5.3 SGI/EDG and classic cfront, IDO 7.1, C/C++ matching and fixed-address ROM exports. The v0.19.0 worker lifetime fix is already released."
+    },
+    {
+      "slug": "ps1",
+      "title": "[Future work] PlayStation: broaden disc and overlay reconstruction",
+      "head": "codex/future-ps1",
+      "expected_head": "62acefc14b5399ca0c1deae27fb2d4041973dbce",
+      "body": "Implemented C/C++ matching and exports using original PS1 GCC 2.7.2 and 2.8.1 on both hosts. Native GCC 2.8.1 and constant-data parity work supersedes old PR #2.\n\nThis draft adds `docs/future/ps1.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Inventory disc filesystem, overlay load addresses and relocation conventions across reviewed fixtures.\n- [ ] Design an explicit full-disc rebuild path beyond the existing program payload export.\n- [ ] Qualify additional PSY-Q compiler/assembler versions separately; never label compatible assembly as proven equivalence to every original assembler.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/ps1.md",
+      "status": "Implemented C/C++ matching and exports using original PS1 GCC 2.7.2 and 2.8.1 on both hosts. Native GCC 2.8.1 and constant-data parity work supersedes old PR #2."
+    },
+    {
+      "slug": "ps2",
+      "title": "[Future work] PlayStation 2: finish disc exports and qualify additional tooling",
+      "head": "codex/future-ps2",
+      "expected_head": "cebc6a1ffacac9c343a2d89e217610ce745da88f",
+      "body": "Native Windows EE-GCC 2.96 C/C++ hosts, ordinary pinned installation, strict matching and exact flat-payload / ELF-envelope exports shipped in v0.19.0. The exact conventional GNUPro base source remains missing.\n\nThis draft adds `docs/future/ps2.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Implement disc filesystem and separate overlay repacking with explicit ownership of layout metadata.\n- [ ] Continue the exact GNUPro source investigation only against identifiable original releases; EE 2.9 and SN 2.95 are different compilers.\n- [ ] Assess the three user-supplied projects for reusable format/runtime knowledge and compatible licenses. Record matching decompilation versus static recompilation separately.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/ps2.md",
+      "status": "Native Windows EE-GCC 2.96 C/C++ hosts, ordinary pinned installation, strict matching and exact flat-payload / ELF-envelope exports shipped in v0.19.0. The exact conventional GNUPro base source remains missing."
+    },
+    {
+      "slug": "gba",
+      "title": "[Future work] Game Boy Advance: integrate the distinct ARM compiler path",
+      "head": "codex/future-gba",
+      "expected_head": "a6bc0f89c080d8a96906716355d886411078bb9a",
+      "body": "Normal and old agbcc Thumb C/C++ backends are implemented and verified on native Windows and Linux. The separate 2.9-arm-000512 compiler is not an integrated application variant.\n\nThis draft adds `docs/future/gba.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Add explicit ARM-mode compiler identity and variant selection without routing it through either Thumb backend.\n- [ ] Qualify a native Windows host of that exact ARM compiler and its corresponding frontend sources before promising C++.\n- [ ] Handle ARM/Thumb transitions, literal pools and branch veneers in analysis, matching and exported layouts.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/gba.md",
+      "status": "Normal and old agbcc Thumb C/C++ backends are implemented and verified on native Windows and Linux. The separate 2.9-arm-000512 compiler is not an integrated application variant."
+    },
+    {
+      "slug": "nds",
+      "title": "[Future work] Nintendo DS: resolve encrypted imports and reconstruction gaps",
+      "head": "codex/future-nds",
+      "expected_head": "a65e008aa4b3e3116116b2db952771852ff19d07",
+      "body": "Generated ds-decomp projects and CodeWarrior C/C++ matching are implemented. Existing draft PR #1 contains distinct encrypted-import, unit-layout and ARM/Thumb fixes absent from main; it must be preserved and reviewed.\n\nThis draft adds `docs/future/nds.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Finish PR #1 review: private user-supplied ARM7 BIOS handling, overlapping entry points, word-aligned units, unused sections and function-local instruction mode.\n- [ ] Resolve the reported secure-prefix/checksum rebuild differences without masking bytes or weakening the whole-ROM comparison.\n- [ ] Expand ARM7, ARM9, autoload and overlay coverage, including runtime-loaded modules and compiler-version differences.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/nds.md",
+      "status": "Generated ds-decomp projects and CodeWarrior C/C++ matching are implemented. Existing draft PR #1 contains distinct encrypted-import, unit-layout and ARM/Thumb fixes absent from main; it must be preserved and reviewed."
+    },
+    {
+      "slug": "gc-wii",
+      "title": "[Future work] GameCube and Wii: expand linked-source and module coverage",
+      "head": "codex/future-gc-wii",
+      "expected_head": "1e6b91aef13d11213e10390fc9b67c8410a4d857",
+      "body": "Disc/DOL import, generated dtk-template projects, CodeWarrior C/C++ matching, exact rebuilding and finished-file linking are implemented. Paths containing spaces and clean target builds were fixed for v0.19.0.\n\nThis draft adds `docs/future/gc-wii.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Broaden REL/module relocation and cross-module data coverage using original fixtures.\n- [ ] Expand file split, data completion and automatic source linking coverage across compiler versions.\n- [ ] Audit disc container metadata and distinguish code matching, linked-source progress and full container rebuilding.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/gc-wii.md",
+      "status": "Disc/DOL import, generated dtk-template projects, CodeWarrior C/C++ matching, exact rebuilding and finished-file linking are implemented. Paths containing spaces and clean target builds were fixed for v0.19.0."
+    },
+    {
+      "slug": "gb-gbc",
+      "title": "[Future work] Game Boy and Game Boy Color: finish mapper and shared layouts",
+      "head": "codex/future-gb-gbc",
+      "expected_head": "cae9fe77a7b3ba18b064c481d74ee3991fc09fd2",
+      "body": "Experimental RGBDS assembly workflow exists: browser/CLI import, bank-aware assembly edits, local claims, strict range checks and exact full-ROM exports. No C/C++ recovery is implemented.\n\nThis draft adds `docs/future/gb-gbc.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Add reviewed symbols, data layouts, routine boundaries and hardware-register names.\n- [ ] Model mapper state and cross-bank references conservatively, including MBC1 lower windows, indirect bank changes and RAM code.\n- [ ] Synchronize layout versions, added entries, splits and symbols in rooms before enabling shared GB/GBC workflows.\n- [ ] Treat any future C/C++ recovery as an optional compiler-specific research path, with separate language/runtime and byte-matching criteria.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/gb-gbc.md",
+      "status": "Experimental RGBDS assembly workflow exists: browser/CLI import, bank-aware assembly edits, local claims, strict range checks and exact full-ROM exports. No C/C++ recovery is implemented."
+    },
+    {
+      "slug": "nes",
+      "title": "[Future work] NES and Famicom: add a mapper-aware assembly workbench",
+      "head": "codex/future-nes",
+      "expected_head": "9b0a7ef1c41610d0d69857f9b7012e0b2d765aa4",
+      "body": "Absent: there is no NES importer, CPU decoder, mapper model, assembler integration or verified export.\n\nThis draft adds `docs/future/nes.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Parse iNES/NES 2.0 headers, PRG/CHR layout, trainers and mapper/submapper identity without rewriting metadata.\n- [ ] Build a conservative 6502 discovery adapter with bank state, vectors, illegal opcodes and data boundaries.\n- [ ] Integrate assembly attempts, bank-aware symbols and lossless exports, starting with a bounded mapper subset.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/nes.md",
+      "status": "Absent: there is no NES importer, CPU decoder, mapper model, assembler integration or verified export."
+    },
+    {
+      "slug": "snes",
+      "title": "[Future work] SNES and Super Famicom: add 65816 assembly reconstruction",
+      "head": "codex/future-snes",
+      "expected_head": "c74947c008d0c7af757c201f1a125c7e8b6d5efd",
+      "body": "Absent: the application has no SNES loader, 65816 state analysis or matching/export pipeline.\n\nThis draft adds `docs/future/snes.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Detect LoROM/HiROM and extended mappings while preserving copier headers and ROM metadata.\n- [ ] Track 65816 M/X widths, emulation/native state, data/program banks and direct-page assumptions conservatively.\n- [ ] Add SPC700 and enhancement-chip support only as explicitly separate bounded targets, with their own decoders and tools.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/snes.md",
+      "status": "Absent: the application has no SNES loader, 65816 state analysis or matching/export pipeline."
+    },
+    {
+      "slug": "3ds",
+      "title": "[Future work] Nintendo 3DS: qualify ARM image and project integration",
+      "head": "codex/future-3ds",
+      "expected_head": "a715e2bbac6a7ac5600fac0271c9d8ec0d4f9009",
+      "body": "Existing project metadata and m2c ARM draft routing recognize 3DS, but there is no from-scratch 3DS importer or proven native matching/export path.\n\nThis draft adds `docs/future/3ds.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Start with user-supplied decrypted executable sections and separate container handling from code matching.\n- [ ] Parse code segments, relocations and CRO/CRR modules as explicitly supported formats.\n- [ ] Add a project adapter, original compiler selection and exact executable reconstruction before browser import.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/3ds.md",
+      "status": "Existing project metadata and m2c ARM draft routing recognize 3DS, but there is no from-scratch 3DS importer or proven native matching/export path."
+    },
+    {
+      "slug": "wii-u",
+      "title": "[Future work] Wii U: qualify PowerPC executable and module matching",
+      "head": "codex/future-wii-u",
+      "expected_head": "bf55693179abd32146d70241fddd170c3f85a190",
+      "body": "Absent as a from-scratch platform. GameCube/Wii support does not parse Wii U RPX/RPL modules or establish their compiler compatibility.\n\nThis draft adds `docs/future/wii-u.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Define a decrypted RPX/RPL loader with compression, imports/exports and relocation handling.\n- [ ] Audit endian/ABI, function descriptors and module addressing before adapting drafts.\n- [ ] Implement compiler-specific project builds and exact reconstructed module exports; scope disc/container work separately.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/wii-u.md",
+      "status": "Absent as a from-scratch platform. GameCube/Wii support does not parse Wii U RPX/RPL modules or establish their compiler compatibility."
+    },
+    {
+      "slug": "switch",
+      "title": "[Future work] Nintendo Switch: qualify AArch64 module and build adapters",
+      "head": "codex/future-switch",
+      "expected_head": "43075a531bbbc465911feb5b2b3902abf924a590",
+      "body": "Switch can appear in cached public-project metadata and general AArch64 drafts, but there is no from-scratch Switch importer or verified matching compiler pipeline.\n\nThis draft adds `docs/future/switch.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Start with decrypted NSO/NRO or ELF inputs, section compression, relocations and module metadata.\n- [ ] Add reviewed AArch64 ABI/draft context and exact compiler/build provenance.\n- [ ] Treat Switch 2 as a separate deferred qualification target; do not infer compatible formats or compiler behavior from the first Switch.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/switch.md",
+      "status": "Switch can appear in cached public-project metadata and general AArch64 drafts, but there is no from-scratch Switch importer or verified matching compiler pipeline."
+    },
+    {
+      "slug": "psp",
+      "title": "[Future work] PSP: add Allegrex-aware executable and module workflows",
+      "head": "codex/future-psp",
+      "expected_head": "809edac6476da33c1fac4863ade8fe230a78904e",
+      "body": "Public-project metadata and m2c MIPS draft routing include PSP. Raw PSP import, Allegrex/VFPU analysis and verified export are absent.\n\nThis draft adds `docs/future/psp.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Parse decrypted ELF/PRX modules, relocations and imports/exports.\n- [ ] Handle Allegrex extensions, VFPU instructions and delay slots without passing unknown instructions through a plain MIPS model.\n- [ ] Qualify exact period compiler configurations and create a module reconstruction/export adapter.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/psp.md",
+      "status": "Public-project metadata and m2c MIPS draft routing include PSP. Raw PSP import, Allegrex/VFPU analysis and verified export are absent."
+    },
+    {
+      "slug": "vita",
+      "title": "[Future work] PlayStation Vita: qualify ARM module reconstruction",
+      "head": "codex/future-vita",
+      "expected_head": "e9d90a4a9700d3eea4c500b903e9b928939607c5",
+      "body": "Absent: no Vita loader, platform adapter, compiler registration or verified export is present.\n\nThis draft adds `docs/future/vita.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Start from user-supplied decrypted ELF modules and model relocations, import/export tables and module metadata.\n- [ ] Determine compiler versions, ABI and per-function ARM/Thumb modes before draft integration.\n- [ ] Implement exact module exports and project-build support before enabling browser import.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/vita.md",
+      "status": "Absent: no Vita loader, platform adapter, compiler registration or verified export is present."
+    },
+    {
+      "slug": "ps3",
+      "title": "[Future work] PlayStation 3: qualify PPU and SPU as separate targets",
+      "head": "codex/future-ps3",
+      "expected_head": "32bc282580662930e77fd20f8264e8930d7b6f01",
+      "body": "Absent: no PS3 loader or matching pipeline exists. Existing PowerPC support does not implement Cell PPU ABI, SPU code or PS3 containers.\n\nThis draft adds `docs/future/ps3.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Separate decrypted PPU ELF/PRX, SPU ELF/local-store code and signed containers in the format model.\n- [ ] Implement PPU function descriptors/TOC and SPU overlays, DMA references and local-store address spaces independently.\n- [ ] Qualify original compiler outputs and runtime conventions before offering C/C++ matching.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/ps3.md",
+      "status": "Absent: no PS3 loader or matching pipeline exists. Existing PowerPC support does not implement Cell PPU ABI, SPU code or PS3 containers."
+    },
+    {
+      "slug": "xbox",
+      "title": "[Future work] Original Xbox: qualify XBE and compiler-specific project builds",
+      "head": "codex/future-xbox",
+      "expected_head": "a7d9d2de62789534fc6d45a0e343b79b168a3ca4",
+      "body": "Xbox is recognized in cached public-project metadata. No from-scratch XBE loader, original-compiler registration or exact export path is implemented.\n\nThis draft adds `docs/future/xbox.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Parse XBE sections, base addresses, TLS, imports and metadata with private base inputs.\n- [ ] Qualify original MSVC versions and exact object/link behavior separately from nxdk fixture builds.\n- [ ] Add x86 draft context, object judging and whole-XBE reconstruction with declared metadata handling.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/xbox.md",
+      "status": "Xbox is recognized in cached public-project metadata. No from-scratch XBE loader, original-compiler registration or exact export path is implemented."
+    },
+    {
+      "slug": "xbox360",
+      "title": "[Future work] Xbox 360: qualify Xenon code and XEX reconstruction",
+      "head": "codex/future-xbox360",
+      "expected_head": "0c6c270b907f1a1af4b95ef5683404829f1a91f9",
+      "body": "Xbox 360 appears in public-project metadata and the compiler pack contains related MSVC tools. Neither fact establishes a raw-game importer or verified Xbox 360 matching/export support.\n\nThis draft adds `docs/future/xbox360.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Start with decrypted XEX/PE module layouts and document compression, imports, relocations and metadata.\n- [ ] Model Xenon PowerPC ABI, VMX128 instructions and compiler-specific code generation.\n- [ ] Qualify a working compiler/linker invocation and project adapter before from-scratch import.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/xbox360.md",
+      "status": "Xbox 360 appears in public-project metadata and the compiler pack contains related MSVC tools. Neither fact establishes a raw-game importer or verified Xbox 360 matching/export support."
+    },
+    {
+      "slug": "pc",
+      "title": "[Future work] PC: qualify executable analysis and reproducible matching builds",
+      "head": "codex/future-pc",
+      "expected_head": "a4cde727cf01a1985f121ae27251ac5eee422d9a",
+      "body": "Existing public-project integration and optional Ghidra x86/AArch64 drafts can help PC projects. There is no generic PE/ELF raw-game importer or guaranteed compiler reconstruction.\n\nThis draft adds `docs/future/pc.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Define bounded PE/COFF and ELF targets, x86/x86-64 first, with explicit executable versus object matching.\n- [ ] Track imports, dynamic relocations, TLS, debug/symbol information and compiler/linker provenance.\n- [ ] Keep source recovery, binary matching and a runnable port as separate milestones.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/pc.md",
+      "status": "Existing public-project integration and optional Ghidra x86/AArch64 drafts can help PC projects. There is no generic PE/ELF raw-game importer or guaranteed compiler reconstruction."
+    },
+    {
+      "slug": "other-classic",
+      "title": "[Future work] Other classic consoles: qualify non-Sega CPU and cartridge families",
+      "head": "codex/future-other-classic",
+      "expected_head": "b80f4d4d4d39ea783aa822f9f991ca2227e446e1",
+      "body": "Absent: Atari 2600/5200/7800/Lynx/Jaguar, PC Engine/TurboGrafx-16, Neo Geo, WonderSwan, Virtual Boy, Neo Geo Pocket, 3DO, ColecoVision, Intellivision and related non-Sega families have no integrated workflows.\n\nThis draft adds `docs/future/other-classic.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Produce a per-family feasibility matrix: CPU, format/mapping, sound/co-processors, existing assembler/disassembler, actual Windows/Linux assets and license.\n- [ ] Prioritize PC Engine HuC6280, Atari 6502 families and Neo Geo 68000/Z80 when a legal fixture and reproducible assembler are available.\n- [ ] Keep Lynx 65C02, Jaguar GPU/DSP, WonderSwan x86, Virtual Boy V810, Neo Geo Pocket TLCS-900H, 3DO ARM, ColecoVision Z80 and Intellivision CP1610 as distinct qualification targets.\n- [ ] Build only missing format, mapper, decoder or export adapters; qualify or port upstream CPU tools before considering a new assembler/decompiler from scratch.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/other-classic.md",
+      "status": "Absent: Atari 2600/5200/7800/Lynx/Jaguar, PC Engine/TurboGrafx-16, Neo Geo, WonderSwan, Virtual Boy, Neo Geo Pocket, 3DO, ColecoVision, Intellivision and related non-Sega families have no integrated workflows."
+    },
+    {
+      "slug": "modern-consoles",
+      "title": "[Future work] Modern consoles: record PS4/PS5 and Xbox One/Series feasibility gates",
+      "head": "codex/future-modern-consoles",
+      "expected_head": "18df4c1ac6248983a72f7c747c52283b3802c853",
+      "body": "Absent and deferred: PS4, PS5, Xbox One and Xbox Series have no integrated importer, exact compiler setup or verified export. Shared x86-64 architecture is insufficient evidence of support.\n\nThis draft adds `docs/future/modern-consoles.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Document each console separately: accessible executable format, ABI/extensions, relocations, compiler provenance, legal original fixture and native tool availability.\n- [ ] Begin with existing lawful homebrew/research projects and project-mode analysis rather than unsupported retail container import.\n- [ ] Require a separate scoped implementation proposal after the evidence gates pass; keep Switch 2 qualification with the Switch work plan.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/modern-consoles.md",
+      "status": "Absent and deferred: PS4, PS5, Xbox One and Xbox Series have no integrated importer, exact compiler setup or verified export. Shared x86-64 architecture is insufficient evidence of support."
+    },
+    {
+      "slug": "draft-backends",
+      "title": "[Future work] Decompiler engines: strengthen m2c/Ghidra and qualify alternatives",
+      "head": "codex/future-draft-backends",
+      "expected_head": "5464e8ee6db55a6543e088987c845f7ff92c8bea",
+      "body": "m2c is the integrated first-draft backend for supported MIPS/PowerPC/ARM paths; Ghidra is optional for broader architectures. splat/spimdisasm, luvdis, dtk, dsd and RGBDS provide analysis/assembly roles, not interchangeable source decompilers.\n\nThis draft adds `docs/future/draft-backends.md` with the remaining scope, reusable upstream tools, native Windows/Linux qualification requirements and acceptance checks. It is a future-work tracker; no implementation or new support is included.\n\n- [ ] Define a backend capability contract: architecture/ABI, source language, symbol/data context, timeout, diagnostics and deterministic cache keys.\n- [ ] Improve m2c/Ghidra C++ and module context while retaining compiler-specific judging as the authority.\n- [ ] Run a small original multi-architecture corpus through candidate engines and document draft usefulness, native packaging and failure behavior before choosing an adapter.\n- [ ] Keep static recompilers, disassemblers, assemblers and emulators labeled by their actual role. No backend adds a platform importer or matching compiler by itself.\n\nValidation: reviewed against the v0.19.0 source and completion records; documentation links and branch scope checked. Implementation tests remain unchecked in the plan. Keep this PR in draft until the implementation and required native operational checks pass.\n",
+      "path": "docs/future/draft-backends.md",
+      "status": "m2c is the integrated first-draft backend for supported MIPS/PowerPC/ARM paths; Ghidra is optional for broader architectures. splat/spimdisasm, luvdis, dtk, dsd and RGBDS provide analysis/assembly roles, not interchangeable source decompilers."
+    }
+  ]
+}

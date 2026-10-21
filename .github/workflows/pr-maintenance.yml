@@ -1,0 +1,37 @@
+name: Reviewed PR housekeeping
+
+on:
+  push:
+    branches: [codex/pr-maintenance-2026-10-21]
+    paths:
+      - .github/workflows/pr-maintenance.yml
+      - tools/pr_maintenance.py
+      - docs/maintenance/pr-plan.json
+
+permissions:
+  contents: read
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply the reviewed plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/pr_maintenance.py
+      - name: Preserve operation results
+        if: always()
+        run: |
+          test -f docs/maintenance/pr-results.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/maintenance/pr-results.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record verified PR housekeeping results'
+            git push origin HEAD:codex/pr-maintenance-2026-10-21
+          fi
