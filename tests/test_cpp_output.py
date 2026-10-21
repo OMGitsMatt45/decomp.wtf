@@ -84,6 +84,8 @@ def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
 
 def test_ps2_cpp_on_windows_requires_installation_of_its_native_package(tmp_path, monkeypatch):
     monkeypatch.setenv("DECOMP_RUNTIME", "native")
+    monkeypatch.setenv("DECOMPNET_TOOLCHAINS", str(tmp_path / "empty native tools"))
+    monkeypatch.delenv(toolchains.EE_NATIVE_ROOT, raising=False)
     monkeypatch.setattr(toolchains, "current_platform", lambda: "windows-x86_64")
     monkeypatch.setattr(wsl, "status", lambda: pytest.fail("PS2 must not implicitly start WSL"))
     monkeypatch.setattr(wsl, "run", lambda *a, **kw: pytest.fail("PS2 must not run WSL"))
