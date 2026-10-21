@@ -3,7 +3,7 @@ name: Full operational check
 on:
   workflow_dispatch:
   push:
-    branches: [main, codex/release-operational-check]
+    branches: [main, codex/release-operational-check, codex/rom-input-operational-fixes]
     paths:
       - '.github/workflows/**'
       - 'src/**'

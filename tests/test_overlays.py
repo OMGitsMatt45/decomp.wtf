@@ -2,14 +2,9 @@
 its own calls, and split with the program, as a segment of its own."""
 
 import struct
-from pathlib import Path
-
-import pytest
 
 from decompnet.rom import overlays, split
 
-ROOT = Path(__file__).resolve().parent.parent
-EXE = ROOT / "projects" / "demo-psx" / "build" / "DEMOQ_PS1.EXE"
 NOP, JR_RA = 0, 0x03E00008
 
 
@@ -21,6 +16,14 @@ def _overlay(base: int, count: int) -> bytes:
         words += [0x27BDFFE8, 0xAFBF0014, 0x0C000000 | ((callee >> 2) & 0x03FFFFFF), NOP, 0x8FBF0014, 0x27BD0018,
                   JR_RA, NOP]
     return struct.pack(f"<{len(words)}I", *words)
+
+
+def _resident_exe() -> bytes:
+    """A complete PS-X EXE, without needing a period compiler to build a fixture."""
+    header = bytearray(0x800)
+    header[:8] = b"PS-X EXE"
+    struct.pack_into("<IIII", header, 0x10, 0x80010000, 0, 0x80010000, 0x800)
+    return bytes(header) + _overlay(0x80010000, 40).ljust(0x800, b"\0")
 
 
 def test_an_overlay_is_placed_at_its_load_address():
@@ -42,18 +45,23 @@ def test_ps2_elf_overlays_say_where_they_go():
     assert overlays._elf_segments(bytes(irx)) is None
 
 
-@pytest.mark.skipif(not EXE.exists(), reason="needs the PlayStation demo (projects/demo-psx)")
 def test_overlays_are_split_with_the_program(tmp_path):
-    (tmp_path / "game.exe").write_bytes(EXE.read_bytes())
+    (tmp_path / "game.exe").write_bytes(_resident_exe())
     # two overlays that load at the same address (only one is in memory at a time)
     found = [("battle", _overlay(0x80180000, 30), 0x80180000, 0), ("field", _overlay(0x80180000, 20), 0x80180000, 0)]
     res = split.split_rom(tmp_path, "game.exe", log=lambda *_: None, overlays=found)
-    names = {f.name for f in res.functions}
-    assert "func_80180000" in names or "ovl_battle_func_80180000" in names
     battle = [f for f in res.functions if f.segment == "ovl_battle"]
     field = [f for f in res.functions if f.segment == "ovl_field"]
     assert len(battle) == 30 and len(field) == 20
     assert len({f.name for f in battle + field}) == 50  # same addresses, names of their own
+    for functions in (battle, field):
+        by_address = {f.vram: f for f in functions}
+        expected = {0x80180000 + i * 32 for i in range(len(functions))}
+        assert set(by_address) == expected
+        for i, address in enumerate(sorted(expected)):
+            callee = 0x80180000 + ((i + 1) % len(functions)) * 32
+            call = by_address[address].lines[2]
+            assert call.mnemonic == "jal" and call.operands == by_address[callee].name
     assert res.image == "game.overlays.exe"
 
 
@@ -88,11 +96,10 @@ def _iso(files: dict[str, bytes]) -> bytes:
     return bytes(image)
 
 
-@pytest.mark.skipif(not EXE.exists(), reason="needs the PlayStation demo (projects/demo-psx)")
 def test_a_disc_with_an_overlay_imports_both(tmp_path):
     from decompnet.app.engine import RomNetwork
 
-    disc = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\DEMOQ_PS1.EXE;1\r\n", "DEMOQ_PS1.EXE": EXE.read_bytes(),
+    disc = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\DEMOQ_PS1.EXE;1\r\n", "DEMOQ_PS1.EXE": _resident_exe(),
                  "BATTLE.BIN": bytes(64) + _overlay(0x80180040, 40), "MUSIC.VAB": bytes(range(256)) * 32})
     (tmp_path / "game.iso").write_bytes(disc)
     net = RomNetwork(tmp_path / "app.db", tmp_path)
