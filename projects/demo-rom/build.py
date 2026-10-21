@@ -77,10 +77,11 @@ def main() -> None:
         shutil.rmtree(BUILD)
     objs = compile_all()
     elf = BUILD / "demo-quest-64.elf"
-    run(["ld.lld", "-m", "elf32btsmip", "-T", str(HERE / "rom.ld"), "--no-check-sections", "-o", str(elf),
+    # Resolve the full filename: Windows does not append .exe to dotted names.
+    run([shutil.which("ld.lld") or "ld.lld", "-m", "elf32btsmip", "-T", str(HERE / "rom.ld"), "--no-check-sections", "-o", str(elf),
          *[str(o) for o in objs]])
     code = BUILD / "code.bin"
-    run(["llvm-objcopy", "-O", "binary", "--only-section=.text", "--only-section=.rodata", "--only-section=.data",
+    run([shutil.which("llvm-objcopy") or "llvm-objcopy", "-O", "binary", "--only-section=.text", "--only-section=.rodata", "--only-section=.data",
          str(elf), str(code)])
     body = code.read_bytes()
     if 0x1000 + len(body) > ROM_SIZE:

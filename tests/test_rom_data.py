@@ -93,7 +93,7 @@ def game(tmp_path_factory):
     subprocess.run([f"{tc_dir}/as", "-mips3", "-G0", "-EB", "-o", str(work / "game.o"), str(work / "game.s")],
                    check=True)
     (work / "game.ld").write_text("SECTIONS { . = 0x80000400; .text : { *(.text) } .rodata : { *(.rodata) } }")
-    subprocess.run(["ld.lld", "-m", "elf32btsmip", "-T", str(work / "game.ld"), "-o", str(work / "game.elf"),
+    subprocess.run([shutil.which("ld.lld"), "-m", "elf32btsmip", "-T", str(work / "game.ld"), "-o", str(work / "game.elf"),
                     str(work / "game.o")], check=True)
     elf = ELFFile(BytesIO((work / "game.elf").read_bytes()))
     syms = {s.name: s["st_value"] for s in elf.get_section_by_name(".symtab").iter_symbols() if s.name}

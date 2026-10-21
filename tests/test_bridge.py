@@ -37,7 +37,7 @@ def test_bridge_imports_and_works(tmp_path):
             out["projects"] = await call("list_projects")
             out["claim"] = await call("claim_function", function="func_800007F4")
             out["compile"] = await call("compile_and_diff", function="func_800007F4",
-                                        source="s32 func_800007F4(s32 v) { return v < 0 ? -v : v; }")
+                                        source="s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }")
             out["progress"] = await call("progress")
 
         # a helper session decomp.wtf started, whose agent only loads the user's own MCP servers (Antigravity CLI):

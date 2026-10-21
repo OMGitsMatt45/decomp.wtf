@@ -104,7 +104,8 @@ def test_guest_edits_go_through_the_host(room):
     assert "0x8004AE34" in host.search_notes(slug, "player struct")
 
 
-ABS = "s32 func_800007F4(s32 v) { return v < 0 ? -v : v; }"
+# The C++ frontend's conditional-expression lowering differs from the original C.
+ABS = "s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }"
 
 
 def test_two_friends_work_together(room, built, tmp_path):  # noqa: F811

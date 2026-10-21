@@ -115,7 +115,7 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
     script = iter([
         {"tool_calls": [{"id": "1", "type": "function", "function": {"name": "claim_function", "arguments": json.dumps({"function": "func_800007F4"})}}]},
         {"tool_calls": [{"id": "2", "type": "function", "function": {"name": "compile_and_diff", "arguments": json.dumps(
-            {"function": "func_800007F4", "source": "s32 func_800007F4(s32 v) { return v < 0 ? -v : v; }"})}}]},
+            {"function": "func_800007F4", "source": "s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }"})}}]},
         {"content": "Matched."},
     ])
     seen = []

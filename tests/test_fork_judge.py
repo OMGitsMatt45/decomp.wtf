@@ -8,8 +8,11 @@ and the guards reject every change next to it.
 """
 
 import json
+import os
+import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -76,8 +79,8 @@ GAIN = "float read_gain(void) {\n    return gVolume;\n}\n"
 
 def _run(cwd: Path, *argv: str) -> None:
     subprocess.run(argv, cwd=cwd, check=True, capture_output=True,
-                   env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
-                        "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin", "HOME": str(cwd)})
+                   env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                        "GIT_COMMITTER_EMAIL": "t@t", "HOME": str(cwd)})
 
 
 @pytest.fixture
@@ -90,9 +93,12 @@ def fork(tmp_path):
     (repo / "include" / "lit.h").write_text("extern float gVolume;\n")
     (repo / "src" / "lit.c").write_text('#include "lit.h"\n\n' + OFFSET)
     (repo / "expected" / "target.s").write_text(TARGET)
-    _run(repo, str(tc / "as"), "-mips3", "-EB", "-o", "expected/lit.o", "expected/target.s")
+    suffix = ".exe" if sys.platform == "win32" else ""
+    _run(repo, str(tc / f"as{suffix}"), "-mips3", "-EB", "-o", "expected/lit.o", "expected/target.s")
+    command = [str(tc / f"gcc{suffix}"), f"-B{tc}{os.sep}", "-c", "-G0", "-mips3", "-mgp32", "-mfp32", "-O2", "-Iinclude"]
+    command = subprocess.list2cmdline(command) if sys.platform == "win32" else shlex.join(command)
     (repo / "build.ninja").write_text(
-        f"rule cc\n  command = {tc}/gcc -B{tc}/ -c -G0 -mips3 -mgp32 -mfp32 -O2 -Iinclude $in -o $out\n"
+        f"rule cc\n  command = {command} $in -o $out\n"
         "build build/lit.o: cc src/lit.c | include/lit.h\n")
     (repo / "objdiff.json").write_text(json.dumps({"custom_make": "ninja", "units": [
         {"name": "lit", "target_path": "expected/lit.o", "base_path": "build/lit.o",
