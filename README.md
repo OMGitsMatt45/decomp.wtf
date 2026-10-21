@@ -338,7 +338,7 @@ full decomp you can port and mod:
 
 **Beta: PlayStation, PlayStation 2, Game Boy Advance and DS.** They work end to end and are tested on homemade
 games, much less on real ones so far. Expect rough edges, and please
-[report](https://github.com/i12bp8/decomp.wtf/issues) what you hit: the app's error panel copies everything an issue
+[report](https://github.com/OMGitsMatt45/decomp.wtf/issues) what you hit: the app's error panel copies everything an issue
 needs. Public decomps of any platform run in their own project's build, so their status is the project's.
 
 **From scratch.** splat and spimdisasm split MIPS games, decomp-toolkit analyses GameCube and Wii programs inside a
@@ -385,7 +385,7 @@ Compilers without a native build are marked unavailable, and setup does not inst
 
 **When something goes wrong.** A failed import stays on screen with the reason and what happened, and **Copy for a
 bug report** puts the version, the error and the log on your clipboard for an
-[issue](https://github.com/i12bp8/decomp.wtf/issues). The full log is `.decomp/logs/decomp.log` in your projects folder
+[issue](https://github.com/OMGitsMatt45/decomp.wtf/issues). The full log is `.decomp/logs/decomp.log` in your projects folder
 (`~/Decomp`), also at **The full log** in that panel.
 
 ## Development
@@ -422,13 +422,13 @@ and the installed app then follows the branch on GitHub (every new commit pushed
 app: one click installs it).
 
 ```
-git clone -b <branch> https://github.com/i12bp8/decomp.wtf && cd decomp.wtf
+git clone -b <branch> https://github.com/OMGitsMatt45/decomp.wtf && cd decomp.wtf
 powershell -ExecutionPolicy Bypass -File site\public\install.ps1      # Windows
 bash site/public/install.sh                                           # Linux
 ```
 
 Without a checkout: `$env:DECOMP_BRANCH = "<branch>"; irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/<branch>/site/public/install.ps1 | iex`
-on Windows, `curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/<branch>/site/public/install.sh | DECOMP_BRANCH=<branch> bash`
+on Windows, `curl -fsSL https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/<branch>/site/public/install.sh | DECOMP_BRANCH=<branch> bash`
 on Linux. `decomp update` (or the app's Settings) installs the newest commit by hand.
 
 </details>

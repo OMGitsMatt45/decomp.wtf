@@ -7,7 +7,7 @@ from collections import defaultdict
 
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
-            "test_gc", "test_ds", "test_ds_rom_check", "test_export", "test_rom", "test_app_engine"}
+            "test_gc", "test_ds", "test_ds_rom_check", "test_export", "test_rom", "test_app_engine", "test_optional_tools"}
 
 
 def main():
@@ -23,7 +23,7 @@ def main():
         print(f"{module}: {len(cases)} passed, none skipped")
     cases = list(results.iter("testcase"))
     skipped = sum(case.find("skipped") is not None for case in cases)
-    print(f"Full operational check: {len(cases) - skipped} passed, {skipped} platform/private-ROM skips")
+    print(f"::notice::Full operational check: {len(cases) - skipped} passed, {skipped} platform/private-ROM skips")
 
 
 if __name__ == "__main__":

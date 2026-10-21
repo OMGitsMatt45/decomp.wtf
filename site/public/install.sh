@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # decomp.wtf installer for Linux (Windows: install.ps1, in PowerShell). macOS isn't supported.
 #
-#   curl -fsSL https://decomp.wtf/install.sh | bash
-#   (can't reach decomp.wtf? the same from GitHub:
-#    curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/install.sh | bash)
+#   curl -fsSL https://github.com/OMGitsMatt45/decomp.wtf/releases/latest/download/install.sh | bash
+#   (or from this repository:
+#    curl -fsSL https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.sh | bash)
 #
 # decomp.wtf installs on this computer, with uv:
 #   1. installs uv, Astral's Python tool manager, if you don't have it (asks first)
@@ -20,7 +20,7 @@
 #                       testing; its updates follow that branch) or a folder with decomp.wtf's source. Run from a
 #                       git checkout, the checkout is used (and updates follow its branch).
 # The same through the environment: DECOMP_SOURCE=..., DECOMP_BRANCH=<name>. DECOMP_REPO=<owner/repository>
-# selects a GitHub fork for branch updates; a checkout uses its GitHub origin unless overridden.
+# selects a GitHub fork for release/branch updates; a checkout uses its GitHub origin unless overridden.
 # On a server, decomp.wtf also runs in Docker: docker-compose.yml in the repository.
 set -euo pipefail
 
@@ -70,8 +70,8 @@ bold "decomp.wtf setup"
 OS="$(uname -s)"
 case "$OS" in
   Linux) ;;
-  Darwin) fail "macOS isn't supported: decomp.wtf runs on Linux and on Windows (in WSL 2), on x86-64 PCs (the games' compilers are x86 programs). On an Intel Mac, an x86-64 Linux virtual machine works too." ;;
-  *) fail "this installer is for Linux; on Windows run in PowerShell: irm https://decomp.wtf/install.ps1 | iex" ;;
+  Darwin) fail "macOS isn't supported: decomp.wtf runs on Linux and natively on Windows, on x86-64 PCs (the games' compilers are x86 programs). On an Intel Mac, an x86-64 Linux virtual machine works too." ;;
+  *) fail "this installer is for Linux; on Windows run in PowerShell: irm https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.ps1 | iex" ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64) ;;

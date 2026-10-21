@@ -7,7 +7,7 @@ install WSL, enable virtualization, create a Linux distribution, or require admi
 
 Use Windows 10 or Windows 11 on a 64-bit Intel or AMD PC. Internet access is needed for the first setup.
 
-1. Download [this fork’s source ZIP](https://github.com/OMGitsMatt45/decomp.wtf/archive/refs/heads/main.zip).
+1. Download the Windows ZIP from [this fork's latest release](https://github.com/OMGitsMatt45/decomp.wtf/releases/latest).
 2. Extract the ZIP to a local folder. Open the extracted folder containing `windows.cmd`.
 3. Double-click **`windows.cmd`**. Setup installs uv, a managed Python 3.12, the app and its default native tools.
 4. Open **Demo Quest 64** from the home screen to check importing and compilation.
