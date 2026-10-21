@@ -14,8 +14,159 @@
       "draft": true
     }
   ],
-  "created": [],
-  "errors": [
-    "pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests (createPullRequest)"
-  ]
+  "created": [
+    {
+      "slug": "n64",
+      "number": 3,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/3",
+      "head": "codex/future-n64",
+      "sha": "339e17e13ad5cbc6315291e306893d182252c52e",
+      "draft": true
+    },
+    {
+      "slug": "ps1",
+      "number": 4,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/4",
+      "head": "codex/future-ps1",
+      "sha": "62acefc14b5399ca0c1deae27fb2d4041973dbce",
+      "draft": true
+    },
+    {
+      "slug": "ps2",
+      "number": 5,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/5",
+      "head": "codex/future-ps2",
+      "sha": "cebc6a1ffacac9c343a2d89e217610ce745da88f",
+      "draft": true
+    },
+    {
+      "slug": "gba",
+      "number": 6,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/6",
+      "head": "codex/future-gba",
+      "sha": "a6bc0f89c080d8a96906716355d886411078bb9a",
+      "draft": true
+    },
+    {
+      "slug": "nds",
+      "number": 7,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/7",
+      "head": "codex/future-nds",
+      "sha": "a65e008aa4b3e3116116b2db952771852ff19d07",
+      "draft": true
+    },
+    {
+      "slug": "gc-wii",
+      "number": 8,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/8",
+      "head": "codex/future-gc-wii",
+      "sha": "1e6b91aef13d11213e10390fc9b67c8410a4d857",
+      "draft": true
+    },
+    {
+      "slug": "gb-gbc",
+      "number": 9,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/9",
+      "head": "codex/future-gb-gbc",
+      "sha": "cae9fe77a7b3ba18b064c481d74ee3991fc09fd2",
+      "draft": true
+    },
+    {
+      "slug": "nes",
+      "number": 10,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/10",
+      "head": "codex/future-nes",
+      "sha": "9b0a7ef1c41610d0d69857f9b7012e0b2d765aa4",
+      "draft": true
+    },
+    {
+      "slug": "snes",
+      "number": 11,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/11",
+      "head": "codex/future-snes",
+      "sha": "c74947c008d0c7af757c201f1a125c7e8b6d5efd",
+      "draft": true
+    },
+    {
+      "slug": "3ds",
+      "number": 12,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/12",
+      "head": "codex/future-3ds",
+      "sha": "a715e2bbac6a7ac5600fac0271c9d8ec0d4f9009",
+      "draft": true
+    },
+    {
+      "slug": "wii-u",
+      "number": 13,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/13",
+      "head": "codex/future-wii-u",
+      "sha": "bf55693179abd32146d70241fddd170c3f85a190",
+      "draft": true
+    },
+    {
+      "slug": "switch",
+      "number": 14,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/14",
+      "head": "codex/future-switch",
+      "sha": "43075a531bbbc465911feb5b2b3902abf924a590",
+      "draft": true
+    },
+    {
+      "slug": "psp",
+      "number": 15,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/15",
+      "head": "codex/future-psp",
+      "sha": "809edac6476da33c1fac4863ade8fe230a78904e",
+      "draft": true
+    },
+    {
+      "slug": "vita",
+      "number": 16,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/16",
+      "head": "codex/future-vita",
+      "sha": "e9d90a4a9700d3eea4c500b903e9b928939607c5",
+      "draft": true
+    },
+    {
+      "slug": "ps3",
+      "number": 17,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/17",
+      "head": "codex/future-ps3",
+      "sha": "32bc282580662930e77fd20f8264e8930d7b6f01",
+      "draft": true
+    },
+    {
+      "slug": "xbox",
+      "number": 18,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/18",
+      "head": "codex/future-xbox",
+      "sha": "a7d9d2de62789534fc6d45a0e343b79b168a3ca4",
+      "draft": true
+    },
+    {
+      "slug": "xbox360",
+      "number": 19,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/19",
+      "head": "codex/future-xbox360",
+      "sha": "0c6c270b907f1a1af4b95ef5683404829f1a91f9",
+      "draft": true
+    },
+    {
+      "slug": "modern-consoles",
+      "number": 20,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/20",
+      "head": "codex/future-modern-consoles",
+      "sha": "18df4c1ac6248983a72f7c747c52283b3802c853",
+      "draft": true
+    },
+    {
+      "slug": "draft-backends",
+      "number": 21,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/21",
+      "head": "codex/future-draft-backends",
+      "sha": "5464e8ee6db55a6543e088987c845f7ff92c8bea",
+      "draft": true
+    }
+  ],
+  "errors": []
 }
