@@ -1,0 +1,21 @@
+{
+  "repository": "OMGitsMatt45/decomp.wtf",
+  "baseline": "11fdfb32c5e9846a6ffe74fc6bc7a2d8f0879f57",
+  "closed": [
+    {
+      "number": 2,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/2"
+    }
+  ],
+  "preserved": [
+    {
+      "number": 1,
+      "url": "https://github.com/OMGitsMatt45/decomp.wtf/pull/1",
+      "draft": true
+    }
+  ],
+  "created": [],
+  "errors": [
+    "pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests (createPullRequest)"
+  ]
+}
