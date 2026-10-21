@@ -14,14 +14,14 @@
 # a part for wsl-x86_64 replaces the Linux one in that optional bridge.
 
 [runtime-i386]
-name = "32-bit x86 C runtime (glibc 2.44)"
+name = "32-bit x86 C runtime (glibc 2.41)"
 kind = "runtime"
 license = "LGPL-2.1-or-later"
-source = "Arch Linux archive, lib32-glibc 2.44+r50"
+source = "Debian 13 libc6-i386 (2.41-12+deb13u4 on Linux; 2.41-12 for the optional WSL bridge)"
 description = "Lets old 32-bit compiler binaries run inside the sandbox without installing multilib on the host."
 [[runtime-i386.parts]]
-url = "https://archive.archlinux.org/packages/l/lib32-glibc/lib32-glibc-2.44%2Br50%2Bg1848099f063e-1-x86_64.pkg.tar.zst"
-sha256 = "a977f9a6a405ab85e594aa9f1230a0b7dddfc33e3de5f2cb66931c92a48931d8"
+url = "https://deb.debian.org/debian/pool/main/g/glibc/libc6-i386_2.41-12+deb13u4_amd64.deb"
+sha256 = "50c1653ce29519e1fcd8742f2c67f5edad8d4c3aed3d1ffbea2b7c3497a809d2"
 subdir = "usr/lib32"
 platforms = ["linux-x86_64"]
 [[runtime-i386.parts]]

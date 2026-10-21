@@ -16,7 +16,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import cpp, wsl
+from . import cpp, linux_i386, wsl
 
 MAX_SOURCE_BYTES = 64 * 1024
 # Per-compile resource caps (address space, CPU seconds, output file size) and a global
@@ -91,6 +91,8 @@ class CompilerConfig:
     c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     relative_paths: bool = False  # IDO's legacy driver cannot preserve absolute output paths with spaces
     assembly_dialect: str = "rgbds"
+    qemu_i386: str | None = None  # explicit Linux compatibility runner; sandboxing is unchanged
+    toolchain_dirs: tuple[str, ...] = ()  # pinned trees whose i386 child programs need launchers
 
 
 @dataclass
@@ -166,6 +168,16 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
     """`stage`: in WSL, run on a copy in WSL's own file system (wsl.run's outputs, inputs and stage)."""
     if _sandbox_mode(cfg) == "wsl":
         return wsl.run(argv, cwd or work, timeout, **stage)
+    if cfg.qemu_i386:
+        from dataclasses import replace
+
+        if not sys.platform.startswith("linux"):
+            raise ValueError("qemu_i386 is supported only for Linux toolchains")
+        with tempfile.TemporaryDirectory(prefix="decompnet-i386-") as tmp:
+            command = linux_i386.prepare(argv, cfg.toolchain_dirs, Path(tmp), cfg.qemu_i386, cfg.runtime32)
+            emulated = replace(cfg, qemu_i386=None,
+                               ro_paths=(*cfg.ro_paths, tmp, cfg.qemu_i386))
+            return _exec(emulated, work, command, timeout, cwd=cwd, **stage)
     # in the work folder, never in the app's own: KMC GCC's assembler (binutils 2.6) can't read its input when the
     # current directory is / ("Bad file descriptor"), which it is for decomp.wtf started by a service or in Docker
     # IDO's native MSYS programs otherwise assume /tmp exists. Give native

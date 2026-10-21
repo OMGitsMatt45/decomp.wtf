@@ -60,10 +60,19 @@ that verified range. These three test probes are assembly verification, not
 C/C++ recovery or automatic completion of all generated listings. They ran in
 Docker with pinned native ARM/PowerPC tools.
 
-A broader run additionally encountered ten existing cloud-runtime failures:
+A broader initial run encountered ten existing cloud-runtime failures:
 nine host-GCC/network tests could not create bubblewrap user namespaces, and one
 legacy KMC test could not execute an i386 compiler on this kernel. No sandbox was
-disabled to make the supplied-ROM API workflows pass. Period C/C++ compiler
-matching therefore remains unverified in this cloud; the seven successful
-rebuilds do not establish a fully green compiler suite. Native Windows execution
-was not rerun here.
+disabled to make the supplied-ROM API workflows pass.
+
+A subsequent check added an opt-in Docker/QEMU execution path, preserving the
+original period compilers. All five N64/PS1/PS2 reference cases passed, comparing
+39 function outputs, and IDO 5.3 SGI/EDG and classic cfront each matched their
+eight-function reference. The supplied PS2 project's changed-constant negative
+control failed, then its correct C++ function matched at score zero and propagated
+to two identical overlays. Its export incorporated all three verified functions
+without fallback. All seven inputs again exported identically in the table's
+scopes. See [cloud-compilers.md](cloud-compilers.md) for configuration and limits.
+GBA period-compiler execution and a fully green cloud compiler suite remain
+unverified. The earlier native Linux/Windows CI run at `0f09afb` passed with
+506/484 tests respectively; that CI run preceded the cloud compatibility changes.
