@@ -307,10 +307,10 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
     async def compile_and_diff(ctx: Context, function: str, source: str) -> str:
         """Compile your code for `function` and diff it against the original; score 0 = byte-identical.
 
-        ROM projects: compiled with the game's compiler (context.h included), linked at the function's
-        address. GB/GBC assembly: submit exactly one complete RGBDS section, with context.inc included
-        automatically; the bank, CPU address, extent and every byte are checked. Other ROM candidates are
-        address and compared with the ROM. Forks: send the complete definition (plus any #include "...",
+        C/C++ ROM projects: compiled with the game's compiler (context.h included), linked at the
+        function's address and compared with the ROM. GB/GBC assembly: submit exactly one complete
+        RGBDS section, with context.inc included automatically; bank, CPU address, extent and every
+        byte are checked. Forks: send the complete definition (plus any #include "...",
         prototypes, externs or #pragma lines it needs); it replaces the function in its source file, which is
         built with the project's build system and diffed with objdiff. Several functions ("a, b, c"): send all
         their definitions in one source; each is judged on its own."""
@@ -342,7 +342,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
     @mcp.tool(meta=ALWAYS_LOAD)
     async def split_function(ctx: Context, function: str, at: str, new_name: str = "") -> str:
         """Split a function the disassembler merged with the next one (e.g. after a function that never
-        returns). `at` is the address where the second function starts."""
+        returns). `at` is the address where the second function starts. GB/GBC accepts bank:CPU
+        (e.g. 02:4000) to split at an instruction boundary or add an explicit code entry in another bank."""
         return await run(ctx, "split_function", function=function, at=at, new_name=new_name)
 
     @mcp.tool(meta=ALWAYS_LOAD)

@@ -141,6 +141,16 @@ standalone rebuilds containing the saved annotated assembly. Rejection cases
 include an extra one-byte section, a wrong bank/address/operand, wrong extent,
 an undefined symbol, invalid assembly, and prohibited file directives.
 
+[Browser/agent native verification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39524849758):
+both Windows Server 2022 and Ubuntu 24.04 passed the expanded checks, including
+saved assembly sources, shared constants, explicit bank entries and browser
+upload/try/export. Windows assembly and rebuild cases use System32-only PATH.
+The focused local regression suite passed 138 checks. A further 17 core C
+coordination tests passed with sandboxing disabled for that test process because
+this managed container cannot create bubblewrap user namespaces. Broader legacy
+compiler integration is also limited locally by unavailable 32-bit execution;
+the dedicated Windows/Linux GB/GBC workflow runs all required assembly cases.
+
 ```sh
 decompnet toolchain install rgbds
 python -m pytest -q tests/test_gb.py tests/test_gb_app.py tests/test_toolchains.py
