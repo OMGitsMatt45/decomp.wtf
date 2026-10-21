@@ -1,0 +1,50 @@
+name: Build and smoke-test release packages
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - run: python tools/release_assets.py --tag '${{ inputs.tag }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/*
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
+      - name: Install the built wheel in a clean environment
+        shell: bash
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/clean-release"
+          if [ "$RUNNER_OS" = Windows ]; then py="$RUNNER_TEMP/clean-release/Scripts/python.exe"; else py="$RUNNER_TEMP/clean-release/bin/python"; fi
+          uv pip install --python "$py" dist/*.whl
+          version="${RELEASE_TAG#v}"
+          uv run --no-project --python 3.12 python tools/release_smoke.py --python "$py" --version "$version" --archive "dist/decompnet-$version-windows.zip"
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}

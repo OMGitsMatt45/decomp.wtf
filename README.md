@@ -2,6 +2,7 @@
 
 This fork adds a native Windows installer and Windows builds of the period compilers. Start with
 [Windows setup](docs/windows.md), or download this repository's source ZIP and double-click `windows.cmd`.
+Release packages and checksums are available from [this fork's releases](https://github.com/OMGitsMatt45/decomp.wtf/releases).
 
 The original project was archived at version 0.10.6. Its MIT-licensed code and authorship are preserved here;
 the upstream website and its installers still refer to the original release.
@@ -77,15 +78,17 @@ they do not recover C/C++ source.
 
 **Linux**
 
-```
-curl -fsSL https://decomp.wtf/install.sh | bash
-```
-
-Can't reach decomp.wtf from your network? The same installer from GitHub (it then installs the release from GitHub
-too):
+The full compiler suite is checked on Ubuntu 24.04 x86-64. The downloaded MIPS
+binutils require glibc 2.38 or newer; the older 32-bit compilers also need `libc6-i386`.
 
 ```
-curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/install.sh | bash
+curl -fsSL https://github.com/OMGitsMatt45/decomp.wtf/releases/latest/download/install.sh | bash
+```
+
+The installer is also available from this repository:
+
+```
+curl -fsSL https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/main/site/public/install.sh | bash
 ```
 
 **Windows**
@@ -289,7 +292,7 @@ website: the people who decompile together host their room and decide who's in.
 **On a server** (or any always-on machine):
 
 ```
-curl -fsSL https://decomp.wtf/install.sh | bash
+curl -fsSL https://github.com/OMGitsMatt45/decomp.wtf/releases/latest/download/install.sh | bash
 decomp host mygame.z64 --own-copy --address http://my-server:6481 --service
 ```
 

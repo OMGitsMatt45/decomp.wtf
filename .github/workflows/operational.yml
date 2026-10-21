@@ -20,16 +20,22 @@ permissions:
   contents: read
 
 jobs:
+  package:
+    uses: ./.github/workflows/package.yml
+    with:
+      tag: v0.19.0
+
   core:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
       DECOMP_RUNTIME: native
       DECOMP_UPDATES: 'off'
+      DECOMP_TEST_NATIVE_WINDOWS: '1'
       DECOMP_TEST_N64_CPP: '1'
       DECOMP_TEST_IDO_CPP: '1'
       DECOMP_TEST_IDO_CFRONT: '1'
@@ -45,17 +51,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libc6-i386 llvm lld bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Isolate downloaded toolchains
         shell: bash
         run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Operational toolchains with spaces" >> "$GITHUB_ENV"
-      - name: Add Windows LLVM tools
+      - name: Install Windows LLVM tools
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: '"C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: '19.1.7'
       - name: Install all platform toolchains
         run: uv run --no-sync python -m tools.operational
       - name: Full application and compiler suite (GB/GBC reported separately)
         run: uv run --no-sync python -m pytest -q --ignore=tests/test_gb.py --ignore=tests/test_gb_app.py --junitxml=operational-results.xml
+      - name: Require real platform coverage
+        run: uv run --no-sync python tools/check_operational_results.py operational-results.xml
       - name: Report failures
         if: failure()
         shell: bash

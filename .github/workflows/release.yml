@@ -1,0 +1,38 @@
+name: Publish tested release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    uses: ./.github/workflows/package.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  publish:
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
+      - name: Require a tested commit on main and publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          python tools/release_gate.py --sha "$GITHUB_SHA" --notes "docs/releases/$RELEASE_TAG.md" --output "$RUNNER_TEMP/release-notes.md"
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --latest --repo "$GITHUB_REPOSITORY" --title "decomp.wtf $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
