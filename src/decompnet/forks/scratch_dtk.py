@@ -315,6 +315,42 @@ def _build(fp: ForkProject, log) -> tuple[bool, str]:
     return fp.run(["ninja"], log=log, timeout=3600)
 
 
+def _quote_template_tools(root: Path) -> None:
+    """Quote pinned template tool commands and retain arguments when Ninja reconfigures."""
+    path = root / "tools" / "project.py"
+    source = path.read_text(encoding="utf-8")
+    helper = '''
+# decomp.wtf: downloaded tool paths can contain spaces on either host.
+def _decomp_command_path(path):
+    import shlex
+    import subprocess
+    return subprocess.list2cmdline([str(path)]) if os.name == "nt" else shlex.quote(str(path))
+
+
+'''
+    names = ("dtk", "objdiff", "mwcc", "mwld", "sjiswrap", "gnu_as", "wrapper",
+             "transform_dep", "download_tool", "configure_script", "decompctx", "changes_fmt")
+    for name in names:
+        source = source.replace("{" + name + "}", "{_decomp_command_path(" + name + ")}")
+    source = source.replace('n.variable("configure_args", sys.argv[1:])',
+                            'n.variable("configure_args", [_decomp_command_path(a) for a in sys.argv[1:]])')
+    marker = "def generate_build_ninja("
+    if marker not in source:
+        raise ForkError("the pinned dtk-template build generator has changed")
+    path.write_text(source.replace(marker, helper + marker, 1), encoding="utf-8")
+    syntax = root / "tools" / "ninja_syntax.py"
+    source = syntax.read_text(encoding="utf-8")
+    # cmd needs an outer pair of quotes when a chained command starts with a quoted tool.
+    marker = '        self.variable("command", command, indent=1)'
+    replacement = '''        import os
+        if os.name == "nt" and command.startswith("cmd /c "):
+            command = 'cmd /s /c "' + command[len("cmd /c "):] + '"'
+''' + marker
+    if marker not in source:
+        raise ForkError("the pinned dtk-template Ninja writer has changed")
+    syntax.write_text(source.replace(marker, replacement, 1), encoding="utf-8")
+
+
 _SECTION_LINE = re.compile(r"^\t(\S+)(\s+type:\w+.*)$")
 
 
@@ -589,6 +625,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     compiler = compiler or (WII_DEFAULT if platform == "wii" else GC_DEFAULT)
     template = toolchains.ensure("dtk-template", log=log)
     shutil.copytree(template, root, ignore=shutil.ignore_patterns(".decompnet-toolchain.json"))
+    _quote_template_tools(root)
     for placeholder in ("orig/GAMEID", "config/GAMEID"):
         shutil.rmtree(root / placeholder, ignore_errors=True)
     orig, config = root / "orig" / gid, root / "config" / gid

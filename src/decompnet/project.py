@@ -220,6 +220,8 @@ def import_project(store: Store, root: Path, log=print) -> int:
     if "build_from" in target and not all(o.exists() for o in objects):
         build_target(root, cfg, log)
     elif "build" in target and not all(o.exists() for o in objects):
+        for obj in objects:
+            obj.parent.mkdir(parents=True, exist_ok=True)
         log(f"building target objects: {' '.join(target['build'])}")
         subprocess.run(target["build"], cwd=root, check=True)
 
