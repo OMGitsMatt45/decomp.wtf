@@ -25,8 +25,8 @@ def main():
             if node is None:
                 node = case.find("error")
             modules[module] = (node.text or node.get("message", ""))[-4000:]
-    if modules:
-        print("::error::" + escape("\n\n".join(name + ":\n" + message for name, message in modules.items())[-60000:]))
+    for name, message in modules.items():
+        print("::error::" + escape(name + ":\n" + message))
 
 
 if __name__ == "__main__":

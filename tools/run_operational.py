@@ -8,8 +8,8 @@ from pathlib import Path
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    command = [sys.executable, "-m", "pytest", "-q", "--ignore=tests/test_gb.py", "--ignore=tests/test_gb_app.py",
-               "--junitxml=operational-results.xml"]
+    suites = sys.argv[1:] or ["--ignore=tests/test_gb.py", "--ignore=tests/test_gb_app.py"]
+    command = [sys.executable, "-m", "pytest", "-q", *suites, "--junitxml=operational-results.xml"]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace")
     output = re.sub(r"([?&]k=)[A-Za-z0-9_-]+", r"\1<redacted>", result.stdout)

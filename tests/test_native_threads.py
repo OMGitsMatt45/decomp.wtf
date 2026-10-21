@@ -16,6 +16,7 @@ from decompnet.rom import _n64_native as native
 image = bytearray(0x40000)
 image[:4] = bytes.fromhex('80371240')
 image[8:12] = (0x80000400).to_bytes(4, 'big')
+image[0x1000:0x1004] = b'\xff' * 4  # stop the decoder after exercising its callback
 image = bytes(image)
 operation = sys.argv[1]
 def work(index):
