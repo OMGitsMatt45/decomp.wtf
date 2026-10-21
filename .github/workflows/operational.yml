@@ -65,6 +65,10 @@ jobs:
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: '19.1.7'
+          force-url: https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/clang+llvm-19.1.7-x86_64-pc-windows-msvc.tar.xz
+          directory: ${{ runner.temp }}/complete-llvm
+      - name: Verify fixture linkers are available
+        run: uv run --no-sync python -c "import shutil; assert shutil.which('ld.lld'), 'ld.lld is required'; assert shutil.which('llvm-objcopy'), 'llvm-objcopy is required'"
       - name: Install all platform toolchains
         run: uv run --no-sync python -m tools.operational
       - name: Full application and compiler suite (GB/GBC reported separately)
