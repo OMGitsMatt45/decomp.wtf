@@ -162,6 +162,8 @@ python -m pytest -q tests/test_gb.py tests/test_gb_app.py tests/test_toolchains.
    references, hardware register names and handling of RAM-resident code.
 2. GB/GBC room-sharing layout synchronization and broader mapper/game coverage;
    this pass validates agents and the editor on one local coordinator.
-3. NES/SNES and Mega Drive/Genesis assembly workflows, with separately pinned
-   native toolchains, CPU decoders, layouts and exact rebuild tests. None are
-   implemented by the Game Boy decoder or enabled in the browser importer.
+3. NES/SNES assembly workflows, with separately pinned native toolchains, CPU
+   decoders, layouts and exact rebuild tests. Neither is implemented by the
+   Game Boy decoder or enabled in the browser importer. Sega consoles are outside
+   this fork's roadmap. See the [future-work index](future-work.md) for the
+   prepared platform plans and the remaining GB/GBC work.
