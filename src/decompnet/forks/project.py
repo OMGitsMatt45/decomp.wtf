@@ -63,6 +63,8 @@ class Unit:
     options: dict | None = None  # the unit's own objdiff options
     mappings: dict | None = None  # objdiff symbol mappings (target name -> base name)
     auto: bool = False  # split off by dtk because no file covers it (auto_00_80003100_text)
+    address: int | None = None
+    mode: str | None = None
 
 
 @functools.lru_cache(maxsize=64)
@@ -404,7 +406,8 @@ class ForkProject:
             out.append(Unit(u.get("name") or u.get("path") or "?", self.root / t if t else None,
                             self.root / b if b else None, meta.get("source_path"),
                             bool(meta.get("complete", u.get("complete", False))), u.get("scratch"),
-                            u.get("options") or None, u.get("symbol_mappings") or None, bool(meta.get("auto_generated"))))
+                            u.get("options") or None, u.get("symbol_mappings") or None, bool(meta.get("auto_generated")),
+                            meta.get("virtual_address"), meta.get("instruction_mode")))
         return out
 
     def units(self) -> list[Unit]:
@@ -459,11 +462,23 @@ class ForkProject:
         return self.run([_tool(make) or make, *cfg.get("custom_args", []), *keep_going], log=log, failed=failed)
 
     def report(self) -> dict:
-        return objdiff.report(self.root, self.root / STATE / "report.json")
+        output = self.root / STATE / "report.json"
+        report = objdiff.report(self.root, output)
+        if self.is_generated_ds():
+            from .arm7_project import enforce_report
+
+            report = enforce_report(self.units(), report)
+            output.write_text(json.dumps(report), encoding="utf-8")
+        return report
 
     def diff(self, unit: Unit, symbol: str) -> objdiff.FunctionDiff:
-        return objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
-                            project=self.root if unit.mappings else None, unit=unit.name)
+        result = objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
+                              project=self.root if unit.mappings else None, unit=unit.name)
+        if self.is_generated_ds() and unit.name.startswith("arm7/"):
+            from .arm7_project import enforce_diff
+
+            result = enforce_diff(unit, symbol, result)
+        return result
 
     # ------------------------------------------------------------------ linking (dtk-template and generated DS)
     # A finished file replaces its original object only after the complete game verifies.
@@ -519,7 +534,7 @@ class ForkProject:
     def link_config_paths(self) -> list[Path]:
         if self.is_generated_ds():
             version = self.manifest["version"]
-            return sorted((self.root / "config" / version / "arm9").rglob("delinks.txt"))
+            return sorted((self.root / "config" / version).rglob("delinks.txt"))
         return [self.root / "configure.py"]
 
     @staticmethod

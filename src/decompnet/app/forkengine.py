@@ -604,6 +604,8 @@ class ForkEngine:
                 size = int(f.get("size", 0))
                 n = max(1, size // 4)
                 u = units.get(uname)
+                if u and u.mode == "thumb":
+                    n = max(1, size // 2)
                 md = f.get("metadata") or {}
                 meta = {"symbol": sym, "demangled": md.get("demangled_name"), "source": u.source if u else None}
                 if k:
@@ -628,6 +630,8 @@ class ForkEngine:
                     status = "asm"  # hand-written assembly (here or in its twin elsewhere): not for agents
                 score = None if fuzzy is None else scaled(fuzzy, n)
                 vram = md.get("virtual_address")
+                if u and u.address is not None:
+                    vram = u.address
                 if old is None:
                     name = sym if counts[sym] == 1 else f"{sym}@{uname}" + (f"#{k + 1}" if k else "")
                     while name in used:
@@ -1156,6 +1160,68 @@ class ForkEngine:
         moved = ", ".join(f"{k} 0x{a:X}-0x{b:X}" for k, (a, b) in moved_sections.items())
         return (f"✅ {rel} is divided: {src}/{new} now holds {moved} ({len(moved_code)} function definitions moved with "
                 "it); the game still builds byte for byte and every match still matches.")
+
+    def configure_arm7_unit(self, agent: Agent, slug: str, path: str, data: str = "", language: str = "") -> str:
+        """Change ARM7 data ownership/language with a verified, reversible project edit."""
+        from ..forks import arm7_project
+
+        proj, fp, cfg = self.get(slug)
+        if self.net.links.get(slug) is not None:
+            raise NetworkError("configure ARM7 units on the project host")
+        if not fp.is_generated_ds():
+            raise NetworkError("this operation requires a generated DS project")
+        source = fp.safe_path(path, write=True).relative_to(fp.root).as_posix()
+        version = fp.manifest["version"]
+        manifest = fp.root / "config" / version / "arm7" / "units.json"
+        if not manifest.is_file():
+            raise NetworkError("this project predates ARM7 source units; re-import it to use them")
+        units = fp.units_for(source)
+        if len(units) != 1 or not units[0].name.startswith("arm7/"):
+            raise NetworkError("choose an ARM7 source file")
+        with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+            markers = manifest.with_name("delinks.txt")
+            original = {p: p.read_bytes() for p in (manifest, markers, fp.root / source)}
+            destination = source
+            before = fp.diff(units[0], None).unit_scores
+            try:
+                destination = arm7_project.configure(fp.root, version, source, data, language)
+                ok, out = fp.run(fp.setup_commands()[0], log=lambda *_: None)
+                if not ok:
+                    raise ForkError(out)
+                ok, out = fp.run(["ninja", "objdiff.json"], log=lambda *_: None)
+                if not ok:
+                    raise ForkError(out)
+                # Rebuild only the changed unit and its reference; other WIP files
+                # may legitimately be incomplete or fail to compile.
+                unit = next(u for u in fp.units() if u.source == destination)
+                targets = [str(p.relative_to(fp.root)) for p in (unit.target, unit.base)]
+                ok, out = fp.run(["ninja", *targets], log=lambda *_: None)
+                if not ok:
+                    raise ForkError(out)
+                after = fp.diff(unit, None).unit_scores
+                lost = [name for name, percent in before.items() if percent == 100 and after.get(name) != 100]
+                if lost:
+                    raise ForkError("matched functions would change: " + ", ".join(lost))
+                ok, out = fp.verify()
+                if not ok:
+                    raise ForkError(out)
+            except (OSError, ValueError, ForkError, ObjdiffError) as error:
+                if destination != source:
+                    (fp.root / destination).unlink(missing_ok=True)
+                for file, content in original.items():
+                    file.write_bytes(content)
+                fp.run(fp.setup_commands()[0], log=lambda *_: None)
+                fp.run(["ninja", "objdiff.json"], log=lambda *_: None)
+                fp.build_unit(units[0])
+                fp.verify()
+                raise NetworkError(f"ARM7 unit configuration was undone: {_tail(str(error))}") from None
+            paths = [str(p.relative_to(fp.root)) for p in original]
+            if destination != source:
+                paths.append(destination)
+            self._commit_paths(proj, fp, paths, f"Configure ARM7 source unit {destination}\n\nChanged by {agent.name} with decomp.wtf; the ROM still rebuilds byte for byte.")
+            self._scores = {k: v for k, v in self._scores.items() if k[0] != proj["id"]}
+            self.sync(slug, log=lambda *_: None, rep=fp.report())
+        return f"✅ {destination} configured; the complete ROM still matches. Add its data definitions with edit_file, then match and link it."
 
     def _commit_paths(self, proj, fp: ForkProject, paths: list[str], message: str) -> None:
         with self._git_locks[proj["id"]]:

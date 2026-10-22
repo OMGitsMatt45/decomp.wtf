@@ -71,3 +71,18 @@ def test_execution_rejects_a_stalled_processor(tmp_path, cpu):
     result, output = probe(tmp_path, ROM, broken)
     assert result.returncode != 0 and diagnostic in result.stdout + result.stderr
     assert not output.exists()
+
+
+def test_scripted_trace_records_video_audio_and_private_screenshots(tmp_path):
+    events = tmp_path / "inputs.json"
+    events.write_text(json.dumps([{"start": 30, "end": 35, "buttons": ["a"]}]))
+    output = tmp_path / "private traces"
+    result = subprocess.run([sys.executable, "-m", "tools.ds_trace", "--core", CORE, "--builtin-bios",
+                             "--frames", "120", "--inputs", str(events), "--output", str(output), str(ROM), str(ROM)],
+                            cwd=ROOT, capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads((output / "report.json").read_text())
+    assert report["identical_video_audio"] and len(report["roms"]) == 2
+    assert len(list((output / "rom-0").glob("frame-*.png"))) == 4
+    assert all(t["width"] == 256 and t["height"] == 384 and t["audio_samples"] > 0
+               for t in report["roms"][0]["traces"])

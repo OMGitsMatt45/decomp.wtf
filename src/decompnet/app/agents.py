@@ -1087,6 +1087,11 @@ def api_tool_schemas(fork: bool = False) -> list[dict]:
                                                        new=st("replacement", True), message=st("why", True))),
         "file_status": ("How far a source file (or a function's file) is from being linked: functions left, its data "
                         "next to the original's, why the last link failed.", s(path=st("file or function", True))),
+        "configure_arm7_unit": ("DS ARM7: assign original data/BSS ranges or select c/c++, preserving code bounds "
+                                "and the complete ROM check. Overlaps and changed matches roll back.",
+                                s(path=st("ARM7 source file", True),
+                                  data=st("e.g. .data:0x023800A0:4:global_name .bss:0x027E1000:16:buffer"),
+                                  language=st("c or c++ (optional)"))),
         "split_file": ("Divide a source file at a function: it and the rest of the file's code (and data from the given "
                        "offsets) go to a new file. Kept only if the game still builds identically.",
                        s(path=st("file", True), at=st("function name or .text offset", True),

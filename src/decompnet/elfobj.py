@@ -256,7 +256,8 @@ def extract_function(data: bytes, name: str) -> FunctionObj | None:
             if mappings and max(mappings)[1] == "t":
                 arch = "thumb"
     section = elf.get_section(shndx)
-    code = section.data()[start : start + size]
+    data_start = start - section["sh_addr"] if elf["e_type"] in ("ET_EXEC", "ET_DYN") else start
+    code = section.data()[data_start : data_start + size]
 
     raw: list[dict] = []
     for rsec in elf.iter_sections():

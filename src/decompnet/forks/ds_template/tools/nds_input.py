@@ -2,7 +2,10 @@
 
 import shutil
 import struct
+import json
 from pathlib import Path
+
+import yaml
 
 SECURE_MARKER = bytes.fromhex("ffdeffe7ffdeffe7")
 
@@ -43,8 +46,6 @@ def stage_decrypted(source, target):
 
 
 def restore_prefix(extracted, prefix):
-    import yaml
-
     config = yaml.safe_load((extracted / "config.yaml").read_text(encoding="utf-8"))
     arm9 = (extracted / config["arm9_bin"]).resolve()
     if extracted.resolve() not in arm9.parents or arm9.stat().st_size < len(prefix):
@@ -52,6 +53,35 @@ def restore_prefix(extracted, prefix):
     with arm9.open("r+b") as stream:
         stream.write(prefix)
 
+
+def empty_constructors(extracted):
+    """Give dsd's analyzer a stored zero terminator for a table explicitly marked absent.
+
+    The serialized absent-table fields are restored during ROM configuration.
+    No code/data bytes or comparison ranges change.
+    """
+    config = yaml.safe_load((extracted / "config.yaml").read_text(encoding="utf-8"))
+    retained = {}
+    if config.get("arm9_overlays"):
+        path = extracted / config["arm9_overlays"]
+        document = yaml.compose(path.read_text(encoding="utf-8"), Loader=yaml.SafeLoader)
+        fields = lambda node: {key.value: value for key, value in node.value}
+        for node in fields(document)["overlays"].value:
+            overlay = fields(node)
+            start, end = int(overlay["ctor_start"].value), int(overlay["ctor_end"].value)
+            if start or end:
+                continue
+            size, address = int(overlay["code_size"].value), int(overlay["base_address"].value)
+            data = (path.parent / overlay["file_name"].value).read_bytes()
+            if size < 4 or size % 4 or len(data) != size or data[-4:] != bytes(4):
+                raise ValueError(f"ARM9 overlay {overlay['id'].value} has no constructor table or stored zero terminator; "
+                                 "this layout requires additional analyzer support")
+            retained[overlay["id"].value] = {"start": address + size - 4, "end": address + size}
+            overlay["ctor_start"].value = str(address + size - 4)
+            overlay["ctor_end"].value = str(address + size)
+        if retained:
+            path.write_text(yaml.serialize(document, Dumper=yaml.SafeDumper), encoding="utf-8")
+    (extracted / "retained_layout.json").write_text(json.dumps({"absent_arm9_constructors": retained}), encoding="utf-8")
 
 def retain_secure_crc(rom, reference):
     """Serialize retained secure CRC metadata and compute the new header CRC normally.

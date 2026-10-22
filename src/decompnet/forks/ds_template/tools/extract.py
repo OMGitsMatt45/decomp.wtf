@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from nds_input import restore_prefix, stage_decrypted
+from nds_input import empty_constructors, restore_prefix, stage_decrypted
 
 
 def main(argv: list[str]) -> int:
@@ -54,6 +54,7 @@ def main(argv: list[str]) -> int:
             return 1
         if prefix is not None:
             restore_prefix(staged, prefix)
+        empty_constructors(staged)
         previous = Path(temporary) / "previous"
         if target.exists():
             target.replace(previous)

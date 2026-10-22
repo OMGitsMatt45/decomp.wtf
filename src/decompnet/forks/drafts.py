@@ -9,6 +9,7 @@ unit under `build/<version>/asm/`. m2c turns that into a C draft for MIPS (N64, 
 from __future__ import annotations
 
 import re
+import json
 import subprocess
 import threading
 from pathlib import Path
@@ -104,6 +105,16 @@ def _dsd_asm(root: Path) -> Path | None:
 
 def _dsd_block(root: Path, unit_name: str, symbol: str) -> tuple[str, bool] | None:
     """(the function's assembly as m2c reads it, is Thumb) from ds-decomp's disassembly."""
+    if unit_name.startswith("arm7/"):
+        for path in root.glob("config/*/arm7/units.json"):
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            unit = next((u for u in manifest["units"] if u["name"] == unit_name), None)
+            if unit is None:
+                continue
+            assembly = root / "build" / path.parents[1].name / "arm7-asm" / Path(unit["source"]).with_suffix(".s")
+            if assembly.is_file():
+                return assembly.read_text(encoding="utf-8"), unit["mode"] == "thumb"
+        return None
     asm = _dsd_asm(root)
     path = asm / f"{unit_name}.s" if asm else None
     if path is None or not path.is_file():

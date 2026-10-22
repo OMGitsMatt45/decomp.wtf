@@ -68,6 +68,7 @@ class Module:
     ctor_start: int = 0
     ctor_end: int = 0
     flags: int = 0
+    bss_address: int | None = None
 
 
 class NdsImage:
@@ -165,7 +166,7 @@ class NdsImage:
             return
         loaded, bss_start, bss_end, blocks = next(iter(candidates.values()))
         self.modules["arm7"] = replace(main, stored_size=loaded, code_size=loaded,
-                                        bss_size=bss_end - bss_start)
+                                        bss_size=bss_end - bss_start, bss_address=bss_start)
         for index, (address, size, bss, cursor) in enumerate(blocks):
             name = f"arm7:autoload{index}"
             self.modules[name] = Module(name, "arm7", main.offset + cursor, size, address, size, bss)

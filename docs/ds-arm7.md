@@ -1,12 +1,58 @@
-# BIOS-free DS module inspection and initial ARM7 recovery
+# Nintendo DS ARM7 C/C++ recovery
 
-Decompilation and compilation do not inherently require console BIOS files.
-This developer CLI reads ARM7 and overlay modules directly from an ordinary DS
-image. An opaque ARM9 secure area does not prevent this work. Whole-project DS
-imports still need the ARM7 BIOS key table when decrypting or reproducing the
-encrypted secure area. ARM9 BIOS and firmware are emulator runtime inputs.
+Generated DS projects now discover ARM7 functions, compile them for ARM7TDMI,
+resolve calls and data at their runtime addresses, and link finished source
+units into the complete ROM. ARM and Thumb code work with C and genuine C++.
+ARM9 keeps its separate ARM946E build settings.
 
-From a checkout:
+Recognized SDK startup parameters map copied ARM7 blocks to their destination
+addresses, including instruction RAM. Loader bytes, descriptor tables, gaps,
+unclaimed data and unfinished functions remain from the owner's input. Module
+identities include the CPU and actual overlay ID; overlapping overlay addresses
+are not merged into one global address space. Discovery follows entry points,
+direct calls and resolved constant BX destinations. Indirect dispatch and unusual
+startup code can leave functions undiscovered; discovery is not complete program
+recovery.
+
+Use the normal browser or agent workflow to claim a function, obtain a draft,
+compile and diff it, and link its file. `edit_file` adds shared declarations,
+structs, globals and C++ helpers. `configure_arm7_unit` assigns original data/BSS
+ranges and selects C or C++ without allowing code bounds to change. For example:
+
+```text
+configure_arm7_unit(path="src/auto/arm7_main_02380040.c",
+                   data=".data:0x023800A0:4:arm7_data_023800A0", language="c++")
+```
+
+Use addresses from your analysis, not these example addresses. Ranges must fit
+the recorded initialized module or BSS and must not overlap another source
+unit. Configuration changes preserve existing code matches and the complete
+ROM check, or roll back. The file must match its newly assigned data before
+linking again. Plain recovered functions need their original unmangled names
+in C++, for example `extern "C" int recovered(int)`; classes and templates can
+retain C++ linkage.
+
+A function match requires every linked code byte, size, endianness and instruction
+mode to match. Branch destinations and literal addresses are checked even when
+objdiff reports equivalent instructions. Linking additionally checks every owned
+initialized section, BSS extent and runtime address, then consumes the compiled
+ELF bytes and compares the complete rebuilt ROM. Changed source cannot be hidden
+by copying reference bytes over it. Active source edits must keep this check
+passing. Standalone exports include the same build scripts and use native ARM
+GNU binutils, CodeWarrior and, outside Windows, wibo. Setup installs these tools;
+manual dependencies are in the [README download table](../README.md#downloads-you-install-yourself).
+
+## BIOS-free inspection and isolated checks
+
+Compilation does not require a console BIOS. Encrypted secure-area processing
+uses the owner's ARM7 BIOS key table. An image already decrypted for an emulator
+can be imported explicitly as **Already decrypted for an emulator**, or with
+`tools/ds_pilot.py --input-format decrypted`. That workflow preserves supplied
+secure bytes and retained checksum metadata without a BIOS. Automatic mode still
+rejects failed decryption. ARM9 BIOS and firmware are emulator runtime inputs.
+
+The separate read-only module inspector and isolated leaf checker remain useful
+without importing ARM9:
 
 ```sh
 uv run python tools/ds_arm7.py /path/to/owned.nds inspect
@@ -14,39 +60,25 @@ uv run python tools/ds_arm7.py /path/to/owned.nds draft --module arm7 --address 
 uv run python tools/ds_arm7.py /path/to/owned.nds verify --module arm7 --address 0x02380000 --size 8 --mode arm --symbol recovered --source /path/to/private/recovered.c
 ```
 
-The addresses above are examples; supply a function's actual start, full size
-and ARM/Thumb mode from your analysis. Keep recovered retail source outside the
-checkout. Inspection installs no tools and writes no files. Drafting uses the
-existing separately installed m2c; verification uses installed CodeWarrior for
-DS (`2.0/sp1p5` by default, selectable with `--compiler`). Setup installs those
-tools, and the [README download table](../README.md#downloads-you-install-yourself) covers
-manual dependencies. Native Windows runs CodeWarrior directly; Linux uses wibo.
+This isolated checker accepts bounded leaves ending in BX LR, rejects unresolved
+relocations and has no full-ROM claim. Use the generated project workflow for
+calls, globals and complete source units. Keep retail source outside this checkout.
 
-Verification accepts C and `--language c++`; C++ definitions need an unmangled
-name, for example `extern "C" int recovered()`. It targets ARM7TDMI, compares
-the entire function's raw bytes and size, checks the object's instruction mode,
-and rejects relocations rather than masking them. A mismatch exits with status
-1. Inline assembly and user pragmas are rejected by the existing source checker.
+## Protected code and layouts
 
-This is initial isolated-function recovery. Drafts currently need a bounded
-leaf ending in `bx lr`, without external branches, calls or PC-relative data.
-Unsupported operations remain errors. Linking complete ARM7 units into generated
-projects, automatic function discovery, browser/agent integration, and functions
-that need link context remain open. The normal project builder retains ARM7's
-original bytes. A CLI function match does not claim a rebuilt or bootable ROM.
+The pinned ds-decomp/ds-rom importer decodes and re-encrypts supported DS Protect
+formats. Qualification includes an original protected-overlay vector and the
+retail YV5P ARM9 main's four version 1.00 ranges. The separate inspector recognizes
+21 bootstrap signatures; a signature is a candidate, not proof of decryption or
+authentication. Automatic ARM7 discovery retains protected modules until a decoded
+ARM7 analysis context is available.
 
-The inspector keys modules by CPU and actual overlay ID, supports out-of-order
-IDs and overlapping runtime addresses, and retains BSS/constructor/flag metadata.
-It bounds FAT entries and backward-LZ expansion. Signed overlays can be decoded
-for inspection, but their authentication is explicitly unverified. Signed ARM7
-overlays are excluded from recovery. ARM9 main remains with the existing import
-decoder; this CLI does not interpret an encrypted or compressed ARM9 main as code.
+Inspection bounds FAT entries and backward-LZ expansion and preserves constructor,
+BSS and signed flags. Signed overlays can be retained in exact rebuilds; the
+inspector does not verify their authentication. ARM9 overlays with absent
+constructor tables and an existing final zero word are supported without changing
+the serialized absent-table fields. Layouts without that terminator fail with a
+specific analyzer-support error. DSi containers remain a separate implementation.
 
-DS Protect work begins with the 21 known bootstrap signatures from ds-rom 0.8.0
-(MIT; attribution and license accompany the table). Hits identify candidates in
-decoded modules and block ARM7 recovery pending decoding/validation. They do not
-authenticate a module, prove an exact variant, or implement protected-code
-decryption/re-encryption. No hit is not evidence that the whole game is unprotected.
-
-See the [YV5P retail test record](ds-retail-yv5p.md) for measured results and the
-remaining secure-area failure.
+See the [YV5P retail test record](ds-retail-yv5p.md) for exact rebuild and emulator
+results. These checks do not certify a physical console or every DS game.

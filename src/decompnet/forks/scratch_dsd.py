@@ -102,6 +102,8 @@ def tool_args() -> list[str]:
         raise ForkError("DS games are built with CodeWarrior for DS, which is proprietary: install it in Setup "
                         "(CodeWarrior for DS) if you accept that, then try again")
     args = ["--dsd", str(toolchains.binary("dsd")), "--compilers", str(Path(toolchains.path("mwccarm")) / "mwccarm")]
+    toolchains.ensure("arm-gnu", log=lambda *_: None)
+    args += ["--arm-binutils", str(toolchains.path("arm-gnu") / "bin")]
     if toolchains.get("wibo").supported and sys.platform != "win32":
         toolchains.ensure("wibo", log=lambda *_: None)
         args += ["--wibo", str(toolchains.binary("wibo"))]
@@ -262,7 +264,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
     shutil.copytree(TEMPLATE, root)
     # Establish the ignored private paths before extraction or a first build can fail.
     (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
-                                     ".ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
+                                     ".ninja_*\n*.d\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "extract").mkdir()
     try:
         (root / "extract" / "baserom.nds").hardlink_to(game)
@@ -308,7 +310,10 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
                            f"({prefix}), found by ds-decomp. */\n#include \"common.h\"\n", encoding="utf-8")
             sources.append(name)
         (module / "delinks.txt").write_text(lines, encoding="utf-8")
-    log(f"{len(sources)} source files for agents to write into")
+    from . import arm7_project
+
+    arm7_count = arm7_project.prepare(root, version, game)
+    log(f"{len(sources)} ARM9 source files and {arm7_count} ARM7 source units for agents to write into")
 
     fp = ForkProject(root)
     setup = [[sys.executable, "tools/configure.py", version, *args], ["ninja", "prepare"]]
