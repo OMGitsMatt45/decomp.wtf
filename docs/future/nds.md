@@ -1,6 +1,7 @@
 # Nintendo DS: encrypted imports and reconstruction qualification
 
-Status: **draft implementation; first qualification phase**. Baseline: current `main`.
+Status: **qualified on original fixtures; retail qualification remains open**.
+Baseline: current `main`.
 
 PR #7 now preserves PR #1's implementation commit and integrates it with the
 current import paths and native Windows/Linux checks. PR #1's branch and review
@@ -81,7 +82,7 @@ After installing the development dependencies and registered DS tools and
 building `projects/demo-ds/build.py`, run:
 
 ```sh
-uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py
+uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_objdiff_errors.py
 ```
 
 The full operational coverage gate requires these suites on Windows and Linux;
@@ -90,12 +91,19 @@ The focused `Nintendo DS native qualification` workflow runs the same DS suites
 on both hosts for quicker feedback, with an independent gate that rejects
 missing suites and skipped cases.
 
+Implementation commit [`f828a7e`](https://github.com/OMGitsMatt45/decomp.wtf/commit/f828a7ef6963246325d26fdfc1046146a97c4de0)
+passes all 81 DS and comparison-error checks on both native hosts with zero skips
+in the [focused qualification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727350867).
+The [full operational run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727347499)
+also passes every Windows/Linux core, packaging and Game Boy job.
+
 ## Work that remains
 
 - [x] Review and preserve PR #1's private BIOS, overlapping-entry, word-alignment, unused-section and instruction-mode changes on current main.
 - [x] Reproduce the 12-byte secure-prefix/checksum failure pattern on an original fixture and reject failed decryption before creating matching references, without masking bytes.
 - [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
-- [ ] Expand ARM7, ARM9, autoload and overlay coverage, including runtime-loaded modules and compiler-version differences.
+- [x] Qualify ARM9/ITCM source linking, DTCM reconstruction, overlapping overlays, ARM7 byte retention, compression and both DS compiler versions on original fixtures.
+- [ ] Expand ARM7 source recovery, additional runtime-module layouts, DS Protect and compiler-version coverage.
 
 The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
 original test fixtures. A wrong test key reproduces exactly 12 changed bytes
@@ -103,8 +111,9 @@ with raw dsd: offsets `0x6C-0x6D`, `0x15E-0x15F` and `0x4000-0x4007`. The guard
 rejects that failed decryption before it can replace verified reference data.
 This establishes one concrete cause of the pattern; it does not establish that
 the original YV5P input used a wrong key or that its specific case is resolved.
-Nonstandard secure-area prefixes are rejected explicitly. The build corrects the pinned toolkit's extra overlay BSS
-rounding using the actual linked boundaries, without changing the ROM comparison.
+Nonstandard secure-area prefixes are rejected explicitly. The build corrects the
+pinned toolkit's extra overlay BSS rounding using the actual linked boundaries,
+without changing the ROM comparison.
 
 ARM7 programs and ARM7 overlays are retained, not recovered as matching C/C++.
 Recovered source can enter exact ROM rebuilds once its entire unit matches.
@@ -117,8 +126,8 @@ runtime-module, DS Protect and compiler-version coverage remains open.
 - [x] Use legal original encrypted/unencrypted fixtures and confirm test keys stay in ignored private paths.
 - [x] Verify module checks, symbol addresses, restored ARM/Thumb mode and a strict full-ROM rebuild on those fixtures; retain failures as failures.
 - [x] Add browser imports, claims, failure reporting and clean standalone rebuild coverage for encrypted projects.
-- [ ] Qualify the bounded pilot CLI with encrypted inputs on both native hosts.
-- [ ] Keep current required operational suites passing; new platform checks must fail rather than silently skip missing required tools.
+- [x] Qualify the bounded pilot CLI with encrypted inputs on both native hosts.
+- [x] Keep current required operational suites passing; new platform checks must fail rather than silently skip missing required tools.
 
 ## Starting points
 
