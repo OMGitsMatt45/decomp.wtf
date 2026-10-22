@@ -73,6 +73,8 @@ Install the following only for the features you choose:
 | [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
 | [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
 | [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+| [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
+| [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
 Older 32-bit compilers need your distribution's 32-bit runtime, such as
@@ -108,6 +110,17 @@ update-only partitions. These paths report assembly coverage separately from
 verified edits and retained base bytes; they do not recover C/C++ or rebuild a
 disc container. Assembly-only GBA exports need ARM binutils, without agbcc.
 
+Encrypted DS games need your own 16 KiB ARM7 BIOS. Before starting the app, set
+`DECOMP_ARM7_BIOS` to its path (`$env:DECOMP_ARM7_BIOS = 'C:\Games\arm7_bios.bin'`
+in PowerShell, or `export DECOMP_ARM7_BIOS=/path/to/arm7_bios.bin` on Linux).
+The importer retains a copy in the project's ignored `extract/arm7_bios.bin`
+for subsequent builds; the ROM and BIOS stay outside the project's Git history.
+Decrypted copies can also need that BIOS to reproduce their retained encrypted
+secure-area checksum. Unencrypted homebrew with a zero checksum ignores an
+optional configured BIOS during rebuilding so its header stays identical.
+For bounded import/draft probes from a checkout, see
+`uv run python tools/ds_pilot.py --help`; keep its work directory outside the checkout.
+
 Important boundaries:
 
 - PS2 exports verify the program payload, imported overlays and original main
@@ -116,6 +129,12 @@ Important boundaries:
   prelinking. IDO 7.1 retains its own frontend and backend.
 - GBA's normal and old Thumb compilers have distinct restored C++ frontends.
   The separate agbcc ARM-mode compiler is not integrated.
+- DS links finished ARM9 source units after their code and data match and the
+  complete ROM still verifies. Unfinished units and ARM7 retain original
+  objects; ARM7 source recovery remains [future work](docs/future/nds.md).
+  DSi-enhanced/exclusive ROM containers are rejected explicitly: the pinned
+  toolkit cannot preserve ARM9i/ARM7i programs and TWL authentication metadata.
+  DSi-branded compiler versions can still compile ordinary DS source.
 - GB/GBC retains unknown bytes from the owner's base ROM. An exact rebuild is
   not a completed disassembly. Mapper analysis, richer layouts and room layout
   synchronization remain unfinished.

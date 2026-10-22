@@ -69,3 +69,16 @@ def test_what_differs_is_named(same, tmp_path, capsys):
     changed[gap] ^= 0x55
     assert same.explain(bytes(changed), rom) == [f"only the padding between the parts differs (from offset {gap:#x}): "
                                                  "every program and file is the same"]
+
+
+@pytest.mark.parametrize("offset,diagnostic", [(0x6C, "secure area checksum"), (0x15E, "header checksum"),
+                                               (0x4000, "the ARM9 program differs")])
+def test_secure_prefix_and_checksums_are_checked_and_clear_a_previous_success(same, tmp_path, capsys,
+                                                                            offset, diagnostic):
+    rom = ROM.read_bytes()
+    code, _, ok = check(same, tmp_path, rom, rom, capsys)
+    assert code == 0 and ok
+    changed = bytearray(rom)
+    changed[offset] ^= 1
+    code, said, ok = check(same, tmp_path, bytes(changed), rom, capsys)
+    assert code == 1 and not ok and diagnostic in said

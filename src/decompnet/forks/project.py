@@ -465,13 +465,16 @@ class ForkProject:
         return objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
                             project=self.root if unit.mappings else None, unit=unit.name)
 
-    # ------------------------------------------------------------------ linking (dtk-template projects)
-    # A file whose code and data match is linked into the game: configure.py marks it Matching, the build then
-    # uses its compiled object instead of the original's, and the project's checksum check (`ninja .../ok`) proves
-    # the whole game still comes out byte for byte. That's what decomp.dev counts as linked.
+    # ------------------------------------------------------------------ linking (dtk-template and generated DS)
+    # A finished file replaces its original object only after the complete game verifies.
 
     def check_target(self) -> str | None:
-        """dtk-template's checksum target (build/<version>/ok: the built DOL and RELs against the game's SHA-1s)."""
+        """The project's complete-image verification target (dtk checksums or the DS ROM comparison)."""
+        manifest = self.manifest or {}
+        if manifest.get("platform") == "nds" and manifest.get("created") == "from scratch":
+            version = manifest.get("version")
+            if version and (self.root / "tools/configure.py").is_file():
+                return str(Path("build") / version / "rom.ok")
         try:
             with open(self.root / "build.ninja", errors="replace", encoding="utf-8") as f:
                 for line in f:
@@ -483,9 +486,11 @@ class ForkProject:
         return None
 
     def link_states(self) -> dict[str, tuple[str, int, int]]:
-        """Source file (relative to the project root) -> (its link state in configure.py: Matching, NonMatching,
-        Equivalent or MatchingFor(...), where that word starts and ends in configure.py)."""
+        """Source path -> (link state, state span in its build configuration)."""
         try:
+            if self.is_generated_ds():
+                return {src: state for path in self.link_config_paths()
+                        for src, state in self._ds_states_in(path.read_text(encoding="utf-8")).items()}
             return self._states_in((self.root / "configure.py").read_text(errors="replace", encoding="utf-8"))
         except OSError:
             return {}
@@ -507,8 +512,34 @@ class ForkProject:
     def linkable(self) -> bool:
         return self.check_target() is not None and bool(self.link_states())
 
+    def is_generated_ds(self) -> bool:
+        manifest = self.manifest or {}
+        return manifest.get("platform") == "nds" and manifest.get("created") == "from scratch"
+
+    def link_config_paths(self) -> list[Path]:
+        if self.is_generated_ds():
+            version = self.manifest["version"]
+            return sorted((self.root / "config" / version / "arm9").rglob("delinks.txt"))
+        return [self.root / "configure.py"]
+
+    @staticmethod
+    def _ds_states_in(text: str) -> dict[str, tuple[str, int, int]]:
+        # ds-decomp's source entries end at the next unindented source name.
+        states = {}
+        for match in re.finditer(r"^(\S+\.(?:c|cpp|cc|cxx)):[ \t]*\r?\n((?:[ \t].*(?:\n|$)|[ \t]*\r?\n)*)", text, re.M):
+            complete = re.search(r"^[ \t]+complete[ \t]*(?://[^\r\n]*)?\r?$", match[2], re.M)
+            states[match[1].replace("\\", "/")] = ("Matching" if complete else "NonMatching", match.start(2), match.end())
+        return states
+
     def marked_matching(self, text: str, sources: list[str], version: str | None) -> str:
-        """configure.py (`text`) with these source files (NonMatching in it) marked as linked."""
+        """Build configuration text with finished source files marked as linked."""
+        if self.is_generated_ds():
+            states = self._ds_states_in(text)
+            for offset in sorted((states[s][1] for s in sources if s in states and states[s][0] == "NonMatching"),
+                                 reverse=True):
+                newline = "\r\n" if text[max(0, offset - 2):offset] == "\r\n" else "\n"
+                text = text[:offset] + "    complete" + newline + text[offset:]
+            return text
         states = self._states_in(text)
         # a project that builds several versions links per version where it can say so
         word = (f'MatchingFor("{version}")' if version and len(self.versions()) > 1 and "def MatchingFor" in text

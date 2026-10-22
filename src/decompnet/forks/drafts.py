@@ -118,6 +118,15 @@ def _dsd_block(root: Path, unit_name: str, symbol: str) -> tuple[str, bool] | No
     return f".text\nglabel {symbol}\n" + "\n".join(lines) + "\n", m.group(1) == "thumb"
 
 
+def ds_mode_source(root: Path, unit_name: str, symbol: str, source: str) -> str:
+    """A generated DS unit can contain ARM and Thumb functions: set the original mode for this definition only."""
+    block = _dsd_block(root, unit_name, symbol)
+    if block is None:
+        return source
+    mode = "on" if block[1] else "off"
+    return f"#pragma push\n#pragma thumb {mode}\n{source.rstrip()}\n#pragma pop\n"
+
+
 def add_m2c_macros(header: Path) -> bool:
     """The macros compilable drafts use (M2C_FIELD, M2C_UNK...), added to a from-scratch project's common header.
     False when they're there already."""
