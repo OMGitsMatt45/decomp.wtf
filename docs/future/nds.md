@@ -23,6 +23,13 @@ matching targets are registered. The generated project's extractor applies the
 same decryption check when rebuilding, stages output separately, and preserves
 the previous verified extraction after a failure.
 
+Finished ARM9, autoload and overlay source units replace their original objects
+only after all their code/data match and the complete ROM still verifies.
+The existing link workflow now uses ds-decomp's `complete` markers and rolls
+back configuration changes after failed or interrupted verification. Linked
+source edits must keep the full ROM identical. Unfinished units retain their
+original objects.
+
 The full-image check still compares every byte, with the existing explicit
 trimmed/padded-tail policy. Secure-area prefix and checksum differences are never
 exempted. A failed recheck removes any old success stamp.
@@ -50,6 +57,11 @@ The DS suites check:
   in both overlapping overlays and a real Thumb function match.
 - ARM/Thumb push/pop restoration in C and C++, plus rejection of changed secure
   prefixes and checksums without retaining an old verification stamp.
+- C and genuine C++ source linking on both compiler versions, rejection of
+  changed linked code, and configuration rollback after a linker exception.
+- Overlay BSS sizes of 0, 4, 20 and 36 bytes. The build derives these extents from
+  linked boundary symbols without ds-decomp 0.12.1's extra 32-byte rounding;
+  deliberate linked BSS changes still fail the complete-ROM check.
 
 After installing the development dependencies and registered DS tools and
 building `projects/demo-ds/build.py`, run:
@@ -70,14 +82,13 @@ missing compiler prerequisites must not silently count as passing coverage.
 The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
 original test fixtures. A valid fixture rebuild does not establish that its
 reported 12 differing bytes are resolved. Nonstandard secure-area prefixes are
-rejected explicitly. The pinned toolkit also rounds some overlay BSS extents to
-32 bytes; nonstandard extents can still fail the strict ROM check.
+rejected explicitly. The build corrects the pinned toolkit's extra overlay BSS
+rounding using the actual linked boundaries, without changing the ROM comparison.
 
 ARM7 programs and ARM7 overlays are retained, not recovered as matching C/C++.
-The generated DS template compiles candidate source for object comparison but
-does not yet automatically link recovered source units into the ROM. Exact
-round trips currently use the retained original objects. Further runtime-module,
-DS Protect, compiler-version and linked-source coverage remains open.
+Recovered source can enter exact ROM rebuilds once its entire unit matches.
+Partial round trips still retain unmatched original objects. Further ARM7,
+runtime-module, DS Protect and compiler-version coverage remains open.
 
 ## Acceptance checks
 

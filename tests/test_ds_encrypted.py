@@ -81,6 +81,10 @@ def imported(encrypted, tmp_path, request):
     net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
     with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
         slug = net.import_rom(game, toolchain=f"DS/{request.param}", confirmed=True, log=lambda *_: None)
+    deadline = time.monotonic() + 10
+    while net.forks._linking.get(slug, {}).get("running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not net.forks._linking.get(slug, {}).get("running")
     return net, slug, game, bios
 
 
@@ -104,6 +108,38 @@ def test_encrypted_rom_rebuilds_every_byte_and_keeps_bios_private(imported):
         assert private.stat().st_mode & 0o077 == 0
     tracked = subprocess.run(["git", "ls-files"], cwd=root, check=True, capture_output=True, text=True).stdout.splitlines()
     assert tracked and not any(p.startswith(("extract/", "build/")) or "bios" in p for p in tracked)
+
+
+@pytest.mark.parametrize("bss_size", [0, 4, 20, 36])
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+def test_overlay_bss_extents_are_not_rounded(encrypted, tmp_path, monkeypatch, bss_size, compiler):
+    game, bios = encrypted
+    seed = tmp_path / "seed"
+    shutil.copytree(game.parent / "seed", seed)
+    config = seed / "arm9/overlays.yaml"
+    overlays = json.loads(config.read_text(encoding="utf-8"))
+    for overlay in overlays["overlays"]:
+        overlay["bss_size"] = bss_size
+    config.write_text(json.dumps(overlays), encoding="utf-8")
+    game = tmp_path / "bss.nds"
+    subprocess.run([str(toolchains.binary("dsd")), "rom", "build", "--config", str(seed / "config.yaml"),
+                    "--rom", str(game), "--arm7-bios", str(bios)], check=True, capture_output=True)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    root = Path(net.project_row(slug)["root"])
+    assert net.overview(slug)["rebuild"]["identical"]
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    if bss_size:
+        # A real linked BSS change must still fail the complete-image check.
+        config = root / "config/adqe/arm9/overlays/ov000/delinks.txt"
+        before = config.read_text(encoding="utf-8")
+        old_end = 0x02200020 + bss_size
+        config.write_text(before.replace(f"end:0x{old_end:08x}", f"end:0x{old_end + 4:08x}"), encoding="utf-8")
+        result = scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)
+        assert not result["identical"] and "overlay table" in result["detail"]
+        assert not (root / "build/adqe/rom.ok").exists()
 
 
 def test_thumb_claim_match_restores_mode_and_keeps_strict_rebuild(imported):
@@ -143,6 +179,80 @@ def test_overlays_at_the_same_address_have_separate_judging_and_claims(imported)
         result = net.attempt(agent, fn["name"], f"int {symbol}(int x) {{ return x + {index + 1}; }}", slug)
         assert result["matched"], result["text"]
     assert not net.store.one("SELECT 1 FROM claims WHERE agent_id=?", agent.id)
+
+
+@pytest.mark.parametrize("language", ["c", "c++"])
+def test_matching_overlay_source_is_linked_and_changes_are_rejected(imported, monkeypatch, language):
+    net, slug, game, _ = imported
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    root = Path(net.project_row(slug)["root"])
+    fp = ForkProject(root)
+    fn = next(row for row in net.store.all("SELECT name, unit, meta FROM functions")
+              if row["unit"].startswith("src/auto/ov000"))
+    source = fp.unit(fn["unit"]).source
+    if language == "c++":
+        cpp = str(Path(source).with_suffix(".cpp"))
+        config = root / "config/adqe/arm9/overlays/ov000/delinks.txt"
+        config.write_text(config.read_text(encoding="utf-8").replace(source + ":", cpp + ":"), encoding="utf-8")
+        (root / source).rename(root / cpp)
+        assert fp.run([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()])[0]
+        assert fp.build_all()[0]
+        assert fp.run(["ninja", "objdiff.json"])[0]
+        net.forks.check(slug, log=lambda *_: None)
+        source = cpp
+    agent, _ = net.local_agent("linked-overlay-owner")
+    symbol = json.loads(fn["meta"])["symbol"]
+    code = f"int {symbol}(int value) {{ return value + 1; }}"
+    if language == "c++":
+        with (root / source).open("a", encoding="utf-8") as stream:
+            stream.write(f'\nextern "C" int {symbol}(int value);\n')
+        code = code.replace("return value", "return static_cast<int>(value)")
+    result = net.attempt(agent, fn["name"], code, slug)
+    assert result["matched"], result["text"]
+    linked = net.forks.link(slug, log=lambda *_: None)
+    assert source in linked["linked"], (linked, fp.link_states(),
+                                       [u for u in fp.report()["units"] if u["name"] == fn["unit"]])
+    assert fp.link_states()[source][0] == "Matching"
+    objects = (root / "build/adqe/objects.txt").read_text(encoding="utf-8").replace("\\", "/")
+    assert f'"build/adqe/{Path(source).with_suffix(".o").as_posix()}"' in objects
+    assert f'"build/adqe/delinks/{Path(source).with_suffix(".o").as_posix()}"' not in objects
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    assert "LINKED" in net.forks.file_status(slug, source)
+    original = (root / source).read_text(encoding="utf-8")
+    rejected = net.attempt(agent, fn["name"], code.replace("+ 1", "+ 7"), slug)
+    assert not rejected["matched"]
+    assert (root / source).read_text(encoding="utf-8") == original
+    # Prove the ROM consumes compiled source, not the retained target object.
+    (root / source).write_text(original.replace("+ 1", "+ 7"), encoding="utf-8")
+    assert not scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)["identical"]
+    assert not (root / "build/adqe/rom.ok").exists()
+    (root / source).write_text(original, encoding="utf-8")
+    assert scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)["identical"]
+
+
+def test_linker_exception_restores_the_ds_configuration(imported, monkeypatch):
+    net, slug, _, _ = imported
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    root = Path(net.project_row(slug)["root"])
+    fp = ForkProject(root)
+    fn = next(row for row in net.store.all("SELECT name, unit, meta FROM functions")
+              if row["unit"].startswith("src/auto/ov000"))
+    agent, _ = net.local_agent("rollback-owner")
+    symbol = json.loads(fn["meta"])["symbol"]
+    assert net.attempt(agent, fn["name"], f"int {symbol}(int x) {{ return x + 1; }}", slug)["matched"]
+    before = {p: p.read_bytes() for p in fp.link_config_paths()}
+    real_verify = ForkProject.verify
+
+    def interrupted(project, *a, **kw):
+        if project.root == root and any(state[0] == "Matching" for state in project.link_states().values()):
+            raise RuntimeError("simulated linker interruption")
+        return real_verify(project, *a, **kw)
+
+    monkeypatch.setattr(ForkProject, "verify", interrupted)
+    with pytest.raises(RuntimeError, match="simulated linker interruption"):
+        net.forks.link(slug, log=lambda *_: None)
+    assert {p: p.read_bytes() for p in before} == before
+    assert real_verify(fp)[0]
 
 
 def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_path):

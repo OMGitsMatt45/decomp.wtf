@@ -695,49 +695,57 @@ class ForkEngine:
         """Link every finished file into the game, keeping only what the project's checksum check accepts."""
         proj, fp, cfg = self.get(slug)
         if not fp.linkable():
-            return {"linked": [], "failed": {}, "note": "this project has no link step decomp.wtf knows (dtk-template)"}
+            return {"linked": [], "failed": {}, "note": "this project has no supported link step (dtk-template or generated DS)"}
         with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
             fp.build_all()
             rep = fp.report()
             todo = self.link_candidates(proj, fp, rep)
             if not todo:
                 return {"linked": [], "failed": {}}
-            conf = fp.root / "configure.py"
-            original = conf.read_text(errors="replace", encoding="utf-8")
+            originals = {path: path.read_text(encoding="utf-8") for path in fp.link_config_paths()}
             ok, out = fp.verify()
             if not ok:
                 return {"linked": [], "failed": {}, "error": "the project's checksum check fails before linking "
                         f"anything, so nothing was linked:\n{_tail(out)}"}
 
             def build_with(sources: list[str]) -> tuple[bool, str]:
-                conf.write_text(fp.marked_matching(original, sources, cfg.get("version")), encoding="utf-8")
+                for path, original in originals.items():
+                    path.write_text(fp.marked_matching(original, sources, cfg.get("version")), encoding="utf-8")
                 return fp.verify()
 
             log(f"linking {len(todo)} finished file(s)")
             linked: list[str] = []
             failed: dict[str, str] = {}
-            ok, out = build_with(todo)
-            if ok:
-                linked = todo
-            else:  # one at a time, so one file that doesn't link keeps none of the others out
-                for src in todo[:40]:
-                    ok, out = build_with([*linked, src])
-                    if ok:
-                        linked.append(src)
-                    else:
-                        failed[src] = _tail(out)
-                ok, out = build_with(linked)
-                if not ok:
-                    linked = []
+            try:
+                ok, out = build_with(todo)
+                if ok:
+                    linked = todo
+                else:  # one at a time, so one file that doesn't link keeps none of the others out
+                    for src in todo[:40]:
+                        ok, out = build_with([*linked, src])
+                        if ok:
+                            linked.append(src)
+                        else:
+                            failed[src] = _tail(out)
+                    ok, out = build_with(linked)
+                    if not ok:
+                        linked = []
+            except BaseException:
+                for path, original in originals.items():
+                    path.write_text(original, encoding="utf-8")
+                raise
             self._remember_link_failures(proj, linked, failed)
             if not linked:
-                conf.write_text(original, encoding="utf-8")
+                for path, original in originals.items():
+                    path.write_text(original, encoding="utf-8")
                 fp.verify()
                 return {"linked": [], "failed": failed}
             names = ", ".join(Path(s).name for s in linked[:6]) + (f" and {len(linked) - 6} more" if len(linked) > 6 else "")
             who = f"\n\nLinked by decomp.wtf after {agent.name}'s match." if agent else "\n\nLinked by decomp.wtf."
-            self._commit(proj, fp, "configure.py", f"Link {names}\n\nEvery function and all data match, and the game "
-                                                   f"still builds byte for byte from the C.{who}")
+            changed = [str(path.relative_to(fp.root)) for path, text in originals.items()
+                       if path.read_text(encoding="utf-8") != text]
+            self._commit_paths(proj, fp, changed, f"Link {names}\n\nEvery function and all data match, and the game "
+                                                f"still builds byte for byte from the C.{who}")
             with self.net.store.tx() as db:
                 for src in linked:
                     self.net._event(db, proj["id"], agent.id if agent else None, "link", src)

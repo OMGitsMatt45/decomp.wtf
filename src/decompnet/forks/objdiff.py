@@ -40,8 +40,11 @@ def judge_options(project_options: dict | None = None, unit_options: dict | None
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 600) -> str:
-    res = subprocess.run([_exe(), "--no-color", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                         encoding="utf-8", errors="replace")
+    try:
+        res = subprocess.run([_exe(), "--no-color", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                             encoding="utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ObjdiffError(f"could not run objdiff-cli: {e}") from e
     if res.returncode != 0:
         raise ObjdiffError((res.stderr or res.stdout).strip()[-1500:] or f"objdiff-cli exited with {res.returncode}")
     return res.stdout

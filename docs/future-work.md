@@ -7,8 +7,9 @@ its own implementation evidence before support can be claimed.
 
 **19 future-work draft PRs are open:** seven for implemented platform families,
 eleven for missing console workflows, and one for shared decompiler engines.
-The documents are work plans; their implementation and validation checklists
-remain open.
+Most documents are work plans with open implementation and validation checklists.
+DS PR #7 includes implementation and original-fixture qualification; its remaining
+reconstruction gaps stay explicit.
 
 ## Implemented platform families
 
@@ -71,9 +72,9 @@ feasibility gates rather than claiming a ready implementation.
   replace its old compiler proposal and obsolete PS2-unavailable statement.
 - [Draft PR #1](https://github.com/OMGitsMatt45/decomp.wtf/pull/1) remains open.
   Its encrypted DS import, source-unit layout and ARM/Thumb fixes are absent
-  from main. Its reported secure-prefix/checksum differences still need a strict
-  full-ROM resolution and current native Windows/Linux validation. The DS plan
-  depends on reviewing this work rather than discarding it.
+  from main; PR #7 preserves its implementation history and qualifies original
+  fixtures on current Windows/Linux paths. The reported retail-ROM
+  secure-prefix/checksum differences still need a strict full-ROM resolution.
 
 ## Work-plan status
 

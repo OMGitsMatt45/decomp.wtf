@@ -293,8 +293,9 @@ the toolkit DS decomps use. Every build rebuilds the ROM and checks it against y
 
 1. Put your own copy of the game here as `extract/baserom.nds` (never commit it).
    Encrypted ROMs also need your own 16 KiB ARM7 BIOS at `extract/arm7_bios.bin` (also never committed).
-2. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
-3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).
+2. Install the Python build dependencies with `python -m pip install -r requirements.txt` (already included in decomp.wtf).
+3. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
+4. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).
 
 Compiler: CodeWarrior for DS {compiler} (change `MWCC_VERSION` in tools/configure.py if the game used another).
 `config/{version}/` holds what ds-decomp found: sections, symbols, relocations and the source files (`delinks.txt`).

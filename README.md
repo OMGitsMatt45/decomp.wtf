@@ -124,6 +124,9 @@ Important boundaries:
   prelinking. IDO 7.1 retains its own frontend and backend.
 - GBA's normal and old Thumb compilers have distinct restored C++ frontends.
   The separate agbcc ARM-mode compiler is not integrated.
+- DS links finished ARM9 source units after their code and data match and the
+  complete ROM still verifies. Unfinished units and ARM7 retain original
+  objects; ARM7 source recovery remains [future work](docs/future/nds.md).
 - GB/GBC retains unknown bytes from the owner's base ROM. An exact rebuild is
   not a completed disassembly. Mapper analysis, richer layouts and room layout
   synchronization remain unfinished.

@@ -80,7 +80,7 @@ def main() -> None:
                depfile="$basefile.d")
         n.rule("lcf", f"{DSD} lcf -c {CONFIG}")
         n.rule("mwld", f"{WRAP}\"{LD}\" {q(LD_FLAGS)} -m Entry @$objects $lcf -o $out")
-        n.rule("rom_config", f"{DSD} rom config --elf $in --config {CONFIG}")
+        n.rule("rom_config", f"{PY} tools/rom_config.py {DSD} --elf $in --config {CONFIG}")
         n.rule("rom_build", f"{DSD} rom build --config $in --rom $out{bios_arg}")
         n.rule("same", f"{PY} tools/same.py $in {BASEROM} $out")
         n.rule("objdiff", f"{DSD} objdiff --config-path {CONFIG} --custom-make ninja")
@@ -103,7 +103,7 @@ def main() -> None:
         linked = sorted({x["object_to_link"] for x in files})
         n.build(str(BUILD / "arm9.o"), "mwld", [*linked, lcf, objects], variables={"lcf": lcf, "objects": objects})
         rom_config = BUILD / "build" / "rom_config.yaml"
-        n.build(str(rom_config), "rom_config", str(BUILD / "arm9.o"))
+        n.build(str(rom_config), "rom_config", str(BUILD / "arm9.o"), implicit=["tools/rom_config.py"])
         n.build(str(rom), "rom_build", str(rom_config),
                 implicit=[str(ARM7_BIOS)] if ARM7_BIOS.is_file() else None)
         n.build(str(BUILD / "rom.ok"), "same", str(rom))
