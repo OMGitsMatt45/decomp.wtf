@@ -78,7 +78,7 @@ jobs:
     env:
       DECOMP_RUNTIME: native
       DECOMP_UPDATES: 'off'
-      DECOMP_DS_CORE: ${{ github.workspace }}/.ds-emulator/melonds_libretro.${{ runner.os == 'Windows' && 'dll' || 'so' }}
+      DECOMP_DS_CORE: ${{ github.workspace }}/.ds-emulator/melonds_libretro.${{ matrix.os == 'windows-2022' && 'dll' || 'so' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
