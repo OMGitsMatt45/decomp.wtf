@@ -39,6 +39,29 @@ def test_an_explicit_bios_takes_precedence_and_can_already_be_local(tmp_path, mo
     assert bios.read_bytes() == b"x" * 0x4000
 
 
+def test_interrupted_bios_copy_is_private_and_leaves_no_partial_key(tmp_path, monkeypatch):
+    bios = tmp_path / "my BIOS.bin"
+    bios.write_bytes(b"x" * 0x4000)
+    root = tmp_path / "project"
+    (root / "extract").mkdir(parents=True)
+    private = root / "extract/arm7_bios.bin"
+    private.write_bytes(b"previous verified key")
+    monkeypatch.setattr(scratch_dsd, "_run", lambda *a: pytest.fail("must not extract after an incomplete BIOS copy"))
+
+    def interrupted(source, destination):
+        if sys.platform != "win32":
+            assert Path(destination.name).stat().st_mode & 0o077 == 0
+        destination.write(source.read(32))
+        raise OSError("simulated copy interruption")
+
+    monkeypatch.setattr(scratch_dsd.shutil, "copyfileobj", interrupted)
+    with pytest.raises(OSError, match="simulated copy interruption"):
+        scratch_dsd._extract("dsd", root, "yv5p", arm7_bios=bios)
+    assert private.read_bytes() == b"previous verified key"
+    assert not list(private.parent.glob(".arm7-bios-*"))
+    assert bios.read_bytes() == b"x" * 0x4000
+
+
 @pytest.mark.parametrize("size", [None, 0, 0x1000, 0x4001])
 def test_bad_bios_stops_before_extraction(tmp_path, monkeypatch, size):
     bios = tmp_path / "bios.bin"

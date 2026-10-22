@@ -21,6 +21,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from .. import toolchains
@@ -211,7 +212,19 @@ def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = Non
             raise ForkError("the ARM7 BIOS must be an existing 16 KiB file; check DECOMP_ARM7_BIOS")
         private = root / "extract" / "arm7_bios.bin"
         if bios != private.resolve():
-            shutil.copyfile(bios, private)
+            temporary = None
+            try:
+                # NamedTemporaryFile creates owner-only files before writing
+                # any bytes, and replacement keeps an interrupted copy from
+                # leaving partial key data at the build's persistent path.
+                with bios.open("rb") as source, tempfile.NamedTemporaryFile(
+                        dir=private.parent, prefix=".arm7-bios-", delete=False) as destination:
+                    temporary = Path(destination.name)
+                    shutil.copyfileobj(source, destination)
+                temporary.replace(private)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
         private.chmod(0o600)
         cmd += ["--arm7-bios", "extract/arm7_bios.bin"]
     try:
