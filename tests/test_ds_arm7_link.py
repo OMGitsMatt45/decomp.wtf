@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
@@ -26,7 +27,7 @@ def arm7_calls(encrypted, tmp_path, request):
     seed = tmp_path / "seed"
     shutil.copytree(original.parent / "seed", seed)
     base = 0x02380000
-    code = bytearray(0xC0)
+    code = bytearray(0x100)
     # Original ARMv4T fixture: increment the shared counter by calling recovered()
     # and storing its result. No SDK code, firmware or Nintendo key table.
     if request.param == "arm":
@@ -44,7 +45,19 @@ def arm7_calls(encrypted, tmp_path, request):
         struct.pack_into("<I", code, 0x54, base + 0xA0)
         struct.pack_into("<2H", code, 0x80, 0x3001, 0x4770)
     struct.pack_into("<I", code, 0xA0, 7)
+    # Referenced SDK-style parameters distinguish initialized bytes from a
+    # noncontiguous main BSS and one copied block. The entry reads the parameters
+    # before entering our loop; no SDK implementation is included.
+    struct.pack_into("<3I", code, 0x30, 0xE59F7000, 0xEAFFFFF1, base + 0xC0)
+    struct.pack_into("<5I", code, 0xC0, base + 0xF4, base + 0x100, base + 0xD4,
+                     base + 0xF000, base + 0xF010)
+    struct.pack_into("<2I", code, 0xD4, 0xE3A00000, 0xE12FFF1E)
+    struct.pack_into("<3I", code, 0xF4, 0x027E0000, 0x20, 16)
     (seed / "arm7/arm7.bin").write_bytes(code)
+    arm7_config = seed / "arm7/arm7.yaml"
+    metadata = yaml.safe_load(arm7_config.read_text())
+    metadata["entry_function"] = base + 0x30
+    arm7_config.write_text(yaml.safe_dump(metadata))
     game = tmp_path / "arm7-calls.nds"
     subprocess.run([str(toolchains.binary("dsd")), "rom", "build", "--config", str(seed / "config.yaml"),
                     "--rom", str(game), "--arm7-bios", str(bios)], check=True, capture_output=True)
@@ -72,11 +85,12 @@ def test_arm7_calls_and_owned_data_are_linked_from_c_and_cpp(arm7_calls, tmp_pat
         net.forks.configure_arm7_unit(agent, slug, unit["source"], ".data:0x02380080:4")
     assert path.read_bytes() == saved
     configured = net.forks.configure_arm7_unit(agent, slug, unit["source"],
-                                               ".data:0x023800A0:4:arm7_data_023800A0", language)
+                                               ".data:0x023800A0:4:arm7_data_023800A0 .bss:0x0238F000:4:arm7_uninitialized", language)
     assert configured.startswith("✅"), configured
     unit = next(u for u in json.loads(path.read_text())["units"] if u["address"] == 0x02380040)
     source = ("extern int arm7_main_02380080(int);\n"
               "int arm7_data_023800A0 = 7;\n"
+              "int arm7_uninitialized;\n"
               "int arm7_main_02380040(int x) { return arm7_main_02380080(x) + arm7_data_023800A0; }\n")
     if language == "c++":
         source = ('template<int N> struct Fixed { enum { value = N }; };\nextern "C" {\n'

@@ -108,8 +108,13 @@ def main() -> None:
         reference_arg = f" --decrypted-reference {BASEROM}" if INPUT_FORMAT == "decrypted" else ""
         n.rule("rom_build", f"{PY} tools/build_rom.py {DSD} --config $in --rom $out{bios_arg}{reference_arg}")
         n.rule("same", f"{PY} tools/same.py $in {BASEROM} $out")
-        objdiff_extra = f" && {arm7_command.replace('$action', 'objdiff')} --output objdiff.json" if arm7_sources else ""
-        n.rule("objdiff", f"{SH}{DSD} objdiff --config-path {CONFIG} --custom-make ninja{objdiff_extra}")
+        # A cmd /c chain beginning with a quoted executable loses its first
+        # quote when later commands add more quoted paths. Let Python launch dsd
+        # with an argument list, then append ARM7 units in the same process.
+        objdiff_command = (f"{arm7_command.replace('$action', 'objdiff')} --output objdiff.json "
+                           f"--dsd {DSD} --dsd-config {CONFIG}" if arm7_sources else
+                           f"{SH}{DSD} objdiff --config-path {CONFIG} --custom-make ninja")
+        n.rule("objdiff", objdiff_command)
         n.rule("check", f"{SH}{DSD} check modules --config-path {CONFIG} --fail && {PY} tools/same.py --touch $out")
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 

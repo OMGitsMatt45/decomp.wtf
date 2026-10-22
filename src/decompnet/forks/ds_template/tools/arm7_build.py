@@ -382,11 +382,15 @@ def main():
     parser.add_argument("--linker")
     parser.add_argument("--rom-config", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--dsd")
+    parser.add_argument("--dsd-config", type=Path)
     args = parser.parse_args()
     manifest = load(args.manifest)
     if args.command == "merge":
         merge(manifest, args.build, args.rom_config, args.output)
     elif args.command == "objdiff":
+        if args.dsd:
+            run([args.dsd, "objdiff", "--config-path", args.dsd_config, "--custom-make", "ninja"])
         objdiff(manifest, args.build, args.output)
     else:
         unit = next(u for u in manifest["units"] if u["source"] == args.source)
