@@ -115,7 +115,7 @@ Expanded implementation qualification is recorded below once its native runs fin
 
 `tools/ds_boot.py` compares execution of the original Demo Quest DS and its
 rebuilt copies, using a separately installed
-[melonDS libretro core](https://github.com/libretro/melonDS) and your own
+[melonDS libretro core](https://github.com/libretro/melonDS). It accepts your own
 `bios7.bin`, `bios9.bin` and `firmware.bin`. A core can also be obtained through
 [RetroArch's core downloader](https://www.retroarch.com/?page=platforms).
 These optional developer tools and runtime files are not part of app installation.
@@ -137,6 +137,12 @@ private temporary directory, starts a fresh core process for each ROM, disables
 JIT, supplies no controller input and compares watched game state over 120
 emulated frames. Both the ARM9 game counter and ARM7 shared-RAM counter must
 advance. Firmware profile output is captured privately and omitted from reports.
+For unencrypted original fixtures, `--builtin-bios` can replace `--bios-dir` to
+explicitly select the core's built-in BIOS and firmware replacements. CI builds
+the pinned software core and runs a separate execution gate using those
+replacements, with no private console files. It verifies a source-linked Thumb
+program and rejects independently stalled ARM9 and ARM7 programs. Missing or
+skipped execution cases fail that gate.
 The original fixture now establishes system mode, separate supervisor/IRQ stacks
 and its TCM mappings before calling the BIOS; its previous startup could lose
 the caller's banked link register and repeatedly restart.

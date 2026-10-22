@@ -13,6 +13,7 @@ on:
       - 'tools/run_operational.py'
       - 'tools/operational_progress.py'
       - 'tools/ds_pilot.py'
+      - 'tools/ds_boot.py'
       - 'projects/demo-ds/**'
       - 'projects/demo-rom/src/**'
       - 'projects/demo-n64/original/**'
@@ -66,3 +67,42 @@ jobs:
           path: |
             operational-results.xml
             operational-output.log
+
+  execution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_DS_CORE: ${{ github.workspace }}/.ds-emulator/melonds_libretro.so
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux compiler runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-i386
+      - name: Isolate DS toolchains
+        shell: bash
+        run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Nintendo DS tools with spaces" >> "$GITHUB_ENV"
+      - name: Install pinned DS tools and prepare original fixtures
+        run: uv run --no-sync python -m tools.operational --ds-only
+      - name: Build pinned software-only execution core
+        run: |
+          git init .ds-emulator
+          git -C .ds-emulator remote add origin https://github.com/libretro/melonDS.git
+          git -C .ds-emulator fetch --depth=1 origin 66b5d2634cd0a79030562811e6e05f5532f800ba
+          git -C .ds-emulator checkout --detach FETCH_HEAD
+          make -C .ds-emulator -j4 HAVE_OPENGL=0 HAVE_WIFI=0 LIBS='-lm -lpthread -lrt'
+      - name: Compare ARM9 and ARM7 execution and require stalled-processor failures
+        run: >-
+          uv run --no-sync python -m pytest -q tests/test_ds_execution.py
+          --junitxml=ds-execution-results.xml
+      - name: Require execution coverage without skips
+        run: uv run --no-sync python tools/check_operational_results.py --ds-execution ds-execution-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-execution
+          path: ds-execution-results.xml

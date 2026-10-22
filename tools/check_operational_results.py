@@ -18,13 +18,16 @@ REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_c
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results")
-    parser.add_argument("--ds-only", action="store_true")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--ds-only", action="store_true")
+    scope.add_argument("--ds-execution", action="store_true")
     args = parser.parse_args()
     results = ET.parse(args.results)
     modules = defaultdict(list)
     for case in results.iter("testcase"):
         modules[case.get("classname", "").split(".")[-1]].append(case)
-    required = DS_REQUIRED if args.ds_only else REQUIRED | ({"test_windows_native"} if sys.platform == "win32" else set())
+    required = ({"test_ds_execution"} if args.ds_execution else DS_REQUIRED if args.ds_only else
+                REQUIRED | ({"test_windows_native"} if sys.platform == "win32" else set()))
     for module in sorted(required):
         cases = modules[module]
         assert cases, f"Required suite missing: {module}"
@@ -32,7 +35,7 @@ def main():
         print(f"{module}: {len(cases)} passed, none skipped")
     cases = list(results.iter("testcase"))
     skipped = sum(case.find("skipped") is not None for case in cases)
-    label = "Nintendo DS qualification" if args.ds_only else "Full operational check"
+    label = "Nintendo DS execution" if args.ds_execution else "Nintendo DS qualification" if args.ds_only else "Full operational check"
     print(f"::notice::{label}: {len(cases) - skipped} passed, {skipped} platform/private-ROM skips")
 
 

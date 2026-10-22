@@ -1,7 +1,8 @@
 """Compare original-fixture execution in a separately installed melonDS libretro core.
 
-Requires owner-supplied bios7.bin, bios9.bin and firmware.bin. Each ROM runs in
-a fresh process with private copies of those files. This checks CPU execution
+Accepts owner-supplied bios7.bin, bios9.bin and firmware.bin, or an explicit
+--builtin-bios request for the core's replacements. Each ROM runs in a fresh
+process with a private runtime directory. This checks CPU execution
 and watched game state; it is not a physical-console or firmware-menu test.
 """
 
@@ -118,7 +119,8 @@ def execute(core_path: Path, system: Path, rom: Path, watched: dict[str, int], f
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", type=Path, required=True, help="melonDS libretro .dll/.so/.dylib")
-    parser.add_argument("--bios-dir", type=Path, required=True, help="directory containing your three DS runtime files")
+    parser.add_argument("--bios-dir", type=Path, help="directory containing your three DS runtime files")
+    parser.add_argument("--builtin-bios", action="store_true", help="use the core's built-in BIOS/firmware replacements")
     parser.add_argument("--symbols", type=Path, default=Path("projects/demo-ds/build/demoq_ds.elf"))
     parser.add_argument("--frames", type=int, default=120)
     parser.add_argument("--output", type=Path)
@@ -129,10 +131,15 @@ def main() -> None:
         parser.error("provide the original fixture and at least one rebuilt ROM")
     if args.frames < 12 or args.frames > 3600:
         parser.error("--frames must be between 12 and 3600")
-    for name, sizes in (("bios7.bin", (16384,)), ("bios9.bin", (4096,)), ("firmware.bin", (131072, 262144, 524288))):
-        file = args.bios_dir / name
-        if not file.is_file() or file.stat().st_size not in sizes:
-            parser.error(f"{name} is missing or has an unexpected size")
+    if not args.builtin_bios:
+        if args.bios_dir is None:
+            parser.error("provide --bios-dir or explicitly choose --builtin-bios")
+        for name, sizes in (("bios7.bin", (16384,)), ("bios9.bin", (4096,)), ("firmware.bin", (131072, 262144, 524288))):
+            file = args.bios_dir / name
+            if not file.is_file() or file.stat().st_size not in sizes:
+                parser.error(f"{name} is missing or has an unexpected size")
+    elif args.bios_dir is not None and not args.worker:
+        parser.error("choose either your runtime files or --builtin-bios")
     with args.symbols.open("rb") as stream:
         table = ELFFile(stream).get_section_by_name(".symtab")
         watched = {name: table.get_symbol_by_name(name)[0]["st_value"]
@@ -150,12 +157,15 @@ def main() -> None:
     for rom in args.roms:
         with tempfile.TemporaryDirectory(prefix="decomp-ds-boot-") as temporary:
             system = Path(temporary)
-            for name in ("bios7.bin", "bios9.bin", "firmware.bin"):
-                shutil.copyfile(args.bios_dir / name, system / name)
-                (system / name).chmod(0o600)
+            if not args.builtin_bios:
+                for name in ("bios7.bin", "bios9.bin", "firmware.bin"):
+                    shutil.copyfile(args.bios_dir / name, system / name)
+                    (system / name).chmod(0o600)
             command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--core", str(args.core.resolve()),
                        "--bios-dir", str(system), "--symbols", str(args.symbols.resolve()), "--frames", str(args.frames),
                        str(rom.resolve())]
+            if args.builtin_bios:
+                command.append("--builtin-bios")
             result = subprocess.run(command, capture_output=True, text=True, timeout=600,
                                     encoding="utf-8", errors="replace")
             report = next((line.removeprefix(PREFIX) for line in result.stdout.splitlines()
@@ -167,7 +177,9 @@ def main() -> None:
             reports.append(json.loads(report))
     if any(report["samples"] != reports[0]["samples"] for report in reports[1:]):
         raise SystemExit("original and rebuilt game-state traces differ")
-    report = {"identical_traces": True, "execution": "melonDS direct boot, interpreter, no input", "roms": reports}
+    report = {"identical_traces": True, "execution": "melonDS direct boot, interpreter, no input",
+              "runtime": "core built-in replacements" if args.builtin_bios else "owner-supplied BIOS/firmware",
+              "roms": reports}
     if args.output:
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
