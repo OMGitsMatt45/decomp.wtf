@@ -255,6 +255,43 @@ def test_linker_exception_restores_the_ds_configuration(imported, monkeypatch):
     assert real_verify(fp)[0]
 
 
+@pytest.mark.parametrize("module", ["main-thumb", "itcm"])
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+def test_matching_main_and_autoload_sources_enter_the_rom(encrypted, tmp_path, monkeypatch, module, compiler):
+    game, bios = encrypted
+    if module == "itcm":
+        seed = tmp_path / "seed"
+        shutil.copytree(game.parent / "seed", seed)
+        (seed / "arm9/itcm.bin").write_bytes(struct.pack("<II", 0xE2800005, 0xE12FFF1E) + bytes(24))
+        game = tmp_path / "autoload.nds"
+        subprocess.run([str(toolchains.binary("dsd")), "rom", "build", "--config", str(seed / "config.yaml"),
+                        "--rom", str(game), "--arm7-bios", str(bios)], check=True, capture_output=True)
+        symbol = "func_01ff8000"
+        source = f"int {symbol}(int value) {{ return value + 5; }}"
+    else:
+        monkeypatch.setattr(scratch_dsd, "UNIT_BYTES", 16)
+        with (DEMO / "build/demoq_ds.elf").open("rb") as stream:
+            table = ELFFile(stream).get_section_by_name(".symtab")
+            address = next(s["st_value"] for s in table.iter_symbols() if s.name == "ds_thumb_step") & ~1
+        symbol = f"func_{address:08x}"
+        source = f"int {symbol}(int value) {{ return value + 3; }}"
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    root = Path(net.project_row(slug)["root"])
+    fp = ForkProject(root)
+    fn = net.store.one("SELECT name, unit FROM functions WHERE name=?", symbol)
+    assert fn is not None
+    source = drafts.ds_mode_source(root, fn["unit"], symbol, source)
+    agent, _ = net.local_agent("linked-module-owner")
+    result = net.attempt(agent, symbol, source, slug)
+    assert result["matched"], result["text"]
+    linked = net.forks.link(slug, log=lambda *_: None)
+    assert fp.unit(fn["unit"]).source in linked["linked"], linked
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+
+
 def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_path):
     net, slug, game, _ = imported
     root = Path(net.project_row(slug)["root"])
