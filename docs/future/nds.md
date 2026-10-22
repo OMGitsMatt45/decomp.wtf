@@ -61,6 +61,10 @@ The DS suites check:
   changed linked code, and configuration rollback after a linker exception.
 - Verified source linking for the main ARM9 Thumb program and ITCM autoload,
   alongside overlapping-overlay source linking.
+- Compressed ARM9 programs and ARM9/ARM7 overlays, including linked-source
+  recompression, rejection of changed code, and clean standalone rebuilds.
+- The bounded CLI finishes source linking synchronously and records its result
+  before exiting, with a completed source-linked project verified on both compilers.
 - Overlay BSS sizes of 0, 4, 20 and 36 bytes. The build derives these extents from
   linked boundary symbols without ds-decomp 0.12.1's extra 32-byte rounding;
   deliberate linked BSS changes still fail the complete-ROM check.

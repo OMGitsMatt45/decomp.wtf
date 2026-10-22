@@ -43,6 +43,9 @@ def main() -> None:
     work.mkdir(parents=True, exist_ok=True)
     output = args.output.expanduser().resolve() if args.output else work / "pilot-result.json"
     net = RomNetwork(work / "app.db", work)
+    # A bounded process must finish source linking before reporting success and
+    # exiting; daemon link workers could otherwise be stopped mid-build.
+    net.forks.background_links = False
     started = time.monotonic()
     slug = net.import_rom(args.rom.expanduser().resolve(), toolchain=args.compiler,
                           confirmed=args.own_copy, log=print)
@@ -84,6 +87,7 @@ def main() -> None:
         results.append(result)
         print(json.dumps(result), flush=True)
         save()
+    summary["link"] = net.forks.link(slug, log=print)
     summary["rebuild"] = net.forks.check_rom(slug, log=print)
     save()
     print(json.dumps({k: v for k, v in summary.items() if k != "results"}, indent=2))

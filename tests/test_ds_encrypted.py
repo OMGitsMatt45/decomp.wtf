@@ -292,6 +292,71 @@ def test_matching_main_and_autoload_sources_enter_the_rom(encrypted, tmp_path, m
     assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
 
 
+@pytest.mark.parametrize("compression", ["arm9", "overlays", "both"])
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+def test_compressed_modules_rebuild_with_linked_source(encrypted, tmp_path, monkeypatch, compression, compiler):
+    game, bios = encrypted
+    seed = tmp_path / "seed"
+    shutil.copytree(game.parent / "seed", seed)
+    if compression in ("arm9", "both"):
+        config = seed / "arm9/arm9.yaml"
+        config.write_text(config.read_text(encoding="utf-8").replace("compressed: false", "compressed: true"),
+                          encoding="utf-8")
+    if compression in ("overlays", "both"):
+        for cpu in ("arm9", "arm7"):
+            config = seed / cpu / "overlays.yaml"
+            overlays = json.loads(config.read_text(encoding="utf-8"))
+            for overlay in overlays["overlays"]:
+                data = (seed / cpu / overlay["file_name"]).read_bytes()[:12] + bytes(500)
+                (seed / cpu / overlay["file_name"]).write_bytes(data)
+                overlay.update(compressed=True, code_size=len(data), bss_size=4,
+                               ctor_start=overlay["base_address"] + 508, ctor_end=overlay["base_address"] + 512)
+            config.write_text(json.dumps(overlays), encoding="utf-8")
+    game = tmp_path / "compressed.nds"
+    dsd = str(toolchains.binary("dsd"))
+    subprocess.run([dsd, "rom", "build", "--config", str(seed / "config.yaml"), "--rom", str(game),
+                    "--arm7-bios", str(bios)], check=True, capture_output=True)
+    if compression in ("overlays", "both"):
+        data = game.read_bytes()
+        for offset in (0x50, 0x58):
+            table = struct.unpack_from("<I", data, offset)[0]
+            assert struct.unpack_from("<I", data, table + 28)[0] & (1 << 24)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    root = Path(net.project_row(slug)["root"])
+    assert net.overview(slug)["rebuild"]["identical"]
+    arm9_config = (root / "extract/adqe/arm9/arm9.yaml").read_text(encoding="utf-8")
+    assert ("compressed: true" in arm9_config) == (compression in ("arm9", "both"))
+    fn = next(row for row in net.store.all("SELECT name, unit, meta FROM functions")
+              if row["unit"].startswith("src/auto/ov000"))
+    symbol = json.loads(fn["meta"])["symbol"]
+    agent, _ = net.local_agent("compressed-overlay-owner")
+    result = net.attempt(agent, fn["name"], f"int {symbol}(int value) {{ return value + 1; }}", slug)
+    assert result["matched"], result["text"]
+    assert ForkProject(root).unit(fn["unit"]).source in net.forks.link(slug, log=lambda *_: None)["linked"]
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    assert subprocess.run([dsd, "check", "modules", "--config-path", "config/adqe/arm9/config.yaml", "--fail"],
+                          cwd=root, capture_output=True).returncode == 0
+    source = root / ForkProject(root).unit(fn["unit"]).source
+    correct = source.read_text(encoding="utf-8")
+    source.write_text(correct.replace("+ 1", "+ 7"), encoding="utf-8")
+    assert not net.forks.check_rom(slug, log=lambda *_: None)["identical"]
+    assert not (root / "build/adqe/rom.ok").exists()
+    source.write_text(correct, encoding="utf-8")
+    assert net.forks.check_rom(slug, log=lambda *_: None)["identical"]
+    standalone = tmp_path / "linked standalone with spaces"
+    shutil.copytree(root, standalone, ignore=shutil.ignore_patterns(".git", "build", "build.ninja", "objdiff.json",
+                                                                   ".ninja_*", ".decomp-wtf"))
+    shutil.rmtree(standalone / "extract/adqe")
+    fp = ForkProject(standalone)
+    assert fp.run([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()])[0]
+    ok, log = fp.run(["ninja"], timeout=120)
+    assert ok, log
+    assert (standalone / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+
+
 def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_path):
     net, slug, game, _ = imported
     root = Path(net.project_row(slug)["root"])
@@ -345,6 +410,28 @@ def test_bounded_pilot_cli_uses_the_private_key_and_reports_strict_rebuild(encry
     assert report["compiler"] == "DS/2.0/sp1p6" and report["sample_attempts"] == 2
     assert sum(report["outcomes"].values()) == 2 and len(report["results"]) == 2
     assert report["rebuild"]["identical"]
+
+
+@pytest.mark.skipif(toolchains.installed("m2c") is None, reason="bounded pilot needs the registered m2c tool")
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+def test_bounded_pilot_finishes_source_linking_before_exit(encrypted, tmp_path, compiler):
+    game, bios = encrypted
+    work = tmp_path / "linked pilot"
+    remaining = tmp_path / "remaining.csv"
+    remaining.write_text("analysis_name\nfunc_ov000_02200000\n", encoding="utf-8")
+    result = subprocess.run([sys.executable, str(ROOT / "tools/ds_pilot.py"), "--rom", str(game),
+                             "--arm7-bios", str(bios), "--work", str(work), "--own-copy", "--drafts", "1",
+                             "--remaining-report", str(remaining), "--compiler", f"DS/{compiler}"],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads((work / "pilot-result.json").read_text(encoding="utf-8"))
+    assert report["outcomes"] == {"match": 1}
+    assert report["link"]["linked"] == ["src/auto/ov000_02200000.c"]
+    root = work / report["project"]
+    assert ForkProject(root).link_states()["src/auto/ov000_02200000.c"][0] == "Matching"
+    assert report["rebuild"]["identical"]
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    assert scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)["identical"]
 
 
 def test_pilot_cli_rejects_a_private_work_directory_inside_the_checkout(encrypted):

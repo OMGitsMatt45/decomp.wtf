@@ -311,6 +311,7 @@ class ForkEngine:
         self._indexing: set[int] = set()
         self._ilock = threading.Lock()
         self._linking: dict[str, dict] = {}  # slug -> background link run
+        self.background_links = True  # batch commands can finalize links synchronously before exiting
 
     # ------------------------------------------------------------------ locks, builds, baselines
 
@@ -836,6 +837,8 @@ class ForkEngine:
     def link_soon(self, slug: str, agent: Agent | None = None) -> None:
         """Link in the background (one run per project at a time; another request while it runs runs it again)."""
         with self._mlock:
+            if not self.background_links:
+                return
             state = self._linking.setdefault(slug, {"running": False, "again": False})
             if state["running"]:
                 state["again"] = True
