@@ -8,6 +8,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from decompnet.app.engine import RomNetwork
+from decompnet.app.collab import Room
 from decompnet.app.server import build
 from decompnet.cli import main
 from decompnet.network import NetworkError
@@ -99,5 +100,10 @@ def test_overlay_claims_and_reads_remain_module_specific(tmp_path):
         assert function['name'] in net.get_function(function['name'], slug, agent)
     with pytest.raises(NetworkError, match='module-qualified'):
         net._function('0x7F000000', slug)
+    with pytest.raises(NetworkError, match='cannot share reviewed N64 layouts'):
+        Room(net, slug)
+    with pytest.raises(NetworkError, match='cannot share reviewed N64 layouts'):
+        net.link_project(slug, {})
+    assert 'link' not in net.cfg(project)
     net.release(first, functions[0]['name'], 'reviewed', slug)
     assert net.store.one('SELECT function_id FROM claims WHERE agent_id=?', second.id)['function_id'] == functions[1]['id']

@@ -78,6 +78,28 @@ def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_p
     assert not result.ok and "Set TMP and TEMP" in result.log
 
 
+def test_cpp_staging_normalizes_nested_headers_without_editing_user_files(tmp_path, monkeypatch):
+    include = tmp_path / 'headers'
+    (include / 'nested').mkdir(parents=True)
+    header = include / 'nested/policy.h'
+    header.write_bytes(b'#define STEP(x) \\\r\n ((x) + 1)\r\n')
+    asset = include / 'unchanged.bin'
+    asset.write_bytes(b'\x00\r\n\xff')
+    def execute(cfg, work, argv, timeout, **kwargs):
+        assert b'\r' not in (work / 'func.cpp').read_bytes()
+        assert b'\r' not in (work / 'include/context.h').read_bytes()
+        assert b'\r' not in (work / 'include/nested/policy.h').read_bytes()
+        assert (work / 'include/unchanged.bin').read_bytes() == asset.read_bytes()
+        (work / 'func.o').write_bytes(b'object')
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+    monkeypatch.setattr(compiler, '_exec', execute)
+    cfg = compiler.CompilerConfig(['g++', '-c', '{src}', '-o', '{obj}'], language='c++',
+                                  include_dirs=[include], sandbox='none')
+    result = compiler.compile_source(cfg, '#include "nested/policy.h"\r\n', 'int probe(int x) { return STEP(x); }\r\n')
+    assert result.ok, result.log
+    assert b'\r\n' in header.read_bytes()
+
+
 @pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++"), ("ee-gcc-2.96", "mipsee-gcc-c++")])
 def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []

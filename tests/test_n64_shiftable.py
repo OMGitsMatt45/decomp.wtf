@@ -62,9 +62,9 @@ def test_shiftable_source_growth_relocates_calls_and_function_pointers(tmp_path,
     (source_dir / (first["name"] + ".cpp")).write_text(
         f'extern "C" int {second["name"]}(int);\nextern "C" int {first["name"]}(int value) {{\n'
         '  volatile int a[8];\n' + "".join(f"  a[{i}] = value + {i};\n" for i in range(8)) +
-        f'  return {second["name"]}(value)' + "".join(f" + a[{i}]" for i in range(8)) + ';\n}\n', encoding="utf-8")
+        f'  return {second["name"]}(value)' + "".join(f" + a[{i}]" for i in range(8)) + ';\n}\n', encoding="utf-8", newline='\r\n')
     (source_dir / (second["name"] + ".cpp")).write_text(
-        f'extern "C" int {datum}[];\nextern "C" int {second["name"]}(int value) {{ return {datum}[1] + value; }}\n', encoding="utf-8")
+        f'extern "C" int {datum}[];\nextern "C" int {second["name"]}(int value) {{ return {datum}[1] + value; }}\n', encoding="utf-8", newline='\r\n')
     def run(*args):
         return subprocess.run([sys.executable, "build.py", *args], cwd=tree, capture_output=True, text=True)
     modified = run("mod")

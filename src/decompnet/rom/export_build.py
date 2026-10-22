@@ -35,7 +35,7 @@ DISCARD = ("*(.reginfo) *(.MIPS.abiflags) *(.MIPS.options) *(.pdr) *(.comment) *
 
 try:
     from decompnet import toolchains
-    from decompnet.compiler import run_in, compile_source
+    from decompnet.compiler import compile_source
     from decompnet.project import compiler_config
 except ImportError:
     sys.exit("This build uses decomp.wtf's pinned compilers: install decomp.wtf first (https://decomp.wtf).")
@@ -155,21 +155,16 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
             continue
         if kind == "asm":
             run([as_, *B["as_flags"], "-o", obj, src])
-        elif B["platform"] in ("psx", "ps2"):
+        else:
             result = compile_function(cfg, src)
             if not result.ok:
                 fail(f"compiling {src} failed:\n{result.log}")
-            fn = next(f for f in B["functions"] if c_source(f) == src)
-            why = validate(fn, result.obj)
-            if why:
-                fail(f"{fn['name']}: not identical to the original:\n{why}")
+            if B["platform"] in ("psx", "ps2"):
+                fn = next(f for f in B["functions"] if c_source(f) == src)
+                why = validate(fn, result.obj)
+                if why:
+                    fail(f"{fn['name']}: not identical to the original:\n{why}")
             target.write_bytes(result.obj)
-            trim(target)
-        else:
-            argv = [a.replace("{src}", src).replace("{obj}", obj).replace("{include}", "include") for a in cfg.cmd]
-            res = run_in(cfg, ROOT, argv, inputs=[src, "include"], outputs=[obj])
-            if res.returncode != 0 or not target.exists():
-                fail(f"compiling {src} failed:\n{(res.stdout + res.stderr)[-3000:]}")
             trim(target)
 
 
@@ -207,20 +202,20 @@ def validate(fn, obj):
     rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
     target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
     image = (ROOT / B["image"]).read_bytes()
+    segments = [s for s in B["segments"] if s["kind"] == "code"]
+    selected = next((s for s in segments if s["name"] == fn["seg"]), None)
+    if selected:
+        lo = selected["vram"]
+        hi = lo + (selected["end"] or len(image)) - selected["start"]
+        segments = [selected] + [s for s in segments if s is not selected and
+                                (s["vram"] >= hi or s["vram"] + (s["end"] or len(image)) - s["start"] <= lo)]
 
     def read(addr, n):
-        ordered = sorted(B["segments"], key=lambda s: s["name"] != fn["seg"])
-        for seg in ordered:
-            if seg["kind"] == "code":
-                if seg["name"] != fn["seg"] and any(
-                        own["kind"] == "code" and own["name"] == fn["seg"] and
-                        own["vram"] <= addr < own["vram"] + (own["end"] or len(image)) - own["start"]
-                        for own in B["segments"]):
-                    continue
-                size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
-                if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
-                    at = seg["start"] + addr - seg["vram"]
-                    return image[at:at + n]
+        for seg in segments:
+            size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
+            if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
+                at = seg["start"] + addr - seg["vram"]
+                return image[at:at + n]
         return None
 
     linked = match.link(obj, fn["name"], target, table, read)

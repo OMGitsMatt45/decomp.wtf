@@ -1036,6 +1036,8 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         cfg = self.cfg(proj)
+        if cfg.get("n64_layout"):
+            raise NetworkError("Rooms cannot share reviewed N64 layouts yet; use local agents and exports for this project")
         cfg["link"] = info
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))

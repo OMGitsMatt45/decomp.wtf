@@ -13,15 +13,19 @@ pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_IDO_CFRONT") != "1",
 def test_transitive_header_edit_and_failure_preserve_public_output(tmp_path):
     work = tmp_path / 'template dependencies with spaces'
     work.mkdir()
-    (work / 'counter.h').write_text('#ifndef COUNTER_H\n#define COUNTER_H\n'
+    def write(path, text):
+        # These setup commands invoke the original IRIX driver directly. The
+        # app's compile adapter supplies LF; direct users supply it themselves.
+        path.write_text(text, encoding='utf-8', newline='\n')
+    write(work / 'counter.h', '#ifndef COUNTER_H\n#define COUNTER_H\n'
                                   'template<class T> class Counter { public: T next(T); };\n#endif\n')
-    (work / 'counter.c').write_text('#include "counter.h"\n#include "policy.h"\n'
+    write(work / 'counter.c', '#include "counter.h"\n#include "policy.h"\n'
                                  'template<class T> T Counter<T>::next(T x) { return x + STEP; }\n')
-    (work / 'policy.h').write_text('#include "policy_detail.h"\n')
+    write(work / 'policy.h', '#include "policy_detail.h"\n')
     leaf = work / 'policy_detail.h'
-    leaf.write_text('#define STEP 1\n')
+    write(leaf, '#define STEP 1\n')
     for name in ('left', 'right'):
-        (work / (name + '.C')).write_text('#include "counter.h"\nextern "C" int ' + name +
+        write(work / (name + '.C'), '#include "counter.h"\nextern "C" int ' + name +
                                         '(int x) { Counter<int> c; return c.next(x); }\n')
     tc = toolchains.require('ido-5.3')
     flags = toolchains.get('ido-5.3').flags
@@ -40,17 +44,17 @@ def test_transitive_header_edit_and_failure_preserve_public_output(tmp_path):
     for path in work.iterdir():
         if path.suffix in ('.h', '.c', '.C'):
             os.utime(path, (old, old))
-    leaf.write_text('#define STEP 2\n')
+    write(leaf, '#define STEP 2\n')
     os.utime(leaf, (old, old))
     after = link()
     assert before != after
     previous = output.read_bytes()
-    leaf.write_text('#define STEP broken + ;\n')
+    write(leaf, '#define STEP broken + ;\n')
     os.utime(leaf, (old, old))
     with pytest.raises(RuntimeError):
         link()
     assert output.read_bytes() == previous
-    leaf.write_text('#define STEP 3\n')
+    write(leaf, '#define STEP 3\n')
     os.utime(leaf, (old, old))
     assert link() not in (before, after)
 

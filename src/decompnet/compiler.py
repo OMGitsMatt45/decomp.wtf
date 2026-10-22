@@ -227,6 +227,17 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         inc.mkdir()
         for d in cfg.include_dirs:
             shutil.copytree(d, inc, dirs_exist_ok=True)
+        if cfg.language in ("c", "c++"):
+            # Autocrlf checkouts and edited Windows headers must not pass CR
+            # tokens to the original period preprocessors. Normalize staged
+            # copies only; leave the user's files and other assets untouched.
+            for header in inc.rglob("*"):
+                if header.is_file() and header.suffix.lower() in (".h", ".hh", ".hpp", ".hxx", ".inc", ".tcc", ".inl", ".c", ".cc", ".cpp", ".cxx"):
+                    data = header.read_bytes()
+                    if b"\r\n" in data:
+                        header.write_bytes(data.replace(b"\r\n", b"\n"))
+            context_header = context_header.replace("\r\n", "\n")
+            source = source.replace("\r\n", "\n")
         # LF on every platform: to the old GCCs a backslash before CRLF doesn't continue a line ("stray '\' in program")
         if cfg.language == "c++" and cfg.c_linkage:
             context_header, source = cpp.game_abi(context_header), cpp.game_abi(source)

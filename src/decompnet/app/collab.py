@@ -53,6 +53,8 @@ class Room:
     def __init__(self, net, slug: str):
         self.net, self.slug = net, slug
         self.proj = net.project_row(slug)
+        if net.cfg(self.proj).get("n64_layout"):
+            raise NetworkError("Rooms cannot share reviewed N64 layouts yet; use local agents and exports for this project")
         self.fork = bool(net.fork_slug(slug))  # a git source tree (forkroom.py)
         self._hits: dict[str, deque] = defaultdict(lambda: deque(maxlen=900))
         self._members: tuple[float, list] = (0.0, [])  # cached: every member polls, the list changes slowly

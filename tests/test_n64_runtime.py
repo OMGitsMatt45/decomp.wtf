@@ -20,8 +20,14 @@ def test_heap_array_virtual_and_static_runtime_contracts(tmp_path, toolchain, fr
     cfg = project.compiler_config(tmp_path, {'kind': 'rom', 'platform': 'n64', 'compiler': {
         'toolchain': toolchain, 'language': 'c++', 'sandbox': 'none',
         **({'cpp_frontend': frontend} if frontend else {})}})
+    include = tmp_path / 'headers'
+    (include / 'nested').mkdir(parents=True)
+    (include / 'policy.h').write_bytes(b'#include "nested/runtime.h"\r\n')
+    (include / 'nested/runtime.h').write_bytes(b'#define DEFAULT_VALUE \\\r\n 3\r\n')
+    cfg.include_dirs = [include]
     source = (Path(__file__).parent / 'fixtures/n64_cpp_runtime.cpp').read_text()
-    result = compiler.compile_source(cfg, '', source)
+    source = source.replace('n = 3', 'n = DEFAULT_VALUE')
+    result = compiler.compile_source(cfg, '#include "policy.h"\r\n', source)
     assert result.ok, result.log
     elf = ELFFile(BytesIO(result.obj))
     assert elf['e_machine'] == 'EM_MIPS' and not elf.little_endian and elf.elfclass == 32
