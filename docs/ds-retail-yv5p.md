@@ -14,10 +14,16 @@ outside Git. This record contains metadata and results only.
   qualification fixture correctly with this BIOS. The retail failure remains
   unresolved. It is not counted as a passing rebuild or attributed conclusively
   to either the dump or the toolkit.
+- A separate diagnostic extraction/build with raw dsd 0.12.1 returns exit 0
+  despite its failed-decryption warning, and reproduces **exactly 12 changed
+  bytes**: `0x6C–0x6D`, `0x15E–0x15F`, and `0x4000–0x4007`. This is an explicitly
+  failed control, not an imported project or valid matching reference. The
+  guarded importer rejects it.
 - BIOS-free inspection validates module bounds and decodes ARM7 plus all 44
   ARM9 overlays, all 44 compressed. Signed flags are retained;
   overlay authentication is not verified by this inspector. ARM9 main is excluded
   from this CLI's decoding and protection scan.
+  All 44 independently decoded overlays match raw dsd's extracted overlay bytes.
 - No known DS Protect bootstrap signatures were found in those 45 decoded
   modules. This limited scan cannot establish that the entire game is unprotected.
 - A bounded ARM7 pass selected 29 leaf candidates referenced by ARM `bl`
