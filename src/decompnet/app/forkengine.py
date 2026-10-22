@@ -2151,7 +2151,7 @@ class ForkEngine:
         proj, fp, _ = self.get(slug)
         name = what.strip().strip("`'\"")
         held = agent and self.net.store.one("SELECT f.unit FROM claims c JOIN functions f ON f.id=c.function_id "
-                                            "WHERE c.agent_id=?", agent.id)
+                                            "WHERE c.agent_id=? AND f.project_id=?", agent.id, proj["id"])
         if fp.is_generated_ds():
             from ..forks import arm7_project
 
