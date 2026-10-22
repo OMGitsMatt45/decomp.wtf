@@ -21,6 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rom", required=True, type=Path)
     parser.add_argument("--arm7-bios", type=Path)
+    parser.add_argument("--input-format", choices=("auto", "decrypted"), default="auto")
     parser.add_argument("--work", required=True, type=Path)
     parser.add_argument("--compiler", default="DS/2.0/sp1p5")
     parser.add_argument("--own-copy", required=True, action="store_true")
@@ -48,7 +49,7 @@ def main() -> None:
     net.forks.background_links = False
     started = time.monotonic()
     slug = net.import_rom(args.rom.expanduser().resolve(), toolchain=args.compiler,
-                          confirmed=args.own_copy, log=print)
+                          confirmed=args.own_copy, ds_input_format=args.input_format, log=print)
     before = net.overview(slug)
     proj = net.project_row(slug)
     agent, _ = net.local_agent("ds-pilot")

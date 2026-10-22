@@ -240,10 +240,12 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "file_status": lambda net, agent, slug, path: net.forks.file_status(_fork(net, slug, "file_status"), path),
     "split_file": lambda net, agent, slug, path, at, new_name="", data="":
         net.forks.split_file(agent, _fork(net, slug, "split_file"), path, at, new_name, data),
+    "configure_arm7_unit": lambda net, agent, slug, path, data="", language="":
+        net.forks.configure_arm7_unit(agent, _fork(net, slug, "configure_arm7_unit"), path, data, language),
 }
 
 ROM_ONLY = {"get_context", "edit_context", "rename_symbol", "split_function"}
-FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "split_file"}
+FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "split_file", "configure_arm7_unit"}
 
 
 def tool_names(fork: bool) -> list[str]:
@@ -429,6 +431,15 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
         the game still builds byte for byte and every match still matches. A file links only when its code and
         data are exactly one original file's."""
         return await run(ctx, "split_file", path=path, at=at, new_name=new_name, data=data)
+
+    @mcp.tool(meta=ALWAYS_LOAD)
+    async def configure_arm7_unit(ctx: Context, path: str, data: str = "", language: str = "") -> str:
+        """DS ARM7 only: give a source file its original initialized data or BSS, and optionally select c/c++.
+        `data` lists .data:address:size[:symbol], .rodata:address:size[:symbol] or .bss:address:size[:symbol]
+        separated by spaces, using decimal or 0x numbers. Ranges must be inside the module and unclaimed.
+        Code bounds never change. The file becomes non-linked until its source and data match again.
+        Add globals with edit_file. Changes roll back if existing matches or the complete ROM stop matching."""
+        return await run(ctx, "configure_arm7_unit", path=path, data=data, language=language)
 
     @mcp.prompt(title="Decompile", description="Work loop: claim functions and match them byte for byte.")
     def work(count: str = "5") -> str:

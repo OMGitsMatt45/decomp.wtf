@@ -102,6 +102,8 @@ def tool_args() -> list[str]:
         raise ForkError("DS games are built with CodeWarrior for DS, which is proprietary: install it in Setup "
                         "(CodeWarrior for DS) if you accept that, then try again")
     args = ["--dsd", str(toolchains.binary("dsd")), "--compilers", str(Path(toolchains.path("mwccarm")) / "mwccarm")]
+    toolchains.ensure("arm-gnu", log=lambda *_: None)
+    args += ["--arm-binutils", str(toolchains.path("arm-gnu") / "bin")]
     if toolchains.get("wibo").supported and sys.platform != "win32":
         toolchains.ensure("wibo", log=lambda *_: None)
         args += ["--wibo", str(toolchains.binary("wibo"))]
@@ -207,13 +209,19 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
             "target as a function of its own")
         shutil.rmtree(root / "config" / version, ignore_errors=True)
         _run([*init, "--allow-unknown-function-calls"], root, "analysing the game")
+    from .ds_template.tools.nds_input import finish_layout
+    finish_layout(root / "config" / version / "arm9" / "config.yaml")
 
 
-def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None) -> None:
+def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None, input_format="auto") -> None:
     """Extract with an optional user-supplied BIOS, retained privately for subsequent builds."""
-    configured = arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
+    configured = (arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")) if input_format == "auto" else None
     cmd = [sys.executable, "tools/extract.py", dsd, "rom", "extract", "--rom", "extract/baserom.nds",
-           "--output-path", f"extract/{version}"]
+           "--output-path", f"extract/{version}", "--analysis-layout"]
+    if input_format == "decrypted":
+        cmd += ["--input-format", "decrypted"]
     if configured:
         bios = Path(configured).expanduser().resolve()
         if not bios.is_file() or bios.stat().st_size != 0x4000:
@@ -243,10 +251,12 @@ def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = Non
         raise
 
 
-def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None,
+def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None, input_format="auto",
            log=print) -> dict:
     """Make the project in `root` (which must not exist yet) and build it once. Returns facts about the game."""
     info = game_info(game)
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
     validate_filesystem(game)
     version = info["id"].lower()
     compiler = (compiler or f"DS/{DS_DEFAULT}").removeprefix("DS/")
@@ -256,7 +266,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
     shutil.copytree(TEMPLATE, root)
     # Establish the ignored private paths before extraction or a first build can fail.
     (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
-                                     ".ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
+                                     ".ninja_*\n*.d\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "extract").mkdir()
     try:
         (root / "extract" / "baserom.nds").hardlink_to(game)
@@ -267,10 +277,13 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
     cfg = root / "tools" / "configure.py"
     cfg.write_text(cfg.read_text(encoding="utf-8").replace('GAME = "game"', f'GAME = "{version}"')
                    .replace(f'MWCC_VERSION = "{DS_DEFAULT}"', f'MWCC_VERSION = "{compiler}"'), encoding="utf-8")
+    if input_format == "decrypted":
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace('INPUT_FORMAT = "auto"', 'INPUT_FORMAT = "decrypted"')
+                       .replace("USE_ARM7_BIOS = True", "USE_ARM7_BIOS = False"), encoding="utf-8")
 
     dsd = args[args.index("--dsd") + 1]
     log(f"extracting {info['title']} ({info['id']}) with ds-decomp")
-    _extract(dsd, root, version, arm7_bios=arm7_bios)
+    _extract(dsd, root, version, arm7_bios=arm7_bios, input_format=input_format)
     arm9 = yaml.load((root / "extract" / version / "arm9/arm9.yaml").read_text(encoding="utf-8"),
                      Loader=yaml.BaseLoader)
     with game.open("rb") as stream:
@@ -299,7 +312,10 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
                            f"({prefix}), found by ds-decomp. */\n#include \"common.h\"\n", encoding="utf-8")
             sources.append(name)
         (module / "delinks.txt").write_text(lines, encoding="utf-8")
-    log(f"{len(sources)} source files for agents to write into")
+    from . import arm7_project
+
+    arm7_count = arm7_project.prepare(root, version, game)
+    log(f"{len(sources)} ARM9 source files and {arm7_count} ARM7 source units for agents to write into")
 
     fp = ForkProject(root)
     setup = [[sys.executable, "tools/configure.py", version, *args], ["ninja", "prepare"]]
@@ -315,7 +331,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
         "created": "from scratch", "platform": "nds", "version": version, "compiler": f"DS/{compiler}",
         "game": {"what": "your copy of the game (.nds)", "path": "extract/baserom.nds", "sha1": info["sha1"]},
         "setup": [["python", "tools/configure.py", version, *args], ["ninja", "prepare"]],
-        "rebuild": rebuild,
+        "rebuild": rebuild, "ds_input_format": input_format,
     }, indent=2), encoding="utf-8")
     (root / "README.md").write_text(f"""# {info['title']} ({info['id']}) decompilation
 
@@ -346,8 +362,11 @@ def check_rom(root: Path, version: str, log=print) -> dict:
     Decompiling doesn't depend on it (each function is compared with its own delinked original), so a ROM that doesn't
     come out identical yet is reported, not fatal: tools/same.py says which part differs (issue #6: a Pokemon
     Platinum copy whose rebuild differed stopped the whole import)."""
-    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     stamp = root / "build" / version / "rom.ok"
+    # Compilation/link failures can occur before same.py runs. A prior success
+    # must not remain stamped as verification of the newly edited source.
+    stamp.unlink(missing_ok=True)
+    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     if ok and stamp.exists():
         note = stamp.read_text(encoding="utf-8").strip()
         detail = "identical up to the padding at the end (your copy is trimmed)" if "padding" in note else "identical"

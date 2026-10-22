@@ -112,7 +112,9 @@ def test_generated_build_reuses_bios_as_a_dependency(tmp_path, monkeypatch, has_
     ninja = re.sub(r"\$\n\s*", "", (root / "build.ninja").read_text())
     bios_path = Path("extract") / "arm7_bios.bin"
     assert (f"--arm7-bios {bios_path}" in ninja) == has_bios
-    assert (f"| tools/extract.py {bios_path}" in ninja) == has_bios
+    extraction = next(line for line in ninja.splitlines() if ": extract " in line)
+    assert (str(bios_path) in extraction) == has_bios
     assert "tools/extract.py" in ninja
     if has_bios:
-        assert f"rom build --config $in --rom $out --arm7-bios {bios_path}" in ninja
+        build_rule = ninja.split("rule rom_build\n", 1)[1].split("\nrule ", 1)[0]
+        assert "tools/build_rom.py" in build_rule and f"--arm7-bios {bios_path}" in build_rule

@@ -1,6 +1,6 @@
 # Nintendo DS: encrypted imports and reconstruction qualification
 
-Status: **ready for review on original fixtures; individual retail qualification remains open**.
+Status: **PR #7 merged; retail decrypted-input and ARM7 source-linking qualification extends that baseline**.
 Baseline: current `main`.
 
 PR #7 now preserves PR #1's implementation commit and integrates it with the
@@ -28,7 +28,10 @@ only after completion; interrupted copies leave no partial key file.
 Generated builds use the key when the input is encrypted or retains an encrypted
 secure-area checksum. Unencrypted homebrew with a zero checksum omits it, so a
 globally configured BIOS cannot change otherwise identical header bytes. This
-choice persists in clean standalone builds.
+choice persists in clean standalone builds. For an already-decrypted emulator
+image, explicit `--input-format decrypted` preserves its supplied secure bytes
+and retained checksum metadata without applying a BIOS key again. The browser
+provides the same format selection; automatic mode retains its strict guard.
 
 Finished ARM9, autoload and overlay source units replace their original objects
 only after all their code/data match and the complete ROM still verifies.
@@ -95,7 +98,7 @@ After installing the development dependencies and registered DS tools and
 building `projects/demo-ds/build.py`, run:
 
 ```sh
-uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py tests/test_objdiff_errors.py
+uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py tests/test_ds_modules.py tests/test_ds_arm7.py tests/test_ds_arm7_link.py tests/test_ds_decrypted.py tests/test_ds_protect.py tests/test_objdiff_errors.py
 ```
 
 The full operational coverage gate requires these suites on Windows and Linux;
@@ -169,25 +172,38 @@ runtime helpers and is intended for decompiler qualification.
 - [x] Qualify ARM9/ITCM source linking, DTCM reconstruction, overlapping overlays, ARM7 byte retention, compression and both DS compiler versions on original fixtures.
 - [x] Expand ARM7 execution/retention, runtime-autoload and compiler-version coverage on original fixtures.
 
-## Additional compatibility work
+## Retail and ARM7 follow-up
 
-- [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
-- [ ] Qualify DS Protect variants and implement ARM7 C/C++ source recovery beyond the pinned toolkit's ARM9 analysis.
+The supplied YV5P image is already decrypted, as confirmed by its owner. Explicit
+decrypted import now rebuilds all 128 MiB byte-for-byte without a BIOS and resolves
+its previous 12-byte failure. No comparison ranges are masked. The strict automatic
+path continues to reject failed decryption. See the [retail test record](../ds-retail-yv5p.md).
 
-The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
-original test fixtures. A wrong test key reproduces exactly 12 changed bytes
-with raw dsd: offsets `0x6C-0x6D`, `0x15E-0x15F` and `0x4000-0x4007`. The guard
-rejects that failed decryption before it can replace verified reference data.
-This establishes one concrete cause of the pattern; it does not establish that
-the original YV5P input used a wrong key or that its specific case is resolved.
-Nonstandard secure-area prefixes are rejected explicitly. The build corrects the
-pinned toolkit's extra overlay BSS rounding using the actual linked boundaries,
-without changing the ROM comparison.
+Generated projects now discover ARM7 functions at loader/autoload/overlay runtime
+addresses, compile ARM or Thumb C/C++ for ARM7TDMI, resolve calls and data, and
+consume source-built bytes only after section/address/mode and full-ROM checks.
+`configure_arm7_unit` assigns original data/BSS or selects C++, with overlap checks
+and rollback. Clean standalone exports use the same pipeline. The retail sample
+has 12 linked ARM7 source units (148 bytes) and an exact complete rebuild.
+[ARM7 recovery documentation](../ds-arm7.md) describes the workflow and discovery
+limits. Unknown code and unfinished units retain original bytes.
 
-ARM7 programs and ARM7 overlays are retained, not recovered as matching C/C++.
-Recovered source can enter exact ROM rebuilds once its entire unit matches.
-Partial round trips still retain unmatched original objects. Further ARM7,
-runtime-module, DS Protect and compiler-version coverage remains open.
+The pinned toolkit decodes and re-encrypts DS Protect; an original protected
+overlay fixture and YV5P main's four version 1.00 ranges qualify that path. The
+standalone signature inspector alone does not establish decryption. Signed
+metadata, unusual overlay IDs, overlapping runtime addresses, BSS extents and
+absent and empty constructor tables with nonzero tail words and four-byte BSS
+alignment are covered. Protected ARM7 main/autoload/overlay C/C++ source links
+use a codec-verified private decoded context and exact re-encryption; original
+version 1.00 fixtures and clean exports qualify that path. Thumb/later startup
+references, BSS-only copied blocks and empty descriptor tables are also covered. Further
+protection variants and previously unseen startup/layout formats need individual
+qualification; a DS decompiler cannot claim every game from one retail test.
+
+Original and rebuilt retail images reach the title animation and opening scene
+with identical checkpoint video/audio in 1,200-frame and 3,600-frame interpreter
+runs. These are observed execution results, not a whole-game playthrough or
+physical-console certification. DSi work remains separate.
 
 ## Acceptance checks
 

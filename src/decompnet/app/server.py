@@ -482,7 +482,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
         def work(log):
             try:
-                slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name, log=log)
+                slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name,
+                                      ds_input_format=q.get("ds_input_format", "auto"), log=log)
             finally:
                 if uploaded:
                     shutil.rmtree(game.parent, ignore_errors=True)

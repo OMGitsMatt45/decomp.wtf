@@ -110,16 +110,22 @@ update-only partitions. These paths report assembly coverage separately from
 verified edits and retained base bytes; they do not recover C/C++ or rebuild a
 disc container. Assembly-only GBA exports need ARM binutils, without agbcc.
 
-Encrypted DS games need your own 16 KiB ARM7 BIOS. Before starting the app, set
+Whole-project imports of encrypted DS games need your own 16 KiB ARM7 BIOS. Before starting the app, set
 `DECOMP_ARM7_BIOS` to its path (`$env:DECOMP_ARM7_BIOS = 'C:\Games\arm7_bios.bin'`
 in PowerShell, or `export DECOMP_ARM7_BIOS=/path/to/arm7_bios.bin` on Linux).
 The importer retains a copy in the project's ignored `extract/arm7_bios.bin`
 for subsequent builds; the ROM and BIOS stay outside the project's Git history.
-Decrypted copies can also need that BIOS to reproduce their retained encrypted
-secure-area checksum. Unencrypted homebrew with a zero checksum ignores an
-optional configured BIOS during rebuilding so its header stays identical.
+For a ROM already decrypted for an emulator, select **Already decrypted for an emulator**
+in the DS import form, or pass `--input-format decrypted` to the pilot CLI. That
+explicit workflow preserves the supplied secure bytes and retained checksum
+metadata without a BIOS. Automatic mode continues to reject failed decryption.
+Unencrypted homebrew with a zero checksum also omits the BIOS during rebuilding.
 For bounded import/draft probes from a checkout, see
 `uv run python tools/ds_pilot.py --help`; keep its work directory outside the checkout.
+The BIOS supplies the secure-area key table; C/C++ compilation itself does not
+need it. See [ARM7 C/C++ recovery](docs/ds-arm7.md) for the project workflow.
+The independent `tools/ds_arm7.py` inspector and isolated leaf checker also work
+without ARM9 secure-area validation.
 
 Important boundaries:
 
@@ -129,9 +135,12 @@ Important boundaries:
   prelinking. IDO 7.1 retains its own frontend and backend.
 - GBA's normal and old Thumb compilers have distinct restored C++ frontends.
   The separate agbcc ARM-mode compiler is not integrated.
-- DS links finished ARM9 source units after their code and data match and the
-  complete ROM still verifies. Unfinished units and ARM7 retain original
-  objects; ARM7 source recovery remains [future work](docs/future/nds.md).
+- DS links finished ARM9 and ARM7 C/C++ source units after their code and data
+  match and the complete ROM still verifies. ARM7 calls, globals and recognized
+  runtime copied blocks use a separate ARM7TDMI build. Protected ARM7 modules
+  use decoded references and exact re-encryption. Unfinished code retains
+  original bytes. See [ARM7 recovery](docs/ds-arm7.md) and the
+  [retail rebuild/execution record](docs/ds-retail-yv5p.md).
   DSi-enhanced/exclusive ROM containers are rejected explicitly: the pinned
   toolkit cannot preserve ARM9i/ARM7i programs and TWL authentication metadata.
   DSi-branded compiler versions can still compile ordinary DS source.

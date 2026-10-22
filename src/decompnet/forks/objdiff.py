@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -40,9 +41,11 @@ def judge_options(project_options: dict | None = None, unit_options: dict | None
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 600) -> str:
+    env = dict(os.environ)
+    env.setdefault("RAYON_NUM_THREADS", str(min(8, os.cpu_count() or 2)))
     try:
         res = subprocess.run([_exe(), "--no-color", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                             encoding="utf-8", errors="replace")
+                             encoding="utf-8", errors="replace", env=env)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise ObjdiffError(f"could not run objdiff-cli: {e}") from e
     if res.returncode != 0:
@@ -86,12 +89,15 @@ class FunctionDiff:
     # them, but the game's link resolves names, so they're worth fixing before the code goes upstream
     renamed: list[tuple[str, str]] = field(default_factory=list)
     literals: list = field(default_factory=list)  # literals.Mismatch: constants that differ although the code matches
+    raw_difference: str = ""
 
     @property
     def matched(self) -> bool:
-        return self.match_percent is not None and self.match_percent >= 100.0 and not self.literals
+        return self.match_percent is not None and self.match_percent >= 100.0 and not self.literals and not self.raw_difference
 
     def literals_note(self) -> str:
+        if self.raw_difference:
+            return self.raw_difference
         if not self.literals:
             return ""
         listing = "\n".join(f"- {m.describe()}" for m in self.literals[:6])
@@ -104,8 +110,9 @@ class FunctionDiff:
     def render(self, context: int = 2, max_rows: int = 60) -> str:
         from ..scoring import render_rows
 
-        return render_rows(self.rows, context, max_rows, legend="markers: |=different instruction i=operand differs "
+        text = render_rows(self.rows, context, max_rows, legend="markers: |=different instruction i=operand differs "
                            "<=missing (target only) >=extra (yours only)")
+        return text + ("\n" + self.raw_difference if self.raw_difference else "")
 
 
 def _sym(obj: dict | None, name: str) -> dict | None:

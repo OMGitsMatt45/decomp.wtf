@@ -1,3 +1,4 @@
 ninja>=1.11
 pyelftools>=0.33
 PyYAML>=6.0
+capstone>=5.0.9
