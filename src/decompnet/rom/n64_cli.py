@@ -18,6 +18,7 @@ def add_parser(subparsers):
         command.add_argument("--layout", type=Path, required=command is inspect)
     load.add_argument("--own-copy", required=True, action="store_true")
     load.add_argument("--toolchain")
+    load.add_argument("--optimization", choices=("O0", "O1", "O2"), help="override the named toolchain's optimization profile")
     export.add_argument("project")
     export.add_argument("--format", choices=("matching", "shiftable"), default="matching")
     for command in (load, export):
@@ -40,7 +41,13 @@ def run(args):
                 from .n64 import read_info
                 read_info(args.rom.read_bytes())
                 layout = json.loads(args.layout.read_text(encoding="utf-8")) if args.layout else None
-                slug = net.import_rom(args.rom, toolchain=args.toolchain, confirmed=args.own_copy,
+                flags = None
+                if args.optimization is not None:
+                    from .. import toolchains
+                    if args.toolchain not in ("ido-5.3", "ido-7.1", "gcc-2.7.2-kmc"):
+                        raise ValueError("--optimization needs --toolchain ido-5.3, ido-7.1 or gcc-2.7.2-kmc")
+                    flags = ["-" + args.optimization, *[f for f in toolchains.get(args.toolchain).flags if not f.startswith("-O")]]
+                slug = net.import_rom(args.rom, toolchain=args.toolchain, flags=flags, confirmed=args.own_copy,
                                       reviewed_layout=layout, log=lambda message: print(message, file=sys.stderr))
                 result = {"project": slug, "root": net.project_row(slug)["root"]}
             else:

@@ -425,7 +425,10 @@ class RomNetwork(Network):
             layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
         for p in self.store.all("SELECT slug, config FROM projects"):
             previous = json.loads(p["config"])
-            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id:
+            previous_compiler = previous.get("compiler", {})
+            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id and \
+                    (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
+                    (not flags or previous_compiler.get("flags") == flags):
                 log(f"already imported as {p['slug']}")
                 return p["slug"]
         base = _slugify(info["title"])

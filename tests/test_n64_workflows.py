@@ -69,8 +69,19 @@ def test_cli_layout_inspection_import_and_both_exports(tmp_path, capsys):
     assert main([*base, 'inspect', str(rom), '--layout', str(manifest)]) == 0
     assert json.loads(capsys.readouterr().out)['compressed_modules'] == 0
     workspace = str(tmp_path / 'projects')
-    assert main([*base, 'import', str(rom), '--layout', str(manifest), '--workspace', workspace, '--own-copy']) == 0
+    command = [*base, 'import', str(rom), '--layout', str(manifest), '--workspace', workspace, '--own-copy', '--toolchain', 'ido-5.3']
+    assert main([*command, '--optimization', 'O0']) == 0
     slug = json.loads(capsys.readouterr().out)['project']
+    net = RomNetwork(tmp_path / 'app.db', Path(workspace))
+    flags = net.cfg(net.project_row(slug))['compiler']['flags']
+    assert '-O0' in flags and '-O2' not in flags
+    assert main([*command, '--optimization', 'O0']) == 0
+    assert json.loads(capsys.readouterr().out)['project'] == slug
+    assert main([*command, '--optimization', 'O2']) == 0
+    optimized = json.loads(capsys.readouterr().out)['project']
+    assert optimized != slug
+    assert '-O2' in net.cfg(net.project_row(optimized))['compiler']['flags']
+    assert net.store.one('SELECT COUNT(*) AS n FROM projects')['n'] == 2
     outputs = []
     for format in ('matching', 'shiftable'):
         assert main([*base, 'export', slug, '--workspace', workspace, '--format', format]) == 0

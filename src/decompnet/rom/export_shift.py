@@ -261,8 +261,9 @@ def build(builder, module=None, cic=None, *, audit_only=False):
         if index:
             cursor += window["padding"][name]
         locations[name] = cursor
-        pattern = r"\. = 0x" + f"{function['vram'] - segment_base:X}" + r"; " + re.escape(provides[name]) + r"\(\.text\)"
-        replacement = f". = 0x{cursor - segment_base:X}; {provides[name]}(.text)"
+        obj = builder.object_pattern(provides[name])
+        pattern = r"\. = 0x" + f"{function['vram'] - segment_base:X}" + r"; " + re.escape(obj) + r"\(\.text\)"
+        replacement = f". = 0x{cursor - segment_base:X}; {obj}(.text)"
         script, count = re.subn(pattern, lambda _: replacement, script)
         if count != 1:
             raise ValueError("the export's function placement no longer matches its reviewed layout")

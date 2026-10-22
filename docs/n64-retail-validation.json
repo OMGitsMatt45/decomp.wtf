@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "input": {
+    "title": "Super Mario 64 (USA)",
+    "game_code": "NSME",
+    "version": 0,
+    "byte_order": "z64",
+    "size": 8388608,
+    "sha1": "9bef1128717f958171a4afac3ed78ee2bb4e86ce",
+    "sha256": "17ce077343c6133f8c9f2d6d6d9a4ab62c8cd2aa57c40aea1f490b4c8bb21d91",
+    "cic": 6102,
+    "stored_and_calculated_checksums": [1666853887, 2332173094]
+  },
+  "execution": {
+    "host": "Linux x86_64",
+    "compiler": "Native IDO 5.3 EDG C++ and original backend",
+    "linker": "Pinned GNU MIPS binutils 2.40",
+    "layout": "Automatic detection, no supplied game symbols or reviewed module layout",
+    "function_ranges": 4559,
+    "data_symbols": 2445,
+    "code_ranges": 4,
+    "entry_stub": "Retained as assembly"
+  },
+  "profiles": [
+    {
+      "optimization": "-O2",
+      "matched_cpp_functions": 11,
+      "matched_original_bytes": 268,
+      "export_identical": true,
+      "export_assembly_fallbacks_for_matched_sources": [],
+      "clean_build_identical": true,
+      "clean_build_seconds": 32.56
+    },
+    {
+      "optimization": "-O0",
+      "matched_cpp_functions": 43,
+      "matched_original_bytes": 1092,
+      "export_identical": true,
+      "export_assembly_fallbacks_for_matched_sources": [],
+      "clean_build_identical": true,
+      "clean_build_seconds": 50.92
+    }
+  ],
+  "unique_matched_functions_across_separate_projects": 54,
+  "unique_matched_original_bytes": 1360,
+  "clean_build_procedure": [
+    "Export the complete matching project with accepted C++ sources",
+    "Copy original cartridge, build metadata, scripts and source into an empty directory",
+    "Exclude extracted assembly/assets, object files, build outputs, splat caches and generated linker scripts",
+    "Run the standalone build to regenerate extraction and compile accepted source",
+    "Require full 8388608-byte equality and the original SHA-256"
+  ],
+  "additional_results": {
+    "original_assembly_baseline_identical": true,
+    "invalid_cpp_rejected": true,
+    "incorrect_cpp_rejected": true,
+    "authenticated_browser_upload_bytes": 8388608,
+    "browser_import": "done",
+    "browser_map_rows": 4559,
+    "browser_function_detail_http_status": 200,
+    "browser_temporary_uploads_removed": true,
+    "unsupported_shiftable_export_rejected": true
+  },
+  "retail_scale_fixes": [
+    "GNU ld response files avoid the Windows CreateProcess argument limit; this project's original object command exceeded 200000 characters",
+    "Exact singleton filename patterns avoid GNU ld's cubic literal-filename lookup path while preserving placement",
+    "Explicit compiler/optimization imports retain distinct project profiles instead of reusing an incompatible project"
+  ],
+  "boundaries": [
+    "The recovered sources are small functions and stubs; the remaining detected ranges retain assembly",
+    "The two optimization profiles are separate projects, not a mixed-profile source build",
+    "Automatic function boundaries remain heuristic and need review",
+    "This multi-range retail layout has no reviewed growth reserve and does not qualify for shiftable output",
+    "No emulator execution or playthrough was performed",
+    "Only metadata is committed; cartridge bytes, derived assembly, recovered game sources and private exports are excluded"
+  ]
+}

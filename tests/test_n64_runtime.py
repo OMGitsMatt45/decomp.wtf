@@ -8,7 +8,7 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
 import pytest
 
-from decompnet import compiler, project, toolchains
+from decompnet import compiler, elfobj, project, toolchains
 
 pytestmark = pytest.mark.skipif(os.environ.get('DECOMP_TEST_N64_CPP') != '1', reason='requires pinned N64 compilers')
 
@@ -61,3 +61,24 @@ def test_heap_array_virtual_and_static_runtime_contracts(tmp_path, toolchain, fr
     # Allocations, local-static guards and vector construction need the game's
     # period runtime. The object deliberately retains these unresolved imports.
     assert any(s['sh_size'] and s.name in ('.data', '.bss', '.rodata') for s in elf.iter_sections())
+
+
+@pytest.mark.parametrize('toolchain,frontend', [('ido-5.3', 'edg'), ('ido-5.3', 'cfront')])
+@pytest.mark.parametrize('optimization', ['-O0', '-O2'])
+def test_ido53_optimization_profile_preserves_c_origin_cpp_bytes(tmp_path, toolchain, frontend, optimization):
+    assert toolchains.installed(toolchain) is not None
+    defaults = [f for f in toolchains.get(toolchain).flags if not f.startswith('-O')]
+    options = {'toolchain': toolchain, 'flags': [optimization, *defaults], 'sandbox': 'none',
+               **({'cpp_frontend': frontend} if frontend else {})}
+    source = 'void profile_probe(int unused) {}\n'
+    def compile(language, flags):
+        cfg = project.compiler_config(tmp_path, {'kind': 'rom', 'platform': 'n64', 'compiler': {
+            **options, 'language': language, 'flags': flags}})
+        result = compiler.compile_source(cfg, '', source)
+        assert result.ok, result.log
+        return elfobj.extract_function(result.obj, 'profile_probe')
+    target = compile('c', options['flags'])
+    recovered = compile('c++', options['flags'])
+    assert recovered.code == target.code and recovered.relocs == target.relocs == []
+    wrong_profile = '-O2' if optimization == '-O0' else '-O0'
+    assert compile('c++', [wrong_profile, *defaults]).code != target.code
