@@ -209,11 +209,15 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
         _run([*init, "--allow-unknown-function-calls"], root, "analysing the game")
 
 
-def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None) -> None:
+def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None, input_format="auto") -> None:
     """Extract with an optional user-supplied BIOS, retained privately for subsequent builds."""
-    configured = arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
+    configured = (arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")) if input_format == "auto" else None
     cmd = [sys.executable, "tools/extract.py", dsd, "rom", "extract", "--rom", "extract/baserom.nds",
            "--output-path", f"extract/{version}"]
+    if input_format == "decrypted":
+        cmd += ["--input-format", "decrypted"]
     if configured:
         bios = Path(configured).expanduser().resolve()
         if not bios.is_file() or bios.stat().st_size != 0x4000:
@@ -243,10 +247,12 @@ def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = Non
         raise
 
 
-def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None,
+def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None, input_format="auto",
            log=print) -> dict:
     """Make the project in `root` (which must not exist yet) and build it once. Returns facts about the game."""
     info = game_info(game)
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
     validate_filesystem(game)
     version = info["id"].lower()
     compiler = (compiler or f"DS/{DS_DEFAULT}").removeprefix("DS/")
@@ -267,10 +273,13 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
     cfg = root / "tools" / "configure.py"
     cfg.write_text(cfg.read_text(encoding="utf-8").replace('GAME = "game"', f'GAME = "{version}"')
                    .replace(f'MWCC_VERSION = "{DS_DEFAULT}"', f'MWCC_VERSION = "{compiler}"'), encoding="utf-8")
+    if input_format == "decrypted":
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace('INPUT_FORMAT = "auto"', 'INPUT_FORMAT = "decrypted"')
+                       .replace("USE_ARM7_BIOS = True", "USE_ARM7_BIOS = False"), encoding="utf-8")
 
     dsd = args[args.index("--dsd") + 1]
     log(f"extracting {info['title']} ({info['id']}) with ds-decomp")
-    _extract(dsd, root, version, arm7_bios=arm7_bios)
+    _extract(dsd, root, version, arm7_bios=arm7_bios, input_format=input_format)
     arm9 = yaml.load((root / "extract" / version / "arm9/arm9.yaml").read_text(encoding="utf-8"),
                      Loader=yaml.BaseLoader)
     with game.open("rb") as stream:
@@ -315,7 +324,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
         "created": "from scratch", "platform": "nds", "version": version, "compiler": f"DS/{compiler}",
         "game": {"what": "your copy of the game (.nds)", "path": "extract/baserom.nds", "sha1": info["sha1"]},
         "setup": [["python", "tools/configure.py", version, *args], ["ninja", "prepare"]],
-        "rebuild": rebuild,
+        "rebuild": rebuild, "ds_input_format": input_format,
     }, indent=2), encoding="utf-8")
     (root / "README.md").write_text(f"""# {info['title']} ({info['id']}) decompilation
 

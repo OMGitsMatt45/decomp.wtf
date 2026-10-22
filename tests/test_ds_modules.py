@@ -67,6 +67,41 @@ def test_opaque_secure_area_does_not_block_arm7(monkeypatch):
         image.code("arm9")
 
 
+def autoload_fixture():
+    data = fixture() + bytes(0x1000)
+    base, offset = 0x02380000, 0x6000
+    struct.pack_into("<4I", data, 0x30, offset, base, base, 0x500)
+    struct.pack_into("<I", data, offset, 0xE59F0018)  # ldr r0,[pc,#0x18]
+    struct.pack_into("<I", data, offset + 0x20, base + 0x80)
+    struct.pack_into("<5I", data, offset + 0x80, base + 0x4E8, base + 0x500, base + 0x100,
+                     base + 0x100, base + 0x100)
+    struct.pack_into("<6I", data, offset + 0x4E8, 0x037F8000, 0x100, 16, 0x027E0000, 0x2E8, 24)
+    data[offset + 0x100:offset + 0x104] = b"AUTO"
+    data[offset + 0x200:offset + 0x204] = b"LOAD"
+    seal(data)
+    return data
+
+
+def test_arm7_copied_code_uses_runtime_destinations_and_excludes_descriptor_bytes():
+    image = NdsImage(bytes(autoload_fixture()))
+    assert len(image.code("arm7")) == 0x100 and image.arm7_program_size == 0x500
+    assert image.code("arm7:autoload0")[:4] == b"AUTO"
+    assert image.code("arm7:autoload1")[:4] == b"LOAD"
+    assert image.modules["arm7:autoload0"].address == 0x037F8000
+    assert image.modules["arm7:autoload1"].address == 0x027E0000
+    assert image.modules["arm7:autoload0"].bss_size == 16
+    assert image.modules["arm7:autoload1"].bss_size == 24
+
+
+def test_unreferenced_or_invalid_arm7_parameters_do_not_invent_runtime_addresses():
+    data = autoload_fixture()
+    data[0x6000:0x6004] = bytes(4)  # remove the loader's reference
+    assert not any("autoload" in name for name in NdsImage(bytes(data)).modules)
+    data = autoload_fixture()
+    struct.pack_into("<I", data, 0x64E8, 0xFFFFFFF0)  # outside DS memory
+    assert not any("autoload" in name for name in NdsImage(bytes(data)).modules)
+
+
 @pytest.mark.parametrize("offset,fmt,value,reason", [
     (0x12, "B", 2, "TWL"),
     (0x30, "I", 0xFFFF, "outside ROM"),

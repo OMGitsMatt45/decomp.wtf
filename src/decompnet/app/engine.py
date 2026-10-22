@@ -391,7 +391,7 @@ class RomNetwork(Network):
     # ------------------------------------------------------------------ import
 
     def import_rom(self, data: bytes | Path, *, toolchain: str | None = None, flags: list[str] | None = None,
-                   confirmed: bool = False, name: str = "", log=print) -> str:
+                   confirmed: bool = False, name: str = "", ds_input_format: str = "auto", log=print) -> str:
         """Import a game the user owns (ROM bytes, or a file such as a disc image): split it, store every function
         as a target. Returns the slug."""
         if not confirmed:
@@ -403,7 +403,7 @@ class RomNetwork(Network):
             boot_picked = boot.identify(project_file)
         if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
             compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
-            return self.forks.create_scratch(project_file, compiler=compiler, log=log)
+            return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
         picked = boot_picked or detect.identify(data, name)
         if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")

@@ -23,6 +23,7 @@ import ninja_syntax
 GAME = "game"
 MWCC_VERSION = "2.0/sp1p5"
 USE_ARM7_BIOS = True  # decomp.wtf selects this from the input's encryption and secure-checksum metadata
+INPUT_FORMAT = "auto"  # an explicit decrypted input retains its supplied secure bytes and checksum metadata
 CC_FLAGS = ["-O4,p", "-enum", "int", "-char", "signed", "-str", "noreuse", "-proc", "arm946e", "-gccext,on", "-fp",
             "soft", "-inline", "noauto", "-Cpp_exceptions", "off", "-RTTI", "off", "-interworking", "-w", "off",
             "-sym", "on", "-gccinc", "-nolink", "-msgstyle", "gcc"]
@@ -74,7 +75,8 @@ def main() -> None:
     with open("build.ninja", "w", encoding="utf-8") as f:
         n = ninja_syntax.Writer(f)
         bios_arg = f" --arm7-bios {ARM7_BIOS}" if USE_ARM7_BIOS and ARM7_BIOS.is_file() else ""
-        n.rule("extract", f"{PY} tools/extract.py {DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}")
+        format_arg = " --input-format decrypted" if INPUT_FORMAT == "decrypted" else ""
+        n.rule("extract", f"{PY} tools/extract.py {DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}{format_arg}")
         n.rule("delink", f"{DSD} delink --config-path {CONFIG}")
         n.rule("mwcc", f"{WRAP}\"{CC}\" {q(CC_FLAGS)} -i include $cflags -MD -c $in -o $basedir"
                + ("" if sys.platform == "win32" else f" && {PY} tools/transform_dep.py $basefile.d $basefile.d"),
@@ -82,14 +84,15 @@ def main() -> None:
         n.rule("lcf", f"{DSD} lcf -c {CONFIG}")
         n.rule("mwld", f"{WRAP}\"{LD}\" {q(LD_FLAGS)} -m Entry @$objects $lcf -o $out")
         n.rule("rom_config", f"{PY} tools/rom_config.py {DSD} --elf $in --config {CONFIG}")
-        n.rule("rom_build", f"{DSD} rom build --config $in --rom $out{bios_arg}")
+        reference_arg = f" --decrypted-reference {BASEROM}" if INPUT_FORMAT == "decrypted" else ""
+        n.rule("rom_build", f"{PY} tools/build_rom.py {DSD} --config $in --rom $out{bios_arg}{reference_arg}")
         n.rule("same", f"{PY} tools/same.py $in {BASEROM} $out")
         n.rule("objdiff", f"{DSD} objdiff --config-path {CONFIG} --custom-make ninja")
         n.rule("check", f"{SH}{DSD} check modules --config-path {CONFIG} --fail && {PY} tools/same.py --touch $out")
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 
         n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM),
-                implicit=["tools/extract.py", *([str(ARM7_BIOS)] if bios_arg else [])])
+                implicit=["tools/extract.py", "tools/nds_input.py", *([str(ARM7_BIOS)] if bios_arg else [])])
         targets = sorted({x["delink_file"] for x in files})
         n.build(targets or ["delink"], "delink", [*dsd_configs, str(EXTRACT / "config.yaml")])
         objs = []
@@ -106,7 +109,8 @@ def main() -> None:
         rom_config = BUILD / "build" / "rom_config.yaml"
         n.build(str(rom_config), "rom_config", str(BUILD / "arm9.o"), implicit=["tools/rom_config.py"])
         n.build(str(rom), "rom_build", str(rom_config),
-                implicit=[str(ARM7_BIOS)] if bios_arg else None)
+                implicit=["tools/build_rom.py", "tools/nds_input.py", str(BASEROM),
+                          *([str(ARM7_BIOS)] if bios_arg else [])])
         n.build(str(BUILD / "rom.ok"), "same", str(rom))
         n.build(str(BUILD / "check.ok"), "check", str(BUILD / "arm9.o"))
         n.build("objdiff.json", "objdiff", dsd_configs)

@@ -10,8 +10,20 @@ import sys
 import tempfile
 from pathlib import Path
 
+from nds_input import restore_prefix, stage_decrypted
+
 
 def main(argv: list[str]) -> int:
+    argv = list(argv)
+    input_format = "auto"
+    if "--input-format" in argv:
+        at = argv.index("--input-format")
+        input_format = argv[at + 1]
+        del argv[at:at + 2]
+    if input_format not in ("auto", "decrypted"):
+        raise ValueError("input format must be auto or decrypted")
+    if input_format == "decrypted" and "--arm7-bios" in argv:
+        raise ValueError("decrypted inputs must not be decrypted again with a BIOS")
     output = argv.index("--output-path") + 1
     target = Path(argv[output]).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -20,6 +32,12 @@ def main(argv: list[str]) -> int:
     with tempfile.TemporaryDirectory(prefix=f".{target.name}-extract-", dir=target.parent) as temporary:
         staged = Path(temporary) / "rom"
         command = [*argv[:output], str(staged), *argv[output + 1:]]
+        prefix = None
+        if input_format == "decrypted":
+            source = command.index("--rom") + 1
+            copied = Path(temporary) / "decrypted.nds"
+            prefix = stage_decrypted(Path(command[source]), copied)
+            command[source] = str(copied)
         try:
             result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
                                     timeout=3500)
@@ -34,6 +52,8 @@ def main(argv: list[str]) -> int:
             print("error: the ARM7 BIOS did not validate the ROM's encrypted secure area. "
                   "Check your BIOS and game copy; nonstandard secure-area prefixes are not supported.", file=sys.stderr)
             return 1
+        if prefix is not None:
+            restore_prefix(staged, prefix)
         previous = Path(temporary) / "previous"
         if target.exists():
             target.replace(previous)

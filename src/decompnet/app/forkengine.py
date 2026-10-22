@@ -452,7 +452,7 @@ class ForkEngine:
                        "VALUES(?,?,?,?,?,?,?)", (pid, 1, "", None, "projects keep their headers in the tree", time.time(), ""))
             self.net._event(db, pid, None, "fork", event)
 
-    def create_scratch(self, game: Path, *, compiler: str | None = None, log=print) -> str:
+    def create_scratch(self, game: Path, *, compiler: str | None = None, ds_input_format="auto", log=print) -> str:
         """A GameCube, Wii or DS game, from scratch: generate the community's project layout for it (dtk-template,
         ds-decomp) and open it like a fork."""
         with open(game, "rb") as f:
@@ -467,7 +467,8 @@ class ForkEngine:
         slug = self._free_slug(_slug(f"{info['title']} {info['id']}" if info.get("kind") != "dol" else info["title"]))
         dest = self.net.workspace / slug
         try:
-            facts = maker.create(dest, game, compiler=compiler, log=log)
+            facts = maker.create(dest, game, compiler=compiler, log=log,
+                                 **({"input_format": ds_input_format} if ds else {}))
         except BaseException:
             shutil.rmtree(dest, ignore_errors=True)
             raise

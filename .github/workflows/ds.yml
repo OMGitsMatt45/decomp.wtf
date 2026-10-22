@@ -55,7 +55,7 @@ jobs:
           uv run --no-sync python tools/run_operational.py
           tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py
           tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py
-          tests/test_ds_modules.py tests/test_ds_arm7.py
+          tests/test_ds_modules.py tests/test_ds_arm7.py tests/test_ds_decrypted.py
           tests/test_objdiff_errors.py
       - name: Require every DS suite without skips
         run: uv run --no-sync python tools/check_operational_results.py --ds-only operational-results.xml

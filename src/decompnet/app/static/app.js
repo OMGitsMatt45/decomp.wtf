@@ -375,6 +375,8 @@ function setupCompilers(info) {
   const p = info.platform, select = $("compilerPick"), note = $("compilerNote");
   const cw = S.st?.codewarrior || { installed: false, ds_installed: false, gc: [], wii: [], ds: [] };
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
+  $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
+  $("dsInputFormat").value = "auto";
   if (info.bootUtility) {
     select.innerHTML = `<option value="${p === "nds" ? "binutils-arm" : "gc-wii-binutils"}">GNU assembly</option>`;
     note.hidden = false;
@@ -496,7 +498,8 @@ $("analyse").onclick = async () => {
     try { await ensureCodeWarrior(); } catch (e) { importFailed("CodeWarrior", e, $("jobLog").textContent); return; }
   }
   const body = picked.buf instanceof Blob ? picked.buf : new Blob([picked.buf]);
-  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}`, body, title, picked.name);
+  const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
+  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}`, body, title, picked.name);
 };
 $("pathPick").onclick = (e) => {
   e.stopPropagation();
