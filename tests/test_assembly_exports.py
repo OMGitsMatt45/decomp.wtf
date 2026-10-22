@@ -68,6 +68,55 @@ _08000134: .4byte 0x03000000
     assert (tmp_path / "build/game.gba").read_bytes() == (tmp_path / "baserom.gba").read_bytes()
 
 
+def test_gba_build_resolves_automatic_externs_without_renaming(tmp_path):
+    """Address-named RAM references match in the judge and must also link in an exported tree."""
+    import hashlib
+    from decompnet.rom import gba
+
+    if toolchains.installed("binutils-arm") is None:
+        pytest.skip("needs ARM binutils")
+    tools = toolchains.require("binutils-arm") / "bin"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    asm = tmp_path / "asm"
+    asm.mkdir()
+    (asm / "load.s").write_text('''.syntax unified
+.thumb
+.global load
+.type load, %function
+.thumb_func
+load:
+ldr r0, =D_02000000
+ldr r0, [r0]
+bx lr
+.ltorg
+.word gUnknown_03000000
+.word D_02000004
+.global D_08000014
+D_08000014:
+.word 0x12345678
+''')
+    # An explicitly recorded address takes precedence over the digits in its name.
+    symbols = {"D_02000000": 0x02000000, "gUnknown_03000000": 0x03000000, "D_02000004": 0x02000008}
+    for command in (
+        [str(tools / f"arm-none-eabi-as{suffix}"), "-mcpu=arm7tdmi", "-o", "original.o", "asm/load.s"],
+        [str(tools / f"arm-none-eabi-ld{suffix}"), "-Ttext=0x08000000", "-o", "original.elf", "original.o",
+         *[f"--defsym={name}=0x{address:X}" for name, address in symbols.items()]],
+        [str(tools / f"arm-none-eabi-objcopy{suffix}"), "-O", "binary", "original.elf", "baserom.gba"],
+    ):
+        subprocess.run(command, cwd=tmp_path, check=True, capture_output=True)
+    manifest = {"image": "baserom.gba", "sha1": hashlib.sha1((tmp_path / "baserom.gba").read_bytes()).hexdigest(),
+                "base": 0x08000000, "output": "build/game.gba", "compiler": {"language": "c++", "toolchain": "agbcc"},
+                "symbols": {"D_02000004": symbols["D_02000004"]}, "functions": []}
+    (tmp_path / "build.json").write_text(json.dumps(manifest))
+    (asm / "pieces.json").write_text(json.dumps([{"addr": 0x08000000, "src": "asm/load.s", "name": "load"}]))
+    script = tmp_path / "build.py"
+    shutil.copyfile(Path(gba.__file__).with_name("export_gba_build.py"), script)
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "build/game.gba").read_bytes() == (tmp_path / "baserom.gba").read_bytes()
+    assert "D_08000014 =" not in (tmp_path / "build/game.ld").read_text()
+
+
 @pytest.fixture
 def mips_tools():
     if toolchains.installed("binutils-mips") is None:
