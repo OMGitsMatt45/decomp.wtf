@@ -24,7 +24,7 @@ import yaml
 
 from .. import cpp, toolchains
 from ..limits import capped
-from . import match
+from . import match, split
 from .symbols import AUTO_NAME
 
 AS_FLAGS = {
@@ -60,12 +60,14 @@ def _first_address(path: Path) -> tuple[int | None, int | None]:
 def _symbol_lines(net, proj) -> list[str]:
     """symbol_addrs.txt entries for every function and every named symbol, so splat writes the project's names."""
     syms = net.symbols(proj["id"])
-    funcs = {r["vram"]: r for r in net.store.all("SELECT name, vram, size FROM functions WHERE project_id=?", proj["id"])}
+    funcs = net.store.all("SELECT name, vram, size, rom_offset FROM functions WHERE project_id=?", proj["id"])
+    addresses = {r["vram"] for r in funcs}
     lines = []
-    for vram, r in sorted(funcs.items()):
-        lines.append(f"{r['name']} = 0x{vram:08X}; // type:func")
+    for r in sorted(funcs, key=lambda r: (r["vram"], r["rom_offset"] or 0)):
+        hint = f" rom:0x{r['rom_offset']:X}" if r["rom_offset"] is not None else ""
+        lines.append(f"{r['name']} = 0x{r['vram']:08X}; // type:func{hint}")
     for s in sorted(syms.by_name.values(), key=lambda s: s.address):
-        if s.address in funcs or AUTO_NAME.match(s.name):
+        if s.address in addresses or AUTO_NAME.match(s.name):
             continue
         lines.append(f"{s.name} = 0x{s.address:08X};")
     return lines
@@ -115,6 +117,18 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     # 1. splat again, with the project's names
     log("writing the assembly with the project's names (splat)")
     shutil.copyfile(configs[0], out / "splat.yaml")
+    config = yaml.safe_load((out / "splat.yaml").read_text(encoding="utf-8"))
+    has_overlays = split.overlay_contexts(config)
+    bss_changed = False
+    if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
+        from . import ps2
+        bss_changed = ps2.bss_layout(config, (work / program).read_bytes())
+    if platform == "n64":
+        # A ROM title can contain NULs, quotes or whitespace. Splat's string
+        # form can change those bytes or produce assembly GAS cannot read.
+        config.setdefault("options", {})["header_encoding"] = "word"
+    if platform == "n64" or has_overlays or bss_changed:
+        (out / "splat.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     shutil.copyfile(work / image_name, out / image_name)
     for extra in ("reloc_addrs.txt",):
         if (work / extra).exists():
@@ -124,13 +138,15 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                          encoding="utf-8", errors="replace")
     if res.returncode != 0:
         raise ExportError("splat failed:\n" + (res.stdout + res.stderr)[-1500:])
+    if has_overlays:
+        split.namespace_overlay_labels(out)
     for generated in (out / "src").glob("*.c"):
         generated.unlink()  # splat's INCLUDE_ASM files: this tree builds one object per function instead
     for ld in out.glob("*.ld"):
         ld.rename(out / f"splat-{ld.name}")
 
     # 2. which function is where, and which are matched
-    rows = {r["vram"]: r for r in net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])}
+    rows = {(r["rom_offset"], r["vram"]): r for r in net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])}
     units = net._unit_contexts(proj["id"])
     header = net._context(proj["id"])["header"]
     (out / "include").mkdir(exist_ok=True)
@@ -143,13 +159,14 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         rom_off, vram = _first_address(path)
         if vram is None:
             continue
-        functions.append({"name": path.stem, "seg": path.parent.name, "vram": vram, "rom": rom_off,
+        label = re.search(r"^\s*glabel\s+(\w+)", path.read_text(encoding="utf-8"), re.M)
+        functions.append({"name": label[1] if label else path.stem, "seg": path.parent.name, "vram": vram, "rom": rom_off,
                           "asm": path.relative_to(out).as_posix()})
     functions.sort(key=lambda f: f["vram"])
 
     objects, private, as_fallback = [], [], []
     for f in functions:
-        row = rows.get(f["vram"])
+        row = rows.get((f["rom"], f["vram"]))
         f["obj_asm"] = f"build/{Path(f['asm']).with_suffix('.o').as_posix()}"
         if row is None or row["status"] != "matched" or not row["matched_source"]:
             f["kind"] = "asm"
@@ -161,7 +178,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
             as_fallback.append((f["name"], "doesn't compile any more"))
             f["kind"] = "asm"
             continue
-        linked = match.link(compiled.obj, row["name"], net._rom_target(row), net.symbols(proj["id"]), net.reader(proj))
+        linked = match.link(compiled.obj, row["name"], net._rom_target(row), net.symbols(proj["id"]), net.reader(proj, row))
         if not linked.exact:
             as_fallback.append((f["name"], "no longer matches"))
             f["kind"] = "asm"
@@ -214,6 +231,24 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         defined.update(next(x for x in m.groups() if x) for m in _DEFINES.finditer(path.read_text(errors="replace",
                                                                                                   encoding="utf-8")))
     defined.update(f["name"] for f in functions)
+    module_symbols = {}
+    for path in (out / "asm").glob("**/*.s"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        rom_off, vram = _first_address(path)
+        owner = next((s.get("name") for s in segments if s.get("type") == "code" and rom_off is not None
+                      and s["start"] <= rom_off < (s["end"] or len(image))), None)
+        if owner is None and vram is not None:
+            owner = next((s.get("name") for s in segments if s.get("type") == "code"
+                          and s.get("bss_size", 0) and s["vram"] + s["end"] - s["start"] <= vram
+                          < s["vram"] + s["end"] - s["start"] + s["bss_size"]), None)
+        if owner is None:
+            continue
+        for label in _DEFINES.finditer(text):
+            address, bss_address = _ADDR_COMMENT.search(text, label.end()), _BSS_COMMENT.search(text, label.end())
+            if address or bss_address:
+                name = next(x for x in label.groups() if x)
+                value = address[2] if address and (not bss_address or address.start() < bss_address.start()) else bss_address[1]
+                module_symbols.setdefault(owner, {})[name] = int(value, 16)
     layout = []
     for seg in segments:
         kind = seg.get("type")
@@ -225,20 +260,31 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
             layout.append({"name": name, "kind": "raw", "start": seg["start"], "objects": [obj], "stub": stub,
                            "incbin": blob})
         elif kind == "code":
-            vram, start, end = int(seg["vram"]), int(seg["start"]), seg["end"] or 1 << 32
+            vram, start, end = int(seg["vram"]), int(seg["start"]), seg["end"] if seg["end"] is not None else len(image)
             data, bss = [], []
+            bss_vram = next((int(sub["vram"]) for sub in seg.get("subsegments", [])
+                             if isinstance(sub, dict) and sub.get("type") in ("bss", "sbss") and "vram" in sub), None)
+            bss_start = bss_vram if bss_vram is not None else vram + end - start
+            bss_end = vram + end - start + int(seg.get("bss_size") or 0)
             for path, pv, prom, obj in pieces:
                 if prom is not None and start <= prom < end:
                     data.append({"vram": pv, "obj": obj})
-                elif prom is None and pv is not None and vram <= pv and path.name.endswith(".bss.s"):
+                elif (prom is None and pv is not None and bss_start <= pv < bss_end
+                      and path.name.endswith((".bss.s", ".sbss.s"))
+                      and (len(path.relative_to(out / "asm" / "data").parts) == 1
+                           or path.relative_to(out / "asm" / "data").parts[0] == seg["name"])):
                     bss.append({"vram": pv, "obj": obj})
-            bss_vram = next((int(sub["vram"]) for sub in seg.get("subsegments", [])
-                             if isinstance(sub, dict) and sub.get("type") == "bss" and "vram" in sub), None)
             layout.append({"name": name, "kind": "code", "start": start, "end": seg["end"], "vram": vram,
-                           "bss_vram": bss_vram, "bss_size": int(seg.get("bss_size") or 0),
+                           "bss_vram": bss_vram, "bss_size": max(0, bss_end - bss_start),
                            "pieces": sorted(data, key=lambda d: d["vram"]), "bss": sorted(bss, key=lambda d: d["vram"])})
     syms = net.symbols(proj["id"])
     absolute = {s.name: s.address for s in syms.by_name.values() if s.name not in defined}
+    # Splat can emit a branch into another function as .L<address>. Each
+    # function is a separate object, so that object's local label is hidden
+    # from the caller. Keep the original address available to the linker.
+    for path in (out / "asm").glob("**/*.s"):
+        for label, address in re.findall(r"(\.L([0-9A-F]{8}))\b", path.read_text(encoding="utf-8", errors="replace")):
+            absolute.setdefault(label, int(address, 16))
     for auto in ("undefined_syms_auto.txt", "undefined_funcs_auto.txt"):
         p = out / auto
         if p.exists():
@@ -270,6 +316,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         "as_flags": [*AS_FLAGS[platform], "-G0", "-no-pad-sections", "-I", "include"],
         "ld_flags": [LD_ENDIAN[platform], "--no-check-sections"],
         "assembly": objects, "segments": layout, "functions": fn_json,
+        "module_symbols": module_symbols,
         "symbols": {k: v for k, v in sorted(absolute.items(), key=lambda kv: kv[1])},
     }
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():

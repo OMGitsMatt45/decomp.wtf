@@ -9,6 +9,11 @@ _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
     platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
+    if config.get("rom", {}).get("boot_utility") and compiler.get("language") == "asm" \
+            and compiler.get("assembly_dialect") == "gnu" \
+            and ((platform == "nds" and toolchain == "binutils-arm")
+                 or (platform in ("gc", "wii") and toolchain == "gc-wii-binutils")):
+        return "asm"
     if platform in ("gb", "gbc") or compiler.get("language") == "asm":
         if platform not in ("gb", "gbc") or toolchain != "rgbds" or compiler.get("language", "asm") != "asm":
             raise ValueError("GB/GBC assembly projects require RGBDS and compiler.language = 'asm'")

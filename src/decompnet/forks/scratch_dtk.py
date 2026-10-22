@@ -114,7 +114,12 @@ def _vfs_read(disc: Path, inner: str) -> bytes:
         res = subprocess.run(capped([_dtk(), "vfs", "cp", f"{disc}:{inner}", str(out)]), capture_output=True, text=True,
                              timeout=600, encoding="utf-8", errors="replace")
         if res.returncode != 0 or not out.exists():
-            raise ForkError(f"couldn't read {inner} from the disc image: {(res.stderr or res.stdout).strip()[-300:]}")
+            reason = (res.stderr or res.stdout).strip()
+            if "Partition type Data not found" in reason:
+                raise ForkError("this Wii disc has no game (Data) partition; boot utilities need the native apploader importer")
+            if "Reading DOL" in reason:
+                raise ForkError(f"the disc reader could not read a main DOL program: {reason[-300:]}")
+            raise ForkError(f"couldn't read {inner} from the disc image: {reason[-300:]}")
         return out.read_bytes()
 
 
@@ -222,6 +227,11 @@ def game_info(path: Path) -> dict:
     kind = disc_kind(head)
     if kind is None:
         raise ForkError("this isn't a GameCube or Wii disc image or program (DOL)")
+    if kind in ("gc", "wii") and len(head) < 0x440:
+        raise ForkError("the disc image's header is truncated")
+    if kind == "gc" and struct.unpack_from(">I", head, 0x420)[0] == 0:
+        raise ForkError("this GameCube disc has no main DOL program. "
+                        "Import it through the app's native apploader assembly workflow")
     boot = head if kind in ("gc", "wii") else _vfs_read(path, "sys/boot.bin")
     platform = "wii" if struct.unpack(">I", boot[0x18:0x1C])[0] == 0x5D1C9EA3 else "gc"
     game_id = boot[:6].decode("ascii", "replace")

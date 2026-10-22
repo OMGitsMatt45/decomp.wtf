@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 
 # Automatic names spell their address: splat/spimdisasm (func_, D_...), luvdis and pret (sub_, gUnknown_), IDA style.
-AUTO_NAME = re.compile(r"^(?:func|D|B|jtbl|L|RO|STR|FLT|DBL|bss|data|sub|gUnknown|unk|off|dword|word|byte|loc)_([0-9A-Fa-f]{8})$")
+AUTO_NAME = re.compile(r"^(?:[A-Za-z_]\w*_)?(?:func|D|B|jtbl|L|RO|STR|FLT|DBL|bss|data|sub|gUnknown|unk|off|dword|word|byte|loc)_(?:[A-Za-z_]\w*_)?([0-9A-Fa-f]{8})$")
 IDENT = re.compile(r"^[A-Za-z_]\w*$")
 
 

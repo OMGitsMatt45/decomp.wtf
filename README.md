@@ -75,10 +75,17 @@ availability does not guarantee that a particular game's compiler version,
 layout or runtime is supported. Beta platforms have less real-game coverage.
 GB/GBC verifies **SM83 assembly**, and does not recover C/C++.
 
+Filesystem-free DS boot utilities use a native GNU ARM assembly workflow that
+rebuilds the complete cartridge. GameCube/Wii utilities without a main DOL use
+GNU PowerPC assembly to rebuild their extracted apploader, including Wii
+update-only partitions. These paths report assembly coverage separately from
+verified edits and retained base bytes; they do not recover C/C++ or rebuild a
+disc container. Assembly-only GBA exports need ARM binutils, without agbcc.
+
 Important boundaries:
 
-- PS2 exports verify the program payload and original ELF envelope. Whole-disc
-  and separate overlay repacking remain future work.
+- PS2 exports verify the program payload, imported overlays and original main
+  ELF envelope. Whole-disc and separate overlay ELF repacking remain future work.
 - IDO 5.3 includes both SGI/EDG and classic cfront, including cross-unit template
   prelinking. IDO 7.1 retains its own frontend and backend.
 - GBA's normal and old Thumb compilers have distinct restored C++ frontends.

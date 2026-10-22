@@ -3,7 +3,7 @@ name: Full operational check
 on:
   workflow_dispatch:
   push:
-    branches: [main, codex/release-operational-check]
+    branches: [main, codex/release-operational-check, codex/rom-input-operational-fixes]
     paths:
       - '.github/workflows/**'
       - 'src/**'
@@ -57,7 +57,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libc6-i386 llvm lld bubblewrap
+          sudo apt-get install -y libc6-i386 llvm lld bubblewrap qemu-user-static
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Isolate downloaded toolchains
         shell: bash
@@ -77,6 +77,13 @@ jobs:
         run: uv run --no-sync python tools/run_operational.py
       - name: Require real platform coverage
         run: uv run --no-sync python tools/check_operational_results.py operational-results.xml
+      - name: Verify period compiler emulation inside Docker
+        if: runner.os == 'Linux'
+        env:
+          DECOMP_TEST_LINUX_I386: '1'
+          DECOMP_QEMU_I386: /usr/bin/qemu-i386-static
+          DECOMP_COMPILER_IMAGE: debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
+        run: uv run --no-sync python -m pytest -q tests/test_linux_i386_real.py --junitxml=i386-results.xml
       - name: Report failures
         if: always()
         run: uv run --no-sync python tools/operational_report.py
@@ -87,6 +94,7 @@ jobs:
           path: |
             operational-results.xml
             operational-output.log
+            i386-results.xml
 
   gameboy:
     strategy:
