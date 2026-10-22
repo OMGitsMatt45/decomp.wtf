@@ -50,6 +50,8 @@ def plan(builder, original_objects, module=None):
         raise ValueError("the selected module has no discovered functions")
     original = (root / b["image"]).read_bytes()
     first = functions[0]["vram"]
+    if first != segment["vram"]:
+        raise ValueError("function reflow needs a discovered function at the reviewed module start")
     limit = min([p["vram"] for p in segment["pieces"] if p["vram"] >= first] +
                 [segment["vram"] + (segment["end"] or len(original)) - segment["start"]])
     text_end = segment["vram"] + b["reflow"][segment["name"]]
@@ -62,6 +64,12 @@ def plan(builder, original_objects, module=None):
         size = min(len(sections(root / original_objects[function["name"]]).get(".text", b"")), text_end - address)
         if not size or size % 4 or not cursor <= address < address + size <= limit:
             raise ValueError("function reflow needs nonoverlapping code with a recorded data boundary")
+        at = segment["start"] + address - segment["vram"] + size - 4
+        last = int.from_bytes(original[at:at + 4], 'big')
+        op = last >> 26
+        if op in (1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23) or (op == 0 and last & 63 in (8, 9)) or \
+                (op == 17 and (last >> 21) & 31 == 8):
+            raise ValueError("a reviewed function boundary truncates a MIPS delay slot")
         lo = segment["start"] + cursor - segment["vram"]
         hi = segment["start"] + address - segment["vram"]
         if original[lo:hi].strip(b"\0"):

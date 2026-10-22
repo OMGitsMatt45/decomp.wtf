@@ -145,3 +145,14 @@ def test_inventory_rejects_fixed_references_without_relocations(tmp_path, hazard
     assert run.returncode != 0 and 'unrelocated ' + hazard in run.stderr, run.stdout + run.stderr
     assert not (tree / 'build/mod.z64').exists()
     assert json.loads((tree / 'build/relocations.json').read_text())['hazards']
+
+
+def test_text_end_cannot_reclassify_a_return_delay_slot_as_free_reserve(tmp_path):
+    original, layout = fixture()
+    layout['modules'][0]['text_end'] -= 4  # immediately after the final jr ra
+    net = RomNetwork(tmp_path / 'app.db', tmp_path / 'projects')
+    slug = net.import_rom(original, reviewed_layout=layout, confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, format='shiftable', log=lambda *_: None)
+    assert result['identical'], result['log']
+    assert not result['shiftable']['ready'] and 'delay slot' in result['shiftable']['detail']
+    assert not (Path(result['path']) / 'build/mod.z64').exists()
