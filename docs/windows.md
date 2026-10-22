@@ -97,7 +97,8 @@ relocations with the Linux compiler and require byte-exact matching on the bundl
 Close the app, then run `windows.cmd` or the PowerShell installer again to update. Windows locks the running
 application’s files, so this version gives manual update instructions instead of replacing itself in place.
 Git checkouts follow their own GitHub origin and branch. A downloaded source ZIP installs that local source.
-The remote installer follows this fork’s `main` branch by default.
+Fresh remote installs use this fork’s latest release wheel by default. An explicit
+`DECOMP_BRANCH` selects a source branch; Git checkouts keep their own origin and branch.
 
 Remove the native app with `uv tool uninstall decompnet`. Your projects remain in `%USERPROFILE%\Decomp`.
 

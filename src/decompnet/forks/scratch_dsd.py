@@ -64,6 +64,19 @@ def game_info(path: Path) -> dict:
             "sha1": hashlib.sha1(path.read_bytes()).hexdigest()}
 
 
+def validate_filesystem(path: Path) -> None:
+    """Check the extractor's input requirements before asking for a compiler."""
+    with path.open("rb") as source:
+        head = source.read(0x200)
+    if len(head) < 0x200:
+        raise ForkError("the DS ROM's header is truncated")
+    offset, size = struct.unpack_from("<II", head, 0x40)
+    if size == 0:
+        raise ForkError("this DS image has no Nitro filesystem. Import boot utilities through the app's native ARM assembly workflow")
+    if size < 8 or offset < 0x200 or offset + size > path.stat().st_size:
+        raise ForkError("the DS ROM's file name table is truncated or outside the file")
+
+
 def versions() -> list[str]:
     """The CodeWarrior for DS versions in the installed compiler pack ("2.0/sp1p5", "dsi/1.2p1", ...)."""
     if toolchains.installed("mwccarm") is None:
@@ -181,6 +194,7 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
     """Make the project in `root` (which must not exist yet) and build it once. Returns facts about the game."""
     info = game_info(game)
+    validate_filesystem(game)
     version = info["id"].lower()
     compiler = (compiler or f"DS/{DS_DEFAULT}").removeprefix("DS/")
     if compiler not in versions():

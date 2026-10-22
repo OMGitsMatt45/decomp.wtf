@@ -7,7 +7,7 @@ from pathlib import Path
 from decompnet import toolchains
 
 TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96", "ido-5.3", "ido-7.1",
-         "arm-gnu", "agbcc", "m2c", "luvdis", "binutils-mips", "gc-wii-binutils", "objdiff-cli", "dtk",
+         "arm-gnu", "binutils-arm", "agbcc", "m2c", "luvdis", "binutils-mips", "gc-wii-binutils", "objdiff-cli", "dtk",
          "sjiswrap", "dtk-template", "mwcc", "mwccarm", "dsd", "cloudflared", "coddog", "maspsx", "ghidra")
 
 

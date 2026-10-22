@@ -36,6 +36,31 @@ def read_elf(data: bytes, boot_name: str = "") -> tuple[bytes, dict]:
     }
 
 
+def bss_layout(config: dict, program: bytes) -> bool:
+    """NOBITS ranges include the alignment gaps between .sbss and .bss."""
+    from io import BytesIO
+    from elftools.elf.elffile import ELFFile
+
+    sections = [s for s in ELFFile(BytesIO(program)).iter_sections()
+                if s["sh_type"] == "SHT_NOBITS" and s["sh_flags"] & 2 and s["sh_size"]]
+    changed = False
+    raw = config.get("segments", [])
+    for i, segment in enumerate(raw):
+        if not isinstance(segment, dict) or segment.get("type") != "code":
+            continue
+        starts = [s["vram"] for s in segment.get("subsegments", []) if isinstance(s, dict)
+                  and s.get("type") in ("bss", "sbss") and "vram" in s]
+        ends = [s["sh_addr"] + s["sh_size"] for s in sections if s["sh_addr"] in starts]
+        rom_end = next((s[0] if isinstance(s, list) else s.get("start") for s in raw[i + 1:]), None)
+        if starts and ends and rom_end is not None:
+            # Splat measures bss_size from the loaded segment's end, including
+            # the initial alignment gap before the first NOBITS section.
+            size = max(ends) - (segment["vram"] + rom_end - segment["start"])
+            changed |= segment.get("bss_size") != size
+            segment["bss_size"] = size
+    return changed
+
+
 def rebuild_elf(program: bytes, original_flat: bytes, rebuilt_flat: bytes) -> bytes:
     """Put rebuilt allocated sections into the owner's original ELF envelope.
 
