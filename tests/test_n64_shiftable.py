@@ -102,7 +102,8 @@ def test_shiftable_source_growth_relocates_calls_and_function_pointers(tmp_path,
     assert (tree / "build/mod.z64").read_bytes() == changed
     # Exceeding the size budget fails and removes a previous successful mod.
     source = source_dir / (first["name"] + ".cpp")
-    source.write_text(source.read_text().replace('volatile int a[8];', 'volatile int a[512];')
+    source.write_text(source.read_text().replace('volatile int a[8];', 'volatile int a[512];' +
+                     ''.join(f'a[{i}] = value + {i};' for i in range(512)))
         .replace(f'return {second["name"]}(value)', f'return {second["name"]}(value)' +
                  ''.join(f' + a[{i}]' for i in range(512))), encoding="utf-8")
     failed = run("mod")

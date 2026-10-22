@@ -201,6 +201,10 @@ invalidate them even with unchanged or older timestamps. The repository must
 be a subdirectory of the working directory. Recompile caller objects separately
 when a dependency changes their own class layout or inline code.
 
+Direct `classic-CC` invocations need LF source/header files, as the original
+IRIX tools expect. The matcher and standalone exports accept CRLF edits and
+normalize staged sources and nested includes without changing the user's files.
+
 Cross-unit prelinking is a shared-project operation. The application's independent
 function compilations continue to isolate their repositories. This does not add
 a full IRIX executable environment, `c++patch` startup processing, or IRIX shared

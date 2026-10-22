@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "implementation_commit": "3eb0804fd7e14a2627658991a236a54af4f1f87c",
+  "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173765",
+  "native_hosts": {
+    "windows-2022": {
+      "job_id": 120128801138,
+      "passed": 130,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ubuntu-24.04": {
+      "job_id": 120128801630,
+      "passed": 130,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "compiler_paths": [
+    "gcc-2.7.2-kmc C++",
+    "ido-5.3 EDG C++",
+    "ido-5.3 classic cfront C++",
+    "ido-7.1 EDG C++"
+  ],
+  "required_suite_gate": "tools/check_operational_results.py --n64-only operational-results.xml",
+  "coverage": [
+    "Original compiler code/relocation parity and C-origin C++ matching",
+    "Reviewed raw, Yaz0 and Rare deflate modules with overlapping TLB mappings",
+    "Original compressed cartridge provenance and clean standalone reconstruction",
+    "Actual C++ function growth, linked JAL targets and relocated function pointers",
+    "Pinned globals, explicit reserve exhaustion and retained MIPS delay slots",
+    "Fixed jump, data-pointer and address-construction rejection",
+    "Strict owned constants and CRLF source/nested-header staging",
+    "Transitive same-timestamp cfront dependencies and atomic failure output",
+    "Period allocation, vector, static and virtual target-runtime imports",
+    "Browser/CLI import, export, failure reporting and module-specific local claims",
+    "Reviewed-layout room sharing rejection and native worker teardown"
+  ],
+  "checksum_reference": {
+    "implementation": "Decompollaborate/ipl3checksum",
+    "version": "1.3.1",
+    "fixture_sha256": "4766e938affa3f45c02bfc1d178361a4439fa9657c2f49f1a7120bdedd6a18cd",
+    "families": [6101, 6102, 6103, 6105, 6106]
+  },
+  "additional_checks": {
+    "windows_compatibility": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173565",
+    "classic_cfront_build": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173512"
+  },
+  "boundaries": [
+    "Shiftable output supports one reviewed uncompressed resident module with an explicit zero reserve",
+    "Compressed and mutually exclusive modules use exact matching reconstruction",
+    "Reviewed-layout projects support local work and exports; rooms need a module-aware layout protocol",
+    "Opaque and self-modifying references still need game-specific review",
+    "Target C++ runtime imports remain unresolved until the game's compatible runtime is supplied",
+    "All committed cartridge fixtures are original generated code; no retail N64 playthrough is claimed"
+  ]
+}
