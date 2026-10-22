@@ -22,6 +22,8 @@ build. Missing keys and failed secure-area decryption stop the import before any
 matching targets are registered. The generated project's extractor applies the
 same decryption check when rebuilding, stages output separately, and preserves
 the previous verified extraction after a failure.
+BIOS copies are owner-only while being written and replace the retained copy
+only after completion; interrupted copies leave no partial key file.
 
 Finished ARM9, autoload and overlay source units replace their original objects
 only after all their code/data match and the complete ROM still verifies.
@@ -78,6 +80,9 @@ uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.
 
 The full operational coverage gate requires these suites on Windows and Linux;
 missing compiler prerequisites must not silently count as passing coverage.
+The focused `Nintendo DS native qualification` workflow runs the same DS suites
+on both hosts for quicker feedback, with an independent gate that rejects
+missing suites and skipped cases.
 
 ## Work that remains
 
