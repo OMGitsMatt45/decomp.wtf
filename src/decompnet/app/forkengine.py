@@ -2152,6 +2152,22 @@ class ForkEngine:
         name = what.strip().strip("`'\"")
         held = agent and self.net.store.one("SELECT f.unit FROM claims c JOIN functions f ON f.id=c.function_id "
                                             "WHERE c.agent_id=?", agent.id)
+        if fp.is_generated_ds():
+            from ..forks import arm7_project
+
+            preferred = None
+            if held and held["unit"].startswith("arm7/"):
+                unit = fp.unit(held["unit"])
+                manifest = fp.root / "config" / fp.manifest["version"] / "arm7" / "units.json"
+                if manifest.is_file():
+                    preferred = next((u["module"] for u in json.loads(manifest.read_text(encoding="utf-8"))["units"]
+                                      if u["source"] == unit.source), None)
+            try:
+                data = arm7_project.read_data(fp.root, fp.manifest["version"], name, length, preferred)
+            except (OSError, ValueError) as error:
+                raise NetworkError(str(error)) from None
+            if data is not None:
+                return data
         units = [held["unit"]] if held else []
         units += [u for u in self._data_index(proj, fp).get(name, []) if u not in units]
         for uname in units:

@@ -98,7 +98,7 @@ After installing the development dependencies and registered DS tools and
 building `projects/demo-ds/build.py`, run:
 
 ```sh
-uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py tests/test_objdiff_errors.py
+uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py tests/test_ds_modules.py tests/test_ds_arm7.py tests/test_ds_arm7_link.py tests/test_ds_decrypted.py tests/test_ds_protect.py tests/test_objdiff_errors.py
 ```
 
 The full operational coverage gate requires these suites on Windows and Linux;

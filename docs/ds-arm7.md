@@ -16,7 +16,9 @@ recovery.
 
 Use the normal browser or agent workflow to claim a function, obtain a draft,
 compile and diff it, and link its file. `edit_file` adds shared declarations,
-structs, globals and C++ helpers. `configure_arm7_unit` assigns original data/BSS
+structs, globals and C++ helpers. `read_data` can inspect an ARM7 data symbol
+before assigning it, or a qualified runtime address such as `arm7:autoload0@0x037F9000`;
+ambiguous overlay addresses require a module qualifier. `configure_arm7_unit` assigns original data/BSS
 ranges and selects C or C++ without allowing code bounds to change. For example:
 
 ```text
@@ -68,7 +70,9 @@ calls, globals and complete source units. Keep retail source outside this checko
 
 The pinned ds-decomp/ds-rom importer decodes and re-encrypts supported DS Protect
 formats. Qualification includes an original protected-overlay vector and the
-retail YV5P ARM9 main's four version 1.00 ranges. The separate inspector recognizes
+retail YV5P ARM9 main's four version 1.00 ranges. Protected overlay ranges
+not assigned to discovered functions retain their encryption metadata only when
+the linked plaintext is still exact at the original addresses. The separate inspector recognizes
 21 bootstrap signatures; a signature is a candidate, not proof of decryption or
 authentication. Automatic ARM7 discovery retains protected modules until a decoded
 ARM7 analysis context is available.

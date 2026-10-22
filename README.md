@@ -123,8 +123,9 @@ Unencrypted homebrew with a zero checksum also omits the BIOS during rebuilding.
 For bounded import/draft probes from a checkout, see
 `uv run python tools/ds_pilot.py --help`; keep its work directory outside the checkout.
 The BIOS supplies the secure-area key table; C/C++ compilation itself does not
-need it. [ARM7 C/C++ recovery and BIOS-free module inspection](docs/ds-arm7.md)
-are available from `tools/ds_arm7.py`, independently of ARM9 secure-area validation.
+need it. See [ARM7 C/C++ recovery](docs/ds-arm7.md) for the project workflow.
+The independent `tools/ds_arm7.py` inspector and isolated leaf checker also work
+without ARM9 secure-area validation.
 
 Important boundaries:
 

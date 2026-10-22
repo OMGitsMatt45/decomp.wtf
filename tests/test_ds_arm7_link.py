@@ -80,6 +80,8 @@ def test_arm7_calls_and_owned_data_are_linked_from_c_and_cpp(arm7_calls, tmp_pat
     assert unit["mode"] == mode
     fp = ForkProject(root)
     agent, _ = net.local_agent("arm7-source-owner")
+    assert "07 00 00 00" in net.forks.read_data(agent, slug, "arm7_data_023800A0", 4)
+    assert "uninitialized BSS" in net.forks.read_data(agent, slug, "arm7@0x0238F000", 4)
     saved = path.read_bytes()
     with pytest.raises(NetworkError, match="overlaps"):
         net.forks.configure_arm7_unit(agent, slug, unit["source"], ".data:0x02380080:4")

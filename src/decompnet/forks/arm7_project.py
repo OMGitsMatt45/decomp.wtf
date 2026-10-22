@@ -11,6 +11,61 @@ from ..rom.nds_modules import NdsImage
 from ..elfobj import extract_function
 
 
+def read_data(root, version, what, length=64, preferred=None):
+    """Read ARM7 data before assigning it to a source unit, using runtime module bounds."""
+    path = root / "config" / version / "arm7" / "units.json"
+    if not path.is_file():
+        return None
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    selected = None
+    if "@" in what:
+        selected, what = what.split("@", 1)
+        if selected not in manifest["modules"]:
+            return None
+    info = manifest["symbols"].get(what) if what.startswith("arm7_") else None
+    if info:
+        address = info["address"]
+    elif selected or preferred:
+        try:
+            address = int(what, 0)
+        except ValueError:
+            return None
+    else:
+        return None
+    candidates = []
+    for name, module in manifest["modules"].items():
+        if selected and name != selected:
+            continue
+        bss = module.get("bss_address", module["address"] + module["size"])
+        if module["address"] <= address < module["address"] + module["size"]:
+            candidates.append((name, module, False))
+        elif bss <= address < bss + module["bss_size"]:
+            candidates.append((name, module, True))
+    own = [c for c in candidates if c[0] == preferred]
+    candidates = own or candidates
+    if len(candidates) != 1:
+        raise ValueError("ARM7 data address is outside a recorded module or is ambiguous; use module@0xADDRESS")
+    name, module, bss = candidates[0]
+    heading = f"ARM7 {name} at 0x{address:08X}"
+    if bss:
+        return heading + ": uninitialized BSS; no stored ROM bytes."
+    binary = (root / module["binary"]).resolve()
+    if root.resolve() not in binary.parents:
+        raise ValueError("ARM7 reference binary is outside the project")
+    offset = module["source_offset"] + address - module["address"]
+    count = min(max(4, int(length or 64)), 512, module["address"] + module["size"] - address)
+    with binary.open("rb") as stream:
+        stream.seek(offset)
+        data = stream.read(count)
+    if len(data) != count:
+        raise ValueError("truncated ARM7 reference binary")
+    lines = [heading + f" ({count} bytes)"]
+    for at in range(0, count, 16):
+        raw = data[at:at + 16]
+        lines.append(f"  +0x{at:03X}: {raw.hex(' '):<47}  {''.join(chr(c) if 32 <= c < 127 else '.' for c in raw)}")
+    return "\n".join(lines)
+
+
 def configure(root, version, source, data="", language=""):
     """Assign unclaimed original data/BSS to an ARM7 unit; never alter its code extent."""
     from .. import cpp
