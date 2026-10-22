@@ -128,6 +128,6 @@ def test_arm7_calls_and_owned_data_are_linked_from_c_and_cpp(arm7_calls, tmp_pat
         shutil.copyfile(game, clean / "extract/baserom.nds")
         shutil.copyfile(bios, clean / "extract/arm7_bios.bin")
         for command in ([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()], ["ninja", "rom"]):
-            result = subprocess.run(command, cwd=clean, capture_output=True, text=True)
-            assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-1000:]
+            ok, output = ForkProject(clean).run(command, log=lambda *_: None)
+            assert ok, output[-4000:]
         assert (clean / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()

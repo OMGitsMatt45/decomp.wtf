@@ -51,10 +51,12 @@ def test_protected_overlay_is_decoded_and_reencrypted_exactly(encrypted, tmp_pat
     net.forks.background_links = False
     slug = net.import_rom(protected, toolchain="DS/2.0/sp1p5", confirmed=True, log=lambda *_: None)
     root = Path(net.project_row(slug)["root"])
-    extracted = root / "extract/adqe/arm9"
-    table = yaml.load((extracted / "overlays.yaml").read_text(), Loader=yaml.BaseLoader)
+    extracted = root / "extract/adqe"
+    config = yaml.safe_load((extracted / "config.yaml").read_text())
+    overlay_path = extracted / config["arm9_overlays"]
+    table = yaml.load(overlay_path.read_text(), Loader=yaml.BaseLoader)
     decoded = next(o for o in table["overlays"] if int(o["id"]) == 0)
-    assert (extracted / decoded["file_name"]).read_bytes()[0x1C:0x24] == recovered
+    assert (overlay_path.parent / decoded["file_name"]).read_bytes()[0x1C:0x24] == recovered
     assert (root / "build/adqe/adqe.nds").read_bytes() == protected.read_bytes()
     metadata = (root / "build/adqe/build/arm9_overlays.yaml").read_text()
     assert '1.00' in metadata and "encrypted_ranges" in metadata
