@@ -91,7 +91,7 @@ def _segments(config: dict) -> list[dict]:
     return out
 
 
-def export_rom(net, slug: str, out: Path, log=print) -> dict:
+def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> dict:
     """Write the rebuildable tree to `out`, build it once and report: {"path", "identical", "matched", ...}."""
     proj = net._project(slug)
     cfg = net.cfg(proj)
@@ -100,12 +100,32 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     platform = cfg.get("platform", "n64")
     if platform not in AS_FLAGS:
         raise ExportError(f"exporting a rebuildable project isn't supported for {platform} yet")
+    if format not in ("matching", "shiftable") or (format == "shiftable" and platform != "n64"):
+        raise ExportError("choose matching, or shiftable for an N64 cartridge")
     work = Path(proj["root"])
     configs = sorted(work.glob("*.yaml"))
     if not configs:
         raise ExportError("this project has no splat configuration to export from")
     image_name = cfg["rom"]["file"]
     image = (work / image_name).read_bytes()
+    container = None
+    provenance_path = work / "n64-provenance.json"
+    if platform == "n64" and provenance_path.is_file():
+        from .n64_layout import working_image
+        metadata = json.loads(provenance_path.read_text(encoding="utf-8"))
+        if metadata["blocks"]:
+            original_path = (work / metadata["original_file"]).resolve()
+            if work.resolve() not in original_path.parents:
+                raise ExportError("N64 original cartridge path is outside the project")
+            original = original_path.read_bytes()
+            if working_image(original, metadata) != image:
+                raise ExportError("N64 analysis image differs from the original compressed modules")
+            container = {"image": "baserom.z64", "output": "build/game.z64", "layout": metadata}
+    if format == "shiftable":
+        source_config = yaml.safe_load(configs[0].read_text(encoding="utf-8"))
+        code = [s for s in source_config.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
+        if container or len(code) != 1:
+            raise ExportError("shiftable exports currently need one uncompressed resident N64 code module; use matching for this layout")
 
     if out.exists():
         keep = {".git"}
@@ -307,6 +327,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     yml.write_text(re.sub(r"(^\s*target_path:\s*).*$", rf"\g<1>{base}", yml.read_text(encoding="utf-8"), count=1, flags=re.M),
                    encoding="utf-8")
     build = {
+        "format": format,
         "title": proj["name"], "platform": platform, "image": base, "output": f"build/game{ext}",
         "sha1": hashlib.sha1(image).hexdigest(),
         "compiler": {**cfg["compiler"], "language": language,
@@ -319,6 +340,16 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
         "module_symbols": module_symbols,
         "symbols": {k: v for k, v in sorted(absolute.items(), key=lambda kv: kv[1])},
     }
+    if container:
+        (out / base).rename(out / "analysis.z64")
+        shutil.copyfile(original_path, out / "baserom.z64")
+        build.update(image="analysis.z64", output="build/analysis.z64", container=container)
+        yml.write_text(re.sub(r"(^\s*target_path:\s*).*$", r"\g<1>analysis.z64", yml.read_text(encoding="utf-8"),
+                             count=1, flags=re.M), encoding="utf-8")
+    if platform == "n64" and (work / "n64-layout.json").is_file():
+        from .n64_layout import number
+        reviewed = json.loads((work / "n64-layout.json").read_text(encoding="utf-8"))
+        build["reflow"] = {m["name"]: number(m["text_end"], "text_end") for m in reviewed["modules"] if "text_end" in m}
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         original = (work / program).read_bytes()
         if original.startswith(b"\x7fELF"):
@@ -327,6 +358,8 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                                 "sha1": hashlib.sha1(original).hexdigest()}
     (out / "build.json").write_text(json.dumps(build, indent=1), encoding="utf-8")
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
+    if format == "shiftable":
+        shutil.copyfile(Path(__file__).with_name("export_shift.py"), out / "shiftable.py")
     units_json = []
     for f in functions:
         unit = {"name": f"{f['seg']}/{f['name']}", "target_path": f["obj_asm"],
@@ -338,6 +371,24 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                                       encoding="utf-8")
     matched = sum(1 for f in functions if f["kind"] == "c")
     _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback, language)
+    if format == "shiftable":
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
+                       "`python build.py inventory` verifies the original assembly baseline and inventories ELF relocations. "
+                       "Edit function sources, then run `python build.py mod` to emit `build/mod.z64`. Function sizes may "
+                       "change within the reviewed trailing zero reserve before data. Data, BSS, file extents and the boot "
+                       "entry stay fixed; moving functions cannot add owned data/BSS. Unknown references, unsupported "
+                       "relocations and exhausted reserve fail instead of producing a mod. `build/relocations.json` and "
+                       "`build/shiftable-result.json` record the fixups, addresses and size budget. Cartridge checksums "
+                       "are updated for the verified CIC; use `--cic` only when you have established its family yourself. "
+                       "Compressed modules and mutually exclusive overlays currently use the matching export format.\n")
+    if container:
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write("\n## Compressed cartridge modules\n\nKeep the original cartridge as `baserom.z64`. "
+                       "The build regenerates private decoded views, checks every source-built decoded byte, "
+                       "then emits the original cartridge container as `build/game.z64`. Original compressed "
+                       "streams are retained only after their decoded views match exactly. A changed decoded "
+                       "module fails verification; this format does not claim arbitrary recompression.\n")
     if "program" in build:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## PS2 executable\n\nAlso keep your original main ELF as `baserom.elf` (ignored by Git). "
@@ -345,7 +396,7 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
                        "sections and the original ELF headers and metadata. Both must match byte for byte. "
                        "Separate overlays and disc images are not repacked.\n")
     # everything made from the game itself stays local: build.py regenerates it from your copy
-    (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
+    (out / ".gitignore").write_text("build/\nbaserom*\nanalysis.z64\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")
     # Period frontends reject CR characters. Preserve LF when Git for Windows
     # checks out this project with core.autocrlf enabled.
@@ -359,8 +410,13 @@ def export_rom(net, slug: str, out: Path, log=print) -> dict:
     identical = proc.returncode == 0 and "identical" in proc.stdout
     if not identical:
         log((proc.stdout + proc.stderr)[-3000:])
-    return {"path": str(out), "language": language, "identical": identical, "matched": matched, "functions": len(functions),
-            "fallback": as_fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
+    result = {"path": str(out), "format": format, "language": language, "identical": identical, "matched": matched,
+              "functions": len(functions), "fallback": as_fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
+    if format == "shiftable" and identical:
+        audit = subprocess.run(capped([sys.executable, "build.py", "inventory"]), cwd=out, capture_output=True,
+                               text=True, timeout=3600, encoding="utf-8", errors="replace")
+        result["shiftable"] = {"ready": audit.returncode == 0, "detail": (audit.stdout + audit.stderr)[-2000:]}
+    return result
 
 
 def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, total: int, fallback, language: str = "c") -> None:

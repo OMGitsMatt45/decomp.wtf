@@ -261,6 +261,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     build_id = (updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
     manager = agents.Manager(net, home, mcp_url)
     jobs = Jobs(home / "logs" / "decomp.log")
+    n64_layouts = {}  # short-lived reviewed metadata, consumed by one import
     settings = Settings(home / "settings.json")
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
 
@@ -438,6 +439,24 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     async def api_state(request: Request) -> Response:
         return guard(request) or JSONResponse(await call(state))
 
+    @mcp.custom_route("/api/n64/layout", methods=["POST"])
+    async def api_n64_layout(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        layout = data.get("layout")
+        if not isinstance(layout, dict) or len(json.dumps(layout)) > 1024 * 1024:
+            return fail(ValueError("choose a reviewed N64 layout JSON file smaller than 1 MiB"))
+        now = time.monotonic()
+        for key, (created, _) in list(n64_layouts.items()):
+            if now - created > 900:
+                del n64_layouts[key]
+        if len(n64_layouts) >= 32:
+            del n64_layouts[next(iter(n64_layouts))]
+        token = uuid.uuid4().hex
+        n64_layouts[token] = (now, layout)
+        return JSONResponse({"id": token})
+
     @mcp.custom_route("/api/import", methods=["POST"])
     async def api_import(request: Request) -> Response:
         """A game the user owns: the demo, an upload streamed to disk (discs are gigabytes), or a local path."""
@@ -445,6 +464,12 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return bad
         q = request.query_params
         toolchain = q.get("toolchain") or None
+        layout = None
+        if q.get("n64_layout"):
+            pending = n64_layouts.pop(q["n64_layout"], None)
+            if pending is None or time.monotonic() - pending[0] > 900:
+                return fail(ValueError("the reviewed N64 layout expired; select it again"))
+            layout = pending[1]
         if q.get("demo") == "1":
             game: bytes | Path | None = _static("demo/demo-quest-64.z64")
             if game is None:
@@ -483,7 +508,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         def work(log):
             try:
                 slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name,
-                                      ds_input_format=q.get("ds_input_format", "auto"), log=log)
+                                      ds_input_format=q.get("ds_input_format", "auto"), reviewed_layout=layout, log=log)
             finally:
                 if uploaded:
                     shutil.rmtree(game.parent, ignore_errors=True)
@@ -579,7 +604,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     def p_export(slug, request, data):
         def work(log):
-            res = net.export_rom(slug, log=log)
+            res = net.export_rom(slug, format=str(data.get("format", "matching")), log=log)
             return {k: v for k, v in res.items() if k != "log"} | {"log": res.get("log", "")[-1500:]}
         return {"job": jobs.start("export", work)}
 

@@ -22,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 B = json.loads((ROOT / "build.json").read_text(encoding="utf-8"))
 LANGUAGE = "C++" if B["compiler"].get("language") == "c++" else "C"
+ASSEMBLY_ONLY = False
 PREAMBLE = {
     "n64": '.include "macro.inc"\n.set noat\n.set noreorder\n.set gp=64\n.section .text, "ax"\n',
     "psx": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
@@ -60,6 +61,16 @@ def sha1(path: Path) -> str:
 
 
 def setup() -> None:
+    if container := B.get("container"):
+        from decompnet.rom.n64_layout import working_image
+        original = ROOT / container["image"]
+        if not original.is_file():
+            fail(f"put your own original cartridge here as {container['image']}")
+        try:
+            decoded = working_image(original.read_bytes(), container["layout"])
+        except (ValueError, RuntimeError) as error:
+            fail(str(error))
+        (ROOT / B["image"]).write_bytes(decoded)
     base = ROOT / B["image"]
     if not base.exists():
         fail(f"put your own copy of the game here as {B['image']} (see README.md)")
@@ -78,6 +89,8 @@ def setup() -> None:
 
 
 def c_source(fn: dict) -> str | None:
+    if ASSEMBLY_ONLY:
+        return None
     extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
     path = fn.get("source") or fn.get("c") or f"src/{fn['seg']}/{fn['name']}.{extension}"
     return path if (ROOT / path).exists() else None
@@ -185,15 +198,25 @@ def validate(fn, obj):
         text = path.read_text(errors="replace", encoding="utf-8")
         for m in re.finditer(r"dlabel (\w+)\s*\n\s*/\*\s*(?:[0-9A-F]+\s+)?([0-9A-F]{8})", text):
             found.append(Symbol(m.group(1), int(m.group(2), 16), 0, "data"))
+    found += [Symbol(s, a, 0, "data") for s, a in B.get("module_symbols", {}).get(fn["seg"], {}).items()]
     table = SymbolTable(found)
+    # Mutually exclusive overlays and aliases may share addresses while every
+    # name remains meaningful in relocations from its own module.
+    table.by_name.update({s.name: s for s in found})
     big = B["big_endian"]
     rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
     target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
     image = (ROOT / B["image"]).read_bytes()
 
     def read(addr, n):
-        for seg in B["segments"]:
+        ordered = sorted(B["segments"], key=lambda s: s["name"] != fn["seg"])
+        for seg in ordered:
             if seg["kind"] == "code":
+                if seg["name"] != fn["seg"] and any(
+                        own["kind"] == "code" and own["name"] == fn["seg"] and
+                        own["vram"] <= addr < own["vram"] + (own["end"] or len(image)) - own["start"]
+                        for own in B["segments"]):
+                    continue
                 size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
                 if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
                     at = seg["start"] + addr - seg["vram"]
@@ -349,8 +372,16 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]]) ->
 
 def build() -> bool:
     setup()
+    (ROOT / B["output"]).unlink(missing_ok=True)
+    if container := B.get("container"):
+        (ROOT / container["output"]).unlink(missing_ok=True)
     todo, provides = objects()
     build_objects(todo)
+    if B["platform"] == "n64":
+        for fn in B["functions"]:
+            if c_source(fn) and (why := validate(fn, (ROOT / provides[fn["name"]]).read_bytes())):
+                print(f"differs: {fn['name']}: {why}")
+                return False
     gaps = fill_gaps(provides)
     code = [s for s in B["segments"] if s["kind"] == "code"]
     size = (ROOT / B["image"]).stat().st_size
@@ -367,8 +398,14 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
+        if container := B.get("container"):
+            size = container["layout"]["original_size"]
+            rebuilt = out[:size]
+            if hashlib.sha256(rebuilt).hexdigest() != container["layout"]["sha256"]:
+                fail("the source-built original N64 container differs")
+            (ROOT / container["output"]).write_bytes(rebuilt)
+            print(f"identical: {container['output']} matches {container['image']} byte for byte")
         if program := B.get("program"):
-            import hashlib
             from decompnet.rom.ps2 import rebuild_elf
 
             original = (ROOT / program["image"]).read_bytes()
@@ -420,6 +457,20 @@ def status() -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args[:1] in (["mod"], ["inventory"]):
+        import argparse
+        parser = argparse.ArgumentParser(description="Build bounded N64 source changes or review their relocations")
+        parser.add_argument("--module")
+        parser.add_argument("--cic", type=int, choices=(6101, 6102, 6103, 6105, 6106))
+        options = parser.parse_args(args[1:])
+        if B.get("format") != "shiftable":
+            fail("export a shiftable N64 project before requesting function reflow")
+        import shiftable
+        try:
+            success = shiftable.build(sys.modules[__name__], options.module, options.cic, audit_only=args[0] == "inventory")
+        except (ValueError, OSError) as error:
+            fail(str(error))
+        sys.exit(0 if success else 1)
     if args[:1] == ["check"] and len(args) == 2:
         sys.exit(0 if check(args[1]) else 1)
     if args[:1] == ["status"]:

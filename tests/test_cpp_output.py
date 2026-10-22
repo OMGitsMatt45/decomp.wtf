@@ -30,6 +30,10 @@ class Player { public: int hp; int get() const { return hp; } };
 static int helper(int value) { return value + 1; }
 namespace details { int helper(int value) { return value; } }
 extern "C++" int overloaded(int value) { return value; }
+void *operator new(unsigned int);
+extern void operator delete(void *);
+void *operator new[](unsigned int size) { return allocate(size); }
+extern "C++" { int overloaded(double); }
 int probe(int value) { return triple(value) + callback(total); }
 struct Player *identity(struct Player *value) { return value; }
 '''

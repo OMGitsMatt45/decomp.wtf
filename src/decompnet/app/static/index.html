@@ -85,6 +85,7 @@
         </div>
         <p class="muted small" id="compilerNote" hidden></p>
         <label class="field" id="dsInputRow" hidden><span>DS ROM format</span><select id="dsInputFormat"><option value="auto">Detect automatically</option><option value="decrypted">Already decrypted for an emulator</option></select></label>
+        <label class="field" id="n64LayoutRow" hidden><span>Reviewed N64 layout (optional)</span><input id="n64LayoutFile" type="file" accept=".json,application/json"><small>Use known load addresses and module boundaries from your analysis.</small></label>
         <label class="check" id="mwConsent" hidden><input type="checkbox" id="mwAccept"><span id="mwText"></span></label>
         <div class="row">
           <button class="primary" id="analyse" type="button" disabled>Start decompiling</button>
@@ -340,6 +341,7 @@
       <div class="pad">
         <p id="srcText"></p>
         <div class="src-state" id="srcState"></div>
+        <label class="field" id="srcFormatRow" hidden><span>N64 export format</span><select id="srcFormat"><option value="matching">Matching reconstruction</option><option value="shiftable">Shiftable source project</option></select><small>Shiftable builds allow function growth within reserved code space. The original reconstruction check stays available.</small></label>
         <div class="row"><button class="primary" id="srcExport" type="button">Export project</button><button class="ghost" id="srcOpen" type="button">Open folder</button></div>
         <pre class="joblog tall" id="expLog" hidden></pre>
         <div id="expResult"></div>

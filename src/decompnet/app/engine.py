@@ -232,7 +232,10 @@ class RomNetwork(Network):
         m = _ADDRESS.match(name.strip()) if name else None
         if m:
             proj = self._project(project)
-            row = self.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], int(m.group(1), 16))
+            rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], int(m.group(1), 16))
+            if len(rows) > 1:
+                raise NetworkError("multiple overlay functions use this address; choose the module-qualified function name")
+            row = rows[0] if rows else None
             if row is not None:
                 return row
         try:
@@ -391,7 +394,7 @@ class RomNetwork(Network):
     # ------------------------------------------------------------------ import
 
     def import_rom(self, data: bytes | Path, *, toolchain: str | None = None, flags: list[str] | None = None,
-                   confirmed: bool = False, name: str = "", ds_input_format: str = "auto", log=print) -> str:
+                   confirmed: bool = False, name: str = "", ds_input_format: str = "auto", reviewed_layout=None, log=print) -> str:
         """Import a game the user owns (ROM bytes, or a file such as a disc image): split it, store every function
         as a target. Returns the slug."""
         if not confirmed:
@@ -402,14 +405,27 @@ class RomNetwork(Network):
             from ..rom import boot
             boot_picked = boot.identify(project_file)
         if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
+            if reviewed_layout is not None:
+                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
             compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
             return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
         picked = boot_picked or detect.identify(data, name)
         if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         rom, info = picked.data, picked.info
+        layout_id = None
+        if reviewed_layout is not None:
+            from ..rom import n64_layout
+            if picked.platform != "n64":
+                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
+            try:
+                n64_layout.reviewed(rom, reviewed_layout)
+            except ValueError as error:
+                raise NetworkError(str(error)) from error
+            layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
         for p in self.store.all("SELECT slug, config FROM projects"):
-            if json.loads(p["config"]).get("rom", {}).get("sha1") == info["sha1"]:
+            previous = json.loads(p["config"])
+            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id:
                 log(f"already imported as {p['slug']}")
                 return p["slug"]
         base = _slugify(info["title"])
@@ -433,7 +449,7 @@ class RomNetwork(Network):
         if picked.overlays:
             log(f"{len(picked.overlays)} overlay{'s' if len(picked.overlays) != 1 else ''} on the disc: "
                 + ", ".join(f"{o[0]} at 0x{o[2]:08X}" for o in picked.overlays[:6]) + (", ..." if len(picked.overlays) > 6 else ""))
-        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays)
+        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays, reviewed_layout=reviewed_layout)
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
@@ -452,6 +468,8 @@ class RomNetwork(Network):
                       "confirmed_at": time.time()},
             "context": {"file": None},
         }
+        if layout_id:
+            cfg["n64_layout"] = layout_id
         symbols = SymbolTable()
         for name, addr in res.named.items():
             symbols.add(Symbol(name, addr, 0, "func"), reindex=False)
@@ -1351,8 +1369,12 @@ class RomNetwork(Network):
 
     # ------------------------------------------------------------------ export
 
-    def export_rom(self, slug: str, log=print) -> dict:
+    def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
+        if format not in ("matching", "shiftable"):
+            raise NetworkError("choose matching or shiftable export")
+        if format == "shiftable" and (self.fork_slug(slug) or self.cfg(self._project(slug)).get("platform") != "n64"):
+            raise NetworkError("shiftable exports require an N64 cartridge project")
         if self.fork_slug(slug):  # a fork's work is already in its source tree, committed
             return {"path": self._project(slug)["root"], "identical": None}
         from ..rom.export import export_rom
@@ -1364,10 +1386,13 @@ class RomNetwork(Network):
             from .bootengine import export_rom as export
         if proj["arch"] == "sm83":
             from .gbengine import export_rom as export
-        res = export(self, slug, Path(proj["root"]) / "source", log=log)
+        folder = "source-shiftable" if format == "shiftable" else "source"
+        res = export(self, slug, Path(proj["root"]) / folder, log=log,
+                     **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             cfg["export"] = {"t": time.time(), "path": str(res["path"]), "identical": res.get("identical"),
+                             "format": format, "shiftable": res.get("shiftable"),
                              "matched": res.get("matched"), "functions": res.get("functions"),
                              "scope": res.get("scope", "program"),
                              "language": res.get("language", cpp.language(cfg)),

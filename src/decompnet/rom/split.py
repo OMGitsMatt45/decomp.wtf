@@ -8,6 +8,7 @@ can pair up (%hi/%lo, jal targets). We parse that output into plain records the 
 from __future__ import annotations
 
 import re
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -302,13 +303,20 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
 
     from .n64code import find_segments, unpack_code
 
+    import json
+    from . import n64_layout
     original = image
     rom = (workdir / image).read_bytes()
+    original_bytes, records = rom, []
     packed = unpack_code(rom)
     if packed:
         work = bytearray(rom)
-        for _, data in packed:  # each after a gap, so pieces of different blocks never run together
+        for offset, data in packed:  # each after a gap, so pieces of different blocks never run together
+            if len(data) > n64_layout.MAX_DECODED or len(work) + len(data) + 0x2010 > n64_layout.MAX_WORKING:
+                raise ValueError("N64 decoded code exceeds the bounded analysis image size")
             work += bytes(-len(work) % 0x10 + 0x2000)
+            records.append({"codec": "native", "offset": offset, "size": len(data), "working_start": len(work),
+                            "sha256": hashlib.sha256(data).hexdigest()})
             work += data
         work += bytes(-len(work) % 0x10)
         image = f"{Path(image).stem}.unpacked{Path(image).suffix}"
@@ -324,6 +332,9 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
     if packed:
         cfg.setdefault("options", {})["target_path"] = image
         cfg["sha1"] = hashlib.sha1(rom).hexdigest()
+        metadata = n64_layout.provenance(original_bytes, records, rom)
+        metadata["original_file"] = original
+        (workdir / "n64-provenance.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     def start_of(seg):
         return seg[0] if isinstance(seg, list) else seg.get("start")
@@ -348,11 +359,11 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
 def overlay_contexts(cfg: dict) -> bool:
     """Keep mutually exclusive programs out of the resident symbol namespace."""
     segments = [s for s in cfg.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
-    overlays = [s for s in segments if s.get("name", "").startswith("ovl_")]
+    overlays = [s for s in segments if s.get("name", "").startswith("ovl_") or s.get("exclusive_ram_id")]
     if not overlays:
         return False
     for seg in overlays:
-        seg["exclusive_ram_id"] = "playstation_overlays"
+        seg.setdefault("exclusive_ram_id", "playstation_overlays")
         seg["symbol_name_format"] = "$SEG_$VRAM"
         seg["symbol_name_format_no_rom"] = "$SEG_$VRAM"
     # Some boot discs contain several alternative resident executables.
@@ -421,7 +432,7 @@ def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str
 
 
 def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
-              overlays: list[tuple[str, bytes, int, int]] | None = None) -> SplitResult:
+              overlays: list[tuple[str, bytes, int, int]] | None = None, reviewed_layout=None) -> SplitResult:
     """Run splat on workdir/rom_name and return every function and data symbol it found. `overlays`: code from
     other files of a PlayStation disc, each with the address it's loaded at."""
     import yaml
@@ -447,13 +458,32 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         if ps2.bss_layout(cfg, (workdir / rom_name).read_bytes()):
             config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     big_endian = platform == "n64"
-    if platform == "n64":
+    if reviewed_layout is not None:
+        import json
+        from . import n64_layout
+        if platform != "n64":
+            raise RomError("reviewed N64 layouts require an N64 cartridge")
+        original = (workdir / image).read_bytes()
+        segments, working, metadata = n64_layout.reviewed(original, reviewed_layout)
+        metadata["original_file"] = image
+        if metadata["blocks"]:
+            image = Path(image).stem + ".reviewed.z64"
+            (workdir / image).write_bytes(working)
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        cfg["segments"] = segments
+        cfg["options"].update(target_path=image, header_encoding="word")
+        cfg["sha1"] = hashlib.sha1(working).hexdigest()
+        overlay_contexts(cfg)
+        config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        (workdir / "n64-provenance.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        (workdir / "n64-layout.json").write_text(json.dumps(reviewed_layout, indent=2), encoding="utf-8")
+    elif platform == "n64":
         image = _add_code_segments(config, workdir, image, log)
     elif overlays:
         image = _add_overlays(config, workdir, image, overlays, log)
     log("disassembling every function")
     out += "\n" + _splat(["split", config.name], workdir)
-    if overlays:
+    if overlays or reviewed_layout is not None:
         namespace_overlay_labels(workdir)
 
     functions = []
