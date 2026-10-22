@@ -102,6 +102,37 @@ def test_unreferenced_or_invalid_arm7_parameters_do_not_invent_runtime_addresses
     assert not any("autoload" in name for name in NdsImage(bytes(data)).modules)
 
 
+@pytest.mark.parametrize("thumb,entry", [(False, 0x200), (True, 0), (True, 0x200)])
+def test_arm7_parameters_referenced_by_thumb_or_later_entry(thumb, entry):
+    data = autoload_fixture()
+    data[0x6000:0x6004] = bytes(4)
+    # Move the entire initialized loader window and its module parameters far
+    # enough to require following the actual header entry, rather than a prefix.
+    if entry:
+        struct.pack_into("<5I", data, 0x6080, 0x023804E8, 0x02380500, 0x02380300, 0x02380500, 0x02380510)
+        struct.pack_into("<6I", data, 0x64E8, 0x037F8000, 0x100, 16, 0x027E0000, 0xE8, 24)
+    struct.pack_into("<I", data, 0x34, 0x02380000 + entry + int(thumb))
+    struct.pack_into("<I", data, 0x6000 + entry, 0x47704807 if thumb else 0xE59F0018)
+    struct.pack_into("<I", data, 0x6020 + entry, 0x02380080)
+    seal(data)
+    image = NdsImage(bytes(data))
+    assert image.modules["arm7:autoload0"].address == 0x037F8000
+    assert image.modules["arm7:autoload1"].address == 0x027E0000
+
+
+def test_arm7_bss_only_copied_block_and_empty_descriptor_table():
+    data = autoload_fixture()
+    struct.pack_into("<6I", data, 0x64E8, 0x037F8000, 0, 16, 0x027E0000, 0x3E8, 24)
+    image = NdsImage(bytes(data))
+    assert image.code("arm7:autoload0") == b""
+    assert image.modules["arm7:autoload0"].bss_size == 16
+    assert len(image.code("arm7:autoload1")) == 0x3E8
+    struct.pack_into("<3I", data, 0x6080, 0x02380100, 0x02380100, 0x02380100)
+    image = NdsImage(bytes(data))
+    assert len(image.code("arm7")) == 0x100
+    assert not any("autoload" in name for name in image.modules)
+
+
 @pytest.mark.parametrize("offset,fmt,value,reason", [
     (0x12, "B", 2, "TWL"),
     (0x30, "I", 0xFFFF, "outside ROM"),

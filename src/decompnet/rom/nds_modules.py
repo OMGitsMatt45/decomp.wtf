@@ -132,27 +132,37 @@ class NdsImage:
         main = self.modules["arm7"]
         code = self.data[main.offset:main.offset + main.stored_size]
         candidates = {}
-        # SDK loaders reference the parameter block through ARM PC-relative ldr.
-        for at in range(0, min(len(code) - 3, 0x200), 4):
+        # Accept ARM and Thumb PC-relative references, including loaders whose
+        # header entry is beyond the first 512 bytes. The table itself must
+        # still account for every copied initialized byte without guessing.
+        entry = (struct.unpack_from("<I", self.data, 0x34)[0] & ~1) - main.address
+        windows = [(0, min(len(code), 0x200)), (entry, min(len(code), entry + 0x200))]
+        literals = set()
+        for at in sorted({at for lo, hi in windows for at in range((lo + 3) & ~3, hi - 3, 4)}):
             word = struct.unpack_from("<I", code, at)[0]
             if word & 0x0F7F0000 != 0x051F0000:  # ldr Rd,[pc,+/-imm12]
                 continue
-            literal = at + 8 + ((word & 0xFFF) if word & 0x800000 else -(word & 0xFFF))
+            literals.add(at + 8 + ((word & 0xFFF) if word & 0x800000 else -(word & 0xFFF)))
+        for at in sorted({at for lo, hi in windows for at in range((lo + 1) & ~1, hi - 1, 2)}):
+            half = struct.unpack_from("<H", code, at)[0]
+            if half & 0xF800 == 0x4800:  # Thumb ldr Rd,[pc,#imm8*4]
+                literals.add(((main.address + at + 4) & ~3) + (half & 0xFF) * 4 - main.address)
+        for literal in sorted(literals):
             if literal < 0 or literal + 4 > len(code):
                 continue
             params = struct.unpack_from("<I", code, literal)[0] - main.address
-            if params < 0 or params % 4 or params + 20 > min(len(code), 0x1000):
+            if params < 0 or params % 4 or params + 20 > len(code):
                 continue
             start, end, source, bss_start, bss_end = struct.unpack_from("<5I", code, params)
             lo, hi, loaded = start - main.address, end - main.address, source - main.address
-            if not (0 <= loaded <= lo < hi <= len(code) and (hi - lo) % 12 == 0 and hi - lo <= 12 * 64):
+            if not (0 <= loaded <= lo <= hi <= len(code) and (hi - lo) % 12 == 0 and hi - lo <= 12 * 64):
                 continue
             if not 0x02000000 <= bss_start <= bss_end <= 0x04000000:
                 continue
             blocks, cursor = [], loaded
             for pos in range(lo, hi, 12):
                 address, size, bss = struct.unpack_from("<3I", code, pos)
-                if not (0 < size <= MAX_MODULE_SIZE and cursor + size <= lo and address % 4 == 0
+                if not (0 <= size <= MAX_MODULE_SIZE and size + bss > 0 and cursor + size <= lo and address % 4 == 0
                         and 0x02000000 <= address < address + size + bss <= 0x04000000):
                     break
                 blocks.append((address, size, bss, cursor))

@@ -6,7 +6,9 @@ units into the complete ROM. ARM and Thumb code work with C and genuine C++.
 ARM9 keeps its separate ARM946E build settings.
 
 Recognized SDK startup parameters map copied ARM7 blocks to their destination
-addresses, including instruction RAM. Loader bytes, descriptor tables, gaps,
+addresses, including instruction RAM, Thumb startup references, BSS-only blocks
+and empty descriptor lists. The header entry is followed when it lies beyond
+the initial loader window. Loader bytes, descriptor tables, gaps,
 unclaimed data and unfinished functions remain from the owner's input. Module
 identities include the CPU and actual overlay ID; overlapping overlay addresses
 are not merged into one global address space. Discovery follows entry points,
@@ -74,15 +76,27 @@ retail YV5P ARM9 main's four version 1.00 ranges. Protected overlay ranges
 not assigned to discovered functions retain their encryption metadata only when
 the linked plaintext is still exact at the original addresses. The separate inspector recognizes
 21 bootstrap signatures; a signature is a candidate, not proof of decryption or
-authentication. Automatic ARM7 discovery retains protected modules until a decoded
-ARM7 analysis context is available.
+authentication. Generated projects create a decoded ARM7 analysis context
+for protected ARM7 main programs, copied blocks and overlays through the pinned
+toolkit's codecs at each module's runtime address. Every decoded module must
+re-encrypt exactly before discovery. Cipher metadata and decoded reference views
+stay under ignored `extract/`; completed source objects are checked against those
+views, re-encrypted and placed back into the original stored module. Clean exports
+regenerate these views. Original version 1.00 fixtures exercise real C/C++ links
+in all three ARM7 module types; other protection versions still need individual
+qualification. Encoded pointer pools remain in their stored representation.
+If a module cannot decode and re-encrypt exactly, its manifest records retention
+and discovery makes no source claims for it; complete-ROM verification still applies.
 
 Inspection bounds FAT entries and backward-LZ expansion and preserves constructor,
 BSS and signed flags. Signed overlays can be retained in exact rebuilds; the
 inspector does not verify their authentication. ARM9 overlays with absent
-constructor tables and an existing final zero word are supported without changing
-the serialized absent-table fields. Layouts without that terminator fail with a
-specific analyzer-support error. DSi containers remain a separate implementation.
+constructor tables or zero-length tables work with nonzero tail words and BSS
+boundaries aligned to four bytes. The original unowned tail word is emitted by
+the linker and excluded from recovered-source coverage. Temporary analyzer padding
+is removed before target generation; original constructor fields, BSS addresses
+and all ROM bytes must still match. Module checks and clean standalone exports
+cover these layouts. DSi containers remain a separate implementation.
 
 See the [YV5P retail test record](ds-retail-yv5p.md) for exact rebuild and emulator
 results. These checks do not certify a physical console or every DS game.

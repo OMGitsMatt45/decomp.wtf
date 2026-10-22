@@ -192,7 +192,11 @@ The pinned toolkit decodes and re-encrypts DS Protect; an original protected
 overlay fixture and YV5P main's four version 1.00 ranges qualify that path. The
 standalone signature inspector alone does not establish decryption. Signed
 metadata, unusual overlay IDs, overlapping runtime addresses, BSS extents and
-absent constructor tables with stored zero terminators are covered. Further
+absent and empty constructor tables with nonzero tail words and four-byte BSS
+alignment are covered. Protected ARM7 main/autoload/overlay C/C++ source links
+use a codec-verified private decoded context and exact re-encryption; original
+version 1.00 fixtures and clean exports qualify that path. Thumb/later startup
+references, BSS-only copied blocks and empty descriptor tables are also covered. Further
 protection variants and previously unseen startup/layout formats need individual
 qualification; a DS decompiler cannot claim every game from one retail test.
 

@@ -209,6 +209,8 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
             "target as a function of its own")
         shutil.rmtree(root / "config" / version, ignore_errors=True)
         _run([*init, "--allow-unknown-function-calls"], root, "analysing the game")
+    from .ds_template.tools.nds_input import finish_layout
+    finish_layout(root / "config" / version / "arm9" / "config.yaml")
 
 
 def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None, input_format="auto") -> None:
@@ -217,7 +219,7 @@ def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = Non
         raise ForkError("DS input format must be auto or decrypted")
     configured = (arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")) if input_format == "auto" else None
     cmd = [sys.executable, "tools/extract.py", dsd, "rom", "extract", "--rom", "extract/baserom.nds",
-           "--output-path", f"extract/{version}"]
+           "--output-path", f"extract/{version}", "--analysis-layout"]
     if input_format == "decrypted":
         cmd += ["--input-format", "decrypted"]
     if configured:
@@ -360,8 +362,11 @@ def check_rom(root: Path, version: str, log=print) -> dict:
     Decompiling doesn't depend on it (each function is compared with its own delinked original), so a ROM that doesn't
     come out identical yet is reported, not fatal: tools/same.py says which part differs (issue #6: a Pokemon
     Platinum copy whose rebuild differed stopped the whole import)."""
-    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     stamp = root / "build" / version / "rom.ok"
+    # Compilation/link failures can occur before same.py runs. A prior success
+    # must not remain stamped as verification of the newly edited source.
+    stamp.unlink(missing_ok=True)
+    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     if ok and stamp.exists():
         note = stamp.read_text(encoding="utf-8").strip()
         detail = "identical up to the padding at the end (your copy is trimmed)" if "padding" in note else "identical"

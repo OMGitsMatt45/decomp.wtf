@@ -332,7 +332,7 @@ def exact_regions(path, module, unit, original):
         return result
 
 
-def merge(manifest, build, rom_config, output):
+def merge(manifest, build, rom_config, output, dsd=None):
     """Read actual source-built ELF data for each completed unit, then update ARM7 build inputs."""
     buffers = {}
     for unit in manifest["units"]:
@@ -346,6 +346,25 @@ def merge(manifest, build, rom_config, output):
         for at, data in patches:
             target[at:at + len(data)] = data
     config = yaml.safe_load(rom_config.read_text(encoding="utf-8"))
+    # Protected main/copied modules use decoded reference views. Re-encode the
+    # actual source-built bytes, then place them back in the original program.
+    for module in manifest["modules"].values():
+        binary = Path(module["binary"]).resolve()
+        if not module.get("codec") or binary not in buffers:
+            continue
+        try:
+            from . import arm7_codec
+        except ImportError:
+            import arm7_codec
+        if not dsd:
+            raise ValueError("ARM7 protection requires the pinned dsd codec")
+        encoded = arm7_codec.encrypt(dsd, Path(module["codec"]), buffers.pop(binary))
+        destination = Path(module["output_binary"]).resolve()
+        target = buffers.setdefault(destination, bytearray(destination.read_bytes()))
+        offset = module["output_offset"]
+        if offset < 0 or offset + len(encoded) > len(target):
+            raise ValueError("ARM7 protected output is outside the stored program")
+        target[offset:offset + len(encoded)] = encoded
     output.parent.mkdir(parents=True, exist_ok=True)
     replacements = {}
     for index, (binary, data) in enumerate(buffers.items()):
@@ -387,7 +406,7 @@ def main():
     args = parser.parse_args()
     manifest = load(args.manifest)
     if args.command == "merge":
-        merge(manifest, args.build, args.rom_config, args.output)
+        merge(manifest, args.build, args.rom_config, args.output, args.dsd)
     elif args.command == "objdiff":
         if args.dsd:
             run([args.dsd, "objdiff", "--config-path", args.dsd_config, "--custom-make", "ninja"])

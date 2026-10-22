@@ -88,8 +88,11 @@ def overlay_extents(args, config, output) -> None:
         module = modules[overlay_id]
         original = originals[overlay_id]
         if "dsprot" in fields(original):
-            retained_protected_ranges(original, entry,
-                (original_table.parent / fields(original)["file_name"].value).read_bytes(),
+            original_code = (original_table.parent / fields(original)["file_name"].value).read_bytes()
+            retained = absent.get(str(overlay_id), {})
+            if "tail_word" in retained:
+                original_code = original_code[:-4] + retained["tail_word"].to_bytes(4, "little")
+            retained_protected_ranges(original, entry, original_code,
                 (output / overlay["file_name"].value).read_bytes())
         delinks = (args.config.parent / module["delinks"]).read_text(encoding="utf-8")
         sections = []
@@ -112,7 +115,8 @@ def overlay_extents(args, config, output) -> None:
             original = absent[str(overlay_id)]
             if int(overlay["ctor_start"].value) != original["start"] or int(overlay["ctor_end"].value) != original["end"]:
                 raise ValueError(f"linked absent-constructor terminator moved for overlay {overlay_id}")
-            overlay["ctor_start"].value = overlay["ctor_end"].value = "0"
+            overlay["ctor_start"].value = str(original.get("serialized_start", 0))
+            overlay["ctor_end"].value = str(original.get("serialized_end", 0))
     path.write_text(yaml.serialize(document, Dumper=yaml.SafeDumper), encoding="utf-8")
 
 

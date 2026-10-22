@@ -137,7 +137,8 @@ Important boundaries:
   The separate agbcc ARM-mode compiler is not integrated.
 - DS links finished ARM9 and ARM7 C/C++ source units after their code and data
   match and the complete ROM still verifies. ARM7 calls, globals and recognized
-  runtime copied blocks use a separate ARM7TDMI build. Unfinished code retains
+  runtime copied blocks use a separate ARM7TDMI build. Protected ARM7 modules
+  use decoded references and exact re-encryption. Unfinished code retains
   original bytes. See [ARM7 recovery](docs/ds-arm7.md) and the
   [retail rebuild/execution record](docs/ds-retail-yv5p.md).
   DSi-enhanced/exclusive ROM containers are rejected explicitly: the pinned

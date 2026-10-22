@@ -2,12 +2,14 @@
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
 
 from ..rom.arm7_analysis import discover
 from ..rom.nds_modules import NdsImage
+from ..rom.dsprot import detect
 from ..elfobj import extract_function
 
 
@@ -131,7 +133,8 @@ def configure(root, version, source, data="", language=""):
 
 def prepare(root: Path, version: str, game: Path) -> int:
     image = NdsImage.read(game)
-    functions = discover(image)
+    from .. import toolchains
+    from .ds_template.tools import arm7_codec
     directory = root / "config" / version / "arm7"
     directory.mkdir(parents=True, exist_ok=True)
     extracted = root / "extract" / version
@@ -145,25 +148,59 @@ def prepare(root: Path, version: str, game: Path) -> int:
         fields = lambda node: {key.value: value for key, value in node.value}
         for node in fields(document)["overlays"].value:
             item = fields(node)
-            overlays[int(item["id"].value)] = table.parent / item["file_name"].value
+            overlays[int(item["id"].value)] = (table.parent / item["file_name"].value, item)
     modules = {}
+    decoded, protected_entries = {}, {}
     for name, module in image.modules.items():
         if module.cpu != "arm7":
             continue
-        binary = overlays.get(module.overlay_id) if module.overlay_id is not None else extracted / config["arm7_bin"]
+        overlay = overlays.get(module.overlay_id)
+        binary = overlay[0] if overlay else extracted / config["arm7_bin"] if module.overlay_id is None else None
         if binary is None:
             raise ValueError(f"missing extracted ARM7 overlay {module.overlay_id}")
         modules[name] = {"address": module.address, "size": module.code_size, "bss_size": module.bss_size,
                          "bss_address": module.bss_address if module.bss_address is not None else module.address + module.code_size,
                          "binary": binary.relative_to(root).as_posix(),
                          "source_offset": 0 if module.overlay_id is not None else module.offset - main_offset}
+        offset = modules[name]["source_offset"]
+        stored = binary.read_bytes()[offset:offset + module.code_size]
+        if len(stored) != module.code_size:
+            raise ValueError(f"truncated extracted ARM7 module {name}")
+        if module.overlay_id is not None:
+            decoded[name] = stored
+            state = overlay[1].get("dsprot")
+            if isinstance(state, yaml.MappingNode):
+                state = yaml.load(yaml.serialize(state), Loader=yaml.BaseLoader).get("unencrypted")
+                if state:
+                    protected_entries[name] = arm7_codec.entries(state)
+        if detect(stored, module.address) and name not in protected_entries:
+            context = extracted / "arm7-context" / name.replace(":", "-")
+            try:
+                plain, state = arm7_codec.decode(toolchains.binary("dsd"), stored, module.address, context)
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                # A signature alone cannot prove either its module base or a
+                # supported protection layout. Preserve it without source claims.
+                decoded.pop(name, None)
+                modules[name]["recovery_status"] = "retained: protection could not be decoded and re-encrypted exactly"
+                continue
+            plain_path = context.parent / (context.name + ".bin")
+            plain_path.write_bytes(plain)
+            info = modules[name]
+            info.update(output_binary=info["binary"], output_offset=info["source_offset"],
+                        codec=context.relative_to(root).as_posix(), source_offset=0,
+                        binary=plain_path.relative_to(root).as_posix())
+            decoded[name], protected_entries[name] = plain, arm7_codec.entries(state)
+    functions = discover(image, decoded=decoded, protected_entries=protected_entries)
     names = {(f.module, f.address): f"arm7_{re.sub('[^A-Za-z0-9_]', '_', f.module.removeprefix('arm7').strip(':') or 'main')}_{f.address:08X}"
              for f in functions}
     symbols = {name: {"address": address, "mode": next(f.mode for f in functions
                                                       if f.module == module and f.address == address)}
                for (module, address), name in names.items()}
     for function in functions:
-        module, data = image.modules[function.module], image.code(function.module)
+        module = image.modules[function.module]
+        data = decoded.get(function.module)
+        if data is None:
+            data = image.code(function.module)
         for pool in function.pools:
             at = pool - module.address
             value = int.from_bytes(data[at:at + 4], "little")

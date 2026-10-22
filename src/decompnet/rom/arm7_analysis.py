@@ -20,7 +20,7 @@ class Function:
     calls: set[tuple[int, str]]
 
 
-def discover(image, *, max_instructions=16384):
+def discover(image, *, decoded=None, protected_entries=None, max_instructions=16384):
     """Follow entries, direct calls and constant BX destinations; retain undecodable bytes.
 
     This is discovery, not proof of semantic equivalence. Source and whole-ROM
@@ -30,8 +30,8 @@ def discover(image, *, max_instructions=16384):
     programs = {}
     for name in modules:
         try:
-            programs[name] = image.code(name)
-            if detect(programs[name], modules[name].address):
+            programs[name] = decoded[name] if decoded is not None and name in decoded else image.code(name)
+            if (decoded is None or name not in decoded) and detect(programs[name], modules[name].address):
                 del programs[name]  # retain protected bytes until a decoded ARM7 context exists
         except ValueError:
             pass
@@ -44,6 +44,9 @@ def discover(image, *, max_instructions=16384):
     entries = deque((n, (entry & ~1) if n == "arm7" else m.address,
                      "thumb" if n == "arm7" and entry & 1 else "arm")
                     for n, m in modules.items() if n in programs)
+    entries.extend((name, address, "arm") for name, addresses in (protected_entries or {}).items()
+                   if name in programs for address in addresses)
+    boundaries = {name: set(addresses) for name, addresses in (protected_entries or {}).items()}
     functions, seen = {}, set()
 
     def locate(address):
@@ -62,6 +65,9 @@ def discover(image, *, max_instructions=16384):
         while queue and valid and len(visited) < max_instructions:
             at, constants = queue.popleft(), {}
             while at not in visited and len(visited) < max_instructions:
+                if at != start and at in boundaries.get(name, ()):
+                    finished = True
+                    break
                 offset = at - module.address
                 if offset < 0 or offset >= len(code) or at < start:
                     valid = False

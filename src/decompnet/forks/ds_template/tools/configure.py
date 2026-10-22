@@ -101,8 +101,8 @@ def main() -> None:
         arm7_command = f"{PY} tools/arm7_build.py $action --manifest {ARM7_MANIFEST} --build {BUILD}"
         arm7_tools = q(["--assembler", assembler, "--linker", linker])
         n.rule("arm7_unit", f"{arm7_command} --source $source {arm7_tools}", pool="ds_tools")
-        n.rule("arm7_merge", f"{arm7_command} --rom-config $in --output $out")
-        n.rule("lcf", f"{DSD} lcf -c {CONFIG}")
+        n.rule("arm7_merge", f"{arm7_command} --rom-config $in --output $out --dsd {DSD}")
+        n.rule("lcf", f"{PY} tools/lcf.py {DSD} --config {CONFIG} --lcf $lcf")
         n.rule("mwld", f"{WRAP}\"{LD}\" {q(LD_FLAGS)} -m Entry @$objects $lcf -o $out")
         n.rule("rom_config", f"{PY} tools/rom_config.py {DSD} --elf $in --config {CONFIG}")
         reference_arg = f" --decrypted-reference {BASEROM}" if INPUT_FORMAT == "decrypted" else ""
@@ -119,7 +119,7 @@ def main() -> None:
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 
         n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM),
-                implicit=["tools/extract.py", "tools/nds_input.py", *([str(ARM7_BIOS)] if bios_arg else [])],
+                implicit=["tools/extract.py", "tools/nds_input.py", "tools/arm7_codec.py", *([str(ARM7_BIOS)] if bios_arg else [])],
                 implicit_outputs=sorted({m["binary"] for m in arm7["modules"].values()}) if arm7_sources else None)
         targets = sorted({x["delink_file"] for x in files})
         n.build(targets or ["delink"], "delink", [*dsd_configs, str(EXTRACT / "config.yaml")])
@@ -150,7 +150,8 @@ def main() -> None:
             if unit["complete"]:
                 arm7_linked.append(str(base))
         lcf, objects = delinks["arm9_lcf_file"], delinks["arm9_objects_file"]
-        n.build([lcf, objects], "lcf", [*dsd_configs, str(EXTRACT / "config.yaml")])
+        n.build([lcf, objects], "lcf", [*dsd_configs, str(EXTRACT / "config.yaml")],
+                implicit=["tools/lcf.py"], variables={"lcf": lcf})
         linked = sorted({x["object_to_link"] for x in files})
         n.build(str(BUILD / "arm9.o"), "mwld", [*linked, lcf, objects], variables={"lcf": lcf, "objects": objects})
         rom_config = BUILD / "build" / "rom_config.yaml"
@@ -158,7 +159,7 @@ def main() -> None:
         if arm7_sources:
             merged_config = rom_config.with_name("with-arm7.yaml")
             n.build(str(merged_config), "arm7_merge", str(rom_config),
-                    implicit=[str(ARM7_MANIFEST), str(ARM7_MANIFEST.with_name("delinks.txt")), "tools/arm7_build.py",
+                    implicit=[str(ARM7_MANIFEST), str(ARM7_MANIFEST.with_name("delinks.txt")), "tools/arm7_build.py", "tools/arm7_codec.py",
                               *arm7_linked], variables={"action": "merge"})
             rom_config = merged_config
         n.build(str(rom), "rom_build", str(rom_config),
