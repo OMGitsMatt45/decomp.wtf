@@ -142,6 +142,41 @@ def test_overlay_bss_extents_are_not_rounded(encrypted, tmp_path, monkeypatch, b
         assert not (root / "build/adqe/rom.ok").exists()
 
 
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+@pytest.mark.parametrize("retained_checksum", [False, True])
+def test_plain_rom_rebuilds_when_a_bios_is_configured(encrypted, tmp_path, compiler, retained_checksum):
+    encrypted_game, bios = encrypted
+    game = ROM
+    if retained_checksum:
+        seed = tmp_path / "decrypted seed"
+        shutil.copytree(encrypted_game.parent / "seed", seed)
+        config = seed / "arm9/arm9.yaml"
+        config.write_text(config.read_text(encoding="utf-8").replace("encrypted: true", "encrypted: false"),
+                          encoding="utf-8")
+        game = tmp_path / "decrypted.nds"
+        subprocess.run([str(toolchains.binary("dsd")), "rom", "build", "--config", str(seed / "config.yaml"),
+                        "--rom", str(game), "--arm7-bios", str(bios)], check=True, capture_output=True)
+    assert bool(struct.unpack_from("<H", game.read_bytes(), 0x6C)[0]) == retained_checksum
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    net.forks.background_links = False
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    overview = net.overview(slug)
+    assert overview["rebuild"]["identical"], overview["rebuild"]
+    root = Path(net.project_row(slug)["root"])
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    assert ("--arm7-bios" in (root / "build.ninja").read_text(encoding="utf-8")) == retained_checksum
+    standalone = tmp_path / "plain standalone with spaces"
+    shutil.copytree(root, standalone, ignore=shutil.ignore_patterns(".git", "build", "build.ninja", "objdiff.json",
+                                                                   ".ninja_*", ".decomp-wtf"))
+    shutil.rmtree(standalone / "extract/adqe")
+    fp = ForkProject(standalone)
+    assert fp.run([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()])[0]
+    ok, log = fp.run(["ninja"], timeout=120)
+    assert ok, log
+    assert (standalone / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+
+
 def test_thumb_claim_match_restores_mode_and_keeps_strict_rebuild(imported):
     net, slug, _, _ = imported
     root = Path(net.project_row(slug)["root"])

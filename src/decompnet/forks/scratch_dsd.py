@@ -24,6 +24,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import yaml
+
 from .. import toolchains
 from .project import ForkError, ForkProject
 
@@ -263,6 +265,16 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
     dsd = args[args.index("--dsd") + 1]
     log(f"extracting {info['title']} ({info['id']}) with ds-decomp")
     _extract(dsd, root, version, arm7_bios=arm7_bios)
+    arm9 = yaml.load((root / "extract" / version / "arm9/arm9.yaml").read_text(encoding="utf-8"),
+                     Loader=yaml.BaseLoader)
+    with game.open("rb") as stream:
+        header = stream.read(0x70)
+    # dsd recomputes the encrypted secure-area checksum whenever a BIOS is
+    # supplied, including for unencrypted homebrew that originally stored zero.
+    # Keep the key for encrypted ROMs and decrypted copies retaining that CRC.
+    if arm9["encrypted"] == "false" and struct.unpack_from("<H", header, 0x6C)[0] == 0:
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace("USE_ARM7_BIOS = True", "USE_ARM7_BIOS = False"),
+                       encoding="utf-8")
     log("analysing the ARM9 program, its autoloads and overlays (dsd init)")
     _init(dsd, root, version, log)
 
@@ -305,7 +317,7 @@ Started from scratch with [decomp.wtf](https://decomp.wtf) on [ds-decomp](https:
 the toolkit DS decomps use. Every build rebuilds the ROM and checks it against your copy, byte for byte.
 
 1. Put your own copy of the game here as `extract/baserom.nds` (never commit it).
-   Encrypted ROMs also need your own 16 KiB ARM7 BIOS at `extract/arm7_bios.bin` (also never committed).
+   Encrypted ROMs, and decrypted copies retaining their encrypted secure checksum, also need your own 16 KiB ARM7 BIOS at `extract/arm7_bios.bin` (also never committed).
 2. Install the Python build dependencies with `python -m pip install -r requirements.txt` (already included in decomp.wtf).
 3. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
 4. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).

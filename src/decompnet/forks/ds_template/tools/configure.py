@@ -22,6 +22,7 @@ import ninja_syntax
 # Settings (decomp.wtf wrote these for this game; change them if the game was built differently)
 GAME = "game"
 MWCC_VERSION = "2.0/sp1p5"
+USE_ARM7_BIOS = True  # decomp.wtf selects this from the input's encryption and secure-checksum metadata
 CC_FLAGS = ["-O4,p", "-enum", "int", "-char", "signed", "-str", "noreuse", "-proc", "arm946e", "-gccext,on", "-fp",
             "soft", "-inline", "noauto", "-Cpp_exceptions", "off", "-RTTI", "off", "-interworking", "-w", "off",
             "-sym", "on", "-gccinc", "-nolink", "-msgstyle", "gcc"]
@@ -72,7 +73,7 @@ def main() -> None:
     rom = BUILD / f"{GAME}.nds"
     with open("build.ninja", "w", encoding="utf-8") as f:
         n = ninja_syntax.Writer(f)
-        bios_arg = f" --arm7-bios {ARM7_BIOS}" if ARM7_BIOS.is_file() else ""
+        bios_arg = f" --arm7-bios {ARM7_BIOS}" if USE_ARM7_BIOS and ARM7_BIOS.is_file() else ""
         n.rule("extract", f"{PY} tools/extract.py {DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}")
         n.rule("delink", f"{DSD} delink --config-path {CONFIG}")
         n.rule("mwcc", f"{WRAP}\"{CC}\" {q(CC_FLAGS)} -i include $cflags -MD -c $in -o $basedir"
@@ -88,7 +89,7 @@ def main() -> None:
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 
         n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM),
-                implicit=["tools/extract.py", *([str(ARM7_BIOS)] if ARM7_BIOS.is_file() else [])])
+                implicit=["tools/extract.py", *([str(ARM7_BIOS)] if bios_arg else [])])
         targets = sorted({x["delink_file"] for x in files})
         n.build(targets or ["delink"], "delink", [*dsd_configs, str(EXTRACT / "config.yaml")])
         objs = []
@@ -105,7 +106,7 @@ def main() -> None:
         rom_config = BUILD / "build" / "rom_config.yaml"
         n.build(str(rom_config), "rom_config", str(BUILD / "arm9.o"), implicit=["tools/rom_config.py"])
         n.build(str(rom), "rom_build", str(rom_config),
-                implicit=[str(ARM7_BIOS)] if ARM7_BIOS.is_file() else None)
+                implicit=[str(ARM7_BIOS)] if bios_arg else None)
         n.build(str(BUILD / "rom.ok"), "same", str(rom))
         n.build(str(BUILD / "check.ok"), "check", str(BUILD / "arm9.o"))
         n.build("objdiff.json", "objdiff", dsd_configs)

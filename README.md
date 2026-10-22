@@ -113,6 +113,9 @@ Encrypted DS games need your own 16 KiB ARM7 BIOS. Before starting the app, set
 in PowerShell, or `export DECOMP_ARM7_BIOS=/path/to/arm7_bios.bin` on Linux).
 The importer retains a copy in the project's ignored `extract/arm7_bios.bin`
 for subsequent builds; the ROM and BIOS stay outside the project's Git history.
+Decrypted copies can also need that BIOS to reproduce their retained encrypted
+secure-area checksum. Unencrypted homebrew with a zero checksum ignores an
+optional configured BIOS during rebuilding so its header stays identical.
 For bounded import/draft probes from a checkout, see
 `uv run python tools/ds_pilot.py --help`; keep its work directory outside the checkout.
 

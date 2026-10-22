@@ -24,6 +24,10 @@ same decryption check when rebuilding, stages output separately, and preserves
 the previous verified extraction after a failure.
 BIOS copies are owner-only while being written and replace the retained copy
 only after completion; interrupted copies leave no partial key file.
+Generated builds use the key when the input is encrypted or retains an encrypted
+secure-area checksum. Unencrypted homebrew with a zero checksum omits it, so a
+globally configured BIOS cannot change otherwise identical header bytes. This
+choice persists in clean standalone builds.
 
 Finished ARM9, autoload and overlay source units replace their original objects
 only after all their code/data match and the complete ROM still verifies.
@@ -67,6 +71,8 @@ The DS suites check:
   recompression, rejection of changed code, and clean standalone rebuilds.
 - The bounded CLI finishes source linking synchronously and records its result
   before exiting, with a completed source-linked project verified on both compilers.
+- Unencrypted imports with a configured BIOS, both with zero secure checksums
+  and with retained encrypted checksums, including clean standalone rebuilds.
 - Overlay BSS sizes of 0, 4, 20 and 36 bytes. The build derives these extents from
   linked boundary symbols without ds-decomp 0.12.1's extra 32-byte rounding;
   deliberate linked BSS changes still fail the complete-ROM check.
