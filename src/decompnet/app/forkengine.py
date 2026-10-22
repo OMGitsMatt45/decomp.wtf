@@ -1977,6 +1977,8 @@ class ForkEngine:
             except OSError:
                 current = ""
             code = "/* machine draft (m2c), tried by autopilot */\n" + drafts.self_contained(text, span, current)
+            if cfg.get("platform") == "nds":
+                code = drafts.ds_mode_source(fp.root, unit.name, meta.get("symbol") or fn["name"], code)
             res = self.attempt(agent, proj["slug"], fn["name"], code, keep=False)
             if res["matched"]:
                 return "match"
