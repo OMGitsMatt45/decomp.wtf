@@ -526,9 +526,9 @@ class ForkProject:
     def _ds_states_in(text: str) -> dict[str, tuple[str, int, int]]:
         # ds-decomp's source entries end at the next unindented source name.
         states = {}
-        for match in re.finditer(r"^(\S+\.(?:c|cpp|cc|cxx)):[ \t]*\n((?:[ \t].*(?:\n|$)|[ \t]*\n)*)", text, re.M):
-            complete = re.search(r"^[ \t]+complete[ \t]*(?://[^\n]*)?$", match[2], re.M)
-            states[match[1]] = ("Matching" if complete else "NonMatching", match.start(2), match.end())
+        for match in re.finditer(r"^(\S+\.(?:c|cpp|cc|cxx)):[ \t]*\r?\n((?:[ \t].*(?:\n|$)|[ \t]*\r?\n)*)", text, re.M):
+            complete = re.search(r"^[ \t]+complete[ \t]*(?://[^\r\n]*)?\r?$", match[2], re.M)
+            states[match[1].replace("\\", "/")] = ("Matching" if complete else "NonMatching", match.start(2), match.end())
         return states
 
     def marked_matching(self, text: str, sources: list[str], version: str | None) -> str:
@@ -537,7 +537,8 @@ class ForkProject:
             states = self._ds_states_in(text)
             for offset in sorted((states[s][1] for s in sources if s in states and states[s][0] == "NonMatching"),
                                  reverse=True):
-                text = text[:offset] + "    complete\n" + text[offset:]
+                newline = "\r\n" if text[max(0, offset - 2):offset] == "\r\n" else "\n"
+                text = text[:offset] + "    complete" + newline + text[offset:]
             return text
         states = self._states_in(text)
         # a project that builds several versions links per version where it can say so

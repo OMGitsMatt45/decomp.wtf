@@ -82,13 +82,17 @@ missing compiler prerequisites must not silently count as passing coverage.
 ## Work that remains
 
 - [x] Review and preserve PR #1's private BIOS, overlapping-entry, word-alignment, unused-section and instruction-mode changes on current main.
-- [ ] Resolve the reported secure-prefix/checksum rebuild differences without masking bytes or weakening the whole-ROM comparison.
+- [x] Reproduce the 12-byte secure-prefix/checksum failure pattern on an original fixture and reject failed decryption before creating matching references, without masking bytes.
+- [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
 - [ ] Expand ARM7, ARM9, autoload and overlay coverage, including runtime-loaded modules and compiler-version differences.
 
 The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
-original test fixtures. A valid fixture rebuild does not establish that its
-reported 12 differing bytes are resolved. Nonstandard secure-area prefixes are
-rejected explicitly. The build corrects the pinned toolkit's extra overlay BSS
+original test fixtures. A wrong test key reproduces exactly 12 changed bytes
+with raw dsd: offsets `0x6C-0x6D`, `0x15E-0x15F` and `0x4000-0x4007`. The guard
+rejects that failed decryption before it can replace verified reference data.
+This establishes one concrete cause of the pattern; it does not establish that
+the original YV5P input used a wrong key or that its specific case is resolved.
+Nonstandard secure-area prefixes are rejected explicitly. The build corrects the pinned toolkit's extra overlay BSS
 rounding using the actual linked boundaries, without changing the ROM comparison.
 
 ARM7 programs and ARM7 overlays are retained, not recovered as matching C/C++.

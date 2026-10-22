@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 from collections import defaultdict
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 
 from .. import similarity, toolchains
@@ -703,7 +703,7 @@ class ForkEngine:
             todo = self.link_candidates(proj, fp, rep)
             if not todo:
                 return {"linked": [], "failed": {}}
-            originals = {path: path.read_text(encoding="utf-8") for path in fp.link_config_paths()}
+            originals = {path: path.read_bytes() for path in fp.link_config_paths()}
             ok, out = fp.verify()
             if not ok:
                 return {"linked": [], "failed": {}, "error": "the project's checksum check fails before linking "
@@ -711,8 +711,15 @@ class ForkEngine:
 
             def build_with(sources: list[str]) -> tuple[bool, str]:
                 for path, original in originals.items():
-                    path.write_text(fp.marked_matching(original, sources, cfg.get("version")), encoding="utf-8")
+                    updated = fp.marked_matching(original.decode("utf-8"), sources, cfg.get("version")).encode("utf-8")
+                    if path.read_bytes() != updated:
+                        path.write_bytes(updated)
                 return fp.verify()
+
+            def restore() -> None:
+                for path, original in originals.items():
+                    if path.read_bytes() != original:
+                        path.write_bytes(original)
 
             log(f"linking {len(todo)} finished file(s)")
             linked: list[str] = []
@@ -732,19 +739,17 @@ class ForkEngine:
                     if not ok:
                         linked = []
             except BaseException:
-                for path, original in originals.items():
-                    path.write_text(original, encoding="utf-8")
+                restore()
                 raise
             self._remember_link_failures(proj, linked, failed)
             if not linked:
-                for path, original in originals.items():
-                    path.write_text(original, encoding="utf-8")
+                restore()
                 fp.verify()
                 return {"linked": [], "failed": failed}
             names = ", ".join(Path(s).name for s in linked[:6]) + (f" and {len(linked) - 6} more" if len(linked) > 6 else "")
             who = f"\n\nLinked by decomp.wtf after {agent.name}'s match." if agent else "\n\nLinked by decomp.wtf."
             changed = [str(path.relative_to(fp.root)) for path, text in originals.items()
-                       if path.read_text(encoding="utf-8") != text]
+                       if path.read_bytes() != text]
             self._commit_paths(proj, fp, changed, f"Link {names}\n\nEvery function and all data match, and the game "
                                                 f"still builds byte for byte from the C.{who}")
             with self.net.store.tx() as db:
@@ -1232,10 +1237,15 @@ class ForkEngine:
 
         def run():
             try:
+                guard = self._build_locks[proj["id"]] if fp.is_generated_ds() else nullcontext()
                 for n, unit in enumerate(fp.units()):
                     if self.net.store.one("SELECT 1 FROM projects WHERE id=?", proj["id"]) is None:
                         return
-                    self._unit_index(proj, fp, unit, save=False)
+                    # DS linking regenerates target objects as complete markers
+                    # change. Windows cannot rewrite an object while objdiff is
+                    # reading it, so serialize background indexing with builds.
+                    with guard:
+                        self._unit_index(proj, fp, unit, save=False)
                     if n % 50 == 49:
                         self._save_index(proj, fp)
                 self._save_index(proj, fp)

@@ -137,7 +137,7 @@ def test_overlay_bss_extents_are_not_rounded(encrypted, tmp_path, monkeypatch, b
         before = config.read_text(encoding="utf-8")
         old_end = 0x02200020 + bss_size
         config.write_text(before.replace(f"end:0x{old_end:08x}", f"end:0x{old_end + 4:08x}"), encoding="utf-8")
-        result = scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)
+        result = net.forks.check_rom(slug, log=lambda *_: None)
         assert not result["identical"] and "overlay table" in result["detail"]
         assert not (root / "build/adqe/rom.ok").exists()
 
@@ -191,9 +191,9 @@ def test_matching_overlay_source_is_linked_and_changes_are_rejected(imported, mo
               if row["unit"].startswith("src/auto/ov000"))
     source = fp.unit(fn["unit"]).source
     if language == "c++":
-        cpp = str(Path(source).with_suffix(".cpp"))
+        cpp = Path(source).with_suffix(".cpp").as_posix()
         config = root / "config/adqe/arm9/overlays/ov000/delinks.txt"
-        config.write_text(config.read_text(encoding="utf-8").replace(source + ":", cpp + ":"), encoding="utf-8")
+        config.write_text(config.read_text(encoding="utf-8").replace(source + ":", str(Path(cpp)) + ":"), encoding="utf-8")
         (root / source).rename(root / cpp)
         assert fp.run([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()])[0]
         assert fp.build_all()[0]
@@ -240,6 +240,9 @@ def test_linker_exception_restores_the_ds_configuration(imported, monkeypatch):
     agent, _ = net.local_agent("rollback-owner")
     symbol = json.loads(fn["meta"])["symbol"]
     assert net.attempt(agent, fn["name"], f"int {symbol}(int x) {{ return x + 1; }}", slug)["matched"]
+    for index, path in enumerate(fp.link_config_paths()):
+        data = path.read_bytes().replace(b"\r\n", b"\n")
+        path.write_bytes(data.replace(b"\n", b"\r\n") if index % 2 else data)
     before = {p: p.read_bytes() for p in fp.link_config_paths()}
     real_verify = ForkProject.verify
 
@@ -371,8 +374,8 @@ def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_p
     assert (standalone / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
 
 
-def test_failed_standalone_extraction_preserves_the_verified_reference(imported):
-    net, slug, _, _ = imported
+def test_failed_standalone_extraction_preserves_the_verified_reference(imported, tmp_path):
+    net, slug, game, _ = imported
     root = Path(net.project_row(slug)["root"])
     reference = root / "extract/adqe"
 
@@ -384,6 +387,23 @@ def test_failed_standalone_extraction_preserves_the_verified_reference(imported)
     correct = bios.read_bytes()
     try:
         bios.write_bytes(bytes(0x4000))
+        # The pinned raw toolkit exits successfully with this wrong key and
+        # round-trips every byte except the eight-byte secure marker and two
+        # checksums. Reject that misleading 12-byte failure before it can
+        # replace the objects used as matching references.
+        raw = tmp_path / "unguarded extraction"
+        dsd = str(toolchains.binary("dsd"))
+        result = subprocess.run([dsd, "rom", "extract", "--rom", str(game), "--output-path", str(raw),
+                                 "--arm7-bios", str(bios)], capture_output=True, text=True)
+        assert result.returncode == 0 and "Failed to decrypt secure area" in result.stdout + result.stderr
+        rebuilt = tmp_path / "unguarded.nds"
+        subprocess.run([dsd, "rom", "build", "--config", str(raw / "config.yaml"), "--rom", str(rebuilt),
+                        "--arm7-bios", str(bios)], check=True, capture_output=True)
+        original, output = game.read_bytes(), rebuilt.read_bytes()
+        assert len(original) == len(output)
+        assert {i for i, (a, b) in enumerate(zip(original, output)) if a != b} == {
+            0x6C, 0x6D, 0x15E, 0x15F, *range(0x4000, 0x4008),
+        }
         for _ in range(2):
             result = subprocess.run([sys.executable, "tools/extract.py", str(toolchains.binary("dsd")),
                                      "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", "extract/adqe",

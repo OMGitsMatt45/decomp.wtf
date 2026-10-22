@@ -336,7 +336,7 @@ def check_rom(root: Path, version: str, log=print) -> dict:
         log(f"the rebuilt ROM is your copy, byte for byte{' up to the padding at its end' if 'padding' in note else ''}")
         return {"identical": True, "detail": detail}
     lines = [line.strip()[2:] for line in tail.splitlines() if line.strip().startswith("- ")]
-    detail = "; ".join(lines) or (tail.strip().splitlines() or ["the ROM build failed"])[-1][-300:]
+    detail = "; ".join(lines) or tail.strip()[-1500:] or "the ROM build failed"
     log(f"note: the rebuilt ROM isn't your copy byte for byte yet ({detail}). Decompiling works anyway: every "
         "function is compared with your copy's own code.")
     return {"identical": False, "detail": detail}

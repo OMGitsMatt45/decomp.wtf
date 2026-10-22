@@ -1,6 +1,11 @@
 """Automatic source boundaries must not cut through overlapping DS function entries."""
 
+import json
+
+import pytest
+
 from decompnet.forks import scratch_dsd
+from decompnet.forks.project import ForkProject
 
 
 def module(tmp_path, symbols):
@@ -35,3 +40,20 @@ def test_a_thumb_entry_at_halfword_alignment_does_not_start_a_new_object(tmp_pat
     monkeypatch.setattr(scratch_dsd, "UNIT_BYTES", 16)
     symbols = [(0x1000, 18), (0x1012, 2), (0x1014, 4)]
     assert scratch_dsd._units(module(tmp_path, symbols)) == [(0x1000, 0x1014, 2), (0x1014, 0x1040, 1)]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_ds_link_markers_preserve_line_endings_and_accept_windows_paths(tmp_path, newline):
+    (tmp_path / ".decomp.wtf.json").write_text(json.dumps({"platform": "nds", "created": "from scratch"}))
+    fp = ForkProject(tmp_path)
+    first = newline.join(["src\\auto\\one.cpp:", "    .text start:0x1000 end:0x1008", ""])
+    other = "\nsrc/auto/two.c:\n    .text start:0x1008 end:0x1010\n"
+    original = first + other
+    updated = fp.marked_matching(original, ["src/auto/one.cpp"], None)
+    marker = "    complete" + newline
+    assert marker in updated
+    assert updated.replace(marker, "", 1) == original
+    assert updated.endswith(other)
+    assert fp._ds_states_in(updated)["src/auto/one.cpp"][0] == "Matching"
+    assert fp._ds_states_in(updated)["src/auto/two.c"][0] == "NonMatching"
+    assert fp.marked_matching(updated, ["src/auto/one.cpp"], None) == updated
