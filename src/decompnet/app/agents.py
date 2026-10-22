@@ -757,7 +757,7 @@ class Manager:
             # CodeWarrior's register and stack rules decide most of what's left on GameCube, Wii and DS
             topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") in ("gc", "wii", "nds") else [])]
         elif ov.get("compiler", {}).get("language") == "asm":
-            topics = ["sm83"]
+            topics = ["ppc" if ov["platform"] in ("gc", "wii") else "arm"] if ov.get("assembly_dialect") == "gnu" else ["sm83"]
         else:
             topics = ["workflow", {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
                 "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")]
@@ -780,7 +780,8 @@ class Manager:
         guide = {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
             "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")
         if ov.get("compiler", {}).get("language") == "asm":
-            return tools.ASSEMBLY_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
+            prompt = tools.BOOT_ASSEMBLY_PROMPT if ov.get("assembly_dialect") == "gnu" else tools.ASSEMBLY_PROMPT
+            return prompt.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
         return tools.WORK_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION), compiler_guide=guide)
 
     def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str]:
@@ -1086,6 +1087,11 @@ def api_tool_schemas(fork: bool = False) -> list[dict]:
                                                        new=st("replacement", True), message=st("why", True))),
         "file_status": ("How far a source file (or a function's file) is from being linked: functions left, its data "
                         "next to the original's, why the last link failed.", s(path=st("file or function", True))),
+        "configure_arm7_unit": ("DS ARM7: assign original data/BSS ranges or select c/c++, preserving code bounds "
+                                "and the complete ROM check. Overlaps and changed matches roll back.",
+                                s(path=st("ARM7 source file", True),
+                                  data=st("e.g. .data:0x023800A0:4:global_name .bss:0x027E1000:16:buffer"),
+                                  language=st("c or c++ (optional)"))),
         "split_file": ("Divide a source file at a function: it and the rest of the file's code (and data from the given "
                        "offsets) go to a new file. Kept only if the game still builds identically.",
                        s(path=st("file", True), at=st("function name or .text offset", True),

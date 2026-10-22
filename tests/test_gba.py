@@ -65,6 +65,10 @@ def test_every_game_function_matches(gba):
     syms = {s.name: s["st_value"] & ~1 for s in ELFFile(open(ELF, "rb")).get_section_by_name(".symtab").iter_symbols() if s.name}
     header = "\n".join(l for l in (GAME / "game.h").read_text().splitlines()
                        if not l.startswith("#include") and not re.match(r"typedef \w+( \w+)? [su]\d+;|typedef \w+ f\d+;", l))
+    # Keep one RAM global unnamed: the judge accepts address names and the
+    # exported C/C++ must link them without a rename_symbol workaround.
+    score_name = f"D_{syms['g_score']:08X}"
+    header = header.replace("g_score", score_name)
     if net.overview(slug)["compiler"]["language"] == "c++":
         header = header.replace("#define NULL ((void *)0)", "#define NULL 0")
     assert net.edit_context(agent, slug, "", header, "the game's types").startswith("✅")
@@ -75,7 +79,7 @@ def test_every_game_function_matches(gba):
         if row["vram"] != syms[name]:
             assert net.split_function(agent, slug, row["name"], f"0x{syms[name]:08X}", name).startswith("✅")
     table = net.symbols(pid)
-    for name in FUNCTIONS + ["g_player", "g_entities", "g_score", "g_frame_count", "g_rng_state", "__mulsf3", "__addsf3",
+    for name in FUNCTIONS + ["g_player", "g_entities", "g_frame_count", "g_rng_state", "__mulsf3", "__addsf3",
                              "__subsf3", "__divsi3", "__modsi3", "__floatsisf", "__fixsfsi", "__ltsf2", "__gtsf2"]:
         if name in syms:
             current, offset = table.name_at(syms[name])
@@ -84,7 +88,7 @@ def test_every_game_function_matches(gba):
             if current != name:
                 net.rename_symbol(agent, slug, current, name)
                 table = net.symbols(pid)
-    source = (GAME / "game.c").read_text()
+    source = (GAME / "game.c").read_text().replace("g_score", score_name)
     context = net._context(pid)
     with net.store.tx() as db:
         db.execute("UPDATE functions SET unit='spawn' WHERE project_id=? AND name='entity_spawn'", (pid,))

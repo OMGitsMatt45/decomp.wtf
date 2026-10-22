@@ -52,6 +52,7 @@ INSTRUCTIONS = """\
 decomp.wtf: work on the user's own game in the source language reported by project_info.
 C/C++ projects use the game's compiler. GB/GBC assembly projects use RGBDS SM83 assembly, one fixed-bank
 section per attempt, with context.inc; do not use C, m2c or combined multi-section submissions for those.
+Boot utilities may instead report GNU ARM/PowerPC assembly: submit one instruction range with its exact label and size.
 Candidates are linked at their recorded addresses and compared with the ROM: score 0 means byte-identical.
 Start with project_info, then claim_function -> compile_and_diff (repeat). guide(topic) has know-how.
 Everything runs on the user's computer. The game's code is the user's: never publish it anywhere.
@@ -95,6 +96,16 @@ leave notes about bank state or unknown code. split_function at bank:CPU can add
 known bank entry or split a range at an instruction boundary. Do not manufacture a
 completion percentage by automatically verifying every generated listing.
 Release a claim with notes when blocked. Be brief; never publish the owner's code.
+"""
+
+BOOT_ASSEMBLY_PROMPT = """\
+Review GNU assembly for the boot utility {title}. Use only the decomp tools.
+Repeat up to {count} single claims: project_info, claim_function(count=1), get_context,
+review the instruction range, then compile_and_diff. Keep its exported label,
+address and exact byte size. context.inc and external addresses are supplied by
+the app. No file includes or macros. This verifies assembly, not C/C++ recovery.
+Indirect control flow needs review; leave notes. Do not automatically verify
+generated listings to manufacture progress. Release claims when blocked.
 """
 
 FORK_PROMPT = """\
@@ -159,6 +170,11 @@ def _project_info(net: RomNetwork, slug: str) -> str:
     ov = net.overview(slug)
     pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
     if ov["compiler"].get("language") == "asm":
+        if ov.get("assembly_dialect") == "gnu":
+            return (f"{ov['title']} ({ov['platform_name']})\nsource language: GNU assembly; scope: {ov['scope']}\n"
+                    f"{ov['assembly_bytes']} instruction bytes; {ov['base_bytes']} bytes retained from the base image.\n"
+                    "One range per attempt; context.inc is included automatically. Review with claim_function(count=1).\n"
+                    "Assembly verification, not C/C++ recovery. Apploader projects do not rebuild the entire disc.")
         return (f"{ov['title']} ({ov['platform_name']})\nsource language: RGBDS SM83 assembly\n"
                 f"progress: {ov['matched']}/{ov['functions']} discovered ranges verified; {pct:.2f}% of cartridge bytes.\n"
                 f"Disassembly coverage: {ov['assembly_bytes']} bytes; {ov['base_bytes']} bytes still retained from the base ROM.\n"
@@ -224,10 +240,12 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "file_status": lambda net, agent, slug, path: net.forks.file_status(_fork(net, slug, "file_status"), path),
     "split_file": lambda net, agent, slug, path, at, new_name="", data="":
         net.forks.split_file(agent, _fork(net, slug, "split_file"), path, at, new_name, data),
+    "configure_arm7_unit": lambda net, agent, slug, path, data="", language="":
+        net.forks.configure_arm7_unit(agent, _fork(net, slug, "configure_arm7_unit"), path, data, language),
 }
 
 ROM_ONLY = {"get_context", "edit_context", "rename_symbol", "split_function"}
-FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "split_file"}
+FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "split_file", "configure_arm7_unit"}
 
 
 def tool_names(fork: bool) -> list[str]:
@@ -413,6 +431,15 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
         the game still builds byte for byte and every match still matches. A file links only when its code and
         data are exactly one original file's."""
         return await run(ctx, "split_file", path=path, at=at, new_name=new_name, data=data)
+
+    @mcp.tool(meta=ALWAYS_LOAD)
+    async def configure_arm7_unit(ctx: Context, path: str, data: str = "", language: str = "") -> str:
+        """DS ARM7 only: give a source file its original initialized data or BSS, and optionally select c/c++.
+        `data` lists .data:address:size[:symbol], .rodata:address:size[:symbol] or .bss:address:size[:symbol]
+        separated by spaces, using decimal or 0x numbers. Ranges must be inside the module and unclaimed.
+        Code bounds never change. The file becomes non-linked until its source and data match again.
+        Add globals with edit_file. Changes roll back if existing matches or the complete ROM stop matching."""
+        return await run(ctx, "configure_arm7_unit", path=path, data=data, language=language)
 
     @mcp.prompt(title="Decompile", description="Work loop: claim functions and match them byte for byte.")
     def work(count: str = "5") -> str:

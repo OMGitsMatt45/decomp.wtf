@@ -15,12 +15,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import yaml
 
 from .. import toolchains
 from .project import ForkError, ForkProject
@@ -58,10 +62,29 @@ def game_info(path: Path) -> dict:
         head = f.read(0x200)
     if not is_nds(head):
         raise ForkError("this isn't a Nintendo DS ROM (.nds)")
+    # ds-rom 0.8 discards the TWL programs, flags and authentication metadata
+    # when rebuilding. Recognize the container, but do not import a DSi title
+    # as an ordinary DS project with an incomplete reference image.
+    if head[0x12] != 0 or head[0x1C] & 3:
+        raise ForkError("DSi-enhanced and DSi-exclusive ROMs need TWL support, which is not implemented yet. "
+                        "The DS importer cannot preserve their ARM9i/ARM7i programs and authentication metadata.")
     code = head[12:16].decode("ascii", "replace")
     title = head[:12].split(b"\0", 1)[0].decode("ascii", "replace").strip() or code
     return {"platform": "nds", "id": code, "title": title, "region": REGIONS.get(code[3:], "Unknown region"),
             "sha1": hashlib.sha1(path.read_bytes()).hexdigest()}
+
+
+def validate_filesystem(path: Path) -> None:
+    """Check the extractor's input requirements before asking for a compiler."""
+    with path.open("rb") as source:
+        head = source.read(0x200)
+    if len(head) < 0x200:
+        raise ForkError("the DS ROM's header is truncated")
+    offset, size = struct.unpack_from("<II", head, 0x40)
+    if size == 0:
+        raise ForkError("this DS image has no Nitro filesystem. Import boot utilities through the app's native ARM assembly workflow")
+    if size < 8 or offset < 0x200 or offset + size > path.stat().st_size:
+        raise ForkError("the DS ROM's file name table is truncated or outside the file")
 
 
 def versions() -> list[str]:
@@ -79,6 +102,8 @@ def tool_args() -> list[str]:
         raise ForkError("DS games are built with CodeWarrior for DS, which is proprietary: install it in Setup "
                         "(CodeWarrior for DS) if you accept that, then try again")
     args = ["--dsd", str(toolchains.binary("dsd")), "--compilers", str(Path(toolchains.path("mwccarm")) / "mwccarm")]
+    toolchains.ensure("arm-gnu", log=lambda *_: None)
+    args += ["--arm-binutils", str(toolchains.path("arm-gnu") / "bin")]
     if toolchains.get("wibo").supported and sys.platform != "win32":
         toolchains.ensure("wibo", log=lambda *_: None)
         args += ["--wibo", str(toolchains.binary("wibo"))]
@@ -141,18 +166,26 @@ def _units(module: Path) -> list[tuple[int, int, int]]:
     if text is None:
         return []
     symbols = (module / "symbols.txt").read_text(encoding="utf-8")
-    funcs = sorted({int(a, 16): int(size, 16) for _, _, size, a in _FUNC.findall(symbols)
-                    if text[0] <= int(a, 16) < text[1]}.items())
+    sizes = {}
+    for _, _, size, a in _FUNC.findall(symbols):
+        addr, length = int(a, 16), int(size, 16)
+        if text[0] <= addr < text[1]:
+            sizes[addr] = max(sizes.get(addr, 0), length)
+    funcs = sorted(sizes.items())
     units, cur = [], None
     for addr, size in funcs:
         end = min(addr + size, text[1])
-        if cur and (end - cur[0] > UNIT_BYTES or addr < cur[1]):
+        # Alternate entry points may overlap an earlier function. Keep the entire overlapping run in one
+        # object, even beyond UNIT_BYTES: splitting it would truncate symbols and dsd cannot delink that file.
+        # dsd's generated linker script aligns input sections to four bytes. A Thumb entry at +2 cannot start a
+        # separate input section without moving it; extend the preceding unit until a word-aligned boundary.
+        if cur and addr >= cur[1] and addr % 4 == 0 and end - cur[0] > UNIT_BYTES:
             units.append(tuple(cur))
             cur = None
         if cur is None:
             cur = [addr, end, 1]
         else:
-            cur[1], cur[2] = end, cur[2] + 1
+            cur[1], cur[2] = max(cur[1], end), cur[2] + 1
     if cur:
         units.append(tuple(cur))
     if not units:
@@ -176,17 +209,64 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
             "target as a function of its own")
         shutil.rmtree(root / "config" / version, ignore_errors=True)
         _run([*init, "--allow-unknown-function-calls"], root, "analysing the game")
+    from .ds_template.tools.nds_input import finish_layout
+    finish_layout(root / "config" / version / "arm9" / "config.yaml")
 
 
-def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
+def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None, input_format="auto") -> None:
+    """Extract with an optional user-supplied BIOS, retained privately for subsequent builds."""
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
+    configured = (arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")) if input_format == "auto" else None
+    cmd = [sys.executable, "tools/extract.py", dsd, "rom", "extract", "--rom", "extract/baserom.nds",
+           "--output-path", f"extract/{version}", "--analysis-layout"]
+    if input_format == "decrypted":
+        cmd += ["--input-format", "decrypted"]
+    if configured:
+        bios = Path(configured).expanduser().resolve()
+        if not bios.is_file() or bios.stat().st_size != 0x4000:
+            raise ForkError("the ARM7 BIOS must be an existing 16 KiB file; check DECOMP_ARM7_BIOS")
+        private = root / "extract" / "arm7_bios.bin"
+        if bios != private.resolve():
+            temporary = None
+            try:
+                # NamedTemporaryFile creates owner-only files before writing
+                # any bytes, and replacement keeps an interrupted copy from
+                # leaving partial key data at the build's persistent path.
+                with bios.open("rb") as source, tempfile.NamedTemporaryFile(
+                        dir=private.parent, prefix=".arm7-bios-", delete=False) as destination:
+                    temporary = Path(destination.name)
+                    shutil.copyfileobj(source, destination)
+                temporary.replace(private)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        private.chmod(0o600)
+        cmd += ["--arm7-bios", "extract/arm7_bios.bin"]
+    try:
+        _run(cmd, root, "extracting the ROM")
+    except ForkError as e:
+        if "provide ARM7 BIOS" in str(e):
+            raise ForkError(f"{e}\nSet DECOMP_ARM7_BIOS to your own 16 KiB ARM7 BIOS file and retry.") from e
+        raise
+
+
+def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Path | None = None, input_format="auto",
+           log=print) -> dict:
     """Make the project in `root` (which must not exist yet) and build it once. Returns facts about the game."""
     info = game_info(game)
+    if input_format not in ("auto", "decrypted"):
+        raise ForkError("DS input format must be auto or decrypted")
+    validate_filesystem(game)
     version = info["id"].lower()
     compiler = (compiler or f"DS/{DS_DEFAULT}").removeprefix("DS/")
     if compiler not in versions():
         raise ForkError(f"CodeWarrior for DS {compiler} isn't in the installed compiler pack")
     args = tool_args()
     shutil.copytree(TEMPLATE, root)
+    # Establish the ignored private paths before extraction or a first build can fail.
+    (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
+                                     ".ninja_*\n*.d\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "extract").mkdir()
     try:
         (root / "extract" / "baserom.nds").hardlink_to(game)
@@ -197,11 +277,23 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     cfg = root / "tools" / "configure.py"
     cfg.write_text(cfg.read_text(encoding="utf-8").replace('GAME = "game"', f'GAME = "{version}"')
                    .replace(f'MWCC_VERSION = "{DS_DEFAULT}"', f'MWCC_VERSION = "{compiler}"'), encoding="utf-8")
+    if input_format == "decrypted":
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace('INPUT_FORMAT = "auto"', 'INPUT_FORMAT = "decrypted"')
+                       .replace("USE_ARM7_BIOS = True", "USE_ARM7_BIOS = False"), encoding="utf-8")
 
     dsd = args[args.index("--dsd") + 1]
     log(f"extracting {info['title']} ({info['id']}) with ds-decomp")
-    _run([dsd, "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", f"extract/{version}"], root,
-         "extracting the ROM")
+    _extract(dsd, root, version, arm7_bios=arm7_bios, input_format=input_format)
+    arm9 = yaml.load((root / "extract" / version / "arm9/arm9.yaml").read_text(encoding="utf-8"),
+                     Loader=yaml.BaseLoader)
+    with game.open("rb") as stream:
+        header = stream.read(0x70)
+    # dsd recomputes the encrypted secure-area checksum whenever a BIOS is
+    # supplied, including for unencrypted homebrew that originally stored zero.
+    # Keep the key for encrypted ROMs and decrypted copies retaining that CRC.
+    if arm9["encrypted"] == "false" and struct.unpack_from("<H", header, 0x6C)[0] == 0:
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace("USE_ARM7_BIOS = True", "USE_ARM7_BIOS = False"),
+                       encoding="utf-8")
     log("analysing the ARM9 program, its autoloads and overlays (dsd init)")
     _init(dsd, root, version, log)
 
@@ -220,7 +312,10 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
                            f"({prefix}), found by ds-decomp. */\n#include \"common.h\"\n", encoding="utf-8")
             sources.append(name)
         (module / "delinks.txt").write_text(lines, encoding="utf-8")
-    log(f"{len(sources)} source files for agents to write into")
+    from . import arm7_project
+
+    arm7_count = arm7_project.prepare(root, version, game)
+    log(f"{len(sources)} ARM9 source files and {arm7_count} ARM7 source units for agents to write into")
 
     fp = ForkProject(root)
     setup = [[sys.executable, "tools/configure.py", version, *args], ["ninja", "prepare"]]
@@ -236,18 +331,18 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         "created": "from scratch", "platform": "nds", "version": version, "compiler": f"DS/{compiler}",
         "game": {"what": "your copy of the game (.nds)", "path": "extract/baserom.nds", "sha1": info["sha1"]},
         "setup": [["python", "tools/configure.py", version, *args], ["ninja", "prepare"]],
-        "rebuild": rebuild,
+        "rebuild": rebuild, "ds_input_format": input_format,
     }, indent=2), encoding="utf-8")
-    (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
-                                     ".ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "README.md").write_text(f"""# {info['title']} ({info['id']}) decompilation
 
 Started from scratch with [decomp.wtf](https://decomp.wtf) on [ds-decomp](https://github.com/AetiasHax/ds-decomp),
 the toolkit DS decomps use. Every build rebuilds the ROM and checks it against your copy, byte for byte.
 
 1. Put your own copy of the game here as `extract/baserom.nds` (never commit it).
-2. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
-3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).
+   Encrypted ROMs, and decrypted copies retaining their encrypted secure checksum, also need your own 16 KiB ARM7 BIOS at `extract/arm7_bios.bin` (also never committed).
+2. Install the Python build dependencies with `python -m pip install -r requirements.txt` (already included in decomp.wtf).
+3. `python tools/configure.py {version} --dsd <dsd> --compilers <CodeWarrior for DS> [--wibo <wibo>]`, then `ninja`.
+4. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress in [objdiff](https://github.com/encounter/objdiff).
 
 Compiler: CodeWarrior for DS {compiler} (change `MWCC_VERSION` in tools/configure.py if the game used another).
 `config/{version}/` holds what ds-decomp found: sections, symbols, relocations and the source files (`delinks.txt`).
@@ -267,15 +362,18 @@ def check_rom(root: Path, version: str, log=print) -> dict:
     Decompiling doesn't depend on it (each function is compared with its own delinked original), so a ROM that doesn't
     come out identical yet is reported, not fatal: tools/same.py says which part differs (issue #6: a Pokemon
     Platinum copy whose rebuild differed stopped the whole import)."""
-    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     stamp = root / "build" / version / "rom.ok"
+    # Compilation/link failures can occur before same.py runs. A prior success
+    # must not remain stamped as verification of the newly edited source.
+    stamp.unlink(missing_ok=True)
+    ok, tail = ForkProject(root).run(["ninja", "rom"], log=lambda *_: None, timeout=3600)
     if ok and stamp.exists():
         note = stamp.read_text(encoding="utf-8").strip()
         detail = "identical up to the padding at the end (your copy is trimmed)" if "padding" in note else "identical"
         log(f"the rebuilt ROM is your copy, byte for byte{' up to the padding at its end' if 'padding' in note else ''}")
         return {"identical": True, "detail": detail}
     lines = [line.strip()[2:] for line in tail.splitlines() if line.strip().startswith("- ")]
-    detail = "; ".join(lines) or (tail.strip().splitlines() or ["the ROM build failed"])[-1][-300:]
+    detail = "; ".join(lines) or tail.strip()[-1500:] or "the ROM build failed"
     log(f"note: the rebuilt ROM isn't your copy byte for byte yet ({detail}). Decompiling works anyway: every "
         "function is compared with your copy's own code.")
     return {"identical": False, "detail": detail}

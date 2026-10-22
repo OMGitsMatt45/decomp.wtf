@@ -8,6 +8,7 @@ your own copy of the game), and check that nothing made from the game would be c
 import json
 import re
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -131,3 +132,78 @@ def test_check_records_a_function_written_outside(tmp_path):
     (tree / "src" / "main" / "lerp.cpp").write_text('#include "common.h"\n\n' + csource.get((GAME / "game.c").read_text(), "lerp"))
     assert py("check", "lerp").returncode == 0
     assert "identical" in py().stdout
+
+
+@pytest.mark.parametrize("title", [b"\0" * 20, b"  DEMO QUEST 64".ljust(20, b" ")])
+def test_assembly_export_preserves_raw_title_without_a_compiler(tmp_path, monkeypatch, title):
+    if toolchains.installed("binutils-mips") is None or shutil.which("ld.lld") is None:
+        pytest.skip("needs binutils-mips and ld.lld")
+    binutils = toolchains.path("binutils-mips")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    shutil.copytree(binutils, tools / "binutils-mips")
+    monkeypatch.setenv("DECOMPNET_TOOLCHAINS", str(tools))
+    assert toolchains.installed("gcc-2.7.2-kmc") is None
+
+    rom = bytearray(DEMOS["n64"][0].read_bytes())
+    assert len(title) == 20
+    rom[0x20:0x34] = title
+    workspace = tmp_path / "app"
+    workspace.mkdir()
+    net = RomNetwork(workspace / "app.db", workspace)
+    slug = net.import_rom(bytes(rom), confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["matched"] == 0, result["log"]
+    tree = Path(result["path"])
+    assert (tree / "build/game.z64").read_bytes() == rom
+
+    # A fresh checkout must regenerate the same header and assembly.
+    for generated in ("asm", "assets", "build"):
+        shutil.rmtree(tree / generated, ignore_errors=True)
+    rebuilt = subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True)
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert (tree / "build/game.z64").read_bytes() == rom
+
+
+def test_assembly_export_links_branches_into_other_functions(tmp_path, monkeypatch):
+    if toolchains.installed("binutils-mips") is None:
+        pytest.skip("needs binutils-mips")
+    binutils = toolchains.path("binutils-mips")
+    tools = tmp_path / "tools"
+    shutil.copytree(binutils, tools / "binutils-mips")
+    monkeypatch.setenv("DECOMPNET_TOOLCHAINS", str(tools))
+    assert toolchains.installed("gcc-2.7.2-psx") is None
+
+    # Two called functions share a tail: the second branches into the first
+    # at +4. The disassembler names that interior target .L80010044.
+    base = 0x80010000
+    code = bytearray(0x800)
+    def words(offset, values):
+        struct.pack_into("<" + "I" * len(values), code, offset, *values)
+    words(0, [0x27BDFFF0, 0xAFBF000C, 0x0C004010, 0, 0x0C004018, 0,
+              0x8FBF000C, 0x27BD0010, 0x03E00008, 0])
+    words(0x40, [0x24020001, 0x24420001, 0x03E00008, 0])
+    words(0x60, [0x0401FFF8, 0])
+    # Enough varied instructions for splat's text-section detector.
+    words(0x80, [0x24420001, 0x00441026] * 20 + [0x03E00008, 0])
+    header = bytearray(0x800)
+    header[:8] = b"PS-X EXE"
+    struct.pack_into("<IIII", header, 0x10, base, 0, base, len(code))
+    original = bytes(header + code)
+    workspace = tmp_path / "app"
+    workspace.mkdir()
+    net = RomNetwork(workspace / "app.db", workspace)
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["functions"] >= 3
+    assert result["identical"] and result["matched"] == 0, result["log"]
+    tree = Path(result["path"])
+    assert json.loads((tree / "build.json").read_text())["symbols"][".L80010044"] == base + 0x44
+    assert (tree / "build/game.exe").read_bytes() == original
+
+    # Regenerate assembly without relying on symbols from the first build.
+    for generated in ("asm", "assets", "build"):
+        shutil.rmtree(tree / generated, ignore_errors=True)
+    rebuilt = subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True)
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert (tree / "build/game.exe").read_bytes() == original
