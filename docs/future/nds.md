@@ -1,12 +1,12 @@
 # Nintendo DS: encrypted imports and reconstruction qualification
 
-Status: **qualified on original fixtures; retail qualification remains open**.
+Status: **ready for review on original fixtures; individual retail qualification remains open**.
 Baseline: current `main`.
 
 PR #7 now preserves PR #1's implementation commit and integrates it with the
 current import paths and native Windows/Linux checks. PR #1's branch and review
-history remain available. Keep PR #7 in draft while the remaining gaps below
-are unresolved.
+history remain available. The agreed qualification uses original fixtures;
+individual retail cases and further recovery features remain explicit below.
 
 ## Current coverage
 
@@ -104,12 +104,24 @@ The focused `Nintendo DS native qualification` workflow runs the same DS suites
 on both hosts for quicker feedback, with an independent gate that rejects
 missing suites and skipped cases.
 
-Implementation commit [`f828a7e`](https://github.com/OMGitsMatt45/decomp.wtf/commit/f828a7ef6963246325d26fdfc1046146a97c4de0)
-passes all 81 DS and comparison-error checks on both native hosts with zero skips
-in the [focused qualification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727350867).
-The [full operational run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727347499)
-also passes every Windows/Linux core, packaging and Game Boy job.
-Expanded implementation qualification is recorded below once its native runs finish.
+The [native qualification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39732285590)
+at [`fcbb03e`](https://github.com/OMGitsMatt45/decomp.wtf/commit/fcbb03e2a2d6da22f9114118127e0d46e8d52cc6)
+passes **112 import/matching/rebuild checks and 3 execution checks on each host,
+with zero skips**. The dedicated execution jobs build and run native Linux and
+Windows cores, using their built-in replacements rather than private inputs.
+The [full application run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39732278706)
+passes all seven jobs: Linux core 617 passed plus 5 separate i386 checks;
+Windows core 591 passed. Its 33/59 platform/private-ROM or separately scheduled
+skips are separate from required suites, which have none. Those totals include
+the three execution cases required by the dedicated native jobs above.
+
+An additional private local run passes all **71 encrypted-workflow checks** with
+the supplied ARM7 BIOS. Using the supplied ARM9 BIOS and firmware, direct boot
+produces identical watched state over 120 frames for the original demo, its
+encrypted fixture and source-linked Thumb rebuilds from both primary compilers.
+The ARM9 counter advances from 256 to 10,000 and the ARM7 counter from 162,635 to
+2,150,406 between sampled checkpoints. The supplied files remain outside Git;
+CI contains only original fixtures and generated test keys.
 
 ## Execution validation
 
@@ -150,13 +162,16 @@ This is direct-boot CPU execution validation, not physical-console or
 firmware-menu certification. The fixture uses a blank logo and simplified
 runtime helpers and is intended for decompiler qualification.
 
-## Work that remains
+## Completed qualification
 
 - [x] Review and preserve PR #1's private BIOS, overlapping-entry, word-alignment, unused-section and instruction-mode changes on current main.
 - [x] Reproduce the 12-byte secure-prefix/checksum failure pattern on an original fixture and reject failed decryption before creating matching references, without masking bytes.
-- [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
 - [x] Qualify ARM9/ITCM source linking, DTCM reconstruction, overlapping overlays, ARM7 byte retention, compression and both DS compiler versions on original fixtures.
 - [x] Expand ARM7 execution/retention, runtime-autoload and compiler-version coverage on original fixtures.
+
+## Additional compatibility work
+
+- [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
 - [ ] Qualify DS Protect variants and implement ARM7 C/C++ source recovery beyond the pinned toolkit's ARM9 analysis.
 
 The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
@@ -181,6 +196,8 @@ runtime-module, DS Protect and compiler-version coverage remains open.
 - [x] Verify module checks, symbol addresses, restored ARM/Thumb mode and a strict full-ROM rebuild on those fixtures; retain failures as failures.
 - [x] Add browser imports, claims, failure reporting and clean standalone rebuild coverage for encrypted projects.
 - [x] Qualify the bounded pilot CLI with encrypted inputs on both native hosts.
+- [x] Qualify additional runtime autoloads and matching source links across all 24 registered DS compiler versions.
+- [x] Execute original/source-linked programs on native Windows/Linux, require both processors to advance and reject independent processor stalls.
 - [x] Keep current required operational suites passing; new platform checks must fail rather than silently skip missing required tools.
 
 ## Starting points

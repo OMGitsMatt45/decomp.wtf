@@ -5,11 +5,11 @@ PlayStation consoles**, plus shared decompiler tooling for those consoles.
 Closely related or speculative platforms share a qualification plan; each needs
 its own implementation evidence before support can be claimed.
 
-**19 future-work draft PRs are open:** seven for implemented platform families,
+**19 future-work PRs are open:** seven for implemented platform families,
 eleven for missing console workflows, and one for shared decompiler engines.
 Most documents are work plans with open implementation and validation checklists.
-DS PR #7 includes implementation and original-fixture qualification; its remaining
-reconstruction gaps stay explicit.
+DS PR #7 includes implementation, original-fixture qualification and native
+two-processor execution checks; further compatibility work stays explicit.
 
 ## Implemented platform families
 
@@ -23,7 +23,7 @@ compiler behavior. GB/GBC is an experimental assembly workflow.
 | PlayStation | Disc and overlay reconstruction, compiler-specific parity | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps1/docs/future/ps1.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) |
 | PlayStation 2 | Whole-disc/overlay exports, exact source provenance, tool evaluation | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps2/docs/future/ps2.md) | [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5) |
 | Game Boy Advance | Distinct ARM compiler path and ARM/Thumb interworking | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gba/docs/future/gba.md) | [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6) |
-| Nintendo DS | Unfinished PR #1, encrypted imports and strict reconstruction | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-nds/docs/future/nds.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) |
+| Nintendo DS | Encrypted imports, verified source links and strict reconstruction/execution | [Qualification](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-nds/docs/future/nds.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) |
 | GameCube / Wii | Modules, data completion and linked-source coverage | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gc-wii/docs/future/gc-wii.md) | [#8](https://github.com/OMGitsMatt45/decomp.wtf/pull/8) |
 | Game Boy / Game Boy Color | Mapper state, reviewed layouts and room synchronization | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gb-gbc/docs/future/gb-gbc.md) | [#9](https://github.com/OMGitsMatt45/decomp.wtf/pull/9) |
 
@@ -78,10 +78,11 @@ feasibility gates rather than claiming a ready implementation.
 
 ## Work-plan status
 
-All 19 PRs target `main` and remain in draft. Most branches contain a scoped
+All 19 PRs target `main`. The 18 work-plan branches remain in draft; DS PR #7 is
+ready for review on the agreed original fixtures. Most branches contain a scoped
 work-plan document with current coverage, reusable programs, missing work and
 native Windows/Linux acceptance checks. DS PR #7 now includes implementation
-and original-fixture qualification, preserving PR #1's commit and review history;
+and original-fixture and execution qualification, preserving PR #1's commit and review history;
 its remaining retail-ROM and broader reconstruction gaps stay explicit.
 
 [Verified creation results](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/pr-maintenance-2026-10-21/docs/maintenance/pr-results.json)
