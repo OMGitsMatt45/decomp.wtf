@@ -11,7 +11,8 @@ and a GB/GBC assembly workbench. The latest release is
 The original MIT-licensed project by Sam Wolfs was archived at v0.10.6.
 Use this repository's installers and releases for the maintained fork.
 
-[Install](#install) · [Platforms](#platforms) · [Agents](#agents) ·
+[Install](#install) · [Manual downloads](#downloads-you-install-yourself) ·
+[Platforms](#platforms) · [Agents](#agents) ·
 [Public decomps](#continue-a-public-decomp) · [Future work](docs/future-work.md) ·
 [Releases](https://github.com/OMGitsMatt45/decomp.wtf/releases)
 
@@ -54,6 +55,31 @@ Settings or with `decomp update`.
 Fresh remote installs use this fork's releases. Local source installs use that
 source, and Git checkouts retain their repository and branch update source.
 The original upstream website still refers to the archived upstream release.
+
+### Downloads you install yourself
+
+The installers manage uv, Python 3.12 and the app's Python dependencies, including
+Ninja. Basic setup downloads KMC GCC, m2c and objdiff. Other supported compilers
+and tools download on demand or through **Compilers & tools**, which also handles
+their toolchain dependencies and checksum checks. IDO and CodeWarrior require
+you to accept their licenses there before downloading. Ghidra is an optional
+download from the same page; its Java prerequisite is separate.
+
+Install the following only for the features you choose:
+
+| Download | When you need it |
+| --- | --- |
+| [Java 21+ JDK (Eclipse Temurin)](https://adoptium.net/temurin/releases/?version=21) | Optional Ghidra decompiler. Put `java` on PATH; check with `java -version`. |
+| [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
+| [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
+| [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+
+On Linux, the installer also expects [curl](https://curl.se/download.html).
+Older 32-bit compilers need your distribution's 32-bit runtime, such as
+[libc6-i386 on Ubuntu 24.04](https://packages.ubuntu.com/noble/libc6-i386).
+These host packages are installed through your distribution's package manager.
+Public decomp repositories can require additional build tools; follow that
+project's setup instructions.
 
 ## Platforms
 
@@ -127,6 +153,14 @@ with matching. Generated GameCube/Wii projects can link finished source files
 into the game after a successful whole-game check.
 
 ## Agents
+
+**AI agents are optional.** You can edit source, compile, compare and export
+without an agent or model account. decomp.wtf does not install agent clients.
+If you want one, use its official installation instructions:
+[Claude Code](https://code.claude.com/docs/en/setup),
+[Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
+[Antigravity CLI](https://antigravity.google/docs/cli), or
+[opencode](https://opencode.ai/docs/).
 
 Run `decomp connect` to configure an installed Claude Code, Codex, Antigravity
 CLI or opencode client. Then ask it to work on a local game or project. Any MCP
