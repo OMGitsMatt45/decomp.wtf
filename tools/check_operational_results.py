@@ -7,7 +7,7 @@ from collections import defaultdict
 
 
 DS_REQUIRED = {"test_ds", "test_ds_rom_check", "test_ds_bios", "test_ds_modes", "test_ds_units",
-               "test_ds_encrypted", "test_ds_inputs", "test_objdiff_errors"}
+               "test_ds_encrypted", "test_ds_inputs", "test_ds_modules", "test_ds_arm7", "test_objdiff_errors"}
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
             "test_gc", "test_export", "test_rom", "test_app_engine", "test_optional_tools",

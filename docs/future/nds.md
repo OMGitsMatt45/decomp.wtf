@@ -174,8 +174,10 @@ runtime helpers and is intended for decompiler qualification.
 - [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
 - [ ] Qualify DS Protect variants and implement ARM7 C/C++ source recovery beyond the pinned toolkit's ARM9 analysis.
 
-The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
-original test fixtures. A wrong test key reproduces exactly 12 changed bytes
+The newly supplied YV5P image has now been tested: full import fails secure-area
+validation despite a standard BIOS7 hash. Its ARM7 and overlays can be examined
+independently; see the [retail test record](../ds-retail-yv5p.md). This does not
+resolve the original PR #1 discrepancy. A wrong test key reproduces exactly 12 changed bytes
 with raw dsd: offsets `0x6C-0x6D`, `0x15E-0x15F` and `0x4000-0x4007`. The guard
 rejects that failed decryption before it can replace verified reference data.
 This establishes one concrete cause of the pattern; it does not establish that
@@ -184,8 +186,11 @@ Nonstandard secure-area prefixes are rejected explicitly. The build corrects the
 pinned toolkit's extra overlay BSS rounding using the actual linked boundaries,
 without changing the ROM comparison.
 
-ARM7 programs and ARM7 overlays are retained, not recovered as matching C/C++.
-Recovered source can enter exact ROM rebuilds once its entire unit matches.
+ARM7 programs and ARM7 overlays are retained in generated project rebuilds.
+[Initial isolated ARM7 C/C++ recovery](../ds-arm7.md) now has a BIOS-free CLI,
+including ARM/Thumb drafts and exact raw-byte verification. Integrating linked
+ARM7 source units into generated projects remains open.
+Recovered ARM9 source can enter exact ROM rebuilds once its entire unit matches.
 Partial round trips still retain unmatched original objects. Further ARM7,
 runtime-module, DS Protect and compiler-version coverage remains open.
 

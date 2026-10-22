@@ -7,6 +7,7 @@ import pytest
 from elftools.elf.elffile import ELFFile
 
 from decompnet import toolchains
+from decompnet.elfobj import extract_function
 from decompnet.forks import drafts, scratch_dsd
 
 
@@ -44,3 +45,5 @@ def test_mode_wrapper_restores_compiler_state(tmp_path, monkeypatch, version, la
         sizes = {s.name: s["st_size"] for s in elf.get_section_by_name(".symtab").iter_symbols()}
     assert sizes["mode_probe"] == (2 if thumb else 4)
     assert sizes["following_probe"] == (4 if thumb else 2)
+    assert extract_function(obj.read_bytes(), "mode_probe").arch == ("thumb" if thumb else "arm")
+    assert extract_function(obj.read_bytes(), "following_probe").arch == ("arm" if thumb else "thumb")
