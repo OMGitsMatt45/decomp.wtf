@@ -6,6 +6,8 @@ import runpy
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -73,15 +75,21 @@ def test_generated_build_reuses_bios_as_a_dependency(tmp_path, monkeypatch, has_
         assert cmd[:3] == [str(fake_dsd), "json", "delinks"]
         return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(delinks))
 
-    monkeypatch.setattr(subprocess, "run", describe)
     monkeypatch.syspath_prepend(str(root / "tools"))
     monkeypatch.setattr(sys, "argv", [str(root / "tools/configure.py"), "yv5p", "--dsd", str(fake_dsd),
                                     "--compilers", str(tmp_path / "compilers")])
     monkeypatch.chdir(root)
-    runpy.run_path(str(root / "tools/configure.py"), run_name="__main__")
+    configure = runpy.run_path(str(root / "tools/configure.py"))
+    # Keep this stub local to the generated script: app indexing may still be
+    # running subprocesses in background threads from preceding tests.
+    configure["main"].__globals__["subprocess"] = SimpleNamespace(
+        run=describe, list2cmdline=subprocess.list2cmdline,
+    )
+    configure["main"]()
     ninja = re.sub(r"\$\n\s*", "", (root / "build.ninja").read_text())
-    assert ("--arm7-bios extract/arm7_bios.bin" in ninja) == has_bios
-    assert ("| tools/extract.py extract/arm7_bios.bin" in ninja) == has_bios
+    bios_path = Path("extract") / "arm7_bios.bin"
+    assert (f"--arm7-bios {bios_path}" in ninja) == has_bios
+    assert (f"| tools/extract.py {bios_path}" in ninja) == has_bios
     assert "tools/extract.py" in ninja
     if has_bios:
-        assert "rom build --config $in --rom $out --arm7-bios extract/arm7_bios.bin" in ninja
+        assert f"rom build --config $in --rom $out --arm7-bios {bios_path}" in ninja
