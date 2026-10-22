@@ -23,6 +23,15 @@ from decompnet.forks import scratch_dsd
 from .test_ds_encrypted import encrypted, pytestmark
 
 
+def test_signature_without_protected_functions_is_not_a_decoded_context(tmp_path):
+    from decompnet.forks.ds_template.tools.arm7_codec import decode
+    code = bytearray(0x60)
+    code[0x40:0x58] = SIGNATURES["1.00"]
+    with pytest.raises(ValueError, match="no codec-verified protected functions"):
+        decode(toolchains.binary("dsd"), bytes(code), 0x037F8000, tmp_path / "context")
+    assert not (tmp_path / "context").exists()
+
+
 def test_protected_overlay_is_decoded_and_reencrypted_exactly(encrypted, tmp_path, monkeypatch):
     game, bios = encrypted
     seed = tmp_path / "protected seed"

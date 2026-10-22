@@ -110,6 +110,8 @@ def decode(dsd, code, address, directory):
         state = item.get("dsprot", {}).get("unencrypted") if isinstance(item.get("dsprot"), dict) else None
         if state is None or int(item["base_address"]) != address:
             raise ValueError("ARM7 codec did not decode the protected runtime module")
+        if not entries(state):
+            raise ValueError("ARM7 signature has no codec-verified protected functions")
         plain = binary.read_bytes()
         if len(plain) != len(code) or encrypt(dsd, staged, plain) != code:
             raise ValueError("ARM7 protected module failed exact re-encryption")
