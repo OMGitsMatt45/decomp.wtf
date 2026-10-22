@@ -159,6 +159,32 @@ def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_p
     assert (standalone / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
 
 
+def test_failed_standalone_extraction_preserves_the_verified_reference(imported):
+    net, slug, _, _ = imported
+    root = Path(net.project_row(slug)["root"])
+    reference = root / "extract/adqe"
+
+    def contents():
+        return {p.relative_to(reference): p.read_bytes() for p in reference.rglob("*") if p.is_file()}
+
+    before = contents()
+    bios = root / "extract/arm7_bios.bin"
+    correct = bios.read_bytes()
+    try:
+        bios.write_bytes(bytes(0x4000))
+        for _ in range(2):
+            result = subprocess.run([sys.executable, "tools/extract.py", str(toolchains.binary("dsd")),
+                                     "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", "extract/adqe",
+                                     "--arm7-bios", "extract/arm7_bios.bin"], cwd=root, capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace", timeout=30)
+            assert result.returncode != 0 and "did not validate" in result.stderr
+            assert contents() == before
+            assert not list((root / "extract").glob(".adqe-extract-*"))
+    finally:
+        bios.write_bytes(correct)
+    assert scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)["identical"]
+
+
 @pytest.mark.skipif(toolchains.installed("m2c") is None, reason="bounded pilot needs the registered m2c tool")
 def test_bounded_pilot_cli_uses_the_private_key_and_reports_strict_rebuild(encrypted, tmp_path):
     game, bios = encrypted

@@ -20,7 +20,8 @@ Set `DECOMP_ARM7_BIOS` before starting the app, or pass `--arm7-bios` to
 access on POSIX hosts. Private paths are ignored before the first extraction or
 build. Missing keys and failed secure-area decryption stop the import before any
 matching targets are registered. The generated project's extractor applies the
-same decryption check when rebuilding.
+same decryption check when rebuilding, stages output separately, and preserves
+the previous verified extraction after a failure.
 
 The full-image check still compares every byte, with the existing explicit
 trimmed/padded-tail policy. Secure-area prefix and checksum differences are never
