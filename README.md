@@ -144,6 +144,8 @@ Important boundaries:
   DSi-enhanced/exclusive ROM containers are rejected explicitly: the pinned
   toolkit cannot preserve ARM9i/ARM7i programs and TWL authentication metadata.
   DSi-branded compiler versions can still compile ordinary DS source.
+  A separate [DSi container inspector](docs/dsi.md) can validate stored ranges
+  and privately extract their original bytes, including opaque TWL metadata.
 - GB/GBC retains unknown bytes from the owner's base ROM. An exact rebuild is
   not a completed disassembly. Mapper analysis, richer layouts and room layout
   synchronization remain unfinished.
