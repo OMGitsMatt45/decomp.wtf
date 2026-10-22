@@ -1,10 +1,11 @@
 """Encrypted DS imports retain the user's BIOS and pass it to subsequent extraction builds."""
 
+import json
 import re
+import runpy
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -59,21 +60,28 @@ def test_plain_rom_needs_no_bios_and_encrypted_errors_explain_the_setting(tmp_pa
 
 
 @pytest.mark.parametrize("has_bios", [False, True])
-def test_generated_build_reuses_bios_as_a_dependency(tmp_path, has_bios):
+def test_generated_build_reuses_bios_as_a_dependency(tmp_path, monkeypatch, has_bios):
     root = tmp_path / "project"
     shutil.copytree(scratch_dsd.TEMPLATE, root)
     (root / "extract").mkdir()
     if has_bios:
         (root / "extract/arm7_bios.bin").write_bytes(b"x" * 0x4000)
-    fake_dsd = tmp_path / "dsd"
-    fake_dsd.write_text("#!" + sys.executable + "\nimport json\nprint(json.dumps("
-                        + repr({"files": [], "arm9_lcf_file": "build/arm9.lcf", "arm9_objects_file": "build/objects.txt"})
-                        + "))\n")
-    fake_dsd.chmod(0o755)
-    subprocess.run([sys.executable, str(root / "tools/configure.py"), "yv5p", "--dsd", str(fake_dsd),
-                    "--compilers", str(tmp_path / "compilers")], cwd=root, check=True, capture_output=True)
+    fake_dsd = tmp_path / "tools with spaces" / "dsd.exe"
+    delinks = {"files": [], "arm9_lcf_file": "build/arm9.lcf", "arm9_objects_file": "build/objects.txt"}
+
+    def describe(cmd, **kwargs):
+        assert cmd[:3] == [str(fake_dsd), "json", "delinks"]
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(delinks))
+
+    monkeypatch.setattr(subprocess, "run", describe)
+    monkeypatch.syspath_prepend(str(root / "tools"))
+    monkeypatch.setattr(sys, "argv", [str(root / "tools/configure.py"), "yv5p", "--dsd", str(fake_dsd),
+                                    "--compilers", str(tmp_path / "compilers")])
+    monkeypatch.chdir(root)
+    runpy.run_path(str(root / "tools/configure.py"), run_name="__main__")
     ninja = re.sub(r"\$\n\s*", "", (root / "build.ninja").read_text())
     assert ("--arm7-bios extract/arm7_bios.bin" in ninja) == has_bios
-    assert ("| extract/arm7_bios.bin" in ninja) == has_bios
+    assert ("| tools/extract.py extract/arm7_bios.bin" in ninja) == has_bios
+    assert "tools/extract.py" in ninja
     if has_bios:
         assert "rom build --config $in --rom $out --arm7-bios extract/arm7_bios.bin" in ninja

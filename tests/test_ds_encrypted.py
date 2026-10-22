@@ -1,0 +1,225 @@
+"""Original encrypted DS fixtures: private keys, strict rebuilds and real Thumb matching.
+
+The generated 16 KiB file is deterministic test data, with no console BIOS code
+or Nintendo key table. dsd uses it to encrypt and decrypt our own demo only.
+"""
+
+import hashlib
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from elftools.elf.elffile import ELFFile
+from starlette.testclient import TestClient
+
+from decompnet import toolchains
+from decompnet.app.engine import RomNetwork
+from decompnet.app.server import build
+from decompnet.forks import drafts, scratch_dsd
+from decompnet.forks.project import ForkProject
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO = ROOT / "projects/demo-ds"
+ROM = DEMO / "build/demoquest.nds"
+
+pytestmark = pytest.mark.skipif(
+    any(toolchains.installed(t) is None for t in ("mwccarm", "dsd", "objdiff-cli"))
+    or (toolchains.get("wibo").supported and toolchains.installed("wibo") is None),
+    reason="needs CodeWarrior for DS, ds-decomp and objdiff")
+
+
+@pytest.fixture(scope="module")
+def encrypted(tmp_path_factory):
+    if not ROM.exists():
+        subprocess.run([sys.executable, str(DEMO / "build.py")], check=True)
+    work = tmp_path_factory.mktemp("encrypted DS fixture")
+    bios = work / "original test key.bin"
+    bios.write_bytes(hashlib.shake_256(b"decomp.wtf original non-console test key").digest(0x4000))
+    dsd = str(toolchains.binary("dsd"))
+    seed = work / "seed"
+    subprocess.run([dsd, "rom", "extract", "--rom", str(ROM), "--output-path", str(seed)], check=True,
+                   capture_output=True)
+    config = seed / "arm9/arm9.yaml"
+    text = config.read_text(encoding="utf-8")
+    assert "encrypted: false" in text
+    config.write_text(text.replace("encrypted: false", "encrypted: true"), encoding="utf-8")
+    # Two mutually exclusive ARM9 overlays share a runtime address; an ARM7
+    # overlay is retained as original data. Each includes unused data and the
+    # Nitro-style constructor terminator and aligned BSS extent.
+    config = seed / "config.yaml"
+    text = config.read_text(encoding="utf-8")
+    for cpu, file_ids, address in (("arm9", [0, 1], 0x02200000), ("arm7", [2], 0x02390000)):
+        overlays = []
+        for index, file_id in enumerate(file_ids):
+            data = struct.pack("<III", 0xE2800001 + index, 0xE12FFF1E, 0x12345678 + index) + bytes(20)
+            name = f"ov{index:03}.bin"
+            (seed / cpu / name).write_bytes(data)
+            overlays.append({"id": index, "base_address": address, "code_size": len(data), "bss_size": 32,
+                             "ctor_start": address + 28, "ctor_end": address + 32, "file_id": file_id,
+                             "compressed": False, "signed": False, "file_name": name})
+        (seed / cpu / "overlays.yaml").write_text(json.dumps({"table_signed": False, "overlays": overlays}),
+                                                  encoding="utf-8")
+        text = text.replace(f"{cpu}_overlays: null", f"{cpu}_overlays: {cpu}/overlays.yaml")
+    config.write_text(text, encoding="utf-8")
+    game = work / "encrypted.nds"
+    subprocess.run([dsd, "rom", "build", "--config", str(seed / "config.yaml"), "--rom", str(game),
+                    "--arm7-bios", str(bios)], check=True, capture_output=True)
+    assert game.read_bytes()[0x4000:0x4800] != ROM.read_bytes()[0x4000:0x4800]
+    return game, bios
+
+
+@pytest.fixture(params=["2.0/sp1p5", "2.0/sp1p6"])
+def imported(encrypted, tmp_path, request):
+    game, bios = encrypted
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{request.param}", confirmed=True, log=lambda *_: None)
+    return net, slug, game, bios
+
+
+def test_encrypted_rom_rebuilds_every_byte_and_keeps_bios_private(imported):
+    net, slug, game, bios = imported
+    overview = net.overview(slug)
+    root = Path(net.project_row(slug)["root"])
+    assert overview["rebuild"] == {"identical": True, "detail": "identical"}
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+    assert struct.unpack_from("<I", game.read_bytes(), 0x54)[0] == 64
+    assert struct.unpack_from("<I", game.read_bytes(), 0x5C)[0] == 32
+    dsd = str(toolchains.binary("dsd"))
+    config = "config/adqe/arm9/config.yaml"
+    for args in (["check", "modules", "--config-path", config, "--fail"],
+                 ["check", "symbols", "--config-path", config, "--elf-path", "build/adqe/arm9.o", "--fail"]):
+        result = subprocess.run([dsd, *args], cwd=root, capture_output=True, text=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+    private = root / "extract/arm7_bios.bin"
+    assert private.read_bytes() == bios.read_bytes()
+    if sys.platform != "win32":
+        assert private.stat().st_mode & 0o077 == 0
+    tracked = subprocess.run(["git", "ls-files"], cwd=root, check=True, capture_output=True, text=True).stdout.splitlines()
+    assert tracked and not any(p.startswith(("extract/", "build/")) or "bios" in p for p in tracked)
+
+
+def test_thumb_claim_match_restores_mode_and_keeps_strict_rebuild(imported):
+    net, slug, _, _ = imported
+    root = Path(net.project_row(slug)["root"])
+    with (DEMO / "build/demoq_ds.elf").open("rb") as stream:
+        table = ELFFile(stream).get_section_by_name(".symtab")
+        address = next(s["st_value"] for s in table.iter_symbols() if s.name == "ds_thumb_step") & ~1
+    symbol = f"func_{address:08x}"
+    fn = net.store.one("SELECT unit FROM functions WHERE name=?", symbol)
+    assert fn is not None
+    agent, _ = net.local_agent("ds-mode-owner")
+    code = f"int {symbol}(int value) {{ return value + 3; }}"
+    wrong_mode = net.attempt(agent, symbol, code, slug)
+    assert not wrong_mode["matched"]
+    source = drafts.ds_mode_source(root, fn["unit"], symbol, code)
+    assert "#pragma thumb on" in source
+    result = net.attempt(agent, symbol, source, slug)
+    assert result["matched"], result["text"]
+    assert not net.store.one("SELECT 1 FROM claims WHERE agent_id=?", agent.id)
+    assert scratch_dsd.check_rom(root, "adqe", log=lambda *_: None)["identical"]
+
+
+def test_overlays_at_the_same_address_have_separate_judging_and_claims(imported):
+    net, slug, _, _ = imported
+    functions = sorted((row for row in net.store.all("SELECT name, unit, meta FROM functions")
+                        if row["unit"].startswith("src/auto/ov") and row["name"].endswith("_02200000")),
+                       key=lambda row: row["unit"])
+    assert len(functions) == 2 and functions[0]["name"] != functions[1]["name"]
+    agent, _ = net.local_agent("overlay-owner")
+    symbol = json.loads(functions[1]["meta"])["symbol"]
+    wrong = net.attempt(agent, functions[1]["name"], f"int {symbol}(int x) {{ return x + 1; }}", slug)
+    assert not wrong["matched"]
+    net.release(agent, functions[1]["name"], "", slug)
+    for index, fn in enumerate(functions):
+        symbol = json.loads(fn["meta"])["symbol"]
+        result = net.attempt(agent, fn["name"], f"int {symbol}(int x) {{ return x + {index + 1}; }}", slug)
+        assert result["matched"], result["text"]
+    assert not net.store.one("SELECT 1 FROM claims WHERE agent_id=?", agent.id)
+
+
+def test_encrypted_project_rebuilds_from_a_clean_standalone_copy(imported, tmp_path):
+    net, slug, game, _ = imported
+    root = Path(net.project_row(slug)["root"])
+    standalone = tmp_path / "standalone project with spaces"
+    shutil.copytree(root, standalone, ignore=shutil.ignore_patterns(".git", "build", "build.ninja", "objdiff.json",
+                                                                   ".ninja_*", ".decomp-wtf"))
+    subprocess.run([sys.executable, "tools/configure.py", "adqe", *scratch_dsd.tool_args()],
+                   cwd=standalone, check=True, capture_output=True)
+    shutil.rmtree(standalone / "extract/adqe")
+    ok, log = ForkProject(standalone).run(["ninja"], log=lambda *_: None, timeout=120)
+    assert ok, log
+    assert (standalone / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+
+
+@pytest.mark.skipif(toolchains.installed("m2c") is None, reason="bounded pilot needs the registered m2c tool")
+def test_bounded_pilot_cli_uses_the_private_key_and_reports_strict_rebuild(encrypted, tmp_path):
+    game, bios = encrypted
+    work = tmp_path / "pilot with spaces"
+    result = subprocess.run([sys.executable, str(ROOT / "tools/ds_pilot.py"), "--rom", str(game),
+                             "--arm7-bios", str(bios), "--work", str(work), "--own-copy", "--drafts", "2",
+                             "--sample", "spread", "--compiler", "DS/2.0/sp1p6"], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads((work / "pilot-result.json").read_text(encoding="utf-8"))
+    assert report["compiler"] == "DS/2.0/sp1p6" and report["sample_attempts"] == 2
+    assert sum(report["outcomes"].values()) == 2 and len(report["results"]) == 2
+    assert report["rebuild"]["identical"]
+
+
+def test_pilot_cli_rejects_a_private_work_directory_inside_the_checkout(encrypted):
+    game, _ = encrypted
+    result = subprocess.run([sys.executable, str(ROOT / "tools/ds_pilot.py"), "--rom", str(game),
+                             "--work", str(ROOT), "--own-copy"], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", timeout=30)
+    assert result.returncode == 2 and "--work must be outside this checkout" in result.stderr
+
+
+@pytest.mark.parametrize("key", ["missing", "wrong", "correct"])
+def test_encrypted_http_import_reports_key_failures_before_registering_a_project(encrypted, tmp_path, monkeypatch, key):
+    game, bios = encrypted
+    if key == "missing":
+        monkeypatch.delenv("DECOMP_ARM7_BIOS", raising=False)
+    elif key == "wrong":
+        wrong = tmp_path / "wrong key.bin"
+        wrong.write_bytes(bytes(0x4000))
+        monkeypatch.setenv("DECOMP_ARM7_BIOS", str(wrong))
+    else:
+        monkeypatch.setenv("DECOMP_ARM7_BIOS", str(bios))
+    home = tmp_path / "app"
+    state = home / ".decomp"
+    state.mkdir(parents=True)
+    net = RomNetwork(state / "app.db", home)
+    mcp, _, security = build(net, state, 6499, "original-fixture-test")
+    client = TestClient(mcp.streamable_http_app(transport_security=security, host="127.0.0.1"),
+                        base_url="http://127.0.0.1:6499")
+    client.cookies.set("decomp_live", "original-fixture-test")
+    headers = {"X-Decomp": "1"}
+    client.post("/api/settings", json={"autopilot": False}, headers=headers).raise_for_status()
+    response = client.post("/api/import", params={"path": str(game), "confirmed": "1"}, headers=headers)
+    response.raise_for_status()
+    job = response.json()["job"]
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        status = client.get("/api/job", params={"id": job}).json()
+        if status["state"] != "running":
+            break
+        time.sleep(0.02)
+    assert status["state"] != "running", status
+    if key == "correct":
+        assert status["state"] == "done", status
+        overview = net.overview(status["result"]["slug"])
+        assert overview["ready"] and overview["rebuild"]["identical"]
+    else:
+        assert status["state"] == "error", status
+        diagnostic = json.dumps(status)
+        assert ("DECOMP_ARM7_BIOS" if key == "missing" else "did not validate") in diagnostic
+        assert not net.store.all("SELECT id FROM projects")
+        assert not list(home.glob("*/extract/arm7_bios.bin"))

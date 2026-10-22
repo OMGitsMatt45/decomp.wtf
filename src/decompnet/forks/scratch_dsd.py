@@ -203,7 +203,8 @@ def _init(dsd: str, root: Path, version: str, log) -> None:
 def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = None) -> None:
     """Extract with an optional user-supplied BIOS, retained privately for subsequent builds."""
     configured = arm7_bios or os.environ.get("DECOMP_ARM7_BIOS")
-    cmd = [dsd, "rom", "extract", "--rom", "extract/baserom.nds", "--output-path", f"extract/{version}"]
+    cmd = [sys.executable, "tools/extract.py", dsd, "rom", "extract", "--rom", "extract/baserom.nds",
+           "--output-path", f"extract/{version}"]
     if configured:
         bios = Path(configured).expanduser().resolve()
         if not bios.is_file() or bios.stat().st_size != 0x4000:
@@ -211,6 +212,7 @@ def _extract(dsd: str, root: Path, version: str, *, arm7_bios: Path | None = Non
         private = root / "extract" / "arm7_bios.bin"
         if bios != private.resolve():
             shutil.copyfile(bios, private)
+        private.chmod(0o600)
         cmd += ["--arm7-bios", "extract/arm7_bios.bin"]
     try:
         _run(cmd, root, "extracting the ROM")
@@ -231,6 +233,9 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
         raise ForkError(f"CodeWarrior for DS {compiler} isn't in the installed compiler pack")
     args = tool_args()
     shutil.copytree(TEMPLATE, root)
+    # Establish the ignored private paths before extraction or a first build can fail.
+    (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
+                                     ".ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "extract").mkdir()
     try:
         (root / "extract" / "baserom.nds").hardlink_to(game)
@@ -281,8 +286,6 @@ def create(root: Path, game: Path, *, compiler: str | None = None, arm7_bios: Pa
         "setup": [["python", "tools/configure.py", version, *args], ["ninja", "prepare"]],
         "rebuild": rebuild,
     }, indent=2), encoding="utf-8")
-    (root / ".gitignore").write_text("# made from your copy of the game, or by the build\nextract/\nbuild/\nbuild.ninja\n"
-                                     ".ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n", encoding="utf-8")
     (root / "README.md").write_text(f"""# {info['title']} ({info['id']}) decompilation
 
 Started from scratch with [decomp.wtf](https://decomp.wtf) on [ds-decomp](https://github.com/AetiasHax/ds-decomp),

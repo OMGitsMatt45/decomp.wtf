@@ -109,7 +109,7 @@ verified edits and retained base bytes; they do not recover C/C++ or rebuild a
 disc container. Assembly-only GBA exports need ARM binutils, without agbcc.
 
 Encrypted DS games need your own 16 KiB ARM7 BIOS. Before starting the app, set
-`DECOMP_ARM7_BIOS` to its path (`$env:DECOMP_ARM7_BIOS = 'C:\\Games\\arm7_bios.bin'`
+`DECOMP_ARM7_BIOS` to its path (`$env:DECOMP_ARM7_BIOS = 'C:\Games\arm7_bios.bin'`
 in PowerShell, or `export DECOMP_ARM7_BIOS=/path/to/arm7_bios.bin` on Linux).
 The importer retains a copy in the project's ignored `extract/arm7_bios.bin`
 for subsequent builds; the ROM and BIOS stay outside the project's Git history.

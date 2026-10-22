@@ -9,6 +9,7 @@ or ARM7 program, an overlay, the file tables, which files, or only where the fil
 import hashlib
 import struct
 import sys
+from pathlib import Path
 
 HEADER_FIELDS = [  # (start, end, what): the parts of the DS header that say something
     (0x00, 0x0C, "title"), (0x0C, 0x10, "game code"), (0x10, 0x12, "maker code"), (0x14, 0x15, "capacity"),
@@ -146,6 +147,8 @@ def main(argv: list[str]) -> int:
         open(argv[-1], "w", encoding="utf-8").write("ok\n")
         return 0
     built_path, original_path, stamp = argv[:3]
+    # A failed recheck must not leave the previous successful verification stamp.
+    Path(stamp).unlink(missing_ok=True)
     built, original = open(built_path, "rb").read(), open(original_path, "rb").read()
     if built == original:
         open(stamp, "w", encoding="utf-8").write("ok\n")

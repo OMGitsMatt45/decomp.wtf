@@ -73,7 +73,7 @@ def main() -> None:
     with open("build.ninja", "w", encoding="utf-8") as f:
         n = ninja_syntax.Writer(f)
         bios_arg = f" --arm7-bios {ARM7_BIOS}" if ARM7_BIOS.is_file() else ""
-        n.rule("extract", f"{DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}")
+        n.rule("extract", f"{PY} tools/extract.py {DSD} rom extract --rom $in --output-path {EXTRACT}{bios_arg}")
         n.rule("delink", f"{DSD} delink --config-path {CONFIG}")
         n.rule("mwcc", f"{WRAP}\"{CC}\" {q(CC_FLAGS)} -i include $cflags -MD -c $in -o $basedir"
                + ("" if sys.platform == "win32" else f" && {PY} tools/transform_dep.py $basefile.d $basefile.d"),
@@ -88,7 +88,7 @@ def main() -> None:
         n.rule("configure", f"{PY} tools/configure.py {q(sys.argv[1:])}", generator=True)
 
         n.build(str(EXTRACT / "config.yaml"), "extract", str(BASEROM),
-                implicit=[str(ARM7_BIOS)] if ARM7_BIOS.is_file() else None)
+                implicit=["tools/extract.py", *([str(ARM7_BIOS)] if ARM7_BIOS.is_file() else [])])
         targets = sorted({x["delink_file"] for x in files})
         n.build(targets or ["delink"], "delink", [*dsd_configs, str(EXTRACT / "config.yaml")])
         objs = []

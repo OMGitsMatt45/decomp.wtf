@@ -77,10 +77,11 @@ feasibility gates rather than claiming a ready implementation.
 
 ## Work-plan status
 
-All 19 PRs target `main` and remain in draft. Each branch contains one scoped
+All 19 PRs target `main` and remain in draft. Most branches contain a scoped
 work-plan document with current coverage, reusable programs, missing work and
-native Windows/Linux acceptance checks. Keep existing implementation work, such
-as DS PR #1, separate from its broader platform plan.
+native Windows/Linux acceptance checks. DS PR #7 now includes implementation
+and original-fixture qualification, preserving PR #1's commit and review history;
+its remaining retail-ROM and broader reconstruction gaps stay explicit.
 
 [Verified creation results](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/pr-maintenance-2026-10-21/docs/maintenance/pr-results.json)
 record the open drafts and the earlier PR cleanup. The
