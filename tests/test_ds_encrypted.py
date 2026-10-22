@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 from elftools.elf.elffile import ELFFile
 from starlette.testclient import TestClient
 
@@ -214,6 +215,63 @@ def test_overlays_at_the_same_address_have_separate_judging_and_claims(imported)
         result = net.attempt(agent, fn["name"], f"int {symbol}(int x) {{ return x + {index + 1}; }}", slug)
         assert result["matched"], result["text"]
     assert not net.store.one("SELECT 1 FROM claims WHERE agent_id=?", agent.id)
+
+
+@pytest.mark.parametrize("compiler", [
+    "1.2/base", "1.2/sp2", "1.2/sp2p3", "1.2/sp3", "1.2/sp4",
+    "2.0/base", "2.0/sp1", "2.0/sp1p2", "2.0/sp1p7", "2.0/sp2", "2.0/sp2p2", "2.0/sp2p3", "2.0/sp2p4",
+    "dsi/1.1", "dsi/1.1p1", "dsi/1.2", "dsi/1.2p1", "dsi/1.2p2", "dsi/1.3", "dsi/1.3p1",
+    "dsi/1.6sp1", "dsi/1.6sp2",
+])
+def test_other_registered_ds_compilers_link_matching_source(encrypted, tmp_path, monkeypatch, compiler):
+    """A DSi-branded compiler can build ordinary DS code; this does not enable TWL containers."""
+    game, bios = encrypted
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    root = Path(net.project_row(slug)["root"])
+    fn = next(row for row in net.store.all("SELECT name, unit, meta FROM functions")
+              if row["unit"].startswith("src/auto/ov000"))
+    symbol = json.loads(fn["meta"])["symbol"]
+    agent, _ = net.local_agent("compiler-owner")
+    result = net.attempt(agent, fn["name"], f"int {symbol}(int value) {{ return value + 1; }}", slug)
+    assert result["matched"], result["text"]
+    source = ForkProject(root).unit(fn["unit"]).source
+    assert source in net.forks.link(slug, log=lambda *_: None)["linked"]
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
+
+
+@pytest.mark.parametrize("compiler", ["2.0/sp1p5", "2.0/sp1p6"])
+@pytest.mark.parametrize("bss_size", [0, 32])
+def test_additional_runtime_autoload_is_linked(encrypted, tmp_path, monkeypatch, compiler, bss_size):
+    game, bios = encrypted
+    seed = tmp_path / "seed"
+    shutil.copytree(game.parent / "seed", seed)
+    config = seed / "config.yaml"
+    paths = yaml.safe_load(config.read_text(encoding="utf-8"))
+    paths["unknown_autoloads"] = [{"index": 2, "bin": "arm9/autoload_2.bin", "config": "arm9/autoload_2.yaml"}]
+    config.write_text(yaml.safe_dump(paths), encoding="utf-8")
+    (seed / "arm9/autoload_2.bin").write_bytes(struct.pack("<II", 0xE2800007, 0xE12FFF1E) + bytes(24))
+    (seed / "arm9/autoload_2.yaml").write_text(
+        f"base_address: 0x02280000\ncode_size: 32\nbss_size: {bss_size}\nkind: !Unknown 2\n", encoding="utf-8")
+    game = tmp_path / "autoload.nds"
+    subprocess.run([str(toolchains.binary("dsd")), "rom", "build", "--config", str(config),
+                    "--rom", str(game), "--arm7-bios", str(bios)], check=True, capture_output=True)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    monkeypatch.setattr(net.forks, "link_soon", lambda *a, **kw: None)
+    with patch.dict(os.environ, {"DECOMP_ARM7_BIOS": str(bios)}):
+        slug = net.import_rom(game, toolchain=f"DS/{compiler}", confirmed=True, log=lambda *_: None)
+    root = Path(net.project_row(slug)["root"])
+    symbol = "func_02280000"
+    fn = net.store.one("SELECT name, unit FROM functions WHERE name=?", symbol)
+    assert fn is not None
+    agent, _ = net.local_agent("runtime-autoload-owner")
+    result = net.attempt(agent, symbol, f"int {symbol}(int value) {{ return value + 7; }}", slug)
+    assert result["matched"], result["text"]
+    source = ForkProject(root).unit(fn["unit"]).source
+    assert source in net.forks.link(slug, log=lambda *_: None)["linked"]
+    assert (root / "build/adqe/adqe.nds").read_bytes() == game.read_bytes()
 
 
 @pytest.mark.parametrize("language", ["c", "c++"])

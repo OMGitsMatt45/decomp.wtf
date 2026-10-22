@@ -73,6 +73,7 @@ Install the following only for the features you choose:
 | [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
 | [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
 | [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+| [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
 Older 32-bit compilers need your distribution's 32-bit runtime, such as
@@ -130,6 +131,9 @@ Important boundaries:
 - DS links finished ARM9 source units after their code and data match and the
   complete ROM still verifies. Unfinished units and ARM7 retain original
   objects; ARM7 source recovery remains [future work](docs/future/nds.md).
+  DSi-enhanced/exclusive ROM containers are rejected explicitly: the pinned
+  toolkit cannot preserve ARM9i/ARM7i programs and TWL authentication metadata.
+  DSi-branded compiler versions can still compile ordinary DS source.
 - GB/GBC retains unknown bytes from the owner's base ROM. An exact rebuild is
   not a completed disassembly. Mapper analysis, richer layouts and room layout
   synchronization remain unfinished.

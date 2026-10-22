@@ -46,6 +46,12 @@ exempted. A failed recheck removes any old success stamp.
 Uses pinned dsd 0.12.1, native Windows CodeWarrior tools, wibo on Linux, objdiff
 and m2c. No compiler version is substituted. Original fixtures qualify
 CodeWarrior DS 2.0/sp1p5 and 2.0/sp1p6; mode-wrapper checks compile both C and C++.
+Additional encrypted source-link checks exercise all 22 other registered versions
+(DS 1.2, DS 2.0 and DSi-branded compilers) using an ordinary DS container.
+DSi-enhanced/exclusive containers are rejected before querying compilers or
+creating projects. The pinned ds-rom builder explicitly does not preserve their
+ARM9i/ARM7i programs and authentication metadata; supplying DSi BIOS files cannot
+add that missing support.
 
 ## Original-fixture validation
 
@@ -53,6 +59,8 @@ The committed fixture generator encrypts our own Demo Quest DS with generated
 test data. It contains no Nintendo BIOS code or console key table. It includes
 an ARM-to-Thumb call, ARM9 ITCM/DTCM autoloads, two ARM9 overlays sharing a runtime
 address, unused overlay data, and an ARM7 overlay retained as original data.
+The original ARM7 program advances a separate shared-RAM counter, so runtime
+qualification can observe both processors.
 
 The DS suites check:
 
@@ -77,12 +85,17 @@ The DS suites check:
 - Overlay BSS sizes of 0, 4, 20 and 36 bytes. The build derives these extents from
   linked boundary symbols without ds-decomp 0.12.1's extra 32-byte rounding;
   deliberate linked BSS changes still fail the complete-ROM check.
+- An additional runtime autoload at 0x02280000, with and without BSS, linked from
+  matching C source on both primary compiler versions.
+- Encrypted import, real source matching/linking and exact whole-ROM rebuilding
+  across all 24 registered compiler versions.
+- Early rejection of DSi containers, including inconsistent DS/TWL flags.
 
 After installing the development dependencies and registered DS tools and
 building `projects/demo-ds/build.py`, run:
 
 ```sh
-uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_objdiff_errors.py
+uv run pytest -q tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py tests/test_objdiff_errors.py
 ```
 
 The full operational coverage gate requires these suites on Windows and Linux;
@@ -96,6 +109,40 @@ passes all 81 DS and comparison-error checks on both native hosts with zero skip
 in the [focused qualification](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727350867).
 The [full operational run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39727347499)
 also passes every Windows/Linux core, packaging and Game Boy job.
+Expanded implementation qualification is recorded below once its native runs finish.
+
+## Execution validation
+
+`tools/ds_boot.py` compares execution of the original Demo Quest DS and its
+rebuilt copies, using a separately installed
+[melonDS libretro core](https://github.com/libretro/melonDS) and your own
+`bios7.bin`, `bios9.bin` and `firmware.bin`. A core can also be obtained through
+[RetroArch's core downloader](https://www.retroarch.com/?page=platforms).
+These optional developer tools and runtime files are not part of app installation.
+On Linux, source qualification used libretro/melonDS commit
+`66b5d2634cd0a79030562811e6e05f5532f800ba`, built with:
+
+```sh
+make -j4 HAVE_OPENGL=0 HAVE_WIFI=0 LIBS='-lm -lpthread -lrt'
+```
+
+After building the original fixture and making a source-linked rebuild, run:
+
+```sh
+uv run python tools/ds_boot.py --core /path/to/melonds_libretro.so --bios-dir /path/to/your/ds-runtime-files --symbols projects/demo-ds/build/demoq_ds.elf --output ds-execution.json projects/demo-ds/build/demoquest.nds /path/to/rebuilt.nds
+```
+
+Use the corresponding `.dll` on Windows. The runner copies runtime files to a
+private temporary directory, starts a fresh core process for each ROM, disables
+JIT, supplies no controller input and compares watched game state over 120
+emulated frames. Both the ARM9 game counter and ARM7 shared-RAM counter must
+advance. Firmware profile output is captured privately and omitted from reports.
+The original fixture now establishes system mode, separate supervisor/IRQ stacks
+and its TCM mappings before calling the BIOS; its previous startup could lose
+the caller's banked link register and repeatedly restart.
+This is direct-boot CPU execution validation, not physical-console or
+firmware-menu certification. The fixture uses a blank logo and simplified
+runtime helpers and is intended for decompiler qualification.
 
 ## Work that remains
 
@@ -103,7 +150,8 @@ also passes every Windows/Linux core, packaging and Game Boy job.
 - [x] Reproduce the 12-byte secure-prefix/checksum failure pattern on an original fixture and reject failed decryption before creating matching references, without masking bytes.
 - [ ] Verify the original YV5P input with its correct BIOS before claiming its specific reported discrepancy is resolved.
 - [x] Qualify ARM9/ITCM source linking, DTCM reconstruction, overlapping overlays, ARM7 byte retention, compression and both DS compiler versions on original fixtures.
-- [ ] Expand ARM7 source recovery, additional runtime-module layouts, DS Protect and compiler-version coverage.
+- [x] Expand ARM7 execution/retention, runtime-autoload and compiler-version coverage on original fixtures.
+- [ ] Qualify DS Protect variants and implement ARM7 C/C++ source recovery beyond the pinned toolkit's ARM9 analysis.
 
 The original YV5P retail-ROM case from PR #1 has not been rerun: this phase uses
 original test fixtures. A wrong test key reproduces exactly 12 changed bytes

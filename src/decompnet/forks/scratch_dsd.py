@@ -62,6 +62,12 @@ def game_info(path: Path) -> dict:
         head = f.read(0x200)
     if not is_nds(head):
         raise ForkError("this isn't a Nintendo DS ROM (.nds)")
+    # ds-rom 0.8 discards the TWL programs, flags and authentication metadata
+    # when rebuilding. Recognize the container, but do not import a DSi title
+    # as an ordinary DS project with an incomplete reference image.
+    if head[0x12] != 0 or head[0x1C] & 3:
+        raise ForkError("DSi-enhanced and DSi-exclusive ROMs need TWL support, which is not implemented yet. "
+                        "The DS importer cannot preserve their ARM9i/ARM7i programs and authentication metadata.")
     code = head[12:16].decode("ascii", "replace")
     title = head[:12].split(b"\0", 1)[0].decode("ascii", "replace").strip() or code
     return {"platform": "nds", "id": code, "title": title, "region": REGIONS.get(code[3:], "Unknown region"),
