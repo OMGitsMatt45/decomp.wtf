@@ -5,11 +5,13 @@ PlayStation consoles**, plus shared decompiler tooling for those consoles.
 Closely related or speculative platforms share a qualification plan; each needs
 its own implementation evidence before support can be claimed.
 
-**19 future-work PRs are open:** seven for implemented platform families,
-eleven for missing console workflows, and one for shared decompiler engines.
-Most documents are work plans with open implementation and validation checklists.
-DS PR #7 includes implementation, original-fixture qualification and native
-two-processor execution checks; further compatibility work stays explicit.
+**18 PRs remain open: 17 draft work plans and one DSi foundation implementation
+(PR #24).** The draft plans cover five implemented platform families, eleven
+missing console workflows and shared decompiler engines. Each draft currently
+adds a plan document without new platform implementation.
+
+N64 PR #3 and DS PRs #1, #7 and #25 are merged into `main`. Their qualification
+records describe the completed scope and remaining game-specific coverage.
 
 ## Implemented platform families
 
@@ -17,15 +19,27 @@ All seven families below have a working path on native Windows and Linux.
 The work plans focus on remaining coverage and explicitly preserve released
 compiler behavior. GB/GBC is an experimental assembly workflow.
 
-| Family | Remaining focus | Work plan | Draft PR |
+| Family | Current workflow / remaining focus | Guide or work plan | PR status |
 | --- | --- | --- | --- |
-| Nintendo 64 | Layouts, shiftable exports, IDO/KMC regression coverage | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-n64/docs/future/n64.md) | [#3](https://github.com/OMGitsMatt45/decomp.wtf/pull/3) |
-| PlayStation | Disc and overlay reconstruction, compiler-specific parity | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps1/docs/future/ps1.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) |
-| PlayStation 2 | Whole-disc/overlay exports, exact source provenance, tool evaluation | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps2/docs/future/ps2.md) | [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5) |
-| Game Boy Advance | Distinct ARM compiler path and ARM/Thumb interworking | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gba/docs/future/gba.md) | [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6) |
-| Nintendo DS | Encrypted imports, verified source links and strict reconstruction/execution | [Qualification](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-nds/docs/future/nds.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) |
-| GameCube / Wii | Modules, data completion and linked-source coverage | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gc-wii/docs/future/gc-wii.md) | [#8](https://github.com/OMGitsMatt45/decomp.wtf/pull/8) |
-| Game Boy / Game Boy Color | Mapper state, reviewed layouts and room synchronization | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gb-gbc/docs/future/gb-gbc.md) | [#9](https://github.com/OMGitsMatt45/decomp.wtf/pull/9) |
+| Nintendo 64 | Reviewed layouts, mixed compiler profiles, module builds and rooms implemented; further game-specific coverage | [Guide](n64.md) | [#3](https://github.com/OMGitsMatt45/decomp.wtf/pull/3) merged |
+| PlayStation | Disc and overlay reconstruction, compiler-specific parity | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps1/docs/future/ps1.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) draft |
+| PlayStation 2 | Whole-disc/overlay exports, exact source provenance, tool evaluation | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps2/docs/future/ps2.md) | [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5) draft |
+| Game Boy Advance | Distinct ARM compiler path and ARM/Thumb interworking | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gba/docs/future/gba.md) | [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6) draft |
+| Nintendo DS | ARM9/ARM7 source links, protected modules and exact reconstruction; further game-specific coverage | [Qualification](future/nds.md), [ARM7 recovery](ds-arm7.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) and [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) merged |
+| GameCube / Wii | Modules, data completion and linked-source coverage | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gc-wii/docs/future/gc-wii.md) | [#8](https://github.com/OMGitsMatt45/decomp.wtf/pull/8) draft |
+| Game Boy / Game Boy Color | Mapper state, reviewed layouts and room synchronization | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gb-gbc/docs/future/gb-gbc.md) | [#9](https://github.com/OMGitsMatt45/decomp.wtf/pull/9) draft |
+
+## DSi container foundation
+
+[PR #24](https://github.com/OMGitsMatt45/decomp.wtf/pull/24) is the only open
+non-draft implementation PR. Its separate [container inspector and stored-range
+extractor](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/dsi-container/docs/dsi.md)
+validates structural metadata and preserves stored program bytes and opaque TWL
+authentication fields. Original-container tests passed on native Windows and Linux.
+
+Modcrypt decryption, authentication, DSi source recovery and whole-image rebuilding
+remain future work. The ordinary DS importer continues to reject DSi-enhanced and
+DSi-exclusive ROMs. This foundation does not establish full DSi game support.
 
 ## Missing platform workflows
 
@@ -65,30 +79,45 @@ Modern console families remain deferred until original fixtures, accessible
 formats and exact compiler/build provenance exist. Their draft PR records
 feasibility gates rather than claiming a ready implementation.
 
-## Existing PR cleanup
+## Completed and superseded PRs
 
-- [PR #2](https://github.com/OMGitsMatt45/decomp.wtf/pull/2) was closed as
-  superseded. Released PS1 C/C++ toolchains and native Windows PS2 EE-GCC hosts
-  replace its old compiler proposal and obsolete PS2-unavailable statement.
-- [Draft PR #1](https://github.com/OMGitsMatt45/decomp.wtf/pull/1) remains open.
-  Its encrypted DS import, source-unit layout and ARM/Thumb fixes are absent
-  from main; PR #7 preserves its implementation history and qualifies original
-  fixtures on current Windows/Linux paths. The reported retail-ROM
-  secure-prefix/checksum differences still need a strict full-ROM resolution.
+| PR | Status on main |
+| --- | --- |
+| [#3](https://github.com/OMGitsMatt45/decomp.wtf/pull/3) | N64 layouts, compiler profiles, module reflow/recompression, reviewed rooms and retail export fixes merged. |
+| [#1](https://github.com/OMGitsMatt45/decomp.wtf/pull/1) | Original encrypted DS, source-layout and ARM/Thumb fixes included through the history preserved by #7. |
+| [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) | DS reconstruction, source links, native qualification and two-processor execution checks merged. |
+| [#22](https://github.com/OMGitsMatt45/decomp.wtf/pull/22) | Supplied-ROM imports, exact exports, boot-utility workflows and cloud compiler execution fixes merged. |
+| [#23](https://github.com/OMGitsMatt45/decomp.wtf/pull/23) | README manual-download links and optional agent prerequisites merged. |
+| [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) | Decrypted DS rebuilds, ARM7 C/C++ recovery, DS Protect and unusual module layouts merged. |
+| [#2](https://github.com/OMGitsMatt45/decomp.wtf/pull/2) | Closed unmerged as superseded by the released PS1 C/C++ toolchains and native Windows PS2 EE-GCC hosts. |
+
+The [N64 qualification record](n64-validation.json) pins **167 required tests on
+each native Windows/Linux host, with zero skips**. Five private retail cartridges
+also rebuild byte for byte from clean exports; the [retail record](n64-retail-validation.json)
+contains hashes, source-sample counts and limits. These results establish the
+implemented matching and reviewed-layout workflows, not complete game source
+recovery or a retail playthrough.
+
+The supplied decrypted DS image's earlier 12-byte rebuild difference is resolved
+by explicit decrypted-input handling. The [retail DS record](ds-retail-yv5p.md)
+documents exact full-ROM reconstruction, source-linked ARM7 units and bounded
+emulator execution. Further game coverage and eventual playthrough validation
+remain separate from those results.
 
 ## Work-plan status
 
-All 19 PRs target `main`. The 18 work-plan branches remain in draft; DS PR #7 is
-ready for review on the agreed original fixtures. Most branches contain a scoped
-work-plan document with current coverage, reusable programs, missing work and
-native Windows/Linux acceptance checks. DS PR #7 now includes implementation
-and original-fixture and execution qualification, preserving PR #1's commit and review history;
-its remaining retail-ROM and broader reconstruction gaps stay explicit.
+All 18 open PRs target `main`. The 17 draft plans are #4–6 and #8–21; #24 is the
+open DSi container foundation. N64 #3 and DS #7 are completed merged work,
+with further DS recovery and retail fixes included in #25.
 
-[Verified creation results](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/pr-maintenance-2026-10-21/docs/maintenance/pr-results.json)
-record the open drafts and the earlier PR cleanup. The
-[housekeeping run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39535792050)
-completed after the repository's PR-creation permission was enabled.
+Keep each work-plan PR in draft until its implementation and acceptance checks
+are complete. Update its scope and description around the actual delivered
+behavior when implementation begins.
+
+[Historical PR-creation results](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/pr-maintenance-2026-10-21/docs/maintenance/pr-results.json)
+and the [housekeeping run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39535792050)
+record the initial draft creation and earlier cleanup. They predate the merged
+DS/N64 work and the current status recorded above.
 
 ## Completion rules
 
