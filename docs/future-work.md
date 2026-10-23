@@ -35,6 +35,10 @@ output is additional work. Other console plans are deferred.
 
 ## PR migration
 
+The [PR scope audit](pr-scope-audit.md) records updates to all 26 pre-existing PRs.
+The shared redesign is [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
+and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) tracks DS native output.
+
 Merged PRs #1, #7 and #25 qualify DS console reconstruction, not PC output; merged
 PR #3 is historical N64 work preserved by #27. Merged PRs cannot be reopened.
 Unmerged PR #2 remains closed because its compiler work was superseded. PR #4's

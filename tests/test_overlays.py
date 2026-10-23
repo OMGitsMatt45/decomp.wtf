@@ -32,6 +32,15 @@ def test_an_overlay_is_placed_at_its_load_address():
     assert overlays.place(data, "psx", [(0x800F0000, 0x80120000)]) is None  # over the resident program: no
 
 
+def test_overlay_leaf_calls_do_not_shift_the_load_address():
+    for platform, base in (("psx", 0x80180000), ("ps2", 0x00400000)):
+        calls = bytearray(_overlay(base + 64, 40))
+        leaf = base + 64 + len(calls)
+        struct.pack_into("<I", calls, 8, 0x0C000000 | ((leaf >> 2) & 0x03FFFFFF))
+        data = bytes(64) + calls + struct.pack("<II", JR_RA, 0x24820007)
+        assert overlays.place(data, platform, []) == (base, 64)
+
+
 def test_ps2_elf_overlays_say_where_they_go():
     code = _overlay(0x00400000, 40)
     phoff = 52
