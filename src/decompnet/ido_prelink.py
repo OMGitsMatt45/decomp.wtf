@@ -7,12 +7,34 @@ N64 GNU linker for a relocatable object, without an IRIX executable environment.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
 import sys
 
 from . import compiler, ido_cfront, toolchains
+
+
+def dependencies(work: Path, repository: Path, includes: list[str], flags: list[str], tc: Path) -> str:
+    """Content, rather than timestamps, controls reuse of template objects."""
+    sources = {}
+    for directory in [work, *(work / p for p in includes)]:
+        for root, directories, files in os.walk(directory.resolve()):
+            base = Path(root)
+            directories[:] = [d for d in directories if d not in ('.git', '.venv', 'build') and
+                              not d.startswith('.ido-') and (base / d).resolve() != repository]
+            for name in files:
+                path = base / name
+                if path.suffix.lower() in ('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.inc', '.tcc'):
+                    sources[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    # The compiler manifest filename is versioned by the adapter. Include the
+    # complete set of installed manifests so upgrading a pinned overlay cannot
+    # retain objects from a previous frontend.
+    manifests = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tc.glob('*.json')}
+    return hashlib.sha256(json.dumps(dict(sources=sources, includes=includes, flags=flags,
+                                         toolchain=str(tc), manifests=manifests), sort_keys=True).encode()).hexdigest()
 
 
 def prelink(work: Path, tc: Path, objects: list[str], output: Path, *,
@@ -27,6 +49,17 @@ def prelink(work: Path, tc: Path, objects: list[str], output: Path, *,
     # contain directories, but must remain representable by that old grammar.
     if not objects or any(any(c.isspace() for c in arg) for arg in [repository, *objects, *includes, *flags]):
         raise ValueError('Classic prelink needs object, repository, include and flag arguments without whitespace; the working directory itself may contain spaces')
+    cache = (work / repository).resolve()
+    if cache == work or not cache.is_relative_to(work):
+        raise ValueError('The classic template repository must be a subdirectory of the working directory')
+    fingerprint = dependencies(work, cache, includes, flags, tc)
+    stamp = cache / '.decomp-dependencies'
+    if not stamp.exists() or stamp.read_text(encoding='utf-8') != fingerprint:
+        # Original ptlink only checks some dependency mtimes. Missing objects
+        # force the original compiler to re-instantiate the templates; its
+        # definition/repository records remain available.
+        for obj in cache.rglob('*.o'):
+            obj.unlink()
     suffix = '.exe' if os.name == 'nt' else ''
     cfg = compiler.CompilerConfig([], sandbox='none', relative_paths=True)
     def execute(command):
@@ -48,6 +81,7 @@ def prelink(work: Path, tc: Path, objects: list[str], output: Path, *,
         execute([linker, '-melf32ebmip', '-r', '-o', relative + '/linked.o', *objects, *instantiated])
         output.parent.mkdir(parents=True, exist_ok=True)
         os.replace(temporary / 'linked.o', output)
+        stamp.write_text(fingerprint, encoding='utf-8')
 
 
 def main(argv: list[str] | None = None) -> int:

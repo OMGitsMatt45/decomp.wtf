@@ -377,6 +377,8 @@ function setupCompilers(info) {
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
   $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
   $("dsInputFormat").value = "auto";
+  $("n64LayoutRow").hidden = p !== "n64";
+  $("n64LayoutFile").value = "";
   if (info.bootUtility) {
     select.innerHTML = `<option value="${p === "nds" ? "binutils-arm" : "gc-wii-binutils"}">GNU assembly</option>`;
     note.hidden = false;
@@ -499,7 +501,17 @@ $("analyse").onclick = async () => {
   }
   const body = picked.buf instanceof Blob ? picked.buf : new Blob([picked.buf]);
   const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
-  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}`, body, title, picked.name);
+  let layoutQuery = "";
+  const layoutFile = !$("n64LayoutRow").hidden && $("n64LayoutFile").files[0];
+  if (layoutFile) {
+    try {
+      if (layoutFile.size > 1024 * 1024) throw new Error("The N64 layout must be smaller than 1 MiB.");
+      const layout = JSON.parse(await layoutFile.text());
+      const pending = await api("/api/n64/layout", { method: "POST", body: { layout } });
+      layoutQuery = `&n64_layout=${encodeURIComponent(pending.id)}`;
+    } catch (e) { toast(esc(e.message), "err"); return; }
+  }
+  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}${layoutQuery}`, body, title, picked.name);
 };
 $("pathPick").onclick = (e) => {
   e.stopPropagation();
@@ -2357,6 +2369,11 @@ const cwName = (c) => (c.startsWith("DS/") ? `CodeWarrior for DS ${c.slice(3)}` 
 /* ------------------------------------------------------------------ source: the base for ports and mods */
 function renderSource(ov) {
   const ex = ov.export, fork = ov.kind === "fork";
+  $("srcFormatRow").hidden = fork || ov.platform !== "n64" || !ov.exportable;
+  if ($("srcFormat").dataset.project !== ov.slug) {
+    $("srcFormat").value = ex?.format || "matching";
+    $("srcFormat").dataset.project = ov.slug;
+  }
   $("srcExport").hidden = fork || !ov.exportable;
   $("srcWhen").textContent = !fork && ex ? `exported ${since(ex.t)}` : "";
   if (fork) {
@@ -2405,11 +2422,17 @@ $("srcExport").onclick = async () => {
   $("expLog").hidden = false;
   $("expResult").innerHTML = "";
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug } });
+    const format = $("srcFormatRow").hidden ? "matching" : $("srcFormat").value;
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format } });
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
       : `<div class="notice room"><span><b>${r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+    if (r.shiftable) {
+      $("expResult").innerHTML += r.shiftable.ready
+        ? `<div class="notice room"><span>Shiftable code window verified. Use <code>python build.py mod</code> for source changes.</span></div>`
+        : `<div class="notice"><span>Original reconstruction verified; shiftable builds need review: ${esc(r.shiftable.detail.split("\n").filter(Boolean).pop() || "See the export log.")}</span></div>`;
+    }
     wireCopies($("expResult"));
     S.ov = await api(`/api/project?slug=${S.slug}`);
     renderSource(S.ov);

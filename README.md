@@ -90,7 +90,7 @@ separate requirements and do not imply a raw-game importer for that platform.
 
 | Platform | Current workflow | Compilers / tools | Status |
 | --- | --- | --- | --- |
-| Nintendo 64 | ROM import, C/C++ matching and exact ROM export | KMC GCC 2.7.2; IDO 5.3 / 7.1 | Recommended |
+| Nintendo 64 | [Reviewed layouts, C/C++ matching, exact cartridge exports and bounded shiftable builds](docs/n64.md) | KMC GCC 2.7.2; IDO 5.3 / 7.1 | Recommended |
 | GameCube / Wii | Disc or DOL import, matching in a generated dtk-template project | CodeWarrior; decomp-toolkit; objdiff | Recommended |
 | PlayStation | Disc or EXE import, C/C++ matching and exact payload export | PS1 GCC 2.7.2 / 2.8.1 | Beta |
 | PlayStation 2 | Disc or ELF import, C/C++ matching and exact payload / ELF export | Original EE-GCC 2.96 | Beta |

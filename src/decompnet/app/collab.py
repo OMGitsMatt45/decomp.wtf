@@ -232,32 +232,42 @@ class Room:
         max_e = events[-1]["id"] if events else e
         kinds = {ev["kind"] for ev in events}
         names = {ev["detail"] for ev in events if ev["kind"] in ("match",)}
-        out: dict = {"e": max_e, "events": [dict(ev) for ev in events]}
+        cfg = self.cfg
+        out: dict = {"e": max_e, "events": [dict(ev) for ev in events], "protocol": 2,
+                     "n64_layout": cfg.get("n64_layout")}
         first = e == 0
         if first or names:
-            rows = net.store.all("SELECT f.name, f.vram, f.matched_source, a.name AS agent FROM functions f LEFT JOIN agents a "
+            rows = net.store.all("SELECT f.name, f.unit, f.rom_offset, f.vram, f.matched_source, a.name AS agent FROM functions f LEFT JOIN agents a "
                                  "ON a.id=f.matched_agent_id WHERE f.project_id=? AND f.status='matched'", pid)
             out["matched"] = [dict(r) for r in rows if first or r["name"] in names]
-        best = net.store.all("SELECT f.name, f.vram, f.best_score, f.best_source, MAX(t.id) AS last FROM attempts t "
+        best = net.store.all("SELECT f.name, f.unit, f.rom_offset, f.vram, f.best_score, f.best_source, MAX(t.id) AS last FROM attempts t "
                              "JOIN functions f ON f.id=t.function_id WHERE f.project_id=? AND t.id>? AND f.status='open' "
                              "AND f.best_source IS NOT NULL GROUP BY f.id", pid, a)
-        out["best"] = [{"name": r["name"], "vram": r["vram"], "score": r["best_score"], "source": r["best_source"]} for r in best]
+        out["best"] = [{"name": r["name"], "unit": r["unit"], "rom_offset": r["rom_offset"],
+                        "vram": r["vram"], "score": r["best_score"], "source": r["best_source"]} for r in best]
         last = net.store.one("SELECT MAX(t.id) AS m FROM attempts t JOIN functions f ON f.id=t.function_id WHERE f.project_id=?", pid)
         out["a"] = max(a, last["m"] or 0)
         if first or kinds & {"rename", "split"}:
-            out["symbols"] = [dict(r) for r in net.store.all(
+            out["symbols"] = [dict(r) | {"unit": cfg.get("symbol_modules", {}).get(r["name"]),
+                "previous": [old for old, new in cfg.get("symbol_aliases", {}).items() if new == r["name"]]} for r in net.store.all(
                 "SELECT name, address, size, kind FROM symbols WHERE project_id=?", pid) if not AUTO_NAME.match(r["name"])]
             out["functions"] = [dict(r) for r in net.store.all(
-                "SELECT name, vram, size FROM functions WHERE project_id=? ORDER BY vram", pid)]
+                "SELECT name, unit, rom_offset, vram, size FROM functions WHERE project_id=? ORDER BY unit, vram", pid)]
+        if cfg.get("platform") == "n64" and (first or kinds & {"compiler", "rename", "split"}):
+            from ..rom.n64_profiles import profile
+            out["compiler"] = profile(cfg["compiler"], {})
+            out["function_compilers"] = cfg.get("function_compilers", {})
         ctx = net._context(pid)
         if ctx["version"] != ctx_version:
             out["context"] = {"version": ctx["version"], "header": ctx["header"]}
-        if first or kinds & {"note"}:
+        out["contexts"] = [{"unit": u, "version": c["version"], "header": c["header"]}
+                           for u in net._unit_contexts(pid) if (c := net._context(pid, u))["version"] > ctx_version]
+        if first or kinds & {"note", "release"}:
             out["notes"] = [dict(r) for r in net.store.all(
-                "SELECT n.id, n.text, n.created_at, f.vram, a.name AS agent FROM notes n LEFT JOIN functions f ON f.id=n.function_id "
+                "SELECT n.id, n.text, n.created_at, f.unit, f.rom_offset, f.vram, a.name AS agent FROM notes n LEFT JOIN functions f ON f.id=n.function_id "
                 "LEFT JOIN agents a ON a.id=n.agent_id WHERE n.project_id=? ORDER BY n.id", pid)]
         out["claims"] = [dict(r) for r in net.store.all(
-            "SELECT f.name, f.vram, a.name AS agent FROM claims c JOIN functions f ON f.id=c.function_id JOIN agents a "
+            "SELECT f.name, f.unit, f.rom_offset, f.vram, a.name AS agent FROM claims c JOIN functions f ON f.id=c.function_id JOIN agents a "
             "ON a.id=c.agent_id WHERE f.project_id=?", pid)]
         out["members"] = self.members()
         return out
@@ -276,7 +286,7 @@ class Room:
             rows = net.store.all("SELECT f.name, a.name AS agent FROM functions f LEFT JOIN agents a ON a.id=f.matched_agent_id "
                                  "WHERE f.project_id=? AND f.status='matched'", pid)
             out["matched"] = [dict(r) for r in rows if e == 0 or r["name"] in names]
-        if e == 0 or any(ev["kind"] == "note" for ev in events):
+        if e == 0 or any(ev["kind"] in ("note", "release") for ev in events):
             out["notes"] = [dict(r) for r in net.store.all(
                 "SELECT n.id, n.text, n.created_at, f.name AS function, a.name AS agent FROM notes n LEFT JOIN functions f "
                 "ON f.id=n.function_id LEFT JOIN agents a ON a.id=n.agent_id WHERE n.project_id=? ORDER BY n.id", pid)]
@@ -334,7 +344,9 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
         if room.fork:
             return {"room": room.slug, **forkroom.hello(net, room.slug), "functions": ov["functions"],
                     "matched": ov["matched"], "members": len(room.members()), **room.settings}
-        return {"room": room.slug, "kind": "rom", "title": cfg["rom"]["title"], "game_code": cfg["rom"]["game_code"],
+        layout = json.loads((Path(room.proj["root"]) / "n64-layout.json").read_text(encoding="utf-8")) if cfg.get("n64_layout") else None
+        return {"room": room.slug, "kind": "rom", "protocol": 2, "n64_layout": cfg.get("n64_layout"), "layout": layout,
+                "title": cfg["rom"]["title"], "game_code": cfg["rom"]["game_code"],
                 "region": cfg["rom"]["region"], "sha1": cfg["rom"]["sha1"], "compiler": cfg["compiler"],
                 "functions": ov["functions"], "matched": ov["matched"], "members": len(room.members()),
                 **room.settings}
@@ -579,17 +591,25 @@ class Link:
         proj = net.project_row(slug)
         pid = proj["id"]
         mine = f"{self.member}."
+        cfg = net.cfg(proj)
+        if cfg.get("n64_layout") and (st.get("protocol") != 2 or st.get("n64_layout") != cfg["n64_layout"]):
+            raise NetworkError("the room's reviewed N64 layout or protocol differs from this project")
         if st.get("symbols") is not None or st.get("functions") is not None:
             net.apply_remote_layout(slug, st.get("functions") or [], st.get("symbols") or [])
+        if st.get("compiler"):
+            net.apply_remote_compilers(slug, st["compiler"], st.get("function_compilers", {}))
         if st.get("context"):
             net.apply_remote_context(slug, st["context"]["header"], st["context"]["version"])
-            self.cursor["v"] = st["context"]["version"]
+            self.cursor["v"] = max(self.cursor["v"], st["context"]["version"])
+        for context in st.get("contexts", []):
+            net.apply_remote_context(slug, context["header"], context["version"], context["unit"])
+            self.cursor["v"] = max(self.cursor["v"], context["version"])
         for m in st.get("matched") or []:
-            net.apply_remote_match(slug, m["vram"], m["matched_source"], m["agent"] or "host")
+            net.apply_remote_match(slug, m["vram"], m["matched_source"], m["agent"] or "host", m)
         for b in st.get("best") or []:
-            net.apply_remote_best(slug, b["vram"], b["score"], b["source"])
+            net.apply_remote_best(slug, b["vram"], b["score"], b["source"], b)
         for n in st.get("notes") or []:
-            net.apply_remote_note(slug, n["id"], n["vram"], n["text"], n["agent"] or "host", n["created_at"])
+            net.apply_remote_note(slug, n["id"], n["vram"], n["text"], n["agent"] or "host", n["created_at"], n)
         for ev in st.get("events") or []:
             if ev["kind"] in ("match", "claim", "release", "context", "rename", "split", "collab") and not (ev["agent"] or "").startswith(mine):
                 net.remote_event(pid, ev["kind"], ev["detail"], ev["agent"] or "host", ev["created_at"])
@@ -681,7 +701,10 @@ def reconnect(net, slug: str, link: str, log=print, client: httpx.Client | None 
     cfg = json.loads(proj["config"])
     if forkroom.project_identity(cfg) != hello.get("sha1"):
         raise NetworkError(f"that link is for {hello['title']}, a different game than this project")
+    if cfg.get("n64_layout") != hello.get("n64_layout") or (cfg.get("n64_layout") and hello.get("protocol") != 2):
+        raise NetworkError("the room's reviewed N64 layout differs; join as a separate project with your cartridge")
     info = dict(cfg.get("link") or {})
+    info.update(protocol=hello.get("protocol"), n64_layout=hello.get("n64_layout"))
     if info.get("token"):
         r = http.get(f"{url}/collab/whoami", params={"room": hello["room"]},
                      headers={"authorization": f"Bearer {info['token']}", "x-room": hello["room"]})
@@ -702,7 +725,8 @@ def reconnect(net, slug: str, link: str, log=print, client: httpx.Client | None 
     if old is not None:
         old.stop()
     net.link_project(slug, {"url": url, "room": hello["room"], "token": joined["token"], "member": joined["name"],
-                            "host_title": hello["title"], "head": info.get("head", "")}, client=client, start=start)
+                            "host_title": hello["title"], "head": info.get("head", ""),
+                            "protocol": hello.get("protocol"), "n64_layout": hello.get("n64_layout")}, client=client, start=start)
     log(f"joined {hello['title']} again as {joined['name']}")
     return slug
 
@@ -729,15 +753,26 @@ def join_room(net, link: str, name: str, rom: bytes | Path, log=print, client: h
     if picked.info["sha1"] != hello["sha1"]:
         raise NetworkError(f"this ROM isn't the same as the host's: the room is for {hello['title']} "
                            f"({hello['game_code']}, {hello['region']}), and every member needs their own copy of exactly that version")
+    compiler_profile = None
+    if picked.platform == "n64":
+        from ..rom.n64_profiles import profile
+        compiler_profile = profile(hello["compiler"], {})
+        if hello.get("n64_layout"):
+            from ..rom.n64_layout import reviewed
+            layout = hello.get("layout")
+            if hello.get("protocol") != 2 or hashlib.sha256(json.dumps(layout, sort_keys=True).encode()).hexdigest() != hello["n64_layout"]:
+                raise NetworkError("the host's N64 layout identity is missing or inconsistent")
+            reviewed(picked.data, layout)
     log(f"joining {hello['title']} ({hello['functions']} functions, {hello['matched']} matched)")
     r = http.post(f"{url}/collab/join?room={hello['room']}", json={"invite": code, "name": name, "sha1": hello["sha1"]})
     joined = r.json()
     if r.status_code != 200:
         raise NetworkError(joined.get("error", "couldn't join"))
     slug = net.import_rom(rom, toolchain=hello["compiler"]["toolchain"], flags=hello["compiler"]["flags"],
-                          confirmed=True, log=log)
+                          confirmed=True, reviewed_layout=hello.get("layout"), compiler_profile=compiler_profile, log=log)
     net.link_project(slug, {"url": url, "room": hello["room"], "token": joined["token"], "member": joined["name"],
-                            "host_title": hello["title"]}, client=client, start=start)
+                            "host_title": hello["title"], "protocol": hello.get("protocol"),
+                            "n64_layout": hello.get("n64_layout")}, client=client, start=start)
     log(f"linked as {joined['name']}: your agents now work with the room")
     return slug
 

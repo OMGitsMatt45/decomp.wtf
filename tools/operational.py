@@ -14,10 +14,13 @@ TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96", "ido-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ds-only", action="store_true", help="prepare the native Nintendo DS qualification")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--ds-only", action="store_true", help="prepare the native Nintendo DS qualification")
+    scope.add_argument("--n64-only", action="store_true", help="prepare the four native Nintendo 64 compiler paths")
     args = parser.parse_args()
-    selected = ("arm-gnu", "mwccarm", "dsd", "objdiff-cli", "m2c") if args.ds_only else TOOLS
-    fixtures = ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
+    selected = (("gcc-2.7.2-kmc", "ido-5.3", "ido-7.1", "binutils-mips", "m2c") if args.n64_only else
+                ("arm-gnu", "mwccarm", "dsd", "objdiff-cli", "m2c") if args.ds_only else TOOLS)
+    fixtures = ("zlib-n64/prepare.py", "demo-rom/build.py") if args.n64_only else ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
         "zlib-n64/prepare.py", "demo-rom/build.py", "demo-psx/build.py", "demo-ps2/build.py",
         "demo-gba/build.py", "demo-ds/build.py", "demo-gc/build.py")
     try:
@@ -25,7 +28,7 @@ def main():
             toolchains.install(tid, accept_license=True)
             if sys.platform == "win32" and toolchains.get(tid).via_wsl:
                 raise RuntimeError(f"{tid} unexpectedly selected WSL")
-        if toolchains.get("wibo").supported:
+        if not args.n64_only and toolchains.get("wibo").supported:
             toolchains.install("wibo")
         root = Path(__file__).resolve().parents[1]
         for script in fixtures:

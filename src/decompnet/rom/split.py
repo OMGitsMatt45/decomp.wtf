@@ -8,6 +8,7 @@ can pair up (%hi/%lo, jal targets). We parse that output into plain records the 
 from __future__ import annotations
 
 import re
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -302,13 +303,27 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
 
     from .n64code import find_segments, unpack_code
 
+    import json
+    from . import n64_layout
     original = image
     rom = (workdir / image).read_bytes()
+    original_bytes, records = rom, []
     packed = unpack_code(rom)
     if packed:
         work = bytearray(rom)
-        for _, data in packed:  # each after a gap, so pieces of different blocks never run together
+        for offset, data in packed:  # each after a gap, so pieces of different blocks never run together
+            if len(data) > n64_layout.MAX_DECODED or len(work) + len(data) + 0x2010 > n64_layout.MAX_WORKING:
+                raise ValueError("N64 decoded code exceeds the bounded analysis image size")
             work += bytes(-len(work) % 0x10 + 0x2000)
+            record = {"codec": "native", "offset": offset, "size": len(data), "working_start": len(work),
+                      "sha256": hashlib.sha256(data).hexdigest()}
+            if original_bytes[offset:offset + 3] == b"\x1f\x8b\x08":
+                from .n64_gzip import stream
+                decoded = stream(original_bytes, offset)
+                if decoded is None or decoded[0] != data:
+                    raise ValueError("the discovered gzip code differs from its verified stream")
+                record.update(codec="gzip", end=offset + decoded[1])
+            records.append(record)
             work += data
         work += bytes(-len(work) % 0x10)
         image = f"{Path(image).stem}.unpacked{Path(image).suffix}"
@@ -324,14 +339,43 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
     if packed:
         cfg.setdefault("options", {})["target_path"] = image
         cfg["sha1"] = hashlib.sha1(rom).hexdigest()
+        metadata = n64_layout.provenance(original_bytes, records, rom)
+        metadata["original_file"] = original
+        (workdir / "n64-provenance.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     def start_of(seg):
         return seg[0] if isinstance(seg, list) else seg.get("start")
 
-    starts = {st for st, _, _ in found}
+    # A code/data guess can miss code *inside* a resident load range. Keep its
+    # parent extent and BSS intact when the discovered range has the same
+    # ROM-to-RAM mapping. Splitting that parent would move its computed BSS end.
+    separate = []
+    original_segments = cfg["segments"]
+    parents = [(seg, next((start_of(s) for s in original_segments[index + 1:] if start_of(s) is not None), len(rom)))
+               for index, seg in enumerate(original_segments) if isinstance(seg, dict) and seg.get("type") == "code"]
+    for st, en, vram in found:
+        selected = next(((seg, end) for seg, end in parents if seg["start"] <= st < en <= end
+                         and seg["vram"] + st - seg["start"] == vram), None)
+        if selected is not None:
+            parent, parent_end = selected
+            subs = parent["subsegments"]
+            loaded = [s for s in subs if isinstance(s, list) and isinstance(s[0], int)]
+            section = next((s for i, s in enumerate(loaded) if s[0] <= st and
+                            en <= (loaded[i + 1][0] if i + 1 < len(loaded) else parent_end)), None)
+            if section is not None and section[1] in ("data", "rodata"):
+                if section[0] == st:
+                    subs.remove(section)
+                subs.append([st, "c", f"code_{vram:08X}"])
+                if en < parent_end and not any(s[0] == en for s in loaded):
+                    subs.append([en, section[1], f"data_{en:X}"])
+                parent["subsegments"] = sorted((s for s in subs if isinstance(s, list) and s[0] is not None), key=lambda s: s[0]) + \
+                                         [s for s in subs if not isinstance(s, list) or s[0] is None]
+                continue
+        separate.append((st, en, vram))
+    starts = {st for st, _, _ in separate}
     segs = [s for s in cfg["segments"] if not (isinstance(s, dict) and s.get("type") == "bin" and start_of(s) in starts)
             and not isinstance(s, list)]  # the end marker comes back at the image's end
-    for st, en, vram in found:
+    for st, en, vram in separate:
         name = f"code_{vram:08X}"
         segs.append({"name": name, "type": "code", "start": st, "vram": vram, "subsegments": [[st, "c", name]]})
         if en < len(rom) and not any(start_of(s) == en for s in segs if not isinstance(s, list)):
@@ -341,18 +385,40 @@ def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> st
     cfg["segments"] = segs
     config.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=None), encoding="utf-8")
     kib = sum(en - st for st, en, _ in found) // 1024
-    log(f"found {len(found)} more code segment{'s' if len(found) != 1 else ''} the game loads later ({kib} KiB)")
+    log(f"found {len(found)} more code range{'s' if len(found) != 1 else ''} ({kib} KiB); "
+        f"{len(found) - len(separate)} inside existing resident modules")
     return image
+
+
+def _entry_symbols(workdir: Path, rom: bytes) -> None:
+    """Retain actual startup relocation values even when BSS size is unknown.
+
+    Splat can recognize the clear-loop address but cannot represent a small
+    immediate count as a HI/LO pair. Its generated layout then has no BSS while
+    its entry relocations still refer to main_BSS_START. A guessed file boundary
+    must not replace the address present in those original instructions.
+    """
+    from splat.util.n64.rominfo import N64EntrypointInfo
+    info = N64EntrypointInfo.parse_rom_bytes(rom, int.from_bytes(rom[8:12], "big"))
+    facts = {"main_BSS_START": info.bss_start_address, "main_BSS_END": info.bss_end_address,
+             "main_BSS_SIZE": info.bss_size}
+    known = named_symbols(workdir)
+    path = workdir / "symbol_addrs.txt"
+    with path.open("a", encoding="utf-8") as output:
+        output.write("\n")
+        for name, fact in facts.items():
+            if fact is not None and name not in known:
+                output.write(f"{name} = 0x{fact.value:08X}; // absolute:True\n")
 
 
 def overlay_contexts(cfg: dict) -> bool:
     """Keep mutually exclusive programs out of the resident symbol namespace."""
     segments = [s for s in cfg.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
-    overlays = [s for s in segments if s.get("name", "").startswith("ovl_")]
+    overlays = [s for s in segments if s.get("name", "").startswith("ovl_") or s.get("exclusive_ram_id")]
     if not overlays:
         return False
     for seg in overlays:
-        seg["exclusive_ram_id"] = "playstation_overlays"
+        seg.setdefault("exclusive_ram_id", "playstation_overlays")
         seg["symbol_name_format"] = "$SEG_$VRAM"
         seg["symbol_name_format_no_rom"] = "$SEG_$VRAM"
     # Some boot discs contain several alternative resident executables.
@@ -421,7 +487,7 @@ def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str
 
 
 def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
-              overlays: list[tuple[str, bytes, int, int]] | None = None) -> SplitResult:
+              overlays: list[tuple[str, bytes, int, int]] | None = None, reviewed_layout=None) -> SplitResult:
     """Run splat on workdir/rom_name and return every function and data symbol it found. `overlays`: code from
     other files of a PlayStation disc, each with the address it's loaded at."""
     import yaml
@@ -447,24 +513,49 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         if ps2.bss_layout(cfg, (workdir / rom_name).read_bytes()):
             config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     big_endian = platform == "n64"
-    if platform == "n64":
+    if big_endian:
+        _entry_symbols(workdir, (workdir / image).read_bytes())
+    if reviewed_layout is not None:
+        import json
+        from . import n64_layout
+        if platform != "n64":
+            raise RomError("reviewed N64 layouts require an N64 cartridge")
+        original = (workdir / image).read_bytes()
+        segments, working, metadata = n64_layout.reviewed(original, reviewed_layout)
+        metadata["original_file"] = image
+        if metadata["blocks"]:
+            image = Path(image).stem + ".reviewed.z64"
+            (workdir / image).write_bytes(working)
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        cfg["segments"] = segments
+        cfg["options"].update(target_path=image, header_encoding="word")
+        cfg["sha1"] = hashlib.sha1(working).hexdigest()
+        overlay_contexts(cfg)
+        config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        (workdir / "n64-provenance.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        (workdir / "n64-layout.json").write_text(json.dumps(reviewed_layout, indent=2), encoding="utf-8")
+    elif platform == "n64":
         image = _add_code_segments(config, workdir, image, log)
     elif overlays:
         image = _add_overlays(config, workdir, image, overlays, log)
     log("disassembling every function")
     out += "\n" + _splat(["split", config.name], workdir)
-    if overlays:
+    if overlays or reviewed_layout is not None:
         namespace_overlay_labels(workdir)
 
-    functions = []
+    functions, other_assembly = [], []
     for path in sorted((workdir / "asm" / "nonmatchings").glob("*/*.s")):
         fn = parse_function(path, path.parent.name, big_endian)
         if fn is not None:
             functions.append(fn)
+        else:
+            other_assembly.append(path)
     for path in sorted((workdir / "asm" / "nonmatchings").glob("*/*/*.s")):  # per-file subfolders
         fn = parse_function(path, path.parent.parent.name, big_endian)
         if fn is not None:
             functions.append(fn)
+        else:
+            other_assembly.append(path)
     seen: dict[str, int] = {}  # name -> where it is in the image
     unique = []
     rom = (workdir / image).read_bytes()
@@ -479,7 +570,7 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         _complete_delay_slot(fn, rom, big_endian)
         unique.append(fn)
     data = []
-    for path in sorted((workdir / "asm" / "data").glob("**/*.s")):
+    for path in sorted((workdir / "asm" / "data").glob("**/*.s")) + other_assembly:
         data += parse_data(path)
     if not unique:
         raise RomError("splat found no functions; the code may be compressed or use an unusual boot layout")

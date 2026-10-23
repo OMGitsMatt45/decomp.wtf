@@ -142,7 +142,7 @@ def export_rom(net, slug, out, log):
         source = boot.assembly(row["target"], row["vram"], row["name"], proj["arch"], ".thumb\n" in row["asm"])
         if row["status"] == "matched" and row["matched_source"]:
             context = net._context(proj["id"], row["unit"])["header"]
-            compiled = net._compile(proj, context, row["matched_source"])
+            compiled = net._compile(proj, context, row["matched_source"], row)
             if not compiled.ok or not evaluate(net, row, proj, compiled.obj)[1]:
                 raise NetworkError(f"{row['name']}: saved assembly no longer verifies")
             source = context + "\n" + row["matched_source"]
