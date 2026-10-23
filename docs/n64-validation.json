@@ -1,19 +1,41 @@
 {
-  "format": 1,
-  "implementation_commit": "3eb0804fd7e14a2627658991a236a54af4f1f87c",
-  "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173765",
-  "native_hosts": {
-    "windows-2022": {
-      "job_id": 120128801138,
-      "passed": 130,
-      "failed": 0,
-      "skipped": 0
+  "format": 2,
+  "implementation_commit": "4010936d5b42a047bc8dfd831809aacffcdc5ba3",
+  "native_qualification": {
+    "status": "pending",
+    "reason": "Repository workflow dispatch returned HTTP 422: Actions has been disabled for this repository. No current-commit run was created."
+  },
+  "local_qualification": {
+    "host": "Linux x86_64",
+    "passed": 167,
+    "failed": 0,
+    "skipped": 0,
+    "deselected_other_platform_cases": 9,
+    "required_suite_gate": "passed",
+    "compiler_execution": "Native IDO 5.3 EDG/classic cfront and IDO 7.1; KMC i386 compatibility harness. This is not native KMC Linux or Windows qualification."
+  },
+  "previous_native_qualification": {
+    "implementation_commit": "4fff497ce901b715795e6d2495e97052b15a2761",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39873662417",
+    "native_hosts": {
+      "windows-2022": {
+        "job_id": 120153889866,
+        "passed": 136,
+        "failed": 0,
+        "skipped": 0
+      },
+      "ubuntu-24.04": {
+        "job_id": 120153889679,
+        "passed": 136,
+        "failed": 0,
+        "skipped": 0
+      }
     },
-    "ubuntu-24.04": {
-      "job_id": 120128801630,
-      "passed": 130,
-      "failed": 0,
-      "skipped": 0
+    "additional_checks": {
+      "windows_compatibility": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39873662297",
+      "classic_cfront_build": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39873662402",
+      "ds_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39873662273",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39873662424"
     }
   },
   "compiler_paths": [
@@ -25,33 +47,75 @@
   "required_suite_gate": "tools/check_operational_results.py --n64-only operational-results.xml",
   "coverage": [
     "Original compiler code/relocation parity and C-origin C++ matching",
-    "Reviewed raw, Yaz0 and Rare deflate modules with overlapping TLB mappings",
-    "Original compressed cartridge provenance and clean standalone reconstruction",
-    "Actual C++ function growth, linked JAL targets and relocated function pointers",
-    "Pinned globals, explicit reserve exhaustion and retained MIPS delay slots",
-    "Fixed jump, data-pointer and address-construction rejection",
+    "Mixed per-function C/C++, compiler, optimization and frontend profiles in one clean source build",
+    "Reviewed raw, Yaz0, Rare 1172/1173 and gzip modules with overlapping TLB mappings",
+    "Independent resident and exclusive-overlay source growth, cross-module JAL targets, function pointers and module-local aliases",
+    "Bounded recompression, independent decoded-byte verification and explicit storage-reserve exhaustion",
+    "Pinned globals, startup BSS relocations, data fragments beside nonmatching code and retained MIPS delay slots",
+    "Fixed jump, data-pointer, absolute relocation and address-construction rejection",
     "Strict owned constants and CRLF source/nested-header staging",
     "Transitive same-timestamp cfront dependencies and atomic failure output",
     "Period allocation, vector, static and virtual target-runtime imports",
-    "Browser/CLI import, export, failure reporting and module-specific local claims",
-    "Reviewed-layout room sharing rejection and native worker teardown"
+    "Browser/CLI import, export, per-function profiles, failure reporting and module-specific claims",
+    "Reviewed-layout room metadata and module-aware matches, notes, profiles, unit headers, renames and reconnects",
+    "Host confirmation before local match credit, profile-race rejection and native worker teardown",
+    "Retail-scale response-file links and thousands of exact object placements"
   ],
   "checksum_reference": {
     "implementation": "Decompollaborate/ipl3checksum",
     "version": "1.3.1",
     "fixture_sha256": "4766e938affa3f45c02bfc1d178361a4439fa9657c2f49f1a7120bdedd6a18cd",
-    "families": [6101, 6102, 6103, 6105, 6106]
-  },
-  "additional_checks": {
-    "windows_compatibility": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173565",
-    "classic_cfront_build": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39866173512"
+    "families": [
+      6101,
+      6102,
+      6103,
+      6105,
+      6106
+    ]
   },
   "boundaries": [
-    "Shiftable output supports one reviewed uncompressed resident module with an explicit zero reserve",
-    "Compressed and mutually exclusive modules use exact matching reconstruction",
-    "Reviewed-layout projects support local work and exports; rooms need a module-aware layout protocol",
-    "Opaque and self-modifying references still need game-specific review",
-    "Target C++ runtime imports remain unresolved until the game's compatible runtime is supplied",
+    "Moving modules require reviewed text boundaries and a zero code reserve; compression changes require reviewed codecs and fixed cartridge allocations",
+    "Data/BSS, module starts, entry and cartridge extents remain pinned; moving sources cannot add owned data/BSS",
+    "Opaque and self-modifying references and game-specific loader tables still need review",
+    "Target C++ runtime imports require compatible game runtime code",
     "All committed cartridge fixtures are original generated code; no retail N64 playthrough is claimed"
-  ]
+  ],
+  "local_regressions": {
+    "ds_and_fork_rooms": {
+      "passed": 211,
+      "failed": 0,
+      "skipped": 0,
+      "required_ds_gate": "passed"
+    },
+    "gameboy_and_shared_configuration": {
+      "passed": 120,
+      "failed": 0,
+      "skipped": 0
+    },
+    "gba": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ps1": {
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "execution": "Private i386 compatibility harness"
+    },
+    "ps2_and_export": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "deselected_other_platform_cases": 11,
+      "execution": "Private i386 compatibility harness with its installed 32-bit loader"
+    },
+    "shared_application": {
+      "passed": 97,
+      "failed": 0,
+      "skipped": 9,
+      "skip_details": "Eight missing original DS fixture checks subsequently passed in ds_and_fork_rooms; one optional Ghidra/Java integration check remains skipped."
+    },
+    "setup_failures": "Initial PS1/PS2 attempts failed because this cloud host cannot execute i386 compilers directly. Private compatibility-runtime setup repaired those runs; repository application code needed no change."
+  }
 }

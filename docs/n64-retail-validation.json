@@ -1,56 +1,204 @@
 {
-  "format": 1,
-  "input": {
-    "title": "Super Mario 64 (USA)",
-    "game_code": "NSME",
-    "version": 0,
-    "byte_order": "z64",
-    "size": 8388608,
-    "sha1": "9bef1128717f958171a4afac3ed78ee2bb4e86ce",
-    "sha256": "17ce077343c6133f8c9f2d6d6d9a4ab62c8cd2aa57c40aea1f490b4c8bb21d91",
-    "cic": 6102,
-    "stored_and_calculated_checksums": [1666853887, 2332173094]
-  },
+  "format": 2,
+  "implementation_commit": "4010936d5b42a047bc8dfd831809aacffcdc5ba3",
+  "export_build_sha256": "fb539c2069f269877e93eb958b39ec9c34c472204ea67b9a3aa58a4393a30b80",
   "execution": {
     "host": "Linux x86_64",
     "compiler": "Native IDO 5.3 EDG C++ and original backend",
     "linker": "Pinned GNU MIPS binutils 2.40",
-    "layout": "Automatic detection, no supplied game symbols or reviewed module layout",
-    "function_ranges": 4559,
-    "data_symbols": 2445,
-    "code_ranges": 4,
-    "entry_stub": "Retained as assembly"
+    "layout": "Automatic import; no supplied game symbols or reviewed growth layouts",
+    "entry_stubs": "Retained as assembly"
   },
-  "profiles": [
+  "cartridges": [
     {
-      "optimization": "-O2",
-      "matched_cpp_functions": 11,
-      "matched_original_bytes": 268,
-      "export_identical": true,
-      "export_assembly_fallbacks_for_matched_sources": [],
+      "title": "Super Mario 64 (USA)",
+      "game_code": "NSME",
+      "version": 0,
+      "byte_order": "z64",
+      "size": 8388608,
+      "sha1": "9bef1128717f958171a4afac3ed78ee2bb4e86ce",
+      "sha256": "17ce077343c6133f8c9f2d6d6d9a4ab62c8cd2aa57c40aea1f490b4c8bb21d91",
+      "cic": 6102,
+      "stored_checksums": [
+        1666853887,
+        2332173094
+      ],
+      "calculated_checksums": [
+        1666853887,
+        2332173094
+      ],
+      "function_ranges": 4559,
+      "decoded_code_blocks": 0,
+      "provenance_codecs": {},
+      "matched_cpp_functions": 54,
+      "matched_original_bytes": 1360,
+      "optimization_counts_in_one_project": {
+        "-O0": 43,
+        "-O2": 11
+      },
+      "original_assembly_baseline_identical": true,
+      "source_export_identical": true,
+      "assembly_fallbacks_for_matched_sources": [],
       "clean_build_identical": true,
-      "clean_build_seconds": 32.56
+      "clean_sha256": "17ce077343c6133f8c9f2d6d6d9a4ab62c8cd2aa57c40aea1f490b4c8bb21d91",
+      "source_export_seconds": 61.9,
+      "clean_build_seconds": 74.79
     },
     {
-      "optimization": "-O0",
-      "matched_cpp_functions": 43,
-      "matched_original_bytes": 1092,
-      "export_identical": true,
-      "export_assembly_fallbacks_for_matched_sources": [],
+      "title": "Star Fox 64 (USA) (Rev 1)",
+      "game_code": "NFXE",
+      "version": 1,
+      "byte_order": "z64",
+      "size": 12582912,
+      "sha1": "09f0d105f476b00efa5303a3ebc42e60a7753b7a",
+      "sha256": "385bcf1901ed12fb1152f3c227d1968cc54ae41e8566da66695df71af40a573f",
+      "cic": 6101,
+      "stored_checksums": [
+        3128429472,
+        253877044
+      ],
+      "calculated_checksums": [
+        3128429472,
+        253877044
+      ],
+      "function_ranges": 1695,
+      "decoded_code_blocks": 0,
+      "provenance_codecs": {},
+      "matched_cpp_functions": 4,
+      "matched_original_bytes": 32,
+      "optimization_counts_in_one_project": {
+        "-O2": 4
+      },
+      "original_assembly_baseline_identical": true,
+      "source_export_identical": true,
+      "assembly_fallbacks_for_matched_sources": [],
       "clean_build_identical": true,
-      "clean_build_seconds": 50.92
+      "clean_sha256": "385bcf1901ed12fb1152f3c227d1968cc54ae41e8566da66695df71af40a573f",
+      "source_export_seconds": 26.41,
+      "clean_build_seconds": 14.82
+    },
+    {
+      "title": "The Legend of Zelda: Ocarina of Time (USA) (Rev 2)",
+      "game_code": "CZLE",
+      "version": 2,
+      "byte_order": "z64",
+      "size": 33554432,
+      "sha1": "41b3bdc48d98c48529219919015a1af22f5057c2",
+      "sha256": "49acd3885f13b0730119b78fb970911cc8aba614fe383368015c21565983368d",
+      "cic": 6105,
+      "stored_checksums": [
+        1765515950,
+        3086044831
+      ],
+      "calculated_checksums": [
+        1765515950,
+        3086044831
+      ],
+      "function_ranges": 10189,
+      "decoded_code_blocks": 145,
+      "provenance_codecs": {
+        "native": 145
+      },
+      "matched_cpp_functions": 3,
+      "matched_original_bytes": 24,
+      "optimization_counts_in_one_project": {
+        "-O2": 3
+      },
+      "original_assembly_baseline_identical": true,
+      "source_export_identical": true,
+      "assembly_fallbacks_for_matched_sources": [],
+      "clean_build_identical": true,
+      "clean_sha256": "49acd3885f13b0730119b78fb970911cc8aba614fe383368015c21565983368d",
+      "source_export_seconds": 180.56,
+      "clean_build_seconds": 180.99
+    },
+    {
+      "title": "The Legend of Zelda: Majora's Mask (USA)",
+      "game_code": "NZSE",
+      "version": 0,
+      "byte_order": "z64",
+      "size": 33554432,
+      "sha1": "d6133ace5afaa0882cf214cf88daba39e266c078",
+      "sha256": "efb1365b3ae362604514c0f9a1a2d11f5dc8688ba5be660a37debf5e3be43f2b",
+      "cic": 6105,
+      "stored_checksums": [
+        1398039324,
+        61005552
+      ],
+      "calculated_checksums": [
+        1398039324,
+        61005552
+      ],
+      "function_ranges": 13424,
+      "decoded_code_blocks": 229,
+      "provenance_codecs": {
+        "native": 229
+      },
+      "matched_cpp_functions": 4,
+      "matched_original_bytes": 32,
+      "optimization_counts_in_one_project": {
+        "-O2": 4
+      },
+      "original_assembly_baseline_identical": true,
+      "source_export_identical": true,
+      "assembly_fallbacks_for_matched_sources": [],
+      "clean_build_identical": true,
+      "clean_sha256": "efb1365b3ae362604514c0f9a1a2d11f5dc8688ba5be660a37debf5e3be43f2b",
+      "source_export_seconds": 213.92,
+      "clean_build_seconds": 177.52
+    },
+    {
+      "title": "Donkey Kong 64 (USA)",
+      "game_code": "NDOE",
+      "version": 0,
+      "byte_order": "z64",
+      "size": 33554432,
+      "sha1": "cf806ff2603640a748fca5026ded28802f1f4a50",
+      "sha256": "b6347d9f1f75d38a88d829b4f80b1acf0d93344170a5fbe9546c484dae416ce3",
+      "cic": 6105,
+      "stored_checksums": [
+        3965250239,
+        2910613865
+      ],
+      "calculated_checksums": [
+        3965250239,
+        2910613865
+      ],
+      "function_ranges": 4280,
+      "decoded_code_blocks": 9,
+      "provenance_codecs": {
+        "gzip": 9
+      },
+      "matched_cpp_functions": 4,
+      "matched_original_bytes": 32,
+      "optimization_counts_in_one_project": {
+        "-O2": 4
+      },
+      "original_assembly_baseline_identical": true,
+      "source_export_identical": true,
+      "assembly_fallbacks_for_matched_sources": [],
+      "clean_build_identical": true,
+      "clean_sha256": "b6347d9f1f75d38a88d829b4f80b1acf0d93344170a5fbe9546c484dae416ce3",
+      "source_export_seconds": 57.56,
+      "clean_build_seconds": 69.4
     }
   ],
-  "unique_matched_functions_across_separate_projects": 54,
-  "unique_matched_original_bytes": 1360,
+  "totals": {
+    "cartridges": 5,
+    "bytes": 121634816,
+    "detected_function_ranges": 34147,
+    "matched_cpp_functions": 69,
+    "matched_original_bytes": 1480
+  },
   "clean_build_procedure": [
     "Export the complete matching project with accepted C++ sources",
     "Copy original cartridge, build metadata, scripts and source into an empty directory",
     "Exclude extracted assembly/assets, object files, build outputs, splat caches and generated linker scripts",
     "Run the standalone build to regenerate extraction and compile accepted source",
-    "Require full 8388608-byte equality and the original SHA-256"
+    "Require complete cartridge equality, including original compression and checksums, and the original SHA-256"
   ],
-  "additional_results": {
+  "earlier_sm64_browser_and_rejection_checks": {
+    "implementation_commit": "4fff497ce901b715795e6d2495e97052b15a2761",
     "original_assembly_baseline_identical": true,
     "invalid_cpp_rejected": true,
     "incorrect_cpp_rejected": true,
@@ -64,13 +212,18 @@
   "retail_scale_fixes": [
     "GNU ld response files avoid the Windows CreateProcess argument limit; this project's original object command exceeded 200000 characters",
     "Exact singleton filename patterns avoid GNU ld's cubic literal-filename lookup path while preserving placement",
-    "Explicit compiler/optimization imports retain distinct project profiles instead of reusing an incompatible project"
+    "Explicit compiler/optimization imports retain distinct project profiles instead of reusing an incompatible project",
+    "Per-function optimization profiles combine all 54 accepted Super Mario 64 samples in one project",
+    "Code inside resident data preserves the parent load and BSS extents",
+    "Startup BSS relocations use established boot-code values instead of guessed initialized-data bounds",
+    "Generic gzip streams are verified with zlib and classified by the native N64 analyzer; known code provenance avoids rescanning assets",
+    "Referenced automatic hardware/RSP symbols retain encoded addresses; auxiliary local jump-table labels resolve across function objects",
+    "Data fragments beside nonmatching functions retain their data placement and assembler macros"
   ],
   "boundaries": [
-    "The recovered sources are small functions and stubs; the remaining detected ranges retain assembly",
-    "The two optimization profiles are separate projects, not a mixed-profile source build",
-    "Automatic function boundaries remain heuristic and need review",
-    "This multi-range retail layout has no reviewed growth reserve and does not qualify for shiftable output",
+    "Recovered source samples are small functions and stubs; remaining ranges retain assembly",
+    "Automatic function boundaries and code classification remain heuristic and need review",
+    "These retail layouts have no reviewed growth reserves; modified retail shiftable builds are not qualified here",
     "No emulator execution or playthrough was performed",
     "Only metadata is committed; cartridge bytes, derived assembly, recovered game sources and private exports are excluded"
   ]
