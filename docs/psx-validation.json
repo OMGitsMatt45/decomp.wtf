@@ -1,10 +1,10 @@
 {
   "format": 1,
   "platform": "psx",
-  "implementation_commit": "88bd9f3bf30f24bc6b5026cce6021951e8b924da",
+  "implementation_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
   "local_qualification": {
-    "tested_commit": "88bd9f3bf30f24bc6b5026cce6021951e8b924da",
-    "passed": 107,
+    "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
+    "passed": 125,
     "failed": 0,
     "skipped": 0,
     "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification."
@@ -94,45 +94,6 @@
   ],
   "previous_native_qualification": {
     "status": "passed",
-    "tested_commit": "59af9043fc4f3147c7ec40750d81ff8b9df3db6c",
-    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734",
-    "native_hosts": {
-      "ubuntu-24.04": {
-        "job_id": 120259948975,
-        "passed": 88,
-        "failed": 0,
-        "skipped": 0
-      },
-      "windows-2022": {
-        "job_id": 120259949295,
-        "passed": 88,
-        "failed": 0,
-        "skipped": 0
-      }
-    },
-    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
-    "required_module_counts_per_host": {
-      "test_psx": 16,
-      "test_psx_cpp": 10,
-      "test_psx_disc": 22,
-      "test_psx_workflows": 12,
-      "test_psx_set": 4,
-      "test_psx_media": 11,
-      "test_psx_layout": 8,
-      "test_overlays": 4,
-      "test_export": 1
-    },
-    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
-    "additional_checks": {
-      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619746",
-      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619807",
-      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619808",
-      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
-    },
-    "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
-  },
-  "native_qualification": {
-    "status": "passed",
     "tested_commit": "88bd9f3bf30f24bc6b5026cce6021951e8b924da",
     "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576185",
     "native_hosts": {
@@ -168,6 +129,49 @@
       "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576132",
       "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576218",
       "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576107"
+    },
+    "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+  },
+  "native_qualification": {
+    "status": "passed",
+    "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672",
+    "native_hosts": {
+      "ubuntu-24.04": {
+        "job_id": 120292927140,
+        "passed": 125,
+        "failed": 0,
+        "skipped": 0
+      },
+      "windows-2022": {
+        "job_id": 120292926755,
+        "passed": 125,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+    "required_module_counts_per_host": {
+      "test_psx": 16,
+      "test_psx_cpp": 10,
+      "test_psx_disc": 22,
+      "test_psx_workflows": 12,
+      "test_psx_set": 4,
+      "test_psx_media": 11,
+      "test_psx_layout": 8,
+      "test_overlays": 4,
+      "test_export": 1,
+      "test_psx_modify": 19,
+      "test_psx_growth": 10,
+      "test_psx_storage": 8
+    },
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+    "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+    "additional_checks": {
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105704",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105674",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105680",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105731"
     },
     "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
   },
@@ -327,15 +331,45 @@
         "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013690"
       },
       "additional_checks_status": "All passed at the tested source commit."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "59af9043fc4f3147c7ec40750d81ff8b9df3db6c",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120259948975,
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120259949295,
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_psx": 16,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 22,
+        "test_psx_workflows": 12,
+        "test_psx_set": 4,
+        "test_psx_media": 11,
+        "test_psx_layout": 8,
+        "test_overlays": 4,
+        "test_export": 1
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619746",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619807",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619808",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
+      },
+      "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
     }
-  ],
-  "pending_qualification": {
-    "required_cases": 125,
-    "new_growth_cases": 10,
-    "new_storage_cases": 8,
-    "native_status": "pending",
-    "local_passed": 125,
-    "local_failed": 0,
-    "local_skipped": 0
-  }
+  ]
 }

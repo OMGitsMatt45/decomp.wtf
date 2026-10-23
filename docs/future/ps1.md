@@ -1,8 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4; the last completed native Windows/Linux baseline has 107 required checks per host, zero skips**.
-The expanded growth/storage suite adds 18 required checks; native qualification
-of those additions is pending.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 125 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 

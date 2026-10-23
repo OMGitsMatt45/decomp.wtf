@@ -215,9 +215,9 @@ retain original containers only after decoded-program matching succeeds.
 The separate `mod` command supports the bounded source changes described above.
 Changed-size media authoring remains outside this workflow.
 
-All **107 required checks passed with zero skips on native Windows and Linux**
-at source/test commit `88bd9f3bf30f24bc6b5026cce6021951e8b924da` in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576185).
+All **125 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `eaf93c02c3d23c8e291a7382331a6c251cebb409` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672).
 The [validation record](psx-validation.json) records per-suite counts and private
 retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
 and 92 shared source files. Most functions remain assembly and HBD archives stay
@@ -232,9 +232,9 @@ suite. Retail bytes and derived sources never enter that workflow or Git.
 
 ```sh
 uv sync --locked --group dev
-python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
-python tools/check_operational_results.py --psx-only operational-results.xml
+uv run --no-sync python -m tools.operational --psx-only
+DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 
 In PowerShell set `$env:DECOMP_TEST_PSX_CPP = '1'` first and omit the shell
