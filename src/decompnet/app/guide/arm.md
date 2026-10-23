@@ -21,3 +21,12 @@ Recognising C
 
 Hardware registers: GBA I/O at 0x04000000 (REG_DISPCNT...), DS I/O at 0x04000000 too; the project's
 headers have names and macros for them: use those.
+
+Generated DS projects have separate ARM9 and ARM7 builds. ARM7 source uses
+ARM7TDMI (ARMv4T); its names start with arm7_. Recognized copied blocks use their
+runtime destination addresses. Calls and data pointers must resolve exactly,
+including when objdiff considers the instructions equivalent. Use edit_file for
+globals and declarations; configure_arm7_unit assigns an unclaimed original
+.data/.rodata/.bss range or selects C++. The complete source file links only when
+all code/data and the whole rebuilt ROM match. The isolated ds_arm7.py leaf
+checker has no linking context; use the generated project for calls and globals.

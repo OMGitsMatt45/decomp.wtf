@@ -1,0 +1,130 @@
+name: Nintendo DS native qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ds.yml'
+      - 'src/**'
+      - 'tests/test_ds*.py'
+      - 'tests/test_objdiff_errors.py'
+      - 'tools/operational.py'
+      - 'tools/check_operational_results.py'
+      - 'tools/run_operational.py'
+      - 'tools/operational_progress.py'
+      - 'tools/ds_pilot.py'
+      - 'tools/ds_arm7.py'
+      - 'tools/ds_boot.py'
+      - 'tools/ds_trace.py'
+      - 'projects/demo-ds/**'
+      - 'projects/demo-rom/src/**'
+      - 'projects/demo-n64/original/**'
+      - 'projects/zlib-n64/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  ds:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux compiler runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-i386
+      - name: Isolate DS toolchains
+        shell: bash
+        run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Nintendo DS toolchains with spaces" >> "$GITHUB_ENV"
+      - name: Install pinned native DS tools and prepare original fixtures
+        run: uv run --no-sync python -m tools.operational --ds-only
+      - name: Qualify encrypted imports, matching, source links and full-ROM rebuilds
+        run: >-
+          uv run --no-sync python tools/run_operational.py
+          tests/test_ds.py tests/test_ds_rom_check.py tests/test_ds_bios.py
+          tests/test_ds_units.py tests/test_ds_modes.py tests/test_ds_encrypted.py tests/test_ds_inputs.py
+          tests/test_ds_modules.py tests/test_ds_arm7.py tests/test_ds_arm7_link.py tests/test_ds_decrypted.py tests/test_ds_protect.py
+          tests/test_objdiff_errors.py
+      - name: Require every DS suite without skips
+        run: uv run --no-sync python tools/check_operational_results.py --ds-only operational-results.xml
+      - name: Report failures
+        if: always()
+        run: uv run --no-sync python tools/operational_report.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-qualification-${{ matrix.os }}
+          path: |
+            operational-results.xml
+            operational-output.log
+
+  execution:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_DS_CORE: ${{ github.workspace }}/.ds-emulator/melonds_libretro.${{ matrix.os == 'windows-2022' && 'dll' || 'so' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux compiler runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-i386
+      - name: Isolate DS toolchains
+        shell: bash
+        run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/Nintendo DS tools with spaces" >> "$GITHUB_ENV"
+      - name: Install pinned DS tools and prepare original fixtures
+        run: uv run --no-sync python -m tools.operational --ds-only
+      - name: Fetch pinned software-only execution core
+        shell: bash
+        run: |
+          git init .ds-emulator
+          git -C .ds-emulator remote add origin https://github.com/libretro/melonDS.git
+          git -C .ds-emulator fetch --depth=1 origin 66b5d2634cd0a79030562811e6e05f5532f800ba
+          git -C .ds-emulator checkout --detach FETCH_HEAD
+      - name: Build Linux execution core
+        if: runner.os == 'Linux'
+        run: make -C .ds-emulator -j4 HAVE_OPENGL=0 HAVE_WIFI=0 LIBS='-lm -lpthread -lrt'
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: MINGW64
+          install: make mingw-w64-x86_64-gcc
+      - name: Build Windows execution core
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          make -C .ds-emulator -j4 platform=win HAVE_OPENGL=0 HAVE_WIFI=0
+          cp /mingw64/bin/libwinpthread-1.dll .ds-emulator/
+      - name: Compare ARM9 and ARM7 execution and require stalled-processor failures
+        run: >-
+          uv run --no-sync python -m pytest -q tests/test_ds_execution.py
+          --junitxml=ds-execution-results.xml
+      - name: Require execution coverage without skips
+        run: uv run --no-sync python tools/check_operational_results.py --ds-execution ds-execution-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-execution-${{ matrix.os }}
+          path: ds-execution-results.xml

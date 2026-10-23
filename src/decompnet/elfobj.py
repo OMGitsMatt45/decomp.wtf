@@ -243,10 +243,21 @@ def extract_function(data: bytes, name: str) -> FunctionObj | None:
         return None
     symtab = elf.get_section_by_name(".symtab")
     shndx, start, size = found
-    if arch == "arm" and start & 1:
-        arch, start = "thumb", start & ~1
+    if arch == "arm":
+        if start & 1:
+            arch, start = "thumb", start & ~1
+        else:
+            # CodeWarrior emits an even STT_FUNC value for Thumb functions and
+            # records the mode with ARM ELF mapping symbols instead. GCC can
+            # also emit these; only mappings in this function's section apply.
+            mappings = [(s["st_value"], s.name[1]) for s in symtab.iter_symbols()
+                        if s["st_shndx"] == shndx and s["st_value"] <= start
+                        and re.fullmatch(r"\$[atd](?:\..*)?", s.name)]
+            if mappings and max(mappings)[1] == "t":
+                arch = "thumb"
     section = elf.get_section(shndx)
-    code = section.data()[start : start + size]
+    data_start = start - section["sh_addr"] if elf["e_type"] in ("ET_EXEC", "ET_DYN") else start
+    code = section.data()[data_start : data_start + size]
 
     raw: list[dict] = []
     for rsec in elf.iter_sections():

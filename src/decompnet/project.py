@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -51,6 +52,12 @@ def load_config(root: Path) -> dict:
         return tomllib.load(f)
 
 
+def function_config(cfg: dict, function: str | None = None) -> dict:
+    """Resolve a function's compiler without mutating the project defaults."""
+    override = cfg.get("function_compilers", {}).get(function, {}) if function else {}
+    return {**cfg, "compiler": {**cfg["compiler"], **override}} if override else cfg
+
+
 def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     """Build the sandboxed compile command for a project.
 
@@ -63,6 +70,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     runtime32 = None
     linux = False
     relative_paths = False
+    dirs = []
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
         if tc.id == "rgbds" and language != "asm":
@@ -166,18 +174,27 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             cmd[0] += ".exe"
     else:
         cmd = list(c["cmd"])
+    linux_host = sys.platform.startswith("linux")
+    sandbox = c.get("sandbox", "auto")
+    if sandbox == "auto" and linux_host:
+        sandbox = os.environ.get("DECOMP_COMPILER_SANDBOX", "auto")
+        if sandbox not in ("auto", "bwrap", "docker"):
+            raise ValueError("DECOMP_COMPILER_SANDBOX must be auto, bwrap or docker")
     return CompilerConfig(
         cmd=cmd,
         language=language,
         c_linkage=language == "c++" and cfg.get("kind") == "rom",
         relative_paths=relative_paths,
+        assembly_dialect=c.get("assembly_dialect", "rgbds"),
         timeout=float(c.get("timeout", 15)),
-        sandbox=c.get("sandbox", "auto"),
-        image=c.get("image"),
+        sandbox=sandbox,
+        image=c.get("image", os.environ.get("DECOMP_COMPILER_IMAGE") if linux_host else None),
         ro_paths=tuple(ro_paths),
         include_dirs=tuple(str((root / p).resolve()) for p in c.get("include_dirs", [])),
         runtime32=runtime32,
         wsl=linux,
+        qemu_i386=c.get("qemu_i386", os.environ.get("DECOMP_QEMU_I386") if linux_host else None),
+        toolchain_dirs=tuple(str(d) for d in dirs if str(d) != runtime32),
     )
 
 

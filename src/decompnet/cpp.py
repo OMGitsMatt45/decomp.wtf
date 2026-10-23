@@ -9,6 +9,11 @@ _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
     platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
+    if config.get("rom", {}).get("boot_utility") and compiler.get("language") == "asm" \
+            and compiler.get("assembly_dialect") == "gnu" \
+            and ((platform == "nds" and toolchain == "binutils-arm")
+                 or (platform in ("gc", "wii") and toolchain == "gc-wii-binutils")):
+        return "asm"
     if platform in ("gb", "gbc") or compiler.get("language") == "asm":
         if platform not in ("gb", "gbc") or toolchain != "rgbds" or compiler.get("language", "asm") != "asm":
             raise ValueError("GB/GBC assembly projects require RGBDS and compiler.language = 'asm'")
@@ -51,9 +56,10 @@ def game_abi(source: str) -> str:
                 text = source[pos:at]
                 code = clean[pos:at]
                 explicit = re.search(r'\bextern\s*"C(?:\+\+)?"', text)
-                if not explicit and re.match(r"extern\b", code):
+                cpp_operator = re.search(r"\boperator\b", code)
+                if not explicit and not cpp_operator and re.match(r"extern\b", code):
                     edits.append((pos + len("extern"), ' "C"'))
-                elif not explicit and code.rstrip().endswith(")") and "=" not in code \
+                elif not explicit and not cpp_operator and code.rstrip().endswith(")") and "=" not in code \
                         and not re.search(r"\b(template|namespace|static|typedef|using)\b|::", code) \
                         and re.search(r"\b\w+\s*\((?!\s*\*)", code):
                     edits.append((pos, 'extern "C" '))

@@ -15,7 +15,7 @@ import argparse
 import os
 from platform import uname
 
-wineprefix = os.path.join(os.environ["HOME"], ".wine")
+wineprefix = os.path.join(os.environ.get("HOME", os.path.expanduser("~")), ".wine")
 if "WINEPREFIX" in os.environ:
     wineprefix = os.environ["WINEPREFIX"]
 winedevices = os.path.join(wineprefix, "dosdevices")
@@ -42,6 +42,9 @@ def import_d_file(in_file: str) -> str:
                     path = line.lstrip()[:-3]
                 else:
                     path = line.strip()
+                if os.name == "nt":
+                    out_text += "\t" + path.replace("\\", "/") + suffix + "\n"
+                    continue
                 # lowercase drive letter
                 path = path[0].lower() + path[1:]
                 if path[0] == "z":

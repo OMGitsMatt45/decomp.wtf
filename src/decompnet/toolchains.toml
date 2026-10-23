@@ -14,14 +14,14 @@
 # a part for wsl-x86_64 replaces the Linux one in that optional bridge.
 
 [runtime-i386]
-name = "32-bit x86 C runtime (glibc 2.44)"
+name = "32-bit x86 C runtime (glibc 2.41)"
 kind = "runtime"
 license = "LGPL-2.1-or-later"
-source = "Arch Linux archive, lib32-glibc 2.44+r50"
+source = "Debian 13 libc6-i386 (2.41-12+deb13u4 on Linux; 2.41-12 for the optional WSL bridge)"
 description = "Lets old 32-bit compiler binaries run inside the sandbox without installing multilib on the host."
 [[runtime-i386.parts]]
-url = "https://archive.archlinux.org/packages/l/lib32-glibc/lib32-glibc-2.44%2Br50%2Bg1848099f063e-1-x86_64.pkg.tar.zst"
-sha256 = "a977f9a6a405ab85e594aa9f1230a0b7dddfc33e3de5f2cb66931c92a48931d8"
+url = "https://deb.debian.org/debian/pool/main/g/glibc/libc6-i386_2.41-12+deb13u4_amd64.deb"
+sha256 = "50c1653ce29519e1fcd8742f2c67f5edad8d4c3aed3d1ffbea2b7c3497a809d2"
 subdir = "usr/lib32"
 platforms = ["linux-x86_64"]
 [[runtime-i386.parts]]
@@ -550,6 +550,28 @@ description = "The community's project template for GameCube and Wii decomps, us
 url = "https://github.com/encounter/dtk-template/archive/95a941f755919ebe50c1725a4ce73524470e7a02.tar.gz"
 sha256 = "c49f889a4e092388beef4867340887ec6f0410bd1055d79a8f8850bea89ada61"
 subdir = "dtk-template-95a941f755919ebe50c1725a4ce73524470e7a02"
+
+[binutils-arm]
+name = "GNU binutils for ARM and Thumb"
+kind = "tool"
+license = "GPL-3.0"
+source = "Debian binutils-arm-none-eabi 2.40 (Linux); Arm GNU 14.3.Rel1 (Windows/macOS)"
+description = "Assembler and linker for ARM assembly exports; C/C++ compilation separately needs Arm GNU and the game's compiler."
+binary_name = "bin/arm-none-eabi-as"
+[[binutils-arm.parts]]
+url = "https://deb.debian.org/debian/pool/main/b/binutils-arm-none-eabi/binutils-arm-none-eabi_2.40-2+18+b1_amd64.deb"
+sha256 = "c8f9da2a434366bfe5a66a8267cb3b1df028f1d95278715050c222b43e1c221c"
+subdir = "usr"
+platforms = ["linux-x86_64"]
+[[binutils-arm.parts]]
+url = "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi.tar.xz"
+sha256 = "30f4d08b219190a37cded6aa796f4549504902c53cfc3c7e044a8490b6eba1f7"
+subdir = "arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi"
+platforms = ["macos-arm64"]
+[[binutils-arm.parts]]
+url = "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip"
+sha256 = "864c0c8815857d68a1bbba2e5e2782255bb922845c71c97636004a3d74f60986"
+platforms = ["windows-x86_64"]
 
 [arm-gnu]
 name = "Arm GNU Toolchain (arm-none-eabi)"

@@ -26,6 +26,7 @@ from pathlib import Path
 from .. import cpp, scoring, seeds, similarity, toolchains
 from ..elfobj import FunctionObj
 from ..network import Agent, Network, NetworkError, _hash_token
+from ..project import function_config
 from ..rom import detect, gb, match, match_gb, sm83, split
 from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 
@@ -158,6 +159,9 @@ class RomNetwork(Network):
     def is_rom(self, proj) -> bool:
         return self.cfg(proj).get("kind") == "rom"
 
+    def is_assembly(self, proj) -> bool:
+        return proj["arch"] == "sm83" or bool(self.cfg(proj).get("rom", {}).get("boot_utility"))
+
     def project_row(self, slug: str):
         return self._project(slug)
 
@@ -180,6 +184,12 @@ class RomNetwork(Network):
         if project_id not in self._syms:
             rows = self.store.all("SELECT name, address, size, kind FROM symbols WHERE project_id=?", project_id)
             self._syms[project_id] = SymbolTable([Symbol(r["name"], r["address"], r["size"], r["kind"]) for r in rows])
+            self._syms[project_id].by_name.update({r["name"]: Symbol(r["name"], r["address"], r["size"], r["kind"]) for r in rows})
+            # Exclusive programs can give the same address different names.
+            # Keep every function name resolvable even though address labels
+            # still have one default name for the project's map.
+            for fn in self.store.all("SELECT name, vram, size FROM functions WHERE project_id=?", project_id):
+                self._syms[project_id].by_name.setdefault(fn["name"], Symbol(fn["name"], fn["vram"], fn["size"], "func"))
         return self._syms[project_id]
 
     def _rom(self, proj) -> tuple[bytes, list[split.Segment]]:
@@ -190,8 +200,15 @@ class RomNetwork(Network):
             self._roms[proj["id"]] = (rom, segs)
         return self._roms[proj["id"]]
 
-    def reader(self, proj):
+    def reader(self, proj, fn=None):
         rom, segs = self._rom(proj)
+        if fn is not None and fn["rom_offset"] is not None:
+            selected = next((s for s in segs if s.rom_start <= fn["rom_offset"] < s.rom_end
+                             and s.vram + fn["rom_offset"] - s.rom_start == fn["vram"]), None)
+            if selected is not None:
+                end = selected.vram + selected.rom_end - selected.rom_start
+                segs = [selected] + [s for s in segs if s is not selected
+                                    and (s.vram >= end or s.vram + s.rom_end - s.rom_start <= selected.vram)]
 
         def read(addr: int, n: int) -> bytes | None:
             for seg in segs:
@@ -217,7 +234,10 @@ class RomNetwork(Network):
         m = _ADDRESS.match(name.strip()) if name else None
         if m:
             proj = self._project(project)
-            row = self.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], int(m.group(1), 16))
+            rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], int(m.group(1), 16))
+            if len(rows) > 1:
+                raise NetworkError("multiple overlay functions use this address; choose the module-qualified function name")
+            row = rows[0] if rows else None
             if row is not None:
                 return row
         try:
@@ -309,16 +329,29 @@ class RomNetwork(Network):
         cfg = self.cfg(proj)
         return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), cfg.get("gp", 0))
 
+    def _compile(self, proj, header: str, source: str, fn=None):
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            from .bootengine import symbols
+            from ..rom.boot_build import declarations
+            header = declarations(symbols(self, proj), proj["arch"]) + header
+        return super()._compile(proj, header, source, fn)
+
     def _target_obj(self, fn, proj):
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            return FunctionObj(fn["name"], "thumb" if ".thumb\n" in fn["asm"] else proj["arch"],
+                               bool(proj["big_endian"]), fn["target"], [])
         if proj["arch"] == "sm83":
             return FunctionObj(fn["name"], "sm83", False, fn["target"], [])
         if not self.is_rom(proj):
             return super()._target_obj(fn, proj)
         if self.cfg(proj).get("platform") == "gba":
-            return FunctionObj(fn["name"], "thumb", False, fn["target"], [])
+            return FunctionObj(fn["name"], "arm" if "arm_func_start" in fn["asm"] else "thumb", False, fn["target"], [])
         return match.canonical_target(self._rom_target(fn), self.symbols(proj["id"]))
 
     def _evaluate(self, fn, proj, obj: bytes):
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            from .bootengine import evaluate
+            return evaluate(self, fn, proj, obj)
         if proj["arch"] == "sm83":
             from ..project import compiler_config
             return match_gb.link(obj, fn["name"], fn["vram"], fn["target"], self.symbols(proj["id"]),
@@ -328,10 +361,11 @@ class RomNetwork(Network):
         if self.cfg(proj).get("platform") == "gba":
             from ..rom import match_arm
 
-            res = match_arm.link(obj, fn["name"], match_arm.ArmTarget(fn["name"], fn["vram"], fn["target"]),
-                                 self.symbols(proj["id"]), self.reader(proj))
+            res = match_arm.link(obj, fn["name"], match_arm.ArmTarget(fn["name"], fn["vram"], fn["target"],
+                                 "arm_func_start" not in fn["asm"]),
+                                 self.symbols(proj["id"]), self.reader(proj, fn))
             return res.candidate, res.exact if res.candidate is not None else None, res.problems
-        res = match.link(obj, fn["name"], self._rom_target(fn), self.symbols(proj["id"]), self.reader(proj))
+        res = match.link(obj, fn["name"], self._rom_target(fn), self.symbols(proj["id"]), self.reader(proj, fn))
         return res.candidate, res.exact if res.candidate is not None else None, res.problems
 
     def _twin_lines(self, proj, fn) -> list[str]:
@@ -362,21 +396,49 @@ class RomNetwork(Network):
     # ------------------------------------------------------------------ import
 
     def import_rom(self, data: bytes | Path, *, toolchain: str | None = None, flags: list[str] | None = None,
-                   confirmed: bool = False, name: str = "", log=print) -> str:
+                   confirmed: bool = False, name: str = "", ds_input_format: str = "auto", reviewed_layout=None,
+                   compiler_profile=None, log=print) -> str:
         """Import a game the user owns (ROM bytes, or a file such as a disc image): split it, store every function
         as a target. Returns the slug."""
         if not confirmed:
             raise NetworkError("confirm that this is your own legally obtained copy of the game")
         project_file = self._community_layout(data, name)
-        if project_file is not None:  # a dtk-template or ds-decomp project, worked on like a fork
+        boot_picked = None
+        if project_file is not None:
+            from ..rom import boot
+            boot_picked = boot.identify(project_file)
+        if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
+            if reviewed_layout is not None:
+                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
             compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
-            return self.forks.create_scratch(project_file, compiler=compiler, log=log)
-        picked = detect.identify(data, name)
+            return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
+        picked = boot_picked or detect.identify(data, name)
         if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         rom, info = picked.data, picked.info
+        if compiler_profile is not None:
+            from ..rom.n64_profiles import profile
+            if picked.platform != "n64":
+                raise NetworkError("portable compiler profiles require an N64 cartridge")
+            compiler_profile = profile({}, compiler_profile)
+            toolchain, flags = compiler_profile["toolchain"], compiler_profile["flags"]
+        layout_id = None
+        if reviewed_layout is not None:
+            from ..rom import n64_layout
+            if picked.platform != "n64":
+                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
+            try:
+                n64_layout.reviewed(rom, reviewed_layout)
+            except ValueError as error:
+                raise NetworkError(str(error)) from error
+            layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
         for p in self.store.all("SELECT slug, config FROM projects"):
-            if json.loads(p["config"]).get("rom", {}).get("sha1") == info["sha1"]:
+            previous = json.loads(p["config"])
+            previous_compiler = previous.get("compiler", {})
+            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id and \
+                    (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
+                    (not flags or previous_compiler.get("flags") == flags) and \
+                    (compiler_profile is None or profile(previous_compiler, {}) == compiler_profile):
                 log(f"already imported as {p['slug']}")
                 return p["slug"]
         base = _slugify(info["title"])
@@ -394,10 +456,13 @@ class RomNetwork(Network):
             return gbengine.import_rom(self, picked, slug, workdir, log)
         if picked.platform == "gba":
             return self._import_gba(picked, slug, workdir, toolchain, flags, log)
+        if picked.info.get("boot_utility"):
+            from . import bootengine
+            return bootengine.import_rom(self, picked, slug, workdir, log)
         if picked.overlays:
             log(f"{len(picked.overlays)} overlay{'s' if len(picked.overlays) != 1 else ''} on the disc: "
                 + ", ".join(f"{o[0]} at 0x{o[2]:08X}" for o in picked.overlays[:6]) + (", ..." if len(picked.overlays) > 6 else ""))
-        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays)
+        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays, reviewed_layout=reviewed_layout)
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
@@ -416,6 +481,10 @@ class RomNetwork(Network):
                       "confirmed_at": time.time()},
             "context": {"file": None},
         }
+        if layout_id:
+            cfg["n64_layout"] = layout_id
+        if compiler_profile is not None:
+            cfg["compiler"].update(compiler_profile)
         symbols = SymbolTable()
         for name, addr in res.named.items():
             symbols.add(Symbol(name, addr, 0, "func"), reindex=False)
@@ -550,19 +619,22 @@ class RomNetwork(Network):
 
     def _seed_for(self, fn, proj) -> str | None:
         """A draft, made when a function first opens; assembly imports already carry their listing."""
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            return fn["seed"]
         if proj["arch"] == "sm83":
             return fn["seed"]
         if fn["seed"] is not None or not seeds.available():
             return fn["seed"]
-        tc = self.cfg(proj)["compiler"]["toolchain"]
+        selected = function_config(self.cfg(proj), fn["name"])
+        tc = selected["compiler"]["toolchain"]
         asm = self._asm_text(fn, proj)
         data_asm = None
         if "jtbl_" in fn["asm"]:
             data_asm = "\n".join(self._jtbl_asm(proj, fn))
         ctx = self._context(proj["id"], fn["unit"])
         draft = seeds.generate_from_asm(asm, fn["name"], tc, ctx["header"] if ctx else "", data_asm,
-                                        language=cpp.language(self.cfg(proj)))
-        if draft and cpp.language(self.cfg(proj)) == "c++":
+                                        language=cpp.language(selected))
+        if draft and cpp.language(selected) == "c++":
             draft = cpp.game_abi(draft)
         text = f"/* machine-generated by m2c: a starting point, not a match */\n{draft}" if draft else ""
         with self.store.tx() as db:
@@ -571,7 +643,7 @@ class RomNetwork(Network):
 
     def _jtbl_asm(self, proj, fn) -> list[str]:
         out = [".section .rodata"]
-        read = self.reader(proj)
+        read = self.reader(proj, fn)
         syms = self.symbols(proj["id"])
         for m in sorted(set(re.findall(r"jtbl_([0-9A-F]{8})", fn["asm"]))):
             addr = int(m, 16)
@@ -623,6 +695,11 @@ class RomNetwork(Network):
         return self._xrefs[proj["id"]]
 
     def _extra_brief(self, fn, proj) -> list[str]:
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            return ["", "### Boot utility assembly range",
+                    f"GNU {proj['arch']} assembly at 0x{fn['vram']:08X}; exactly {fn['size']} bytes.",
+                    "Keep the exported label and instruction extent. __boot_ labels resolve at their original addresses.",
+                    "This verifies assembly bytes; it does not recover C/C++ or prove routine boundaries."]
         if proj["arch"] == "sm83":
             return ["", "### Assembly range", f"RGBDS SM83 assembly; storage bank/CPU {gb.Address.from_key(fn['vram'])}, "
                     f"ROM offset ${fn['rom_offset']:x}; exactly {fn['size']} bytes.",
@@ -633,7 +710,10 @@ class RomNetwork(Network):
         syms = self.symbols(proj["id"])
         x = self.xrefs(proj)
         lines = ["", "### Where it lives",
-                 f"source language: {'C++' if cpp.language(self.cfg(proj)) == 'c++' else 'C'}",
+                 f"source language: {cpp.language(function_config(self.cfg(proj), fn['name']))}",
+                 f"compiler: {function_config(self.cfg(proj), fn['name'])['compiler']['toolchain']} " +
+                 ' '.join(function_config(self.cfg(proj), fn['name'])['compiler'].get('flags', [])),
+                 f"frontend: {cpp.ido_frontend(function_config(self.cfg(proj), fn['name'])) or cpp.language(function_config(self.cfg(proj), fn['name']))}",
                  f"address 0x{fn['vram']:08X}, ROM offset 0x{fn['rom_offset']:X}, segment {fn['unit']}"]
         calls = sorted(x["calls"].get(fn["vram"], ()))
         callers = sorted(x["called_by"].get(fn["vram"], ()))
@@ -671,12 +751,16 @@ class RomNetwork(Network):
     def _rom_ops(self, proj) -> dict[tuple[int, int], list[str]]:
         """(vram, size) -> mnemonics of every function, cached (renames keep addresses; splits change sizes)."""
         cache = self._ops.setdefault(proj["id"], {})
-        rows = self.store.all("SELECT vram, size, target FROM functions WHERE project_id=? AND target IS NOT NULL", proj["id"])
+        rows = self.store.all("SELECT vram, size, target, asm FROM functions WHERE project_id=? AND target IS NOT NULL", proj["id"])
         live = set()
         for r in rows:
             key = (r["vram"], r["size"])
             live.add(key)
             if key not in cache:
+                if self.cfg(proj).get("rom", {}).get("boot_utility"):
+                    from ..rom.boot import disassembler
+                    cache[key] = [i.mnemonic for i in disassembler(proj["arch"], ".thumb\n" in r["asm"]).disasm(r["target"], r["vram"])]
+                    continue
                 cache[key] = ([i.text.split(" ", 1)[0] for i in sm83.disassemble(r["target"])]
                               if proj["arch"] == "sm83" else similarity.thumb_mnemonics(r["target"], r["vram"] or 0) if proj["arch"] == "arm" else
                               similarity.mips_mnemonics(r["target"], bool(proj["big_endian"]), r["vram"] or 0))
@@ -792,6 +876,9 @@ class RomNetwork(Network):
         if proj["arch"] == "sm83":
             from . import gbengine
             return gbengine.split_or_add(self, agent, proj, fn, at, new_name)
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            from . import bootengine
+            return bootengine.split_range(self, agent, proj, fn, at, new_name)
         if fn["status"] == "matched":
             raise NetworkError(f"{fn['name']} is matched; it can't be split")
         m = _ADDRESS.match(str(at).strip())
@@ -825,6 +912,10 @@ class RomNetwork(Network):
             db.execute("UPDATE symbols SET size=? WHERE project_id=? AND name=?", (head.size, proj["id"], fn["name"]))
             db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                        (proj["id"], new_name, addr, tail.size, "func"))
+            cfg = self.cfg(proj)
+            if fn["name"] in cfg.get("function_compilers", {}):
+                cfg["function_compilers"][new_name] = dict(cfg["function_compilers"][fn["name"]])
+                db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             self._event(db, proj["id"], agent.id, "split", f"{fn['name']} / {new_name}")
         self._xrefs.pop(proj["id"], None)
         return (f"✅ split: {fn['name']} is now {len(head.lines)} instructions; {new_name} at 0x{addr:08X} has "
@@ -889,6 +980,27 @@ class RomNetwork(Network):
         self._ops.pop(proj["id"], None)
         return f"✅ new function {new_name} at 0x{addr:08X}, {len(code)} bytes."
 
+    def _symbol_module(self, proj, name):
+        cfg = self.cfg(proj)
+        if name in cfg.get("symbol_modules", {}):
+            return cfg["symbol_modules"][name]
+        fn = self.store.one("SELECT unit FROM functions WHERE project_id=? AND name=?", proj["id"], name)
+        if fn:
+            return fn["unit"]
+        definition = re.compile(r"^\s*(?:glabel|dlabel|jlabel|alabel|ehlabel)\s+" + re.escape(name) + r"\b", re.M)
+        for path in (Path(proj["root"]) / "asm").glob("**/*.s"):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            match_label = definition.search(text)
+            if not match_label:
+                continue
+            address = re.search(r"/\*\s*([0-9A-F]+)\s+([0-9A-F]{8})\b", text[match_label.end():])
+            if address:
+                at = int(address[1], 16)
+                return next((s["name"] for s in cfg["segments"] if s["rom_start"] <= at < s["rom_end"]), None)
+            if path.parent.name in {s["name"] for s in cfg.get("segments", [])}:
+                return path.parent.name
+        return None
+
     def rename_symbol(self, agent: Agent, project: str | None, old: str, new: str, message: str = "") -> str:
         self._rom_only(project, "rename_symbol")
         proj = self._project(project)
@@ -909,10 +1021,11 @@ class RomNetwork(Network):
             raise NetworkError(f"`{old}` is not a symbol of this ROM: use a name from the assembly (func_/D_...) "
                                f"or one given earlier")
         taken = syms.resolve(new)
-        if taken is not None and taken != addr:
+        if taken is not None and (taken != addr or (new in syms.by_name and new != old)):
             raise NetworkError(f"`{new}` already names 0x{taken:08X}")
         word = re.compile(rf"\b{re.escape(old)}\b")
         trial = SymbolTable([Symbol(s.name, s.address, s.size, s.kind) for s in syms.by_name.values()])
+        trial.by_name.update({n: Symbol(s.name, s.address, s.size, s.kind) for n, s in syms.by_name.items()})
         if old in trial.by_name:
             trial.rename(old, new)
         else:
@@ -927,11 +1040,25 @@ class RomNetwork(Network):
         matched = self.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", proj["id"])
         rewritten = {r["id"]: word.sub(new, r["matched_source"]) for r in matched}
         renamed_rows = [dict(r) | {"name": new if r["name"] == old else r["name"]} for r in matched]
+        renamed_cfg = self.cfg(proj)
+        if renamed_cfg.get("n64_layout"):
+            owner = self._symbol_module(proj, old)
+            if owner is None:
+                raise NetworkError("use a module-qualified symbol name for a reviewed N64 layout")
+            renamed_cfg.setdefault("symbol_modules", {}).pop(old, None)
+            renamed_cfg["symbol_modules"][new] = owner
+        profiles = renamed_cfg.get("function_compilers", {})
+        if old in profiles:
+            profiles[new] = profiles.pop(old)
+        aliases = renamed_cfg.setdefault("symbol_aliases", {})
+        aliases.update({name: new for name, target in aliases.items() if target == old})
+        aliases[old] = new
+        candidate = dict(proj) | {"config": json.dumps(renamed_cfg)}
         header_for = lambda fn: changed.get(self._effective_unit(fn, units),
                                             current_ctx[self._effective_unit(fn, units)]["header"])
         self._sym_override[proj["id"]] = trial
         try:
-            broken = self.regression_test(proj, None, sources=rewritten, only=renamed_rows, header_for=header_for)
+            broken = self.regression_test(candidate, None, sources=rewritten, only=renamed_rows, header_for=header_for)
         finally:
             self._sym_override.pop(proj["id"], None)
         if broken:
@@ -943,8 +1070,9 @@ class RomNetwork(Network):
                 s = trial.by_name[new]
                 db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                            (proj["id"], new, s.address, s.size, s.kind))
-            db.execute("UPDATE functions SET name=? WHERE project_id=? AND (name=? OR vram=?)", (new, proj["id"], old, addr))
-            if proj["arch"] == "sm83":
+            db.execute("UPDATE functions SET name=? WHERE project_id=? AND name=?", (new, proj["id"], old))
+            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(renamed_cfg), proj["id"]))
+            if self.is_assembly(proj):
                 for row in db.execute("SELECT id,asm,seed FROM functions WHERE project_id=?", (proj["id"],)).fetchall():
                     db.execute("UPDATE functions SET asm=?,seed=? WHERE id=?",
                                (word.sub(new, row["asm"]), word.sub(new, row["seed"]) if row["seed"] else None, row["id"]))
@@ -968,6 +1096,8 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         cfg = self.cfg(proj)
+        if cfg.get("n64_layout") and (info.get("protocol") != 2 or info.get("n64_layout") != cfg["n64_layout"]):
+            raise NetworkError("this room must use the same reviewed N64 layout and module-aware protocol")
         cfg["link"] = info
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
@@ -1025,7 +1155,7 @@ class RomNetwork(Network):
         neighbours in the same file. Most small functions match on the first try, so an agent writes them all and
         judges them in one compile_and_diff: a fraction of the turns. Big functions come alone."""
         count = max(1, min(int(count or 1), 6))
-        if self._project(project)["arch"] == "sm83":
+        if self.is_assembly(self._project(project)):
             return self.claim(agent, project, None, strategy)
         if count == 1 or self._link(project) is not None:
             return self.claim(agent, project, None, strategy)
@@ -1073,6 +1203,8 @@ class RomNetwork(Network):
         definitions taken out, as its file gets them one by one), in order."""
         if self._project(project)["arch"] == "sm83":
             raise NetworkError("submit one RGBDS section and one range name per compile_and_diff")
+        if self.cfg(self._project(project)).get("rom", {}).get("boot_utility"):
+            raise NetworkError("submit one GNU assembly range per compile_and_diff")
         fork = self.fork_slug(project)
         out, matched = [], 0
         for name in names:
@@ -1110,15 +1242,33 @@ class RomNetwork(Network):
             return res
         name = self._function(function, project)["name"]
         if res["matched"]:
-            verdict = link.attempt(agent, name, source)
-            if not verdict.get("matched"):
-                res["text"] += ("\n⚠️ The room's host could not confirm this match on their copy (score "
-                                f"{verdict.get('score')}). Check that both of you use the same compiler settings.")
-            else:
-                res["text"] += "\nShared with the room: the host confirmed the match."
+            res["text"] += "\nShared with the room: the host confirmed the match."
         elif before is None or res["score"] < before:
             threading.Thread(target=lambda: self._report(link, agent, name, source, res["score"]), daemon=True).start()
         return res
+
+    def _record(self, fn, agent, score, source, ctx_version, matched=False, compiled=None, via="agent"):
+        # Every matching path (manual, drafts, twins and permutation) requires
+        # the host's verdict before granting local room credit. Its profile
+        # can change while a member's compile is in flight.
+        proj = self.store.one("SELECT slug FROM projects WHERE id=?", fn["project_id"])
+        link = self.links.get(proj["slug"]) if proj else None
+        if matched and link is not None:
+            try:
+                verdict = link.attempt(agent, fn["name"], source)
+            except NetworkError:
+                super()._record(fn, agent, score, source, ctx_version, False, compiled, via)
+                raise
+            if not verdict.get("matched"):
+                super()._record(fn, agent, verdict.get("score"), source, ctx_version, False, compiled, via)
+                if agent.name in ("autopilot", "twins", "permuter") or via == "permuter":
+                    try:
+                        link.call("/collab/release", agent, function=fn["name"], notes="host did not confirm the local candidate")
+                    except NetworkError:
+                        pass
+                link.sync()
+                raise NetworkError("the room host did not confirm the match; compiler profiles have been synchronized")
+        return super()._record(fn, agent, score, source, ctx_version, matched, compiled, via)
 
     @staticmethod
     def _report(link, agent, name, source, score) -> None:
@@ -1180,11 +1330,21 @@ class RomNetwork(Network):
             db.execute("INSERT INTO events(project_id,agent_id,kind,detail,created_at) VALUES(?,?,?,?,?)",
                        (project_id, aid, kind, detail, created_at))
 
-    def apply_remote_match(self, slug: str, vram: int, source: str, agent_name: str) -> None:
+    def _remote_function(self, slug: str, vram: int, identity=None):
+        pid = self._project(slug)["id"]
+        if identity is not None and "unit" in identity and "rom_offset" in identity:
+            return self.store.one("SELECT * FROM functions WHERE project_id=? AND unit=? AND rom_offset IS ? AND vram=?",
+                                  pid, identity["unit"], identity["rom_offset"], vram)
+        rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram=?", pid, vram)
+        if len(rows) > 1:
+            raise NetworkError("the room needs module-aware function identities for overlapping addresses")
+        return rows[0] if rows else None
+
+    def apply_remote_match(self, slug: str, vram: int, source: str, agent_name: str, identity=None) -> None:
         proj = self._project(slug)
         aid = self._remote_agent(agent_name)
+        row = self._remote_function(slug, vram, identity)
         with self.store.tx() as db:
-            row = db.execute("SELECT id, status FROM functions WHERE project_id=? AND vram=?", (proj["id"], vram)).fetchone()
             if row is None or row["status"] == "matched":
                 return
             db.execute("UPDATE functions SET status='matched', matched_source=?, matched_agent_id=?, matched_at=?, "
@@ -1218,17 +1378,20 @@ class RomNetwork(Network):
             db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
                        (proj["id"], fid, aid, text, created_at))
 
-    def apply_remote_best(self, slug: str, vram: int, score: int, source: str) -> None:
+    def apply_remote_best(self, slug: str, vram: int, score: int, source: str, identity=None) -> None:
         proj = self._project(slug)
+        row = self._remote_function(slug, vram, identity)
+        if row is None:
+            return
         with self.store.tx() as db:
-            db.execute("UPDATE functions SET best_score=?, best_source=? WHERE project_id=? AND vram=? AND status='open' "
-                       "AND (best_score IS NULL OR best_score > ?)", (score, source, proj["id"], vram, score))
+            db.execute("UPDATE functions SET best_score=?, best_source=? WHERE id=? AND status='open' "
+                       "AND (best_score IS NULL OR best_score > ?)", (score, source, row["id"], score))
 
-    def apply_remote_note(self, slug: str, host_id: int, vram: int | None, text: str, agent_name: str, created_at: float) -> None:
+    def apply_remote_note(self, slug: str, host_id: int, vram: int | None, text: str, agent_name: str, created_at: float, identity=None) -> None:
         proj = self._project(slug)
         fid = None
         if vram is not None:
-            row = self.store.one("SELECT id FROM functions WHERE project_id=? AND vram=?", proj["id"], vram)
+            row = self._remote_function(slug, vram, identity)
             fid = row["id"] if row else None
         if self.store.one("SELECT 1 FROM notes WHERE project_id=? AND text=? AND function_id IS ?", proj["id"], text, fid):
             return
@@ -1237,70 +1400,123 @@ class RomNetwork(Network):
             db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
                        (proj["id"], fid, aid, text, created_at))
 
-    def apply_remote_context(self, slug: str, header: str, host_version: int) -> None:
+    def apply_remote_context(self, slug: str, header: str, host_version: int, unit="") -> None:
         proj = self._project(slug)
-        if self._context(proj["id"])["header"] == header:
+        if self._context(proj["id"], unit)["header"] == header and (not unit or unit in self._unit_contexts(proj["id"])):
             return
         with self.store.tx() as db:
             version = self._next_version(db, proj["id"])
             db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "
                        "VALUES(?,?,?,?,?,?,?)", (proj["id"], version, header, None, f"from the room (host v{host_version})",
-                                                  time.time(), ""))
+                                                  time.time(), unit))
+
+    def apply_remote_compilers(self, slug: str, default: dict, overrides: dict) -> None:
+        from ..rom.n64_profiles import profile
+        proj = self._project(slug)
+        cfg = self.cfg(proj)
+        if cfg.get("platform") != "n64" or not isinstance(overrides, dict):
+            raise NetworkError("invalid N64 room compiler profiles")
+        selected = profile({}, default)
+        known = {r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=?", proj["id"])}
+        if set(overrides) - known:
+            raise NetworkError("a room compiler profile refers to an unknown function")
+        profiles = {name: profile(selected, value) for name, value in overrides.items()}
+        if all(cfg["compiler"].get(k) == v for k, v in selected.items()) and cfg.get("function_compilers", {}) == profiles:
+            return
+        previous = profile(cfg["compiler"], {})
+        affected = [r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=? AND status='open'", proj["id"])
+                    if {**previous, **cfg.get("function_compilers", {}).get(r["name"], {})} !=
+                       {**selected, **profiles.get(r["name"], {})}]
+        cfg["compiler"] = {**cfg["compiler"], **selected}
+        cfg["function_compilers"] = profiles
+        with self.store.tx() as db:
+            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+            db.executemany("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND name=? AND status='open'",
+                           [(proj["id"], name) for name in affected])
 
     def apply_remote_layout(self, slug: str, functions: list[dict], symbols: list[dict]) -> None:
-        """Mirror the room's splits and names. The host already regression-tested them on the same ROM."""
+        """Mirror names/splits using cartridge identity, including exclusive overlays."""
         proj = self._project(slug)
         pid = proj["id"]
-        local = {r["vram"]: r for r in self.store.all("SELECT * FROM functions WHERE project_id=?", pid)}
-        for f in sorted(functions, key=lambda f: f["vram"]):
-            if f["vram"] in local:
-                continue
-            owner = next((r for r in local.values() if r["vram"] < f["vram"] < r["vram"] + r["size"]), None)
-            if owner is None or owner["status"] == "matched":
-                continue
-            rf = self._parse_asm(owner["name"], owner["asm"], owner["unit"])
-            try:
+        renamed = {}
+        for f in sorted(functions, key=lambda f: (f.get("unit", ""), f["vram"])):
+            row = self._remote_function(slug, f["vram"], f)
+            if row is None:
+                owners = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram < ? AND vram+size > ?",
+                                        pid, f["vram"], f["vram"])
+                owners = [r for r in owners if "unit" not in f or (r["unit"] == f["unit"] and
+                          r["rom_offset"] is not None and r["rom_offset"] + f["vram"] - r["vram"] == f["rom_offset"])]
+                if len(owners) != 1 or owners[0]["status"] == "matched":
+                    raise NetworkError("the room's function split does not belong to one local module")
+                owner = owners[0]
+                rf = self._parse_asm(owner["name"], owner["asm"], owner["unit"])
                 head, tail = split.split_function(rf, f["vram"], f["name"])
-            except ValueError:
-                continue
-            syms = self.symbols(pid)
-            syms.add(Symbol(f["name"], f["vram"], tail.size, "func"))
-            th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
-            with self.store.tx() as db:
-                db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL WHERE id=?",
-                           (head.size, len(head.lines), th.code, json.dumps(th.to_json()), self._asm_source(head), owner["id"]))
-                db.execute("INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,seed,unit,vram,rom_offset) "
-                           "VALUES(?,?,?,?,?,?,?,?,?,?,?)", (pid, f["name"], tail.size, len(tail.lines), tt.code,
-                                                            json.dumps(tt.to_json()), self._asm_source(tail), None,
-                                                            owner["unit"], f["vram"], tail.rom))
-                db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
-                           (pid, f["name"], f["vram"], tail.size, "func"))
-            local = {r["vram"]: r for r in self.store.all("SELECT * FROM functions WHERE project_id=?", pid)}
-        self._xrefs.pop(pid, None)
-        syms = self.symbols(pid)
+                syms = self.symbols(pid)
+                syms.add(Symbol(f["name"], f["vram"], tail.size, "func"))
+                th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
+                with self.store.tx() as db:
+                    db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL WHERE id=?",
+                               (head.size, len(head.lines), th.code, json.dumps(th.to_json()), self._asm_source(head), owner["id"]))
+                    db.execute("INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,unit,vram,rom_offset) "
+                               "VALUES(?,?,?,?,?,?,?,?,?,?)", (pid, f["name"], tail.size, len(tail.lines), tt.code,
+                                json.dumps(tt.to_json()), self._asm_source(tail), owner["unit"], f["vram"], tail.rom))
+                    db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
+                               (pid, f["name"], f["vram"], tail.size, "func"))
+                row = self._remote_function(slug, f["vram"], f)
+            if row["name"] != f["name"]:
+                renamed[row["name"]] = f["name"]
+                with self.store.tx() as db:
+                    db.execute("UPDATE functions SET name=? WHERE id=?", (f["name"], row["id"]))
+                    db.execute("DELETE FROM symbols WHERE project_id=? AND name=?", (pid, row["name"]))
+                    db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
+                               (pid, f["name"], row["vram"], row["size"], "func"))
+        # Function names already follow their stable module/file coordinates.
+        # Other symbols carry the host's previous name, avoiding address-only
+        # renames when several overlays reuse the same address.
         for sym in symbols:
-            current, off = syms.name_at(sym["address"])
-            if off == 0 and current == sym["name"]:
+            if self.store.one("SELECT 1 FROM symbols WHERE project_id=? AND name=? AND address=?", pid, sym["name"], sym["address"]):
                 continue
-            old = current if off == 0 else f"D_{sym['address']:08X}"
-            word = re.compile(rf"\b{re.escape(old)}\b")
+            old = sym.get("previous")
+            if isinstance(old, list):
+                old = next((n for n in old if self.store.one("SELECT 1 FROM symbols WHERE project_id=? AND name=? AND address=?",
+                            pid, n, sym["address"]) or (sym.get("unit") and self._symbol_module(proj, n) == sym["unit"])), None)
+            if not old:
+                candidates = self.store.all("SELECT name FROM symbols WHERE project_id=? AND address=?", pid, sym["address"])
+                if len(candidates) == 1:
+                    old = candidates[0]["name"]
+            if old and old != sym["name"]:
+                renamed[old] = sym["name"]
             with self.store.tx() as db:
-                db.execute("DELETE FROM symbols WHERE project_id=? AND (name=? OR name=?)", (pid, old, sym["name"]))
-                db.execute("INSERT INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
+                if old:
+                    db.execute("DELETE FROM symbols WHERE project_id=? AND name=?", (pid, old))
+                db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                            (pid, sym["name"], sym["address"], sym["size"], sym["kind"]))
-                db.execute("UPDATE functions SET name=? WHERE project_id=? AND vram=?", (sym["name"], pid, sym["address"]))
-                for r in db.execute("SELECT id, matched_source, best_source FROM functions WHERE project_id=? AND "
-                                    "(matched_source IS NOT NULL OR best_source IS NOT NULL)", (pid,)).fetchall():
-                    db.execute("UPDATE functions SET matched_source=?, best_source=? WHERE id=?",
-                               (word.sub(sym["name"], r["matched_source"]) if r["matched_source"] else None,
-                                word.sub(sym["name"], r["best_source"]) if r["best_source"] else None, r["id"]))
-            self._syms.pop(pid, None)
-            syms = self.symbols(pid)
+        if renamed:
+            word = re.compile(r"\b(" + "|".join(re.escape(n) for n in renamed) + r")\b")
+            rewrite = lambda text: word.sub(lambda m: renamed[m[0]], text) if text else text
+            with self.store.tx() as db:
+                for row in db.execute("SELECT id,matched_source,best_source FROM functions WHERE project_id=?", (pid,)).fetchall():
+                    db.execute("UPDATE functions SET matched_source=?,best_source=? WHERE id=?",
+                               (rewrite(row["matched_source"]), rewrite(row["best_source"]), row["id"]))
+                cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (pid,)).fetchone()["config"])
+                cfg["function_compilers"] = {renamed.get(n, n): v for n, v in cfg.get("function_compilers", {}).items()}
+                cfg["symbol_modules"] = {renamed.get(n, n): v for n, v in cfg.get("symbol_modules", {}).items()}
+                cfg["symbol_modules"].update({s["name"]: s["unit"] for s in symbols if s.get("unit")})
+                db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), pid))
+        elif any(s.get("unit") for s in symbols):
+            self._update_cfg(slug, lambda cfg: cfg.setdefault("symbol_modules", {}).update(
+                {s["name"]: s["unit"] for s in symbols if s.get("unit")}))
+        self._syms.pop(pid, None)
+        self._xrefs.pop(pid, None)
 
     # ------------------------------------------------------------------ export
 
-    def export_rom(self, slug: str, log=print) -> dict:
+    def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
+        if format not in ("matching", "shiftable"):
+            raise NetworkError("choose matching or shiftable export")
+        if format == "shiftable" and (self.fork_slug(slug) or self.cfg(self._project(slug)).get("platform") != "n64"):
+            raise NetworkError("shiftable exports require an N64 cartridge project")
         if self.fork_slug(slug):  # a fork's work is already in its source tree, committed
             return {"path": self._project(slug)["root"], "identical": None}
         from ..rom.export import export_rom
@@ -1308,13 +1524,19 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         export = export_gba if self.cfg(proj).get("platform") == "gba" else export_rom
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            from .bootengine import export_rom as export
         if proj["arch"] == "sm83":
             from .gbengine import export_rom as export
-        res = export(self, slug, Path(proj["root"]) / "source", log=log)
+        folder = "source-shiftable" if format == "shiftable" else "source"
+        res = export(self, slug, Path(proj["root"]) / folder, log=log,
+                     **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             cfg["export"] = {"t": time.time(), "path": str(res["path"]), "identical": res.get("identical"),
+                             "format": format, "shiftable": res.get("shiftable"),
                              "matched": res.get("matched"), "functions": res.get("functions"),
+                             "scope": res.get("scope", "program"),
                              "language": res.get("language", cpp.language(cfg)),
                              "fallback": len(res.get("fallback") or [])}
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
@@ -1360,15 +1582,17 @@ class RomNetwork(Network):
                          "supported": tc.supported, "wsl": tc.via_wsl, "language": cpp.language(cfg),
                          "why": tc.unsupported_reason},
             "functions": agg["total"] or 0, "matched": agg["matched"] or 0,
-            "bytes": cfg["rom"]["size"] if proj["arch"] == "sm83" else agg["bytes"] or 0,
-            "progress_kind": "assembly" if proj["arch"] == "sm83" else "decompilation",
+            "bytes": cfg["rom"]["size"] if cpp.language(cfg) == "asm" else agg["bytes"] or 0,
+            "progress_kind": "assembly" if cpp.language(cfg) == "asm" else "decompilation",
+            "scope": cfg["rom"].get("boot_utility", {}).get("scope", "cartridge" if proj["arch"] == "sm83" else "program"),
             "assembly_bytes": agg["bytes"] or 0,
-            "base_bytes": cfg["rom"]["size"] - (agg["bytes"] or 0) if proj["arch"] == "sm83" else None,
+            "base_bytes": cfg["rom"]["size"] - (agg["bytes"] or 0) if cpp.language(cfg) == "asm" else None,
+            "assembly_dialect": cfg["compiler"].get("assembly_dialect", "rgbds"),
             "matched_bytes": agg["matched_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": self._context(proj["id"])["version"],
             "folder": proj["root"],
             "export": cfg.get("export"),
-            "exportable": cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
+            "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }
 
@@ -1469,7 +1693,7 @@ class RomNetwork(Network):
         background. Whatever already matches is saved before any agent spends a token on it; drafts that compile
         become the function's best attempt, so agents start from them. Agents and autopilot never collide: a
         function is held only while its draft compiles, and claimed ones are skipped."""
-        if self._project(slug)["arch"] == "sm83":
+        if self.is_assembly(self._project(slug)):
             raise NetworkError("assembly ranges require review and explicit verification; C/m2c autopilot is unavailable")
         state = self.autopilots.get(slug)
         if state and state["state"] == "running":
@@ -1559,7 +1783,7 @@ class RomNetwork(Network):
     def on_match(self, proj, function_id: int, agent: Agent | None = None) -> None:
         """Its twins get its code, at once. (Not for the full twins pass's own matches while it runs: it tries
         those twins itself.)"""
-        if proj is None or proj["arch"] == "sm83":
+        if proj is None or self.is_assembly(proj) or proj["slug"] in self.links:
             return
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
             return
@@ -1576,7 +1800,7 @@ class RomNetwork(Network):
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
         try:
             ctx = self._context(proj["id"], fn["unit"])
-            result = self._compile(proj, ctx["header"], source)
+            result = self._compile(proj, ctx["header"], source, fn)
             if not result.ok:
                 return {"matched": False, "score": None}
             cand, verdict, _ = self._evaluate(fn, proj, result.obj)
@@ -1604,12 +1828,13 @@ class RomNetwork(Network):
             self._seed_for(fn, proj)  # the readable draft, for the agents that come after
             ctx = self._context(proj["id"], fn["unit"])
             data_asm = "\n".join(self._jtbl_asm(proj, fn)) if "jtbl_" in (fn["asm"] or "") else None
-            draft = seeds.generate_from_asm(self._asm_text(fn, proj), fn["name"], self.cfg(proj)["compiler"]["toolchain"],
-                                            ctx["header"], data_asm, valid=True, language=cpp.language(self.cfg(proj)))
+            selected = function_config(self.cfg(proj), fn["name"])
+            draft = seeds.generate_from_asm(self._asm_text(fn, proj), fn["name"], selected["compiler"]["toolchain"],
+                                            ctx["header"], data_asm, valid=True, language=cpp.language(selected))
             if not draft:
                 return "fail"
             source = f"/* machine draft (m2c), tried by autopilot */\n{seeds.M2C_MACROS}\n{draft}\n"
-            result = self._compile(proj, ctx["header"], source)
+            result = self._compile(proj, ctx["header"], source, fn)
             if not result.ok:
                 return "fail"
             cand, verdict, _ = self._evaluate(fn, proj, result.obj)
@@ -1644,7 +1869,7 @@ class RomNetwork(Network):
         key = (fn["id"], hashlib.sha1(source.encode()).hexdigest(), ctx["version"], proj["config"])
         if key in self._diffs:
             return self._diffs[key] | {"kind": kind}
-        result = self._compile(proj, ctx["header"], source)
+        result = self._compile(proj, ctx["header"], source, fn)
         if not result.ok:
             out = {"rows": None, "error": result.log.strip()[-3000:] or "it didn't compile", "source": source}
         else:
@@ -1685,12 +1910,13 @@ class RomNetwork(Network):
             "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
             "bank": fn["vram"] >> 16 if proj["arch"] == "sm83" else None,
             "cpu_address": fn["vram"] & 0xffff if proj["arch"] == "sm83" else None,
-            "language": cpp.language(self.cfg(proj)),
+            "language": cpp.language(function_config(self.cfg(proj), fn["name"])),
+            "compiler": function_config(self.cfg(proj), fn["name"])["compiler"],
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"],
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else
-                           "latest" if latest else ("assembly" if proj["arch"] == "sm83" else "draft") if fn["seed"] else None,
+                           "latest" if latest else ("assembly" if cpp.language(self.cfg(proj)) == "asm" else "draft") if fn["seed"] else None,
             "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
             "notes": [dict(n) for n in notes],
             "calls": [syms.label(a) for a in sorted(x["calls"].get(fn["vram"], ()))],
@@ -1736,8 +1962,7 @@ class RomNetwork(Network):
         claims = [dict(c) for c in claims]
         if slug in self.links:
             for c in self.links[slug].claims:
-                row = self.store.one("SELECT name, n_insns, best_score, attempts FROM functions WHERE project_id=? AND vram=?",
-                                     proj["id"], c["vram"])
+                row = self._remote_function(slug, c["vram"], c)
                 if row:
                     claims.append(dict(row) | {"agent": "@" + c["agent"], "claimed_at": None})
         return {"events": [dict(e) for e in reversed(events)], "attempts": [dict(t) for t in reversed(attempts)],
@@ -1747,6 +1972,8 @@ class RomNetwork(Network):
         if self.fork_slug(slug):
             raise NetworkError("a fork builds with the project's own compilers and flags")
         proj = self._project(slug)
+        if self.cfg(proj).get("rom", {}).get("boot_utility"):
+            raise NetworkError("boot utility projects use GNU assembly; compiler conversion is not available")
         if proj["arch"] == "sm83" and (toolchain != "rgbds" or flags):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         if proj["arch"] == "sm83":
@@ -1754,10 +1981,45 @@ class RomNetwork(Network):
         tc = toolchains.get(toolchain)
         cfg = self.cfg(proj)
         cfg["compiler"] = {"toolchain": tc.id, "flags": flags or tc.flags, "timeout": 20}
+        if cfg.get("platform") == "n64":
+            from ..rom.n64_profiles import profile
+            cfg["compiler"].update(profile(cfg["compiler"], {}))
+            candidate = dict(proj) | {"config": json.dumps(cfg)}
+            failed = self.regression_test(candidate, None, header_for=lambda fn: self._context(proj["id"], fn["unit"])["header"])
+            if failed:
+                raise NetworkError("the compiler change would invalidate saved matches: " + failed[0][0])
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-            db.execute("UPDATE functions SET seed=NULL WHERE project_id=? AND status='open'", (proj["id"],))
+            db.execute("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND status='open'", (proj["id"],))
             self._event(db, proj["id"], None, "compiler", f"{tc.name} {' '.join(cfg['compiler']['flags'])}")
+
+    def set_function_compiler(self, slug: str, function: str, override: dict | None) -> dict:
+        """Select one function's period compiler; existing matches must survive."""
+        from ..rom.n64_profiles import profile
+        proj = self._project(slug)
+        cfg = self.cfg(proj)
+        if cfg.get("platform") != "n64" or not self.is_rom(proj):
+            raise NetworkError("per-function compiler profiles currently require an N64 cartridge")
+        if slug in self.links:
+            raise NetworkError("change compiler profiles on the room host, then sync this member")
+        fn = self._function(function, slug)
+        overrides = dict(cfg.get("function_compilers", {}))
+        if override is None:
+            overrides.pop(fn["name"], None)
+        else:
+            overrides[fn["name"]] = profile(cfg["compiler"], override)
+        cfg["function_compilers"] = overrides
+        candidate = dict(proj) | {"config": json.dumps(cfg)}
+        if fn["status"] == "matched":
+            ctx = self._context(proj["id"], fn["unit"])
+            failed = self.regression_test(candidate, ctx["header"], only=[fn])
+            if failed:
+                raise NetworkError("the compiler change would invalidate a saved match: " + failed[0][1])
+        with self.store.tx() as db:
+            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+            db.execute("UPDATE functions SET seed=NULL, best_score=CASE WHEN status='matched' THEN 0 ELSE NULL END WHERE id=?", (fn["id"],))
+            self._event(db, proj["id"], None, "compiler", fn["name"])
+        return function_config(cfg, fn["name"])["compiler"]
 
     def chat_agent(self, base: str) -> tuple[Agent, str]:
         """An identity for an agent the user talks to (Claude Code, Codex, ... connected with `decomp mcp`): `base`,

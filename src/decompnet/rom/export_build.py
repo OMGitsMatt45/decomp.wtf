@@ -21,19 +21,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 B = json.loads((ROOT / "build.json").read_text(encoding="utf-8"))
-LANGUAGE = "C++" if B["compiler"].get("language") == "c++" else "C"
+_LANGUAGES = {B["compiler"].get("language", "c"), *[f.get("compiler", {}).get("language", B["compiler"].get("language", "c"))
+                                                              for f in B.get("functions", [])]}
+LANGUAGE = "C/C++" if len(_LANGUAGES) > 1 else "C++" if "c++" in _LANGUAGES else "C"
+ASSEMBLY_ONLY = False
+EXPORTED_LABELS = {name for symbols in B.get("module_symbols", {}).values() for name in symbols}
 PREAMBLE = {
     "n64": '.include "macro.inc"\n.set noat\n.set noreorder\n.set gp=64\n.section .text, "ax"\n',
     "psx": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
     "ps2": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
 }
 OWN = ".rodata .rodata.* .data .data.* .sdata .rdata .lit4 .lit8 .bss .sbss"
+INITIALIZED = (".text", ".data", ".rodata", ".sdata", ".rdata", ".lit4", ".lit8")
 DISCARD = ("*(.reginfo) *(.MIPS.abiflags) *(.MIPS.options) *(.pdr) *(.comment) *(.mdebug*) *(.gnu.attributes) "
            "*(.note*) *(.gptab.*)")
 
 try:
     from decompnet import toolchains
-    from decompnet.compiler import run_in, compile_source
+    from decompnet.compiler import compile_source
     from decompnet.project import compiler_config
 except ImportError:
     sys.exit("This build uses decomp.wtf's pinned compilers: install decomp.wtf first (https://decomp.wtf).")
@@ -44,6 +49,15 @@ def fail(msg: str) -> None:
 
 
 def run(argv: list[str]) -> None:
+    if Path(argv[0]).stem.endswith("-ld"):
+        # Retail projects have thousands of objects, exceeding Windows' 32767
+        # character CreateProcess limit. GNU ld reads the same arguments from
+        # a response file; quote its grammar directly, without a shell.
+        output = Path(argv[argv.index("-o") + 1])
+        response = output.with_suffix(".rsp")
+        (ROOT / response).write_text("\n".join('"' + str(arg).replace('\\', '\\\\').replace('"', '\\"') + '"'
+                                              for arg in argv[1:]) + "\n", encoding="utf-8", newline="\n")
+        argv = [argv[0], "@" + response.as_posix()]
     res = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if res.returncode != 0:
         fail(f"{' '.join(argv[:3])} ...\n{(res.stdout + res.stderr)[-3000:]}")
@@ -59,6 +73,16 @@ def sha1(path: Path) -> str:
 
 
 def setup() -> None:
+    if container := B.get("container"):
+        from decompnet.rom.n64_layout import working_image
+        original = ROOT / container["image"]
+        if not original.is_file():
+            fail(f"put your own original cartridge here as {container['image']}")
+        try:
+            decoded = working_image(original.read_bytes(), container["layout"])
+        except (ValueError, RuntimeError) as error:
+            fail(str(error))
+        (ROOT / B["image"]).write_bytes(decoded)
     base = ROOT / B["image"]
     if not base.exists():
         fail(f"put your own copy of the game here as {B['image']} (see README.md)")
@@ -77,16 +101,34 @@ def setup() -> None:
 
 
 def c_source(fn: dict) -> str | None:
-    extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+    if ASSEMBLY_ONLY:
+        return None
+    extension = "cpp" if {**B["compiler"], **fn.get("compiler", {})}.get("language") == "c++" else "c"
     path = fn.get("source") or fn.get("c") or f"src/{fn['seg']}/{fn['name']}.{extension}"
     return path if (ROOT / path).exists() else None
+
+
+def local_exports(source: str) -> str:
+    """Expose recorded auxiliary labels across the export's one-file objects."""
+    if not EXPORTED_LABELS:
+        return ""
+    labels = set(re.findall(r"^\s*([A-Za-z_]\w*):", (ROOT / source).read_text(encoding="utf-8"), re.M))
+    return "".join(f".globl {name}\n" for name in sorted(labels & EXPORTED_LABELS))
 
 
 def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
     """[(kind, source, object)] to build, and function name -> the object that provides it."""
     out, provides = [], {}
     for a in B["assembly"]:
-        out.append(("asm", a["src"], a["obj"]))
+        source = a["src"]
+        declarations = local_exports(source)
+        if declarations or a.get("preamble"):
+            wrap = ROOT / "build/wrap" / ("data_" + hashlib.sha1(source.encode()).hexdigest() + ".s")
+            wrap.parent.mkdir(parents=True, exist_ok=True)
+            prefix = PREAMBLE[B["platform"]] if a.get("preamble") else ""
+            wrap.write_text(prefix + declarations + f'.include "{source}"\n', encoding="utf-8")
+            source = wrap.relative_to(ROOT).as_posix()
+        out.append(("asm", source, a["obj"]))
     for fn in B["functions"]:
         c = c_source(fn)
         if c:
@@ -95,7 +137,7 @@ def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
         else:
             wrap = ROOT / "build" / "wrap" / f"{fn['name']}.s"
             wrap.parent.mkdir(parents=True, exist_ok=True)
-            wrap.write_text(PREAMBLE[B["platform"]] + f'.include "{fn["asm"]}"\n', encoding="utf-8")
+            wrap.write_text(PREAMBLE[B["platform"]] + local_exports(fn["asm"]) + f'.include "{fn["asm"]}"\n', encoding="utf-8")
             obj = f"build/{Path(fn['asm']).with_suffix('.o').as_posix()}"
             out.append(("asm", wrap.relative_to(ROOT).as_posix(), obj))
         provides[fn["name"]] = obj
@@ -132,7 +174,6 @@ def trim(path: Path) -> None:
 
 
 def build_objects(todo: list[tuple[str, str, str]]) -> None:
-    cfg = build_config()
     as_ = binutils("as")
     for kind, src, obj in todo:
         target = ROOT / obj
@@ -141,29 +182,27 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
             continue
         if kind == "asm":
             run([as_, *B["as_flags"], "-o", obj, src])
-        elif B["platform"] in ("psx", "ps2"):
+        else:
+            fn = next(f for f in B["functions"] if c_source(f) == src)
+            cfg = build_config(fn)
             result = compile_function(cfg, src)
             if not result.ok:
                 fail(f"compiling {src} failed:\n{result.log}")
-            fn = next(f for f in B["functions"] if c_source(f) == src)
-            why = validate(fn, result.obj)
-            if why:
-                fail(f"{fn['name']}: not identical to the original:\n{why}")
+            if B["platform"] in ("psx", "ps2"):
+                fn = next(f for f in B["functions"] if c_source(f) == src)
+                why = validate(fn, result.obj)
+                if why:
+                    fail(f"{fn['name']}: not identical to the original:\n{why}")
             target.write_bytes(result.obj)
             trim(target)
-        else:
-            argv = [a.replace("{src}", src).replace("{obj}", obj).replace("{include}", "include") for a in cfg.cmd]
-            res = run_in(cfg, ROOT, argv, inputs=[src, "include"], outputs=[obj])
-            if res.returncode != 0 or not target.exists():
-                fail(f"compiling {src} failed:\n{(res.stdout + res.stderr)[-3000:]}")
-            trim(target)
 
 
-def build_config():
+def build_config(fn=None):
     # A missing language in an older export always means C, even after a
     # platform starts defaulting to C++. Preserve the game's external ABI.
+    selected = {**B["compiler"], **(fn.get("compiler", {}) if fn else {})}
     return compiler_config(ROOT, {"kind": "rom", "platform": B["platform"], "compiler": {
-        **B["compiler"], "language": B["compiler"].get("language", "c"), "include_dirs": ["include"]}})
+        **selected, "language": selected.get("language", "c"), "include_dirs": ["include"]}})
 
 
 def compile_function(cfg, src):
@@ -184,19 +223,29 @@ def validate(fn, obj):
         text = path.read_text(errors="replace", encoding="utf-8")
         for m in re.finditer(r"dlabel (\w+)\s*\n\s*/\*\s*(?:[0-9A-F]+\s+)?([0-9A-F]{8})", text):
             found.append(Symbol(m.group(1), int(m.group(2), 16), 0, "data"))
+    found += [Symbol(s, a, 0, "data") for s, a in B.get("module_symbols", {}).get(fn["seg"], {}).items()]
     table = SymbolTable(found)
+    # Mutually exclusive overlays and aliases may share addresses while every
+    # name remains meaningful in relocations from its own module.
+    table.by_name.update({s.name: s for s in found})
     big = B["big_endian"]
     rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
     target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
     image = (ROOT / B["image"]).read_bytes()
+    segments = [s for s in B["segments"] if s["kind"] == "code"]
+    selected = next((s for s in segments if s["name"] == fn["seg"]), None)
+    if selected:
+        lo = selected["vram"]
+        hi = lo + (selected["end"] or len(image)) - selected["start"]
+        segments = [selected] + [s for s in segments if s is not selected and
+                                (s["vram"] >= hi or s["vram"] + (s["end"] or len(image)) - s["start"] <= lo)]
 
     def read(addr, n):
-        for seg in B["segments"]:
-            if seg["kind"] == "code":
-                size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
-                if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
-                    at = seg["start"] + addr - seg["vram"]
-                    return image[at:at + n]
+        for seg in segments:
+            size = (seg["end"] if seg["end"] is not None else len(image)) - seg["start"]
+            if seg["vram"] <= addr and addr + n <= seg["vram"] + size:
+                at = seg["start"] + addr - seg["vram"]
+                return image[at:at + n]
         return None
 
     linked = match.link(obj, fn["name"], target, table, read)
@@ -220,7 +269,7 @@ def _size(obj: str, sections: tuple[str, ...]) -> int:
         return sum(s["sh_size"] for s in elf.iter_sections() if s.name in sections and s["sh_type"] != "SHT_NOBITS")
 
 
-def fill_gaps(provides: dict[str, str]) -> list[tuple[int, str]]:
+def fill_gaps(provides: dict[str, str]) -> list[tuple[int, str, str]]:
     """Bytes of a code segment no object covers (a splitter can miss a few at an odd segment end): assemble them
     from your copy of the game, so the build never depends on what the splitter got exactly right."""
     image = (ROOT / B["image"]).read_bytes()
@@ -229,7 +278,7 @@ def fill_gaps(provides: dict[str, str]) -> list[tuple[int, str]]:
         if seg["kind"] != "code":
             continue
         end = seg["end"] if seg["end"] is not None else len(image)
-        covered = [(p["vram"], _size(p["obj"], (".text", ".data", ".rodata", ".sdata", ".rdata"))) for p in seg["pieces"]]
+        covered = [(p["vram"], _size(p["obj"], INITIALIZED)) for p in seg["pieces"]]
         covered += [(fn["vram"], _size(provides[fn["name"]], (".text",))) for fn in B["functions"]
                     if fn["rom"] is not None and seg["start"] <= fn["rom"] < end]
         pos = seg["vram"]
@@ -237,45 +286,61 @@ def fill_gaps(provides: dict[str, str]) -> list[tuple[int, str]]:
             if vram > pos:
                 raw = image[seg["start"] + pos - seg["vram"]:seg["start"] + vram - seg["vram"]]
                 if raw.strip(b"\0"):
-                    src = ROOT / "build" / "gaps" / f"{pos:08X}.s"
+                    src = ROOT / "build" / "gaps" / seg["name"] / f"{pos:08X}.s"
                     src.parent.mkdir(parents=True, exist_ok=True)
                     src.write_text(".section .data\n" + "".join(f".byte {', '.join(str(b) for b in raw[i:i + 16])}\n"
                                                               for i in range(0, len(raw), 16)), encoding="utf-8")
-                    obj = f"build/gaps/{pos:08X}.o"
+                    obj = f"build/gaps/{seg['name']}/{pos:08X}.o"
                     run([binutils("as"), *B["as_flags"], "-o", obj, src.relative_to(ROOT).as_posix()])
-                    extra.append((pos, obj))
+                    extra.append((pos, obj, seg["name"]))
             pos = max(pos, vram + size)
     return extra
 
 
-def linker_script(provides: dict[str, str], gaps: list[tuple[int, str]]) -> str:
+def object_pattern(path: str) -> str:
+    # GNU ld 2.40 re-searches its entire input list for literal filenames while
+    # visiting each input file for each script statement (cubic at retail scale).
+    # A singleton character class matches exactly the same filename while using
+    # its wildcard comparison path, avoiding that repeated linear search.
+    if not path.endswith('.o'):
+        raise ValueError('an exported object must have the .o suffix')
+    return path[:-1] + '[o]'
+
+
+def linker_script(provides: dict[str, str], gaps: list[tuple[int, str, str]], module: str | None = None) -> str:
     lines = ["/* Generated by build.py from build.json: every function and data block at its original address. */",
              "SECTIONS", "{"]
     for seg in B["segments"]:
+        if module is not None and seg["name"] != module:
+            continue
         if seg["kind"] == "raw":
-            objs = " ".join(f"{o}(.data .text .rodata)" for o in seg["objects"])
+            objs = " ".join(f"{object_pattern(o)}(.data .text .rodata)" for o in seg["objects"])
             lines.append(f"    .{seg['name']} 0x{seg['start']:X} : AT(0x{seg['start']:X}) {{ {objs} }}")
             continue
         vram, start = seg["vram"], seg["start"]
-        end = seg["end"] if seg["end"] is not None else 1 << 32
-        items = [(p["vram"], f"{p['obj']}(.text .data .rodata .sdata .rdata)") for p in seg["pieces"]]
-        items += [(v, f"{obj}(.data)") for v, obj in gaps if vram <= v < vram + end - start]
+        end = seg["end"] if seg["end"] is not None else (ROOT / B["image"]).stat().st_size
+        items = [(p["vram"], f"{object_pattern(p['obj'])}({' '.join(INITIALIZED)})") for p in seg["pieces"]]
+        items += [(v, f"{object_pattern(obj)}(.data)") for v, obj, owner in gaps if owner == seg["name"]]
         for fn in B["functions"]:
             if fn["rom"] is not None and start <= fn["rom"] < end:
-                items.append((fn["vram"], f"{provides[fn['name']]}(.text)"))
+                items.append((fn["vram"], f"{object_pattern(provides[fn['name']])}(.text)"))
         lines += [f"    .{seg['name']} 0x{vram:08X} : AT(0x{start:X}) SUBALIGN(4)", "    {"]
         lines += [f"        . = 0x{v - vram:X}; {what}" for v, what in sorted(items)]
+        # objcopy omits a zero tail unless it belongs to a loaded section.
+        lines.append(f"        . = 0x{end - start:X};")
         lines.append("    }")
         if seg["bss"]:
             bss_vram = seg["bss"][0]["vram"]
             lines += [f"    .{seg['name']}_bss 0x{bss_vram:08X} (NOLOAD) : SUBALIGN(4)", "    {"]
-            lines += [f"        . = 0x{b['vram'] - bss_vram:X}; {b['obj']}(.bss .sbss)" for b in seg["bss"]]
+            lines += [f"        . = 0x{b['vram'] - bss_vram:X}; {object_pattern(b['obj'])}(.bss .sbss)" for b in seg["bss"]]
             lines.append("    }")
     n = 0
     for fn in B["functions"]:
+        if module is not None and fn["seg"] != module:
+            continue
         for section, base in (fn.get("own") or {}).items():
             if c_source(fn):
-                lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : {{ {provides[fn['name']]}({section}) }}")
+                lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : {{ {object_pattern(provides[fn['name']])}({section}) }}")
                 n += 1
     # own data of C functions nobody placed yet: kept out of the image; `build.py check` places it
     lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) }}")
@@ -283,6 +348,11 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str]]) -> str:
     if B.get("gp"):
         lines.append(f"_gp = 0x{B['gp']:08X};")
     lines += [f"{name} = 0x{addr:08X};" for name, addr in B["symbols"].items()]
+    if module is not None:
+        own_symbols = B.get("module_symbols", {}).get(module, {})
+        external = {name: address for owner, symbols in B.get("module_symbols", {}).items() if owner != module
+                    for name, address in symbols.items() if name not in own_symbols and name not in B["symbols"]}
+        lines += [f'"{name}" = 0x{address:08X};' for name, address in external.items()]
     # jump tables in the data point at labels inside functions (.L001006F8); with one object per function those
     # labels are local to another object, so give them their addresses (which their names spell out)
     labels = set()
@@ -304,23 +374,77 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str]]) -> str:
             lines += [f'"{n}_VRAM" = 0x{vram:08X};', f'"{n}_VRAM_END" = 0x{bss_end:08X};',
                       f'"{n}_BSS_START" = 0x{bss_start:08X};', f'"{n}_BSS_END" = 0x{bss_end:08X};',
                       f'"{n}_BSS_SIZE" = 0x{bss_end - bss_start:X};']
+    # Startup relocations may carry an established BSS address even when a
+    # heuristic layout could not infer its size. Keep those original values.
+    established = B["symbols"]
+    lines = [line for line in lines if not ((symbol := re.match(r'^"([^"]+)" =', line)) and symbol[1] in established)]
     return "\n".join(lines) + "\n"
+
+
+def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *, scripts=None, destination=None) -> None:
+    """Alternative programs share RAM, so link them independently, then restore file placement."""
+    size = (ROOT / B["image"]).stat().st_size
+    output = bytearray(size)
+    segments = sorted(B["segments"], key=lambda s: s["start"])
+    for i, seg in enumerate(segments):
+        name, start = seg["name"], seg["start"]
+        end = seg.get("end")
+        if end is None:
+            end = segments[i + 1]["start"] if i + 1 < len(segments) else size
+        objects = set(seg.get("objects", []))
+        objects.update(p["obj"] for p in seg.get("pieces", []) + seg.get("bss", []))
+        objects.update(provides[f["name"]] for f in B["functions"] if f["rom"] is not None and start <= f["rom"] < end)
+        objects.update(obj for _, obj, owner in gaps if owner == name)
+        folder = ROOT / "build" / "modules"
+        folder.mkdir(exist_ok=True)
+        script = f"build/modules/{name}.ld"
+        elf, binary = f"build/modules/{name}.elf", f"build/modules/{name}.bin"
+        (ROOT / script).write_text(scripts[name] if scripts is not None else linker_script(provides, gaps, name), encoding="utf-8")
+        run([binutils("ld"), *B["ld_flags"], "-T", script, "-o", elf, *sorted(objects)])
+        run([binutils("objcopy"), "-O", "binary", elf, binary])
+        data = (ROOT / binary).read_bytes()
+        if len(data) > end - start:
+            fail(f"{name} rebuilt beyond its original file range")
+        output[start:start + len(data)] = data
+    (ROOT / (destination or B["output"])).write_bytes(output)
 
 
 def build() -> bool:
     setup()
+    (ROOT / B["output"]).unlink(missing_ok=True)
+    if container := B.get("container"):
+        (ROOT / container["output"]).unlink(missing_ok=True)
     todo, provides = objects()
     build_objects(todo)
+    if B["platform"] == "n64":
+        for fn in B["functions"]:
+            if c_source(fn) and (why := validate(fn, (ROOT / provides[fn["name"]]).read_bytes())):
+                print(f"differs: {fn['name']}: {why}")
+                return False
     gaps = fill_gaps(provides)
-    (ROOT / "build" / "game.ld").write_text(linker_script(provides, gaps), encoding="utf-8")
-    objs = sorted({obj for _, _, obj in todo} | {obj for _, obj in gaps})
-    run([binutils("ld"), *B["ld_flags"], "-T", "build/game.ld", "-o", "build/game.elf", *objs])
-    run([binutils("objcopy"), "-O", "binary", "build/game.elf", B["output"]])
+    code = [s for s in B["segments"] if s["kind"] == "code"]
+    size = (ROOT / B["image"]).stat().st_size
+    overlapping = any(a["vram"] < b["vram"] + (b.get("end") or size) - b["start"]
+                      and b["vram"] < a["vram"] + (a.get("end") or size) - a["start"]
+                      for i, a in enumerate(code) for b in code[i + 1:])
+    if overlapping:
+        build_modules(provides, gaps)
+    else:
+        (ROOT / "build" / "game.ld").write_text(linker_script(provides, gaps), encoding="utf-8")
+        objs = sorted({obj for _, _, obj in todo} | {obj for _, obj, _ in gaps})
+        run([binutils("ld"), *B["ld_flags"], "-T", "build/game.ld", "-o", "build/game.elf", *objs])
+        run([binutils("objcopy"), "-O", "binary", "build/game.elf", B["output"]])
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
+        if container := B.get("container"):
+            size = container["layout"]["original_size"]
+            rebuilt = out[:size]
+            if hashlib.sha256(rebuilt).hexdigest() != container["layout"]["sha256"]:
+                fail("the source-built original N64 container differs")
+            (ROOT / container["output"]).write_bytes(rebuilt)
+            print(f"identical: {container['output']} matches {container['image']} byte for byte")
         if program := B.get("program"):
-            import hashlib
             from decompnet.rom.ps2 import rebuild_elf
 
             original = (ROOT / program["image"]).read_bytes()
@@ -349,9 +473,9 @@ def check(name: str) -> bool:
         fail(f"no function {name}")
     src = c_source(fn)
     if not src:
-        extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+        extension = "cpp" if {**B["compiler"], **fn.get("compiler", {})}.get("language") == "c++" else "c"
         fail(f"write it first as src/{fn['seg']}/{name}.{extension}")
-    result = compile_function(build_config(), src)
+    result = compile_function(build_config(fn), src)
     if not result.ok:
         print(result.log)
         return False
@@ -372,6 +496,20 @@ def status() -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args[:1] in (["mod"], ["inventory"]):
+        import argparse
+        parser = argparse.ArgumentParser(description="Build bounded N64 source changes or review their relocations")
+        parser.add_argument("--module")
+        parser.add_argument("--cic", type=int, choices=(6101, 6102, 6103, 6105, 6106))
+        options = parser.parse_args(args[1:])
+        if B.get("format") != "shiftable":
+            fail("export a shiftable N64 project before requesting function reflow")
+        import shiftable
+        try:
+            success = shiftable.build(sys.modules[__name__], options.module, options.cic, audit_only=args[0] == "inventory")
+        except (ValueError, OSError) as error:
+            fail(str(error))
+        sys.exit(0 if success else 1)
     if args[:1] == ["check"] and len(args) == 2:
         sys.exit(0 if check(args[1]) else 1)
     if args[:1] == ["status"]:

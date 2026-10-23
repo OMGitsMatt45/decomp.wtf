@@ -18,6 +18,7 @@ from pathlib import Path
 from . import scoring
 from .elfobj import extract_function
 from .network import Agent, Network, NetworkError
+from .project import function_config
 
 MAX_INCLUDE_BYTES = 256 * 1024
 
@@ -33,7 +34,7 @@ def next_job(net: Network, agent: Agent) -> dict | None:
     if not rows:
         return None
     fn = random.choice(rows[:4])  # spread workers over the closest few
-    cfg = json.loads(fn["config"])["compiler"]
+    cfg = function_config(json.loads(fn["config"]), fn["name"])["compiler"]
     includes, total = {}, 0
     for d in cfg.get("include_dirs", []):
         base = (Path(fn["root"]) / d).resolve()
@@ -66,7 +67,7 @@ def submit(net: Network, agent: Agent, project: str, function: str, source: str)
         return {"accepted": False, "reason": "an agent is working on it right now"}
     proj = net.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
     ctx = net._context(proj["id"], fn["unit"])
-    res = net._compile(proj, ctx["header"], source)
+    res = net._compile(proj, ctx["header"], source, fn)
     cand = extract_function(res.obj, fn["name"]) if res.ok else None
     if cand is None:
         net._record(fn, agent, None, source, ctx["version"], via="permuter")

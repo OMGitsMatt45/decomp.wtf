@@ -4,7 +4,9 @@
 code-segment placement, Yaz0 and compressed-code discovery in C++17. Python keeps
 the application API, text decoding, SHA-1, and orchestration. Rabbitizer supplies
 generic instruction validation; Python's zlib supplies generic raw deflate through
-a callback. The N64 analysis algorithms have no Python runtime fallback.
+a callback. Generic gzip framing, CRC verification and bounded streaming use
+Python's zlib; decoded candidates are classified by the existing native code
+placement algorithm. The N64 analysis algorithms have no Python runtime fallback.
 
 The app ships an x86-64 Windows DLL and Linux shared library; users need no C++
 compiler. Windows links its C++ runtime statically. The Linux release library uses

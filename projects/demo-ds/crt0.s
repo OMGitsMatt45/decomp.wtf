@@ -26,6 +26,25 @@ SVC_CpuSet:
         .section .crt0, "ax"
         .global _start
 _start:
+        @ Establish application CPU state before calling the BIOS. Direct boot
+        @ can enter in supervisor mode; a nested SVC then destroys its caller's
+        @ banked link register. Give SVC/IRQ their own stacks and run in system
+        @ mode, with the TCM mappings this fixture's linker script uses.
+        ldr     r0, =0x027E000A
+        mcr     p15, 0, r0, c9, c1, 0          @ 16 KiB DTCM at 0x027E0000
+        mov     r0, #0x20
+        mcr     p15, 0, r0, c9, c1, 1          @ mirrored ITCM, including 0x01FF8000
+        mrc     p15, 0, r0, c1, c0, 0
+        bic     r0, r0, #1                    @ no protection regions in this demo
+        orr     r0, r0, #0x50000              @ enable both TCMs
+        orr     r0, r0, #0x2000               @ BIOS exception vectors
+        mcr     p15, 0, r0, c1, c0, 0
+        msr     cpsr_c, #0xD3                 @ supervisor, IRQ/FIQ disabled
+        ldr     sp, =0x027E3FC0
+        msr     cpsr_c, #0xD2                 @ IRQ stack
+        ldr     sp, =0x027E3F80
+        msr     cpsr_c, #0xDF                 @ system mode for application/BIOS calls
+        ldr     sp, =0x027E3F00
         mov     r12, #0x04000000
         str     r12, [r12, #0x208]              @ interrupts off (IME = 0)
         bl      .Ldo_autoload

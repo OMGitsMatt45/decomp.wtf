@@ -11,7 +11,7 @@ from . import chd, gb, gba, n64, overlays, ps2, psx
 from .n64 import RomError
 
 PLATFORMS = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2", "gba": "Game Boy Advance",
-             "gb": "Game Boy", "gbc": "Game Boy Color"}
+             "gb": "Game Boy", "gbc": "Game Boy Color", "nds": "Nintendo DS", "gc": "GameCube", "wii": "Wii"}
 SMALL = 64 * 1024 * 1024  # ROMs and programs are read whole; disc images are read from disk
 
 

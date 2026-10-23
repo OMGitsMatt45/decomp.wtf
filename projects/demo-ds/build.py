@@ -92,7 +92,10 @@ def nds(arm9: bytes, build_info: int, callback: int) -> bytes:
     arm9_off = 0x4000
     rom += arm9 + struct.pack("<III", 0xDEC00621, build_info, 0)  # the ARM9 footer points at the build info
     rom += bytes(-len(rom) % 0x200)
-    arm7 = struct.pack("<I", 0xEAFFFFFE) + bytes(0x1FC)  # b . (the ARM7 just waits)
+    # Original ARM7 loop: advance a separate shared-RAM counter so execution
+    # qualification can observe both processors, without any SDK runtime.
+    arm7 = struct.pack("<6I", 0xE59F000C, 0xE3A01000, 0xE2811001, 0xE5801000, 0xEAFFFFFC, 0x0238FFF0)
+    arm7 += bytes(0x200 - len(arm7))
     arm7_off = len(rom)
     rom += arm7
     name, text = b"readme.txt", b"Demo Quest DS: a homemade ROM for decomp.wtf (CC0).\n"
