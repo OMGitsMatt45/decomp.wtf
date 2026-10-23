@@ -1567,8 +1567,9 @@ class RomNetwork(Network):
             from .gbengine import export_rom as export
         if self.cfg(proj).get("psx_disc_set"):
             from ..rom.psx_set import export_set as export
-        folder = "source-set" if self.cfg(proj).get("psx_disc_set") else "source-shiftable" if format == "shiftable" else "source"
-        res = export(self, slug, Path(proj["root"]) / folder, log=log,
+        folder = "source-shiftable" if format == "shiftable" else "source"
+        destination = None if self.cfg(proj).get("psx_disc_set") else Path(proj["root"]) / folder
+        res = export(self, slug, destination, log=log,
                      **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])

@@ -74,6 +74,7 @@ def test_one_project_builds_both_discs_and_shares_verified_cpp(tmp_path, custom_
         assert (old / "edited.cpp").read_text() == "// keep previous work\n"
     else:
         result = net.export_rom(slugs[1], log=lambda *_: None)
+        assert Path(result["path"]) == Path(net.project_row(slugs[0])["root"]) / "source-set"
     assert result["identical"] and result["scope"] == "disc-set", result
     assert result["matched"] == 2 and result["shared_sources"] == 1
     tree = Path(result["path"])
