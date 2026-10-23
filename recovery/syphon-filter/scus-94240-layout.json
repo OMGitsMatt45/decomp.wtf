@@ -1,0 +1,665 @@
+{
+  "format": 1,
+  "main_data": [
+    {
+      "offset": 559868,
+      "sha256": "e98a5798d9b798bf368ded5bd24dfd2b51026201362c07e3e51cfb93fc43f8e8",
+      "size": 157800
+    },
+    {
+      "offset": 1047976,
+      "sha256": "fd1cd9d41f4cb3ce08aa7609f4b2ac909210f00199a532bcf1b3a69ff7e1c917",
+      "size": 2448
+    },
+    {
+      "offset": 1051640,
+      "sha256": "b40c47b014ca8650c539760fd4c519cabce6f091628566ca0dd22318bb2c5b7a",
+      "size": 16384
+    },
+    {
+      "offset": 1378304,
+      "sha256": "7b7376d5ca94a85ca16631e5f1ea75330ac0c1e4e0b5b075354d2c82ef5de500",
+      "size": 162560
+    },
+    {
+      "offset": 1540864,
+      "sha256": "29d21e14ba7634859840dd6c55ba67a8325a8d1acc43df31183a05635019f79c",
+      "size": 258688
+    }
+  ],
+  "modules": [
+    {
+      "code_end": "0x47fc",
+      "code_start": "0xa70",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4114432,
+          "path": "FOG/BASEEXT.FOG"
+        },
+        {
+          "offset": 3999744,
+          "path": "FOG/BASEEXT2.FOG"
+        },
+        {
+          "offset": 3645440,
+          "path": "FOG/BUNKER.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "baseext",
+      "offset": 0,
+      "path": "BIN/BASEEXT.OVL",
+      "size": 21668,
+      "stored_size": 21668
+    },
+    {
+      "code_end": "0x14b0",
+      "code_start": "0x348",
+      "codec": "raw",
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "catacomb",
+      "offset": 0,
+      "path": "BIN/CATACOMB.OVL",
+      "size": 5796,
+      "stored_size": 5796
+    },
+    {
+      "code_end": "0x3604",
+      "code_start": "0xa30",
+      "codec": "raw",
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "cave",
+      "offset": 0,
+      "path": "BIN/CAVE.OVL",
+      "size": 14400,
+      "stored_size": 14400
+    },
+    {
+      "code_end": "0x4908",
+      "code_start": "0x448",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2406400,
+          "path": "FOG/CHOPPER.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "chopper",
+      "offset": 0,
+      "path": "BIN/CHOPPER.OVL",
+      "size": 21984,
+      "stored_size": 21984
+    },
+    {
+      "code_end": "0x854c",
+      "code_start": "0x458",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4319232,
+          "path": "FOG/BASEEXT.FOG"
+        },
+        {
+          "offset": 4204544,
+          "path": "FOG/BASEEXT2.FOG"
+        },
+        {
+          "offset": 3749888,
+          "path": "FOG/BUNKER.FOG"
+        },
+        {
+          "offset": 4558848,
+          "path": "FOG/CATACOMB.FOG"
+        },
+        {
+          "offset": 2963456,
+          "path": "FOG/CAVE.FOG"
+        },
+        {
+          "offset": 2658304,
+          "path": "FOG/CAVE2.FOG"
+        },
+        {
+          "offset": 2570240,
+          "path": "FOG/CHOPPER.FOG"
+        },
+        {
+          "offset": 4421632,
+          "path": "FOG/CHURCH.FOG"
+        },
+        {
+          "offset": 3272704,
+          "path": "FOG/CHURCH2.FOG"
+        },
+        {
+          "offset": 2873344,
+          "path": "FOG/INWHOUSE.FOG"
+        },
+        {
+          "offset": 4210688,
+          "path": "FOG/MUSEUM.FOG"
+        },
+        {
+          "offset": 2846720,
+          "path": "FOG/MUSEUM2.FOG"
+        },
+        {
+          "offset": 4636672,
+          "path": "FOG/PARK.FOG"
+        },
+        {
+          "offset": 2525184,
+          "path": "FOG/PARK2.FOG"
+        },
+        {
+          "offset": 3897344,
+          "path": "FOG/SILO.FOG"
+        },
+        {
+          "offset": 4759552,
+          "path": "FOG/SUBWAY.FOG"
+        },
+        {
+          "offset": 3162112,
+          "path": "FOG/SUBWAY2.FOG"
+        },
+        {
+          "offset": 2758656,
+          "path": "FOG/SUBWAY3.FOG"
+        },
+        {
+          "offset": 3194880,
+          "path": "FOG/WHOUSE.FOG"
+        },
+        {
+          "offset": 3014656,
+          "path": "FOG/WHOUSE2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x8014c0a8",
+      "name": "init",
+      "offset": 0,
+      "path": "BIN/INIT.OVL",
+      "size": 36920,
+      "stored_size": 36920
+    },
+    {
+      "code_end": "0xf70",
+      "code_start": "0x538",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4423680,
+          "path": "FOG/CATACOMB.FOG"
+        },
+        {
+          "offset": 4220928,
+          "path": "FOG/CHURCH.FOG"
+        },
+        {
+          "offset": 3072000,
+          "path": "FOG/CHURCH2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "levspec",
+      "offset": 0,
+      "path": "BIN/LEVSPEC.OVL",
+      "size": 4240,
+      "stored_size": 4240
+    },
+    {
+      "code_end": "0x85cc",
+      "code_start": "0x924",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4022272,
+          "path": "FOG/BASEEXT.FOG"
+        },
+        {
+          "offset": 3921920,
+          "path": "FOG/BASEEXT2.FOG"
+        },
+        {
+          "offset": 3555328,
+          "path": "FOG/BUNKER.FOG"
+        },
+        {
+          "offset": 4333568,
+          "path": "FOG/CATACOMB.FOG"
+        },
+        {
+          "offset": 2785280,
+          "path": "FOG/CAVE.FOG"
+        },
+        {
+          "offset": 2490368,
+          "path": "FOG/CAVE2.FOG"
+        },
+        {
+          "offset": 2342912,
+          "path": "FOG/CHOPPER.FOG"
+        },
+        {
+          "offset": 4128768,
+          "path": "FOG/CHURCH.FOG"
+        },
+        {
+          "offset": 2979840,
+          "path": "FOG/CHURCH2.FOG"
+        },
+        {
+          "offset": 2641920,
+          "path": "FOG/INWHOUSE.FOG"
+        },
+        {
+          "offset": 3919872,
+          "path": "FOG/MUSEUM.FOG"
+        },
+        {
+          "offset": 2580480,
+          "path": "FOG/MUSEUM2.FOG"
+        },
+        {
+          "offset": 4364288,
+          "path": "FOG/PARK.FOG"
+        },
+        {
+          "offset": 2334720,
+          "path": "FOG/PARK2.FOG"
+        },
+        {
+          "offset": 3600384,
+          "path": "FOG/SILO.FOG"
+        },
+        {
+          "offset": 4448256,
+          "path": "FOG/SUBWAY.FOG"
+        },
+        {
+          "offset": 2859008,
+          "path": "FOG/SUBWAY2.FOG"
+        },
+        {
+          "offset": 2541568,
+          "path": "FOG/SUBWAY3.FOG"
+        },
+        {
+          "offset": 2965504,
+          "path": "FOG/WHOUSE.FOG"
+        },
+        {
+          "offset": 2793472,
+          "path": "FOG/WHOUSE2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x8013d630",
+      "name": "menu",
+      "offset": 0,
+      "path": "BIN/MENU.OVL",
+      "size": 36488,
+      "stored_size": 36488
+    },
+    {
+      "code_end": "0x43a0",
+      "code_start": "0x200",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3999744,
+          "path": "FOG/BASEEXT.FOG"
+        },
+        {
+          "offset": 3899392,
+          "path": "FOG/BASEEXT2.FOG"
+        },
+        {
+          "offset": 3532800,
+          "path": "FOG/BUNKER.FOG"
+        },
+        {
+          "offset": 4311040,
+          "path": "FOG/CATACOMB.FOG"
+        },
+        {
+          "offset": 2762752,
+          "path": "FOG/CAVE.FOG"
+        },
+        {
+          "offset": 2467840,
+          "path": "FOG/CAVE2.FOG"
+        },
+        {
+          "offset": 2320384,
+          "path": "FOG/CHOPPER.FOG"
+        },
+        {
+          "offset": 4106240,
+          "path": "FOG/CHURCH.FOG"
+        },
+        {
+          "offset": 2957312,
+          "path": "FOG/CHURCH2.FOG"
+        },
+        {
+          "offset": 2619392,
+          "path": "FOG/INWHOUSE.FOG"
+        },
+        {
+          "offset": 3897344,
+          "path": "FOG/MUSEUM.FOG"
+        },
+        {
+          "offset": 2557952,
+          "path": "FOG/MUSEUM2.FOG"
+        },
+        {
+          "offset": 4341760,
+          "path": "FOG/PARK.FOG"
+        },
+        {
+          "offset": 2312192,
+          "path": "FOG/PARK2.FOG"
+        },
+        {
+          "offset": 3577856,
+          "path": "FOG/SILO.FOG"
+        },
+        {
+          "offset": 4425728,
+          "path": "FOG/SUBWAY.FOG"
+        },
+        {
+          "offset": 2836480,
+          "path": "FOG/SUBWAY2.FOG"
+        },
+        {
+          "offset": 2519040,
+          "path": "FOG/SUBWAY3.FOG"
+        },
+        {
+          "offset": 2942976,
+          "path": "FOG/WHOUSE.FOG"
+        },
+        {
+          "offset": 2770944,
+          "path": "FOG/WHOUSE2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x8013d630",
+      "name": "movie",
+      "offset": 0,
+      "path": "BIN/MOVIE.OVL",
+      "size": 21784,
+      "stored_size": 21784
+    },
+    {
+      "code_end": "0x15cc",
+      "code_start": "0x3c0",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4024320,
+          "path": "FOG/MUSEUM.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "museum",
+      "offset": 0,
+      "path": "BIN/MUSEUM.OVL",
+      "size": 5896,
+      "stored_size": 5896
+    },
+    {
+      "code_end": "0x14c4",
+      "code_start": "0x2b8",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2662400,
+          "path": "FOG/MUSEUM2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "museum2",
+      "offset": 0,
+      "path": "BIN/MUSEUM2.OVL",
+      "size": 5888,
+      "stored_size": 5888
+    },
+    {
+      "code_end": "0x2558",
+      "code_start": "0x3b8",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4458496,
+          "path": "FOG/PARK.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "park",
+      "offset": 0,
+      "path": "BIN/PARK.OVL",
+      "size": 14312,
+      "stored_size": 14312
+    },
+    {
+      "code_end": "0x272c",
+      "code_start": "0x2a8",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2398208,
+          "path": "FOG/PARK2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "park2",
+      "offset": 0,
+      "path": "BIN/PARK2.OVL",
+      "size": 23160,
+      "stored_size": 23160
+    },
+    {
+      "code_end": "0x319c",
+      "code_start": "0x5e8",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4552704,
+          "path": "FOG/SUBWAY.FOG"
+        },
+        {
+          "offset": 2609152,
+          "path": "FOG/SUBWAY3.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "subway",
+      "offset": 0,
+      "path": "BIN/SUBWAY.OVL",
+      "size": 13528,
+      "stored_size": 13528
+    },
+    {
+      "code_end": "0x1214",
+      "code_start": "0x300",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2942976,
+          "path": "FOG/SUBWAY2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "subway2",
+      "offset": 0,
+      "path": "BIN/SUBWAY2.OVL",
+      "size": 4768,
+      "stored_size": 4768
+    },
+    {
+      "code_end": "0x2424",
+      "code_start": "0x318",
+      "codec": "raw",
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "subway3",
+      "offset": 0,
+      "path": "BIN/SUBWAY3.OVL",
+      "size": 9892,
+      "stored_size": 9892
+    },
+    {
+      "code_end": "0x3e4c",
+      "code_start": "0x7b8",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 4059136,
+          "path": "FOG/BASEEXT.FOG"
+        },
+        {
+          "offset": 3958784,
+          "path": "FOG/BASEEXT2.FOG"
+        },
+        {
+          "offset": 3592192,
+          "path": "FOG/BUNKER.FOG"
+        },
+        {
+          "offset": 4370432,
+          "path": "FOG/CATACOMB.FOG"
+        },
+        {
+          "offset": 2822144,
+          "path": "FOG/CAVE.FOG"
+        },
+        {
+          "offset": 2527232,
+          "path": "FOG/CAVE2.FOG"
+        },
+        {
+          "offset": 2379776,
+          "path": "FOG/CHOPPER.FOG"
+        },
+        {
+          "offset": 4165632,
+          "path": "FOG/CHURCH.FOG"
+        },
+        {
+          "offset": 3016704,
+          "path": "FOG/CHURCH2.FOG"
+        },
+        {
+          "offset": 2678784,
+          "path": "FOG/INWHOUSE.FOG"
+        },
+        {
+          "offset": 3956736,
+          "path": "FOG/MUSEUM.FOG"
+        },
+        {
+          "offset": 2617344,
+          "path": "FOG/MUSEUM2.FOG"
+        },
+        {
+          "offset": 4401152,
+          "path": "FOG/PARK.FOG"
+        },
+        {
+          "offset": 2371584,
+          "path": "FOG/PARK2.FOG"
+        },
+        {
+          "offset": 3637248,
+          "path": "FOG/SILO.FOG"
+        },
+        {
+          "offset": 4485120,
+          "path": "FOG/SUBWAY.FOG"
+        },
+        {
+          "offset": 2895872,
+          "path": "FOG/SUBWAY2.FOG"
+        },
+        {
+          "offset": 2578432,
+          "path": "FOG/SUBWAY3.FOG"
+        },
+        {
+          "offset": 3002368,
+          "path": "FOG/WHOUSE.FOG"
+        },
+        {
+          "offset": 2830336,
+          "path": "FOG/WHOUSE2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "title",
+      "offset": 0,
+      "path": "BIN/TITLE.OVL",
+      "size": 20424,
+      "stored_size": 20424
+    },
+    {
+      "code_end": "0x1e6c",
+      "code_start": "0x880",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2867200,
+          "path": "FOG/CAVE.FOG"
+        },
+        {
+          "offset": 2555904,
+          "path": "FOG/CAVE2.FOG"
+        },
+        {
+          "offset": 2725888,
+          "path": "FOG/INWHOUSE.FOG"
+        },
+        {
+          "offset": 3674112,
+          "path": "FOG/SILO.FOG"
+        },
+        {
+          "offset": 3051520,
+          "path": "FOG/WHOUSE.FOG"
+        },
+        {
+          "offset": 2871296,
+          "path": "FOG/WHOUSE2.FOG"
+        }
+      ],
+      "gp": "0x80115c68",
+      "load": "0x80146630",
+      "name": "whouse",
+      "offset": 0,
+      "path": "BIN/WHOUSE.OVL",
+      "size": 8168,
+      "stored_size": 8168
+    }
+  ],
+  "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e"
+}

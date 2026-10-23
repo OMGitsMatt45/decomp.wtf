@@ -1,0 +1,37 @@
+{
+  "complete_source_recovery": false,
+  "discs": [
+    {
+      "canonical_modules": 11,
+      "exact_matches": 1322,
+      "inventory": "slus-01206-functions.csv",
+      "layout": "slus-01206-layout.json",
+      "original_sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a",
+      "profiles": "slus-01206-profiles.json",
+      "serial": "SLUS-01206",
+      "targets": 4679
+    },
+    {
+      "canonical_modules": 11,
+      "exact_matches": 1314,
+      "inventory": "slus-01346-functions.csv",
+      "layout": "slus-01346-layout.json",
+      "original_sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d",
+      "profiles": "slus-01346-profiles.json",
+      "serial": "SLUS-01346",
+      "targets": 4679
+    }
+  ],
+  "exact_matches_total": 2636,
+  "format": 1,
+  "native_pc_output": false,
+  "private_checkpoint": {
+    "bytes": 82829696,
+    "filename": "dqvii-recovery-2026-10-23.zip",
+    "index_sha256": "49b0e72737af33ce2e4eccdccc745c4784380ee9ee56ac70d3a88698d573f2e7",
+    "member_count": 25052,
+    "sha256": "0a771f225a58c508e8710b5656f7d20be69ead6d53a0a2ba9b63b0cf1bc0e676"
+  },
+  "status": "paused",
+  "tool_revision": "a5b12975261eb66c52335c989ee5fd285225125f"
+}

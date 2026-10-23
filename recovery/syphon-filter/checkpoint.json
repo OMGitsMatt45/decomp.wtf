@@ -1,0 +1,57 @@
+{
+  "complete_source_recovery": false,
+  "discs": [
+    {
+      "canonical_modules": 17,
+      "exact_matches": 622,
+      "inventory": "scus-94240-functions.csv",
+      "layout": "scus-94240-layout.json",
+      "original_sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+      "profiles": "scus-94240-profiles.json",
+      "serial": "SCUS-94240",
+      "targets": 2723
+    },
+    {
+      "canonical_modules": 14,
+      "exact_matches": 629,
+      "inventory": "scus-94451-functions.csv",
+      "layout": "scus-94451-layout.json",
+      "original_sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+      "profiles": "scus-94451-profiles.json",
+      "serial": "SCUS-94451",
+      "targets": 3125
+    },
+    {
+      "canonical_modules": 17,
+      "exact_matches": 425,
+      "inventory": "scus-94492-functions.csv",
+      "layout": "scus-94492-layout.json",
+      "original_sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+      "profiles": "scus-94492-profiles.json",
+      "serial": "SCUS-94492",
+      "targets": 3103
+    },
+    {
+      "canonical_modules": 11,
+      "exact_matches": 486,
+      "inventory": "scus-94640-functions.csv",
+      "layout": "scus-94640-layout.json",
+      "original_sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+      "profiles": "scus-94640-profiles.json",
+      "serial": "SCUS-94640",
+      "targets": 3282
+    }
+  ],
+  "exact_matches_total": 2162,
+  "format": 1,
+  "native_pc_output": false,
+  "private_checkpoint": {
+    "bytes": 276478987,
+    "filename": "syphon-filter-recovery-2026-10-23.zip",
+    "index_sha256": "44e8b0b5def7447f1d282662431c83a95c844c9efd4c4272ca573543214a6fd4",
+    "member_count": 35208,
+    "sha256": "989a5cc3fc38a71ea79b12cff11f6efd4b1ef2178e136863a402878575549a92"
+  },
+  "status": "paused",
+  "tool_revision": "a5b12975261eb66c52335c989ee5fd285225125f"
+}
