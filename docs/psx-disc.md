@@ -240,9 +240,9 @@ including reviewed file relocation and first-data-track growth. ISO directory
 records, raw parity, CUE indices and supported CHD metadata are verified before
 outputs are published. Unknown mastering and loader formats require adapters.
 
-All **149 required checks passed with zero skips on native Windows and Linux**
-at source/test commit `73d338ebce43cb9124fafd65c1847691aabf5ec7` in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362340).
+All **196 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `72b27dc76e32f6b8d0a63a9bf56216853be89db4` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469320).
 The [validation record](psx-validation.json) records per-suite counts and private
 retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
 and 92 shared source files in the prior complete-build qualification. Syphon Filter 1/2/3 adds four exact complete-disc and clean rebuilds,
