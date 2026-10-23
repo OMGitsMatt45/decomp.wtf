@@ -166,6 +166,11 @@ def test_small_psx_headers_and_payloads_outside_ram_fail_cleanly():
         psx.read_exe(bytes(image))
 
 
+@pytest.mark.parametrize("name", ["SLUS_012.06", "SLUSP012.06", "SLUS-012.06"])
+def test_product_codes_include_five_letter_boot_names(name):
+    assert psx.read_exe(_resident_exe(), name)[1]["game_code"] == "SLUS-01206"
+
+
 def test_nested_boot_path_does_not_hide_an_overlay_with_the_same_basename():
     image = bytearray(_iso({"SYSTEM.CNF": b"BOOT = cdrom:\\BOOT\\MAIN.EXE;1\n",
                             "BOOT": bytes(2048), "MAIN.EXE": _resident_exe()}))
@@ -190,7 +195,7 @@ def test_nested_boot_path_does_not_hide_an_overlay_with_the_same_basename():
     assert any(m["path"] == "MAIN.EXE" and m["segment"] != "main" for m in picked.disc["maps"])
 
 
-def test_small_chd_paths_use_the_decoder_and_report_program_only(tmp_path, monkeypatch):
+def test_small_chd_paths_use_the_decoder_and_pin_the_container(tmp_path, monkeypatch):
     class OriginalDecodedFrames(io.BytesIO):
         def __init__(self, path):
             super().__init__(fixture(2448, 24))
@@ -200,4 +205,4 @@ def test_small_chd_paths_use_the_decoder_and_report_program_only(tmp_path, monke
     monkeypatch.setattr(chd, "Chd", OriginalDecodedFrames)
     picked = detect.identify(path)
     assert picked.platform == "psx" and len(picked.overlays) == 2
-    assert not picked.disc["supported"] and "CHD" in picked.disc["reason"]
+    assert picked.disc["supported"] and picked.disc["media"]["kind"] == "chd"

@@ -144,6 +144,10 @@ def target_from_split(fn: RomFunction, resolve: Callable[[str], int | None], big
     relocs: list[tuple[int, int, int]] = []
     for ln in fn.lines:
         off = ln.vram - fn.vram
+        if gp and (ln.word >> 21) & 31 == 28 and ln.word >> 26 in (8, 9, 0x20, 0x21, 0x23, 0x24, 0x25, 0x28, 0x29, 0x2B, 0x31, 0x39, 0x32, 0x3A):
+            immediate = (ln.word & 0xFFFF) - (0x10000 if ln.word & 0x8000 else 0)
+            relocs.append((off, R_MIPS_GPREL16, (gp + immediate) & 0xFFFFFFFF))
+            continue
         m = _REF.search(ln.operands)
         if m:
             kind, sym, sign, num = m.groups()

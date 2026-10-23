@@ -24,16 +24,20 @@ def read_exe(data: bytes, boot_name: str = "") -> tuple[bytes, dict]:
     pc, gp, load, size = struct.unpack_from("<IIII", data, 0x10)
     if not (0x80000000 <= load < load + size <= 0x80200000) or 0x800 + size > len(data):
         raise RomError("the executable's header doesn't make sense (load address or size)")
+    bss, bss_size = struct.unpack_from("<II", data, 0x28)
+    if bss_size and not 0x80000000 <= bss < bss + bss_size <= 0x80200000:
+        raise RomError("the executable's BSS range exceeds PS1 RAM")
     marker = data[0x4C:0x800].split(b"\0", 1)[0].decode("ascii", "replace")
     region = next((v for k, v in REGIONS.items() if k in marker), "Unknown region")
     code = ""
-    m = re.match(r"^([A-Z]{4})[_-](\d{3})\.(\d{2})", boot_name.upper())
+    m = re.match(r"^([A-Z]{4})(?:[_-]|P)(\d{3})\.(\d{2})", boot_name.upper())
     if m:
         code = f"{m.group(1)}-{m.group(2)}{m.group(3)}"
     exe = data[:0x800 + size]
     return exe, {
         "title": code or boot_name or "PlayStation game", "game_code": code, "region": region, "version": 0,
-        "entrypoint": pc, "gp": gp, "load": load, "crc1": 0, "crc2": 0, "size": len(exe),
+        "entrypoint": pc, "gp": gp, "load": load, "bss": bss, "bss_size": bss_size,
+        "crc1": 0, "crc2": 0, "size": len(exe),
         "sha1": hashlib.sha1(exe).hexdigest(), "byte_order": "exe", "compiler_guess": "PSYQ", "platform": "psx",
         "boot": boot_name,
     }

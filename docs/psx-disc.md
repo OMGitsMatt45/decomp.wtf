@@ -1,127 +1,159 @@
 # PlayStation disc reconstruction
 
-PS1 disc projects can export a matching **complete image**, including their
-independently rebuilt boot executable and discovered overlays. This extends
-the existing [C/C++ matching workflow](psx-cpp.md). PS1 remains beta; the new
-disc qualification uses original fixtures rather than retail game images.
+PS1 projects export matching complete disc images, with independently rebuilt
+boot code and imported overlays. Matching C/C++ replaces assembly function by
+function. A byte-identical disc does not establish complete code discovery or
+runtime behavior. See [C/C++ matching](psx-cpp.md).
 
-Drop an ISO/BIN into the app, confirm ownership, then export from **Source**.
-The export reports either **complete disc** or **program payload only**. The
-same workflow is available from the console:
+## Console and browser
 
 ```sh
-decompnet psx inspect "my disc.bin"
-decompnet --db "work/app.db" psx import "my disc.bin" --workspace "work/projects" --own-copy --toolchain gcc-2.7.2-psx
+decompnet psx inspect "my disc.cue"
+decompnet --db "work/app.db" psx import "my disc.cue" --workspace "work/projects" --own-copy --toolchain gcc-2.7.2-psx
 decompnet --db "work/app.db" psx export PROJECT_SLUG --workspace "work/projects"
 ```
 
 Create the database's parent directory first. `inspect` needs no compiler and
-prints JSON with the filesystem inventory, discovered overlay addresses,
-address evidence, file extents and full-image reconstruction eligibility.
-Imports retain a private copy of eligible discs; different images with an
-identical boot executable remain separate projects. Existing program-only
-projects need reimporting from their discs to gain reconstruction provenance.
+reports filesystem records, module addresses, address evidence and matching
+eligibility. Imports retain private copies of the disc and referenced tracks.
+The original GCC 2.7.2/2.8.1, binutils, splat, maspsx and m2c dependencies install
+automatically. BIOS/firmware is unnecessary for decompilation and reconstruction.
 
-## Games with multiple discs
+In the browser, drop an ISO/BIN/CHD, confirm ownership, and export from **Source**.
+For CUE sets use **file on this computer** and enter the CUE path: all referenced
+track files must be accessible to the local application. A CUE uploaded alone
+cannot supply its companion tracks. A reviewed layout can be selected before
+import. Existing program-only projects need reimporting to retain full media.
 
-Import and export **each disc separately**, in the same workspace if desired.
-The projects have separate slugs and are identified by the complete disc's
-hash, so Disc 1 and Disc 2 cannot collapse into one project even when their
-boot executables are identical. Each export retains that disc's unique assets,
-overlays, filesystem and sector layout. Keep both rebuilt images and the
-original external track descriptions for the emulator's normal disc swap.
+## One project for multiple discs
 
-Shared source can be reused manually where it matches both versions; each
-project verifies it against its own targets. Discs can also have different
-executables or compiler settings. The current workflow does not combine discs
-into one image, synchronize shared source automatically or validate a game's
-disc-change behavior. The original two-disc fixture checks independent
-rebuilds of images with identical boot code and different resource contents.
+Import the discs into the same workspace, then group their slugs in disc order:
 
-## Supported layouts
+```sh
+decompnet --db "work/app.db" psx combine DISC_1_SLUG DISC_2_SLUG --title "My game" --workspace "work/projects"
+decompnet --db "work/app.db" psx export DISC_1_SLUG --workspace "work/projects"
+```
 
-| Input | Complete-image matching |
+The browser has the same disc-order controls under **Source**. Exporting any
+member produces one `source-set/` project and one private `source-set.zip`,
+containing the sources, pinned original inputs, and verified disc outputs.
+The browser can download that ZIP. Keep it private: it contains game bytes.
+
+Run `python build.py` at the combined root to build every disc. Identical
+recovered source text is shared under `shared/src/`; every use compiles against
+its own disc's context, compiler, addresses, GP and target bytes. Disc-specific
+source/assets remain under `discs/disc-N/`. The root `objdiff.json` covers all
+discs. Each original image retains its own identity and database targets.
+Different discs with the same executable cannot collapse into one import.
+
+Outputs are listed in `disc-set.json`. Each must match its own complete input
+hash, and a failed build clears all combined outputs. CUE references and track
+filenames remain together. These are the separate discs used for normal emulator
+disc swapping. Disc-change gameplay still needs playthrough validation.
+`psx ungroup PROJECT --workspace PATH` restores independent exports.
+
+## Supported media
+
+| Input | Matching workflow |
 | --- | --- |
-| ISO 9660, 2048-byte sectors | Supported |
-| Raw 2352-byte Mode 1 / Mode 2 Form 1 data sectors | Supported |
-| Raw 2448-byte frames, including 96 subcode bytes | Supported |
+| ISO 9660, 2048-byte sectors | Complete image reconstruction |
+| Raw 2352-byte Mode 1 / Mode 2 Form 1 | Complete image reconstruction |
+| Raw 2448-byte frames | Complete image, including opaque subcode |
+| CUE with one first data track and optional audio | Validated relative BINARY tracks and indices; original track set retained after program verification |
+| Standalone CHD v5 with supported codecs | Original compressed container retained after decoded-program verification |
 | Standalone PS-X EXE | Executable payload only |
-| CHD | Import and program recovery; no CHD reconstruction |
-| Multiple BIN files and external CUE track layouts | No CUE parsing, track assembly or authoring |
-| Interleaved, multi-extent, multi-volume or extended-attribute ISO files | Full-image reconstruction refused with a reason |
+| Interleaved, multi-extent, multi-volume or extended-attribute ISO | Complete reconstruction refused with a reason |
 
-Unrelated files, opaque sector envelopes, XA metadata, padding, subcode and
-audio bytes in the selected image are preserved verbatim. Every rebuilt
-program extent must use ordinary 2048-byte data sectors. Mode 2 Form 2 code
-files, overlapping filesystem allocations, duplicate names/versions, damaged
-records, truncated sectors and cyclic directories fail validation or explicitly
-limit recovery to the boot program. Keep an external CUE sheet separately;
-the app does not validate that sheet or reconstruct absent tracks.
-When using an existing CUE, keep the rebuilt BIN's filename consistent with
-its `FILE` entry.
+CUE matching supports data pregaps and audio in the same or separate files.
+Missing tracks, escaping paths, inconsistent modes/indices and unsupported
+statements fail explicitly. CHD matching checks both the original compressed
+hash and decoded program bytes; audio remains opaque. It does not re-encode
+CHD, synthesize missing tracks, or author changed media. Existing CD FLAC
+analysis does not decode audio samples. All original audio bytes remain in the
+retained container.
 
-## Programs, overlays and address evidence
+Unrelated files, sector envelopes, XA metadata, padding, trailers, subcode and
+audio stay verbatim. Ordinary mapped programs require Mode 1/Mode 2 Form 1 data
+sectors. Damaged/ambiguous directories, partial sectors and cyclic trees fail
+or report boot-program-only recovery.
 
-The boot program comes from `SYSTEM.CNF` (or `PSX.EXE`). Nested boot paths are
-retained for extent mapping. Files carrying a PS-X EXE header supply their
-load address explicitly. Raw overlays retain the existing absolute-JAL
-placement heuristic and any prefix before code; `inspect` labels those
-addresses as inferred. Two overlays may share RAM while retaining separate
-function names, targets, claims and links.
-Headered overlays that partly replace resident RAM are also linked separately.
-Compiler flags and GP assumptions remain project-wide; per-overlay GP/BSS
-recovery needs loader review.
+## Module addresses, GP/BSS and compiler choices
 
-Inferred placement is evidence to review against the game's loader, not proof
-of its runtime address. Relocatable overlays, compressed files, custom archive
-members, files with little recognizable code and runtime relocation tables
-are not automatically recovered. Their stored bytes stay intact. A complete
-disc round-trip establishes reconstruction of the selected image; it does not
-establish that every code file was found or decompiled. Additional PSY-Q
-compiler/ASPSX versions require their own native code, data and relocation
-qualification; this PR registers no additional compiler or assembler version.
+`SYSTEM.CNF` supplies the boot path, including nested directories. PS-X EXE
+headers supply load addresses and BSS ranges; module-specific GP values are
+kept separate. Raw overlay addresses remain inferred from absolute calls and
+must be reviewed against the loader. Mutually exclusive modules retain separate
+functions, targets, claims and links even at identical RAM addresses.
 
-## Standalone matching builds
+If the initial text guess excludes the boot entry, entry/control-flow and MIPS
+frame evidence recover a wider text envelope. Import repeats discovery with
+function hints until stable, so export does not silently introduce recovery
+targets absent from the project. These heuristics do not establish that every
+code block was recognized.
 
-The exported `build.json` records the original disc hash, filesystem records,
-program file extents, analysis offsets, program hashes and overlay addresses.
-Your original `baserom-disc.iso` or `baserom-disc.bin` stays ignored by Git.
-`python build.py` regenerates the joined analysis image from that original,
-assembles remaining functions, compiles matched C/C++ and links mutually
-exclusive modules independently. It verifies every rebuilt analysis byte,
-writes the rebuilt program bytes into their original disc extents in a
-streamed copy, then verifies the complete output's size and SHA-256.
+Individual functions can use different qualified compiler profiles:
 
-The result is `build/disc.iso` or `build/disc.bin`. Executable file trailers,
-sector EDC/ECC and other original bytes survive unchanged. This matching path
-does not resize files, move extents, author new sectors or recompute error
-correction for changed payloads. A changed source, wrong target/address,
-corrupted original or mismatching full output fails instead of producing a
-qualified disc. A failed standalone build removes its previous disc output.
-Clean rebuilds need no generated assembly, assets, objects or analysis image.
+```sh
+decompnet --db "work/app.db" psx profile PROJECT FUNCTION --toolchain gcc-2.8.1-psx --language c++ --optimization O2 --workspace "work/projects"
+```
 
-## Qualification
+`--reset` restores the project default. Compiler changes that invalidate saved
+matches fail. The API also accepts a bounded flags list. The export records and
+reuses each function's settings. A raw module with unknown GP/BSS needs a
+reviewed layout; the app cannot infer arbitrary runtime loader state.
 
-All **60 required checks passed with zero skips on both native hosts** in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013797),
-at source/test commit `6beb4240b30039d372bf2e0008251d71bb57b41f`.
-The [validation record](psx-validation.json) pins each job, case counts,
-covered workflows and remaining limits.
+## Reviewed archive, compression and relocation layouts
 
-The [PS1 native workflow](../.github/workflows/psx.yml) requires both original
-GCC 2.7.2/2.8.1 C/C++ paths on Windows Server 2022 and Ubuntu 24.04. Missing
-required tools, failed tests and skipped required suites fail qualification.
-It includes existing compiler-version code/data/relocation parity, original
-multi-overlay discs, claims and reads at shared addresses, wrong-source
-rejection, complete ISO/raw-frame exports, clean rebuilds in paths with
-spaces, browser import/export errors and console inventory/import/export.
+Use `psx import ... --layout reviewed.json` to supply known loader facts for
+modules that automatic discovery cannot identify. This replaces the discovered
+non-boot overlay list with the declared modules. The JSON is bound to the
+original disc SHA-256 reported by `inspect`:
+
+```json
+{
+  "format": 1,
+  "sha256": "ORIGINAL_DISC_SHA256",
+  "modules": [{
+    "name": "battle", "path": "CODE.ARC", "offset": "0x100",
+    "stored_size": "0x800", "size": "0x2000", "codec": "zlib",
+    "load": "0x80180000", "code_start": 0, "code_end": "0x1800",
+    "gp": "0x80188000", "bss": "0x80182000", "bss_size": "0x100",
+    "relocations": [{"offset": 8, "type": "R_MIPS_26", "value": "0x80180500"}]
+  }]
+}
+```
+
+`offset`/`stored_size` select a bounded fragment of an ISO file; `size` is the
+exact decoded byte count. `raw`, `zlib` and `gzip` codecs are supported.
+`load` addresses the first decoded byte; text offsets select the code inside it.
+GP/BSS and relocations default to zero/empty. Relocation records give explicit
+resolved values for `R_MIPS_32`, `R_MIPS_26`, `R_MIPS_HI16` and `R_MIPS_LO16`.
+Offsets, opcodes, bounds, duplicate records and overlapping storage are checked.
+The tool applies these reviewed records to the analysis targets and retains
+encoded storage only after independently rebuilt targets match exactly.
+It does not discover proprietary archives, infer relocation tables or support
+unspecified codecs. Loader review remains necessary for those formats.
+
+## Standalone builds and qualification
+
+`build.json` pins original hashes, file extents, decoded module hashes and
+analysis offsets. `python build.py` regenerates analysis/assembly/assets from
+the owner's retained original, compiles recovered C/C++, links each exclusive
+module and verifies every analysis byte. Ordinary raw images receive the rebuilt
+program bytes at their original extents. CUE/CHD and reviewed encoded modules
+retain original containers only after decoded-program matching succeeds.
+Changed-size media and modified-sector EDC/ECC authoring remain separate work.
+
+The [validation record](psx-validation.json) records the native Windows/Linux
+qualification revision, required counts and private retail results. The
+[required workflow](../.github/workflows/psx.yml) fails on any skipped required
+suite. Retail bytes and derived sources never enter that workflow or Git.
 
 ```sh
 python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 
-On PowerShell, set `$env:DECOMP_TEST_PSX_CPP = '1'` before running the second
-command without the shell environment prefix. All game bytes and derived
-assembly remain private; only the original fixture generators belong in Git.
+In PowerShell set `$env:DECOMP_TEST_PSX_CPP = '1'` first and omit the shell
+prefix. No additional PSY-Q or Sony ASPSX version is qualified by this work.

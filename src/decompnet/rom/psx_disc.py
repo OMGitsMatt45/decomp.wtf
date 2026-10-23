@@ -140,7 +140,8 @@ def verify(src, layout: dict) -> _Disc:
     ranges = []
     for m in layout["maps"]:
         rec = by_path.get(m["path"])
-        if not rec or (rec["lba"], rec["size"]) != (m["lba"], m["file_size"]) or not 0 < m["size"] <= rec["size"]:
+        offset, stored = m.get("file_offset", 0), m.get("stored_size", m["size"])
+        if not rec or (rec["lba"], rec["size"]) != (m["lba"], m["file_size"]) or not 0 <= offset < offset + stored <= rec["size"]:
             raise RomError("a PS1 program's disc extent differs from the manifest")
         start = m["analysis_offset"]
         if start < 0 or start + m["size"] > layout["analysis_size"]:
@@ -154,17 +155,27 @@ def verify(src, layout: dict) -> _Disc:
 
 def analysis(original: Path, layout: dict) -> bytes:
     """Regenerate the private joined analysis image from the owner's disc."""
+    if "media" in layout:
+        from . import psx_media
+        psx_media.verify_files(original, layout)
+        with psx_media.decoded(original, layout["media"]) as source:
+            return _analysis(source, psx_media.unpack(layout))
     with original.open("rb") as src:
-        disc = verify(src, layout)
-        out = bytearray(layout["analysis_size"])
-        for m in layout["maps"]:
-            data = disc.read(m["lba"], m["size"])
-            if hashlib.sha256(data).hexdigest() != m["sha256"]:
-                raise RomError(f"{m['path']}: original program SHA-256 differs")
-            out[m["analysis_offset"]:m["analysis_offset"] + m["size"]] = data
-        if hashlib.sha256(out).hexdigest() != layout["analysis_sha256"]:
-            raise RomError("the regenerated PS1 analysis image differs")
-        return bytes(out)
+        return _analysis(src, layout)
+
+
+def _analysis(src, layout):
+    disc = verify(src, layout)
+    out = bytearray(layout["analysis_size"])
+    for m in layout["maps"]:
+        from .psx_layout import read_map
+        data = read_map(disc, m)
+        if hashlib.sha256(data).hexdigest() != m["sha256"]:
+            raise RomError(f"{m['path']}: original program SHA-256 differs")
+        out[m["analysis_offset"]:m["analysis_offset"] + m["size"]] = data
+    if hashlib.sha256(out).hexdigest() != layout["analysis_sha256"]:
+        raise RomError("the regenerated PS1 analysis image differs")
+    return bytes(out)
 
 
 def rebuild(original: Path, rebuilt: bytes, layout: dict, output: Path) -> None:
@@ -175,6 +186,16 @@ def rebuild(original: Path, rebuilt: bytes, layout: dict, output: Path) -> None:
     try:
         if len(rebuilt) != layout["analysis_size"] or hashlib.sha256(rebuilt).hexdigest() != layout["analysis_sha256"]:
             raise RomError("the source-built PS1 analysis image differs")
+        if "media" in layout or layout.get("retained_modules"):
+            if analysis(original, layout) != rebuilt:
+                raise RomError("the source-built PS1 programs differ from the media container")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(original, temporary)
+            with temporary.open("rb") as copied:
+                if digest(copied) != (layout["original_size"], layout["sha256"]):
+                    raise RomError("the retained PS1 media container differs")
+            temporary.replace(output)
+            return
         with original.open("rb") as src:
             disc = verify(src, layout)
             output.parent.mkdir(parents=True, exist_ok=True)

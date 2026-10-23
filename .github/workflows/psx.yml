@@ -48,7 +48,7 @@ jobs:
         run: >-
           uv run --no-sync python tools/run_operational.py
           tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py
-          tests/test_psx_workflows.py tests/test_overlays.py
+          tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_overlays.py
           "tests/test_export.py::test_export_rebuilds_the_game[psx]"
       - name: Require every PS1 suite without skips
         run: uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml

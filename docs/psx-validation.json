@@ -2,7 +2,85 @@
   "format": 1,
   "platform": "psx",
   "implementation_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
-  "native_qualification": {
+  "local_qualification": {
+    "baseline_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
+    "baseline_passed": 55,
+    "baseline_failed": 0,
+    "baseline_skipped": 0,
+    "additional_layout_cases_passed": 3,
+    "shared_overlay_regression_cases_passed": 21,
+    "final_disc_and_overlay_cases_passed": 23,
+    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers; these local counts do not establish native Windows/Linux compiler qualification."
+  },
+  "coverage": [
+    "Original compiler-version code, relocation, constant-data and genuine C++ parity",
+    "C/C++ boot program source recovery, strict matching and clean standalone exports",
+    "Complete ISO 2048, raw 2352 Mode 1/Mode 2 Form 1 and 2448-byte-frame matching reconstruction",
+    "Raw overlays with prefixes, PS-X EXE overlay headers, shared overlay addresses and partial replacement of resident RAM",
+    "Module-specific targets, claims and independent C++ recovery in two mutually exclusive overlays",
+    "Nested boot paths and same-basename programs in different directories",
+    "Different discs with identical boot code and different resources retain separate projects and independently rebuild",
+    "Clean exports in paths with spaces; original disc hashes, file extents, executable trailers, opaque sector metadata, audio and subcode preserved",
+    "Wrong source, targets, addresses and corrupted original discs rejected; stale standalone disc outputs removed",
+    "Cyclic, truncated, malformed, duplicate, unsupported and oversized filesystem extents fail or report program-only coverage",
+    "Browser security/import/export/errors and CLI inventory/import/deduplication/export",
+    "One combined multi-disc source tree and ZIP, shared independently compiled C++ and atomic aggregate outputs",
+    "CUE pregaps and separate audio, compressed/uncompressed CHD v5 matching retention",
+    "Per-module EXE GP/BSS and mixed per-function GCC profiles",
+    "Hash-bound reviewed raw/zlib/gzip archive fragments and explicit MIPS relocations",
+    "Binary EXE header mastering data and stable import/export function discovery"
+  ],
+  "multi_disc": {
+    "scope": "One source project and build command, independently verified outputs for every ordered disc.",
+    "shared_source": "Verbatim identical recovered source is shared and compiled independently for each disc.",
+    "zip_package": true,
+    "disc_swap_gameplay_qualified": false
+  },
+  "retail_validation": {
+    "status": "passed complete two-disc source build and private ZIP export",
+    "title": "Dragon Warrior VII (USA), discs 1 and 2",
+    "archive_parts": 71,
+    "archive_crc": "passed for both BIN/CUE pairs",
+    "functions_per_disc": 2565,
+    "matching_cpp_per_disc": [
+      96,
+      94
+    ],
+    "m2c_examples": 3,
+    "inputs_private": true,
+    "bios_required": false,
+    "opaque_archives": [
+      "HBD1PS1D.W71",
+      "HBD1PS1D.W72"
+    ],
+    "discs": [
+      {
+        "serial": "SLUS-01206",
+        "size": 711567024,
+        "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a"
+      },
+      {
+        "serial": "SLUS-01346",
+        "size": 676816224,
+        "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d"
+      }
+    ],
+    "matching_cpp_total": 190,
+    "shared_source_files": 92,
+    "assembly_fallbacks": 0,
+    "combined_disc_outputs_identical": true,
+    "cue_files_preserved": true
+  },
+  "not_qualified": [
+    "Runtime correctness of inferred overlay addresses without loader review",
+    "Automatic proprietary archive/codec/relocation-table discovery and complete code recovery",
+    "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
+    "Absent-track reconstruction, changed-media CUE authoring and CHD recompression",
+    "Additional PSY-Q compiler or Sony ASPSX versions",
+    "Changed-size file/sector authoring and modified-payload EDC/ECC generation",
+    "Retail playthroughs and disc-swap gameplay"
+  ],
+  "previous_native_qualification": {
     "status": "passed",
     "tested_commit": "6beb4240b30039d372bf2e0008251d71bb57b41f",
     "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013797",
@@ -38,47 +116,8 @@
     },
     "additional_checks_status": "All passed at the tested source commit."
   },
-  "local_qualification": {
-    "baseline_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
-    "baseline_passed": 55,
-    "baseline_failed": 0,
-    "baseline_skipped": 0,
-    "additional_layout_cases_passed": 3,
-    "shared_overlay_regression_cases_passed": 21,
-    "final_disc_and_overlay_cases_passed": 23,
-    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers; these local counts do not establish native Windows/Linux compiler qualification."
-  },
-  "coverage": [
-    "Original compiler-version code, relocation, constant-data and genuine C++ parity",
-    "C/C++ boot program source recovery, strict matching and clean standalone exports",
-    "Complete ISO 2048, raw 2352 Mode 1/Mode 2 Form 1 and 2448-byte-frame matching reconstruction",
-    "Raw overlays with prefixes, PS-X EXE overlay headers, shared overlay addresses and partial replacement of resident RAM",
-    "Module-specific targets, claims and independent C++ recovery in two mutually exclusive overlays",
-    "Nested boot paths and same-basename programs in different directories",
-    "Different discs with identical boot code and different resources retain separate projects and independently rebuild",
-    "Clean exports in paths with spaces; original disc hashes, file extents, executable trailers, opaque sector metadata, audio and subcode preserved",
-    "Wrong source, targets, addresses and corrupted original discs rejected; stale standalone disc outputs removed",
-    "Cyclic, truncated, malformed, duplicate, unsupported and oversized filesystem extents fail or report program-only coverage",
-    "Browser security/import/export/errors and CLI inventory/import/deduplication/export"
-  ],
-  "multi_disc": {
-    "scope": "Import and reconstruct each disc as a separate project in the same workspace.",
-    "shared_source": "Manual reuse only where each project independently verifies it.",
-    "automatic_source_synchronization": false,
-    "disc_swap_gameplay_qualified": false
-  },
-  "retail_validation": {
-    "status": "not run",
-    "inputs": "Original fixtures only; no PS1 retail images supplied."
-  },
-  "not_qualified": [
-    "Runtime correctness of inferred raw-overlay addresses without loader review",
-    "Per-overlay GP/BSS recovery; compiler/GP assumptions remain project-wide",
-    "Runtime relocation tables, custom/compressed/archive overlay adapters and complete code discovery",
-    "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
-    "CUE/M3U authoring, absent-track reconstruction and CHD recompression",
-    "Additional PSY-Q compiler or Sony ASPSX versions",
-    "Changed-size file/sector authoring or modified-payload EDC/ECC regeneration",
-    "Retail playthroughs and disc-swap gameplay"
-  ]
+  "native_qualification": {
+    "status": "pending expanded suite",
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml"
+  }
 }

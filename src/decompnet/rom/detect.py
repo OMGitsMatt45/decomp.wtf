@@ -55,6 +55,19 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
     if isinstance(src, (str, Path)):
         path = Path(src)
         name = name or path.name
+        if path.suffix.lower() == ".cue":
+            from . import psx_media
+            media = psx_media.cue(path)
+            primary = psx_media.inside(path.parent, media["primary"])
+            with psx_media.decoded(primary, media) as source:
+                picked = _from_disc(source)
+            if picked.platform != "psx":
+                raise RomError("CUE track-set matching currently requires a PS1 disc")
+            if picked.disc.get("supported") and (picked.disc["sector_size"] != media["sector_size"] or
+                    picked.disc["skip"] != {"MODE1/2048": 0, "MODE1/2352": 16, "MODE2/2352": 24}[media["mode"]]):
+                raise RomError("the CUE data-track mode disagrees with its disc sectors")
+            picked.disc = psx_media.wrap(picked.disc, primary, media)
+            return picked
         with open(path, "rb") as f:
             head = f.read(8)
         if chd.is_chd(head):  # a compressed disc image: read in place, a hunk at a time
@@ -62,11 +75,8 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
                 if psx.is_disc(disc):
                     picked = _from_disc(disc)
                     if picked.platform == "psx":
-                        from .psx_disc import digest
-                        with path.open("rb") as compressed:
-                            size, sha = digest(compressed)
-                        picked.disc = {"supported": False, "sha256": sha, "original_size": size,
-                                       "reason": "CHD import supports program recovery; full CHD reconstruction is unavailable"}
+                        from .psx_media import wrap
+                        picked.disc = wrap(picked.disc, path, {"kind": "chd", "companions": []})
                     return picked
             raise RomError("this CHD doesn't hold a PlayStation disc this app can read")
         if path.stat().st_size <= SMALL:
@@ -102,7 +112,7 @@ def _from_disc(src) -> Picked:
     except (RomError, struct.error, IndexError):  # an odd disc: the program alone still works
         picked.overlays = []
         warning = "the disc filesystem could not be fully inventoried; only the boot program was imported"
-    if picked.platform == "psx" and not isinstance(src, chd.Chd):
+    if picked.platform == "psx":
         from .psx_disc import describe
         picked.disc = describe(src, boot, picked.data, picked.overlays, sources)
         if warning:

@@ -23,6 +23,68 @@ from .test_psx_disc import fixture
 pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 compilers and binutils")
 
 
+def test_binary_exe_header_mastering_bytes_are_preserved(tmp_path):
+    exe = bytearray(_resident_exe())
+    exe[0x10:0x14] = struct.pack("<I", 0x80010000)
+    exe[0x38:0x4C] = bytes(range(1, 21))
+    exe[0x4C:0x70] = b'North America  "binary"\n\xff\x97\0'.ljust(0x24, b' ')
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": bytes(exe)})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"], result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
+def test_overlay_gp_bss_and_mixed_period_profiles(tmp_path):
+    base, address, data_at = 0x80180000, 0x80180500, 0x80181000
+    tools = toolchains.require("binutils-mips")
+    suffix = ".exe" if sys.platform == "win32" else ""
+    modules = []
+    for number, gp in enumerate((0x80188000, 0x80189000)):
+        cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+            "toolchain": "gcc-2.7.2-psx", "language": "c", "sandbox": "none", "flags": ["-O2", "-G8"]}})
+        compiled = compiler.compile_source(cfg, "", "int module_value(void) { static volatile int state = 7; return state; }")
+        assert compiled.ok, compiled.log
+        obj, script, elf, binary = [tmp_path / (name + str(number)) for name in ("original.o", "layout.ld", "original.elf", "original.bin")]
+        obj.write_bytes(compiled.obj)
+        script.write_text(f"SECTIONS {{ .text 0x{address:X} : {{ *(.text) }} .sdata 0x{data_at:X} : {{ *(.sdata) }} "
+                          "/DISCARD/ : { *(.reginfo) *(.MIPS.abiflags) *(.pdr) *(.comment) } }\n" + f"_gp = 0x{gp:X};\n")
+        for command in ([str(tools / ("mips-ps2-decompals-ld" + suffix)), "-EL", "-T", str(script), "-o", str(elf), str(obj)],
+                        [str(tools / ("mips-ps2-decompals-objcopy" + suffix)), "-O", "binary", str(elf), str(binary)]):
+            subprocess.run(command, check=True, capture_output=True)
+        body = bytearray(_overlay(base, 40).ljust(0x1800, b"\0"))
+        struct.pack_into("<I", body, 8, 0x0C000000 | ((address >> 2) & 0x03FFFFFF))
+        code = binary.read_bytes()
+        body[0x500:0x500 + len(code)] = code
+        header = bytearray(0x800)
+        header[:8] = b"PS-X EXE"
+        struct.pack_into("<IIII", header, 0x10, base, gp, base, len(body))
+        struct.pack_into("<II", header, 0x28, base + 0x1900, 0x80)
+        modules.append(bytes(header + body))
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": _resident_exe(),
+                     "BATTLE.EXE": modules[0], "FIELD.EXE": modules[1]})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda cfg: cfg["compiler"].update(sandbox="none"))
+    proj = net.project_row(slug)
+    functions = net.store.all("SELECT * FROM functions WHERE project_id=? AND vram=? ORDER BY unit", proj["id"], address)
+    assert len(functions) == 2
+    agent, _ = net.local_agent("module-test")
+    for fn, tcid, gp in zip(functions, ("gcc-2.7.2-psx", "gcc-2.8.1-psx"), (0x80188000, 0x80189000)):
+        assert net._rom_target(fn).gp == gp
+        assert net.cfg(proj)["psx_modules"][fn["unit"]]["bss_size"] == 0x80
+        net.set_function_compiler(slug, fn["name"], {"toolchain": tcid, "language": "c++", "flags": ["-O2", "-G8"]})
+        source = f"int {fn['name']}(void) {{ static volatile int state = 7; return state; }}"
+        result = net.attempt(agent, fn["name"], source, slug)
+        assert result["matched"], result
+        with pytest.raises(NetworkError, match="invalidate"):
+            net.set_function_compiler(slug, fn["name"], {"flags": ["-O0", "-G0"]})
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["matched"] == 2 and not result["fallback"], result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
 @pytest.mark.parametrize("tcid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
 def test_two_overlays_match_their_own_cpp_and_rebuild_from_clean_sources(tmp_path, tcid):
     assert all(toolchains.installed(t) is not None for t in (tcid, "binutils-mips"))

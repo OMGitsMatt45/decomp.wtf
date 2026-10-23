@@ -95,7 +95,7 @@ class Chd:
     def __init__(self, path: Path | str):
         self.f = open(path, "rb")
         head = self.f.read(124)
-        if not is_chd(head):
+        if len(head) != 124 or not is_chd(head):
             raise RomError("this isn't a CHD image")
         version = struct.unpack(">I", head[12:16])[0]
         if version != 5:
@@ -104,10 +104,21 @@ class Chd:
         self.logical = struct.unpack(">Q", head[32:40])[0]
         map_offset = struct.unpack(">Q", head[40:48])[0]
         self.hunkbytes, self.unitbytes = struct.unpack(">II", head[56:64])
+        if not 0 < self.hunkbytes <= 16 << 20 or not 0 < self.unitbytes <= self.hunkbytes or not 0 < self.logical <= 16 << 30:
+            raise RomError("invalid CHD logical, hunk or unit size")
         if any(head[84 + 20:84 + 40]):  # parent SHA-1: it only holds what differs from another image
             raise RomError("this CHD needs its parent image (a delta of another CHD): use a standalone one")
         self.hunks = -(-self.logical // self.hunkbytes)
-        self.map = self._read_map(map_offset) if any(self.codecs) else None
+        self.map = self._read_map(map_offset) if any(any(codec) for codec in self.codecs) else None
+        self.raw_map = None
+        if self.map is None:
+            # v5 uncompressed maps contain one big-endian hunk block number
+            # per logical hunk. Block zero represents a zero-filled hunk.
+            self.f.seek(map_offset)
+            raw_map = self.f.read(self.hunks * 4)
+            if len(raw_map) != self.hunks * 4:
+                raise RomError("this CHD's uncompressed map is truncated")
+            self.raw_map = struct.unpack(f">{self.hunks}I", raw_map)
         self.pos = 0
         self._cache: dict[int, bytes] = {}
 
@@ -177,9 +188,17 @@ class Chd:
         return data
 
     def _hunk(self, n: int, depth: int) -> bytes:
+        if not 0 <= n < self.hunks:
+            raise RomError("a CHD hunk is outside the image")
         if self.map is None:  # uncompressed image
-            self.f.seek(n * self.hunkbytes)
-            return self.f.read(self.hunkbytes).ljust(self.hunkbytes, b"\0")
+            block = self.raw_map[n]
+            if not block:
+                return bytes(self.hunkbytes)
+            self.f.seek(block * self.hunkbytes)
+            data = self.f.read(self.hunkbytes)
+            if len(data) != self.hunkbytes:
+                raise RomError("this CHD's uncompressed hunk is truncated")
+            return data
         t, length, off = self.map[n]
         if t == SELF:
             if depth > 8 or off == n:

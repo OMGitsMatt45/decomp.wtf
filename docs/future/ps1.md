@@ -1,41 +1,39 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented and qualified on native Windows and Linux**: 60 required
-checks per host, zero skips. The [validation record](../psx-validation.json)
-pins the tested source revision and native jobs.
-
-PR #4 implements complete-image matching for eligible ISO 9660 PS1 discs,
-including independently rebuilt boot programs and discovered raw/PS-X EXE
-overlays. See the [disc guide](../psx-disc.md) for supported sector layouts,
-console commands, reconstruction boundaries and the native qualification.
+Status: **implemented in PR #4; expanded native qualification in progress**.
+The [validation record](../psx-validation.json) pins tested revisions, native
+jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
 ## Implemented
 
-- Filesystem inventory and pinned program extents, with explicit header versus
-  inferred absolute-call address evidence.
-- Complete ISO, 2352-byte Mode 1/Mode 2 Form 1 and 2448-byte-frame matching
-  exports preserving opaque metadata, unrelated files, trailers and audio.
-- Independent linking and strict C++ recovery for mutually exclusive overlays;
-  original fixtures exercise separate targets and claims at shared addresses.
-- Regeneration from the owner's original disc in clean exported trees, paths
-  containing spaces, corrupted-target/source rejection and stale-output removal.
-- Browser/CLI coverage and required native Windows/Linux qualification for the
-  existing original PS1 GCC 2.7.2 and 2.8.1 C/C++ compiler paths.
+- Complete ISO, raw 2352/2448-frame matching and pinned filesystem extents.
+- One multi-disc source project, shared verified C/C++, one build command,
+  independent disc hashes and one private downloadable ZIP.
+- CUE pregaps, relative track sets and opaque audio retention; CHD container
+  retention after decoded-program verification, including corrected v5 raw maps.
+- Module GP/BSS from EXE headers and explicit reviewed loader facts, with
+  separate links/targets for modules sharing RAM; per-function GCC profiles.
+- Reviewed raw/zlib/gzip archive fragments and explicit MIPS relocations,
+  preserving original encoded storage after strict decoded matching.
+- Binary EXE header preservation, wider boot-text recovery and stable function
+  discovery. Private DQVII two-disc testing exercises these retail fixes.
+- Browser/CLI workflows, clean standalone builds, changed-source/original
+  rejection and removal of stale combined outputs.
 
-## Remaining scope
+## Validation boundaries
 
-Retail disc coverage and loader review remain separate validation work. Raw
-overlay placement is heuristic; a matching disc hash does not prove every
-code file or runtime address was discovered. Runtime-relocated overlays,
-compressed/archive code, multi-extent/interleaved ISO files, CUE authoring,
-absent tracks and CHD recompression need additional adapters and fixtures.
+A disc round-trip does not prove full source recovery or runtime correctness.
+Private retail inputs broaden coverage; they do not qualify every game's loader.
+Raw overlay placement still needs review. Proprietary archives/codecs and
+unknown relocation tables need specific loader facts/adapters; interleaved or
+multi-extent ISO layouts, missing tracks, changed-size disc authoring and CHD
+recompression remain outside the matching workflow. DQVII's HBD archives remain
+opaque, and most recognized executable functions remain assembly.
 
-No additional PSY-Q compiler or ASPSX version is registered. Compatible GNU
-assembly is not proof of equivalence to every original Sony assembler.
-Additional versions require source/license/checksum provenance and native
-Windows/Linux instruction, constant-data and relocation parity separately.
-The pinned compiler ports, compatible binutils, maspsx, splat and m2c remain
-the tools to reuse; current compiler hosts need no replacement.
+No additional PSY-Q compiler or ASPSX version is registered. The pinned compiler
+ports, binutils, maspsx, splat and m2c remain the tools to reuse. BIOS/firmware is
+unnecessary for this decompilation/reconstruction workflow. Playthrough and
+disc-swap validation remain with the user.
 
-No commercial ROMs, SDK payloads, BIOS files or keys belong in this branch.
-See the [main roadmap](../future-work.md).
+No commercial ROMs, game-derived source/assembly, SDK payloads, BIOS files or
+keys belong in this branch. See the [main roadmap](../future-work.md).

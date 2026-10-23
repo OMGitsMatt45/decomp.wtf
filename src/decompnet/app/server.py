@@ -28,7 +28,7 @@ import anyio
 from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import __version__, hostenv, toolchains
 from ..network import NetworkError
@@ -440,13 +440,14 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return guard(request) or JSONResponse(await call(state))
 
     @mcp.custom_route("/api/n64/layout", methods=["POST"])
+    @mcp.custom_route("/api/rom/layout", methods=["POST"])
     async def api_n64_layout(request: Request) -> Response:
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
         layout = data.get("layout")
         if not isinstance(layout, dict) or len(json.dumps(layout)) > 1024 * 1024:
-            return fail(ValueError("choose a reviewed N64 layout JSON file smaller than 1 MiB"))
+            return fail(ValueError("choose a reviewed N64/PS1 layout JSON file smaller than 1 MiB"))
         now = time.monotonic()
         for key, (created, _) in list(n64_layouts.items()):
             if now - created > 900:
@@ -465,10 +466,11 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         q = request.query_params
         toolchain = q.get("toolchain") or None
         layout = None
-        if q.get("n64_layout"):
-            pending = n64_layouts.pop(q["n64_layout"], None)
+        layout_token = q.get("reviewed_layout") or q.get("n64_layout")
+        if layout_token:
+            pending = n64_layouts.pop(layout_token, None)
             if pending is None or time.monotonic() - pending[0] > 900:
-                return fail(ValueError("the reviewed N64 layout expired; select it again"))
+                return fail(ValueError("the reviewed layout expired; select it again"))
             layout = pending[1]
         if q.get("demo") == "1":
             game: bytes | Path | None = _static("demo/demo-quest-64.z64")
@@ -570,6 +572,24 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return JSONResponse(job) if job else fail(ValueError("no such job"), 404)
 
     # ------------------------------------------------------------------ projects
+
+    @mcp.custom_route("/api/export/archive", methods=["GET"])
+    async def export_archive(request: Request) -> Response:
+        if bad := guard(request):
+            return bad
+        try:
+            proj = net.project_row(request.query_params.get("slug", ""))
+            cfg = net.cfg(proj)
+            from ..rom.psx_set import members
+            rows = members(net, cfg.get("psx_disc_set") or {})
+            expected = Path(rows[0][0]["root"]) / "source-set.zip"
+            saved = cfg.get("export") or {}
+            if not saved.get("identical") or saved.get("disc_set_id") != cfg["psx_disc_set"]["id"] or \
+                    saved.get("archive") != str(expected) or not expected.is_file() or expected.is_symlink():
+                return fail(ValueError("export and verify this combined game before downloading its ZIP"), 404)
+            return FileResponse(expected, media_type="application/zip", filename="ps1-source-project.zip")
+        except (NetworkError, ValueError, KeyError, OSError) as error:
+            return fail(error)
 
     def with_project(fn):
         async def handler(request: Request) -> Response:
@@ -678,6 +698,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
         "/api/compiler": (p_compiler, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
+        "/api/psx/disc-set": (lambda s, r, d: net.set_psx_disc_set(s, d.get("projects"), d.get("title", "")), ["POST"]),
         "/api/delete": (p_delete, ["POST"]), "/api/agents/manual": (p_manual, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]),

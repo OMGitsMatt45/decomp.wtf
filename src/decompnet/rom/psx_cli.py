@@ -13,12 +13,25 @@ def add_parser(subparsers):
     inspect = sub.add_parser("inspect", help="inventory disc files, discovered overlays and rebuild coverage")
     load = sub.add_parser("import", help="import your PS1 executable or disc")
     export = sub.add_parser("export", help="export and verify a matching PS1 project")
+    combine = sub.add_parser("combine", help="combine disc projects into one game source project and build")
+    combine.add_argument("projects", nargs="+", help="existing project slugs in disc order")
+    combine.add_argument("--title", required=True)
+    ungroup = sub.add_parser("ungroup", help="restore independent exports for a combined game's discs")
+    ungroup.add_argument("project")
+    profile = sub.add_parser("profile", help="select one function's period compiler and C/C++ language")
+    profile.add_argument("project")
+    profile.add_argument("function")
+    profile.add_argument("--toolchain", choices=("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
+    profile.add_argument("--language", choices=("c", "c++"))
+    profile.add_argument("--optimization", choices=("O0", "O1", "O2"))
+    profile.add_argument("--reset", action="store_true")
     for command in (inspect, load):
         command.add_argument("rom", type=Path)
     load.add_argument("--own-copy", required=True, action="store_true")
     load.add_argument("--toolchain", choices=("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
+    load.add_argument("--layout", type=Path, help="reviewed hash-bound archive/compressed module layout JSON")
     export.add_argument("project")
-    for command in (load, export):
+    for command in (load, export, combine, ungroup, profile):
         command.add_argument("--workspace", required=True, type=Path)
 
 
@@ -38,8 +51,21 @@ def run(args):
             net = RomNetwork(args.db, args.workspace)
             if args.psx_cmd == "import":
                 slug = net.import_rom(args.rom, toolchain=args.toolchain, confirmed=args.own_copy,
+                                      reviewed_layout=json.loads(args.layout.read_text(encoding="utf-8")) if args.layout else None,
                                       log=lambda message: print(message, file=sys.stderr))
                 result = {"project": slug, "root": net.project_row(slug)["root"], "disc": net.overview(slug)["disc"]}
+            elif args.psx_cmd == "profile":
+                from ..project import function_config
+                current = function_config(net.cfg(net.project_row(args.project)), args.function)["compiler"]
+                selected = {k: getattr(args, k) for k in ("toolchain", "language") if getattr(args, k)}
+                if args.optimization:
+                    selected["flags"] = ["-" + args.optimization, *[f for f in current["flags"] if not f.startswith("-O")]]
+                result = net.set_function_compiler(args.project, args.function, None if args.reset else selected)
+            elif args.psx_cmd in ("combine", "ungroup"):
+                slug = args.projects[0] if args.psx_cmd == "combine" else args.project
+                overview = net.set_psx_disc_set(slug, args.projects if args.psx_cmd == "combine" else None,
+                                               args.title if args.psx_cmd == "combine" else "")
+                result = {"project": slug, "disc_set": overview["disc_set"]}
             else:
                 if net.cfg(net.project_row(args.project)).get("platform") != "psx":
                     raise ValueError("choose a PlayStation 1 project")

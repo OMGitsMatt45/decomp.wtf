@@ -323,12 +323,14 @@ class RomNetwork(Network):
     def _rom_target(self, fn) -> match.RomTarget:
         proj = self.store.one("SELECT config FROM projects WHERE id=?", fn["project_id"])
         cfg = json.loads(proj["config"])
+        from ..rom.psx_modules import gp
         return match.RomTarget(fn["name"], fn["vram"], fn["target"], match.RomTarget.relocs_from_json(json.loads(fn["relocs"])),
-                               cfg.get("big_endian", True), cfg.get("gp", 0))
+                               cfg.get("big_endian", True), gp(cfg, fn["unit"]))
 
     def _make_target(self, proj, rf: split.RomFunction, syms: SymbolTable) -> match.RomTarget:
         cfg = self.cfg(proj)
-        return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), cfg.get("gp", 0))
+        from ..rom.psx_modules import gp
+        return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), gp(cfg, rf.segment))
 
     def _compile(self, proj, header: str, source: str, fn=None):
         if self.cfg(proj).get("rom", {}).get("boot_utility"):
@@ -423,21 +425,26 @@ class RomNetwork(Network):
                 raise NetworkError("portable compiler profiles require an N64 cartridge")
             compiler_profile = profile({}, compiler_profile)
             toolchain, flags = compiler_profile["toolchain"], compiler_profile["flags"]
-        layout_id = None
+        layout_id, psx_modules = None, None
         if reviewed_layout is not None:
             from ..rom import n64_layout
-            if picked.platform != "n64":
-                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
+            if picked.platform not in ("n64", "psx"):
+                raise NetworkError("reviewed layouts require an N64 cartridge or PS1 disc")
             try:
-                n64_layout.reviewed(rom, reviewed_layout)
+                if picked.platform == "psx":
+                    from ..rom.psx_layout import apply
+                    psx_modules = apply(picked, data, reviewed_layout)
+                else:
+                    n64_layout.reviewed(rom, reviewed_layout)
             except ValueError as error:
                 raise NetworkError(str(error)) from error
             layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
         for p in self.store.all("SELECT slug, config FROM projects"):
             previous = json.loads(p["config"])
             previous_compiler = previous.get("compiler", {})
-            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id and \
-                    previous.get("psx_disc", {}).get("sha256") == (picked.disc or {}).get("sha256") and \
+            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get(picked.platform + "_layout") == layout_id and \
+                    previous.get("psx_disc", {}).get("identity", previous.get("psx_disc", {}).get("sha256")) == \
+                    (picked.disc or {}).get("identity", (picked.disc or {}).get("sha256")) and \
                     (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
                     (not flags or previous_compiler.get("flags") == flags) and \
                     (compiler_profile is None or profile(previous_compiler, {}) == compiler_profile):
@@ -464,7 +471,8 @@ class RomNetwork(Network):
         if picked.overlays:
             log(f"{len(picked.overlays)} overlay{'s' if len(picked.overlays) != 1 else ''} on the disc: "
                 + ", ".join(f"{o[0]} at 0x{o[2]:08X}" for o in picked.overlays[:6]) + (", ..." if len(picked.overlays) > 6 else ""))
-        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays, reviewed_layout=reviewed_layout)
+        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays,
+                              reviewed_layout=reviewed_layout if picked.platform == "n64" else None, psx_modules=psx_modules)
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
@@ -472,13 +480,11 @@ class RomNetwork(Network):
         if disc_layout and disc_layout.get("supported"):
             from ..rom import psx_disc
             disc_layout = psx_disc.bind(disc_layout, [vars(s) for s in res.segments], rom)
-            disc_file = workdir / "original-disc.bin"
-            if isinstance(data, (str, Path)):
-                shutil.copyfile(data, disc_file)
-            else:
-                disc_file.write_bytes(data)
-            with disc_file.open("rb") as source:
-                psx_disc.verify(source, disc_layout)
+            from ..rom.psx_media import snapshot
+            picked.disc = disc_layout
+            disc_file = snapshot(data, picked, workdir)
+            if psx_disc.analysis(disc_file, disc_layout) != rom:
+                raise NetworkError("the retained PS1 media disagrees with the imported programs")
             disc_layout["file"] = disc_file.name
             log(f"full PS1 disc retained: {len(disc_layout['files'])} filesystem entries, {len(disc_layout['maps'])} program files")
         elif disc_layout:
@@ -500,9 +506,14 @@ class RomNetwork(Network):
             "context": {"file": None},
         }
         if layout_id:
-            cfg["n64_layout"] = layout_id
+            cfg[picked.platform + "_layout"] = layout_id
+            if picked.platform == "psx":
+                (workdir / "psx-layout.json").write_text(json.dumps(reviewed_layout, indent=2), encoding="utf-8")
         if disc_layout:
             cfg["psx_disc"] = disc_layout
+        if picked.platform == "psx":
+            from ..rom.psx_modules import facts
+            cfg["psx_modules"] = facts(picked.data, picked.overlays, res.gp) | (psx_modules or {})
         if compiler_profile is not None:
             cfg["compiler"].update(compiler_profile)
         symbols = SymbolTable()
@@ -533,7 +544,8 @@ class RomNetwork(Network):
                              (slug, info["title"], f"{info['game_code']} · {info['region']} · {len(res.functions)} functions",
                               "mips", int(picked.big_endian), str(workdir), json.dumps(cfg))).lastrowid
             for fn in res.functions:
-                target = match.target_from_split(fn, symbols.resolve, picked.big_endian, res.gp)
+                from ..rom.psx_modules import gp
+                target = match.target_from_split(fn, symbols.resolve, picked.big_endian, gp(cfg, fn.segment))
                 db.execute(
                     "INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,seed,unit,vram,rom_offset) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -1531,6 +1543,11 @@ class RomNetwork(Network):
 
     # ------------------------------------------------------------------ export
 
+    def set_psx_disc_set(self, slug, projects, title=""):
+        from ..rom.psx_set import configure
+        configure(self, slug, projects, title)
+        return self.overview(slug)
+
     def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
         if format not in ("matching", "shiftable"):
@@ -1548,18 +1565,30 @@ class RomNetwork(Network):
             from .bootengine import export_rom as export
         if proj["arch"] == "sm83":
             from .gbengine import export_rom as export
+        if self.cfg(proj).get("psx_disc_set"):
+            from ..rom.psx_set import export_set as export
         folder = "source-shiftable" if format == "shiftable" else "source"
         res = export(self, slug, Path(proj["root"]) / folder, log=log,
                      **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             cfg["export"] = {"t": time.time(), "path": str(res["path"]), "identical": res.get("identical"),
+                             "archive": res.get("archive"),
+                             "disc_set_id": res.get("disc_set_id"),
                              "format": format, "shiftable": res.get("shiftable"),
                              "matched": res.get("matched"), "functions": res.get("functions"),
                              "scope": res.get("scope", "program"),
                              "language": res.get("language", cpp.language(cfg)),
                              "fallback": len(res.get("fallback") or [])}
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+            if group := cfg.get("psx_disc_set"):
+                for item in group["discs"]:
+                    row = db.execute("SELECT id,config FROM projects WHERE slug=?", (item["slug"],)).fetchone()
+                    if row:
+                        other = json.loads(row["config"])
+                        if other.get("psx_disc_set") == group:
+                            other["export"] = cfg["export"]
+                            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(other), row["id"]))
         return res
 
     # ------------------------------------------------------------------ for the GUI
@@ -1615,6 +1644,7 @@ class RomNetwork(Network):
             "disc": ({"supported": cfg["psx_disc"]["supported"],
                       "files": len(cfg["psx_disc"].get("files", [])), "programs": len(cfg["psx_disc"].get("maps", [])),
                       "reason": cfg["psx_disc"].get("reason")} if cfg.get("psx_disc") else None),
+            "disc_set": cfg.get("psx_disc_set"),
             "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }
@@ -2018,11 +2048,14 @@ class RomNetwork(Network):
 
     def set_function_compiler(self, slug: str, function: str, override: dict | None) -> dict:
         """Select one function's period compiler; existing matches must survive."""
-        from ..rom.n64_profiles import profile
         proj = self._project(slug)
         cfg = self.cfg(proj)
-        if cfg.get("platform") != "n64" or not self.is_rom(proj):
-            raise NetworkError("per-function compiler profiles currently require an N64 cartridge")
+        if cfg.get("platform") not in ("n64", "psx") or not self.is_rom(proj):
+            raise NetworkError("per-function compiler profiles require an N64 or PS1 project")
+        if cfg["platform"] == "psx":
+            from ..rom.psx_modules import profile
+        else:
+            from ..rom.n64_profiles import profile
         if slug in self.links:
             raise NetworkError("change compiler profiles on the room host, then sync this member")
         fn = self._function(function, slug)

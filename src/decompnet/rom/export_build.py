@@ -139,7 +139,8 @@ def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
     for fn in B["functions"]:
         c = c_source(fn)
         if c:
-            obj = f"build/{Path(c).with_suffix('.o').as_posix()}"
+            obj = ("build/shared/" + hashlib.sha256(c.encode()).hexdigest() + ".o" if ".." in Path(c).parts
+                   else f"build/{Path(c).with_suffix('.o').as_posix()}")
             out.append(("c", c, obj))
         else:
             wrap = ROOT / "build" / "wrap" / f"{fn['name']}.s"
@@ -237,7 +238,8 @@ def validate(fn, obj):
     table.by_name.update({s.name: s for s in found})
     big = B["big_endian"]
     rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
-    target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
+    gp = B.get("psx_modules", {}).get(fn["seg"], {}).get("gp", B.get("gp") or 0)
+    target = match.target_from_split(rf, table.resolve, big, gp)
     image = (ROOT / B["image"]).read_bytes()
     segments = [s for s in B["segments"] if s["kind"] == "code"]
     selected = next((s for s in segments if s["name"] == fn["seg"]), None)
@@ -350,10 +352,11 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str, str]], mo
                 lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : {{ {object_pattern(provides[fn['name']])}({section}) }}")
                 n += 1
     # own data of C functions nobody placed yet: kept out of the image; `build.py check` places it
-    lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) }}")
+    lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) build/shared/*({OWN}) }}")
     lines += [f"    /DISCARD/ : {{ {DISCARD} }}", "}", ""]
-    if B.get("gp"):
-        lines.append(f"_gp = 0x{B['gp']:08X};")
+    gp = B.get("psx_modules", {}).get(module or "main", {}).get("gp", B.get("gp") or 0)
+    if gp:
+        lines.append(f"_gp = 0x{gp:08X};")
     lines += [f"{name} = 0x{addr:08X};" for name, addr in B["symbols"].items()]
     if module is not None:
         own_symbols = B.get("module_symbols", {}).get(module, {})
@@ -427,6 +430,8 @@ def build() -> bool:
         (ROOT / program["output"]).unlink(missing_ok=True)
     if disc := B.get("disc"):
         (ROOT / disc["output"]).unlink(missing_ok=True)
+        for item in disc.get("artifacts", []):
+            (ROOT / item["output"]).unlink(missing_ok=True)
     setup()
     todo, provides = objects()
     build_objects(todo)
@@ -455,6 +460,9 @@ def build() -> bool:
             from decompnet.rom.psx_disc import rebuild
             try:
                 rebuild(ROOT / disc["image"], out, disc["layout"], ROOT / disc["output"])
+                if destination := disc.get("companions_output"):
+                    from decompnet.rom.psx_media import companions
+                    companions(ROOT / disc["image"], disc["layout"], ROOT / destination)
             except (OSError, ValueError, RuntimeError) as error:
                 fail(str(error))
             print(f"identical: {disc['output']} matches the complete original PS1 disc byte for byte")

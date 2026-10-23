@@ -166,6 +166,9 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         raise ExportError("splat failed:\n" + (res.stdout + res.stderr)[-1500:])
     if has_overlays:
         split.namespace_overlay_labels(out)
+    if platform == "psx":
+        from .psx_modules import literal_gp
+        literal_gp(out)
     for generated in (out / "src").glob("*.c"):
         generated.unlink()  # splat's INCLUDE_ASM files: this tree builds one object per function instead
     for ld in out.glob("*.ld"):
@@ -358,6 +361,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         "compiler": {**cfg["compiler"], "language": language,
                      **({"cpp_frontend": cpp.ido_frontend(cfg)} if cpp.ido_frontend(cfg) else {})},
         "gp": cfg.get("gp") or 0,
+        "psx_modules": cfg.get("psx_modules", {}),
         "big_endian": platform == "n64",
         "as_flags": [*AS_FLAGS[platform], "-G0", "-no-pad-sections", "-I", "include"],
         "ld_flags": [LD_ENDIAN[platform], "--no-check-sections"],
@@ -372,9 +376,24 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         yml.write_text(re.sub(r"(^\s*target_path:\s*).*$", r"\g<1>analysis.z64", yml.read_text(encoding="utf-8"),
                              count=1, flags=re.M), encoding="utf-8")
     if disc and disc.get("supported"):
-        disc_ext = ".iso" if disc["sector_size"] == 2048 else ".bin"
+        disc = json.loads(json.dumps(disc))
+        media = disc.get("media")
+        disc_ext = ".chd" if media and media["kind"] == "chd" else ".iso" if disc["sector_size"] == 2048 else ".bin"
         shutil.copyfile(disc_path, out / ("baserom-disc" + disc_ext))
         build["disc"] = {"image": "baserom-disc" + disc_ext, "output": "build/disc" + disc_ext, "layout": disc}
+        if media:
+            from .psx_media import inside
+            for item in media.get("companions", []):
+                destination = inside(out / "baserom-media", item["name"])
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(inside(work / media["directory"], item["name"]), destination)
+            media["directory"] = "baserom-media"
+            if media["kind"] == "cue":
+                build["disc"]["output"] = "build/disc-media/" + media["primary"]
+                build["disc"]["companions_output"] = "build/disc-media"
+            build["disc"]["artifacts"] = [{"output": build["disc"]["output"],
+                "size": disc["original_size"], "sha256": disc["sha256"]}, *[
+                {**item, "output": "build/disc-media/" + item["name"]} for item in media.get("companions", [])]]
     if platform == "n64" and (work / "n64-layout.json").is_file():
         from .n64_layout import number
         reviewed = json.loads((work / "n64-layout.json").read_text(encoding="utf-8"))
@@ -411,8 +430,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        f"`{build['disc']['output']}` must match the entire input disc's SHA-256. All sector metadata, "
                        "filesystem records, unrelated files, padding and audio stay verbatim. File sizes and addresses "
                        "cannot change in this matching workflow. This does not qualify runtime-relocated overlays, "
-                       "unknown code files, new PSY-Q assembler versions, CUE authoring or CHD compression. "
-                       "Keep any external CUE sheet separately; its track layout is not generated or validated.\n")
+                       "unknown code files or new PSY-Q assembler versions. CUE imports retain their validated "
+                       "track references and every original track; CHD imports retain the original compressed "
+                       "container after verifying its decoded programs. Changed-disc authoring and CHD "
+                       "recompression are separate workflows. Audio stays opaque.\n")
     elif disc:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Disc coverage\n\nProgram payload export only: " + disc["reason"] + ".\n")

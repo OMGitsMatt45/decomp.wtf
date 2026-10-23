@@ -328,7 +328,7 @@ function notSupported(head, file) {
   if (["gb", "gbc"].includes(ext)) return "This Game Boy cartridge has an invalid header or ROM size. Use a complete .gb or .gbc image with its original header.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
-  if (ext === "cue") return "That's the .cue sheet: pick the .bin file next to it (the track with the game's data, usually Track 1).";
+  if (ext === "cue") return "Use ‘file on this computer’ below and enter the .cue path so the app can read all referenced tracks together.";
   if (["zip", "7z", "rar"].includes(ext)) return "That's an archive: unpack it first, then drop the game file inside.";
   if (ext === "apk") return "Android apps aren't supported yet.";
   if (ext === "pbp" || ext === "cso") return "That's a PSP file. PSP games aren't supported yet.";
@@ -377,7 +377,7 @@ function setupCompilers(info) {
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
   $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
   $("dsInputFormat").value = "auto";
-  $("n64LayoutRow").hidden = p !== "n64";
+  $("n64LayoutRow").hidden = !["n64", "psx", "playstation"].includes(p);
   $("n64LayoutFile").value = "";
   if (info.bootUtility) {
     select.innerHTML = `<option value="${p === "nds" ? "binutils-arm" : "gc-wii-binutils"}">GNU assembly</option>`;
@@ -505,10 +505,10 @@ $("analyse").onclick = async () => {
   const layoutFile = !$("n64LayoutRow").hidden && $("n64LayoutFile").files[0];
   if (layoutFile) {
     try {
-      if (layoutFile.size > 1024 * 1024) throw new Error("The N64 layout must be smaller than 1 MiB.");
+      if (layoutFile.size > 1024 * 1024) throw new Error("The reviewed layout must be smaller than 1 MiB.");
       const layout = JSON.parse(await layoutFile.text());
-      const pending = await api("/api/n64/layout", { method: "POST", body: { layout } });
-      layoutQuery = `&n64_layout=${encodeURIComponent(pending.id)}`;
+      const pending = await api("/api/rom/layout", { method: "POST", body: { layout } });
+      layoutQuery = `&reviewed_layout=${encodeURIComponent(pending.id)}`;
     } catch (e) { toast(esc(e.message), "err"); return; }
   }
   runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}${layoutQuery}`, body, title, picked.name);
@@ -517,14 +517,24 @@ $("pathPick").onclick = (e) => {
   e.stopPropagation();
   const body = dialog("Use a file on this computer", `<p class="muted">For big disc images: decomp.wtf reads the file where it is instead of copying it through the browser.</p>
     <label class="field"><span>Path to the game file</span><input id="ppPath" class="mono" placeholder="/home/me/games/my-game.iso"></label>
+    <label class="field"><span>Reviewed N64 / PS1 layout (optional)</span><input id="ppLayout" type="file" accept=".json,application/json"></label>
     <label class="check"><input type="checkbox" id="ppOwn"><span>This is my own copy of this game, obtained legally. The results stay with me for my own use.</span></label>
     <div class="row"><button class="primary" id="ppGo" type="button" disabled>Start decompiling</button><button class="ghost" data-close type="button">Cancel</button></div>`);
   body.querySelector("#ppOwn").onchange = () => { $("ppGo").disabled = !$("ppOwn").checked; };
-  body.querySelector("#ppGo").onclick = () => {
+  body.querySelector("#ppGo").onclick = async () => {
     const path = $("ppPath").value.trim();
     if (!path) return;
+    let query = "";
+    const file = $("ppLayout").files[0];
+    if (file) {
+      try {
+        if (file.size > 1024 * 1024) throw new Error("The reviewed layout must be smaller than 1 MiB.");
+        const pending = await api("/api/rom/layout", { method: "POST", body: { layout: JSON.parse(await file.text()) } });
+        query = `&reviewed_layout=${encodeURIComponent(pending.id)}`;
+      } catch (e) { toast(esc(e.message), "err"); return; }
+    }
     $("dialog").hidden = true;
-    runImport(`confirmed=1&path=${encodeURIComponent(path)}`, undefined, "Analysing your game…");
+    runImport(`confirmed=1&path=${encodeURIComponent(path)}${query}`, undefined, "Analysing your game…");
   };
 };
 $("demoBtn").onclick = () => runImport("demo=1", undefined, "Opening Demo Quest 64…");
@@ -2367,7 +2377,34 @@ const LAYOUT = { gc: "dtk-template", wii: "dtk-template", nds: "ds-decomp" };
 const cwName = (c) => (c.startsWith("DS/") ? `CodeWarrior for DS ${c.slice(3)}` : `CodeWarrior ${c}`);
 
 /* ------------------------------------------------------------------ source: the base for ports and mods */
+function renderPSXDiscSet(ov) {
+  const box = $("psxDiscSet");
+  box.hidden = ov.platform !== "psx" || !ov.disc?.supported;
+  if (box.hidden) return;
+  const members = ov.disc_set?.discs || [];
+  const choices = S.projects.filter(p => p.platform === "psx");
+  box.innerHTML = `<details><summary>${ov.disc_set ? "Combined game: " + esc(ov.disc_set.title) : "Combine discs into one source project"}</summary>
+    <p class="small muted">Import each disc first. Enter 1, 2, 3… beside its project to set disc order; leave other games blank.</p>
+    <label class="field"><span>Game title</span><input id="psxSetTitle" value="${esc(ov.disc_set?.title || ov.title)}" maxlength="200"></label>
+    ${choices.map(p => { const number = members.findIndex(d => d.slug === p.slug); return `<label class="field"><span>${esc(p.title)} · ${esc(p.slug)}</span><input class="psx-disc-order" data-slug="${esc(p.slug)}" type="number" min="1" max="16" value="${number >= 0 ? number + 1 : !members.length && p.slug === ov.slug ? 1 : ""}"></label>`; }).join("")}
+    <div class="row"><button id="psxSetSave" class="ghost small-btn" type="button">Combine game</button>${members.length ? '<button id="psxSetClear" class="ghost small-btn" type="button">Ungroup discs</button>' : ""}</div></details>`;
+  const save = async (projects) => {
+    try {
+      S.ov = await api("/api/psx/disc-set", {method: "POST", body: {slug: S.slug, projects, title: $("psxSetTitle").value}});
+      renderSource(S.ov);
+      toast(projects ? "One source project will build all selected discs." : "Discs now export independently.");
+    } catch (error) { toast(esc(error.message), "err"); }
+  };
+  $("psxSetSave").onclick = () => {
+    const ordered = [...box.querySelectorAll(".psx-disc-order")].filter(e => e.value).sort((a,b) => Number(a.value) - Number(b.value));
+    if (ordered.some((e,i) => Number(e.value) !== i + 1)) return toast("Disc order must be 1, 2, 3… with no duplicates or gaps.", "err");
+    save(ordered.map(e => e.dataset.slug));
+  };
+  if ($("psxSetClear")) $("psxSetClear").onclick = () => save(null);
+}
+
 function renderSource(ov) {
+  renderPSXDiscSet(ov);
   const ex = ov.export, fork = ov.kind === "fork";
   $("srcFormatRow").hidden = fork || ov.platform !== "n64" || !ov.exportable;
   if ($("srcFormat").dataset.project !== ov.slug) {
@@ -2411,12 +2448,14 @@ function renderSource(ov) {
   if (ov.disc) $("srcText").innerHTML += ov.disc.supported
     ? ` The complete PlayStation disc is checked too, including ${ov.disc.programs} rebuilt program files. Disc layout, other files and audio are preserved from your copy.`
     : ` Program payload export only: ${esc(ov.disc.reason)}.`;
+  if (ov.disc_set) $("srcText").innerHTML += ` Export creates one source project for all ${ov.disc_set.discs.length} discs of ${esc(ov.disc_set.title)}, with shared recovered source and one build command.`;
   if (isAssembly(ov)) $("srcText").textContent = `Export editable ${isBankedAssembly(ov) ? "RGBDS" : "GNU"} assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base image. Every saved match is checked again, then the ${ov.scope === "apploader" ? "executable apploader" : "complete ROM"} must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.${ov.scope === "apploader" ? " The disc container is not rebuilt." : ""}`;
   const stale = ex && ex.matched != null && ex.matched < ov.matched;
   $("srcState").innerHTML = !ex ? `<span class="muted small">Not exported yet.</span>`
     : `<div class="src-line ${ex.identical === false ? "bad" : "ok"}">${ex.identical === false ? "✕ the last rebuild differed" : "✓ rebuilds byte for byte"}</div>
        <div class="src-line">${ex.matched != null ? `${ex.matched.toLocaleString()} of ${ex.functions.toLocaleString()} ${isAssembly(ov) ? "ranges in verified assembly" : `functions in ${ex.language === "c++" ? "C++" : "C"}`}` : ""}${stale ? ` · <b>${ov.matched - ex.matched} new matches since</b>` : ""}</div>
-       ${ex.path ? `<div class="src-line">${esc(ex.path)}</div>` : ""}`;
+       ${ex.path ? `<div class="src-line">${esc(ex.path)}</div>` : ""}
+       ${ex.archive && ex.identical ? `<a class="button" href="/api/export/archive?slug=${encodeURIComponent(S.slug)}">Download combined ZIP</a>` : ""}`;
   $("srcExport").textContent = ex ? "Export again" : "Export project";
 }
 $("srcOpen").onclick = () => openFolder();
@@ -2430,7 +2469,8 @@ $("srcExport").onclick = async () => {
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
-      : `<div class="notice room"><span><b>${r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+      : `<div class="notice room"><span><b>${r.scope === "disc-set" ? "All discs rebuild" : r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+    if (r.archive && r.identical) $("expResult").innerHTML += `<a class="button" href="/api/export/archive?slug=${encodeURIComponent(S.slug)}">Download combined ZIP</a>`;
     if (r.shiftable) {
       $("expResult").innerHTML += r.shiftable.ready
         ? `<div class="notice room"><span>Shiftable code window verified. Use <code>python build.py mod</code> for source changes.</span></div>`
