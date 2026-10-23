@@ -28,7 +28,7 @@ jobs:
       - name: Check remaining platform gates and build/execute the host output fixture
         run: >-
           uv run --no-sync python -m pytest -q
-          tests/test_platform_scope.py tests/test_pc_output.py
+          tests/test_platform_scope.py tests/test_pc_output.py tests/test_native_threads.py tests/test_input_layouts.py
           --junitxml=pc-foundation-results.xml
       - name: Check browser JavaScript syntax
         run: node --check src/decompnet/app/static/app.js

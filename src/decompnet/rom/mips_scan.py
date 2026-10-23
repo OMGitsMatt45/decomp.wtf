@@ -29,7 +29,11 @@ def _place(rom: bytes, lo: int, hi: int, floor: int, calls: list[int],
                 if lo_addr <= base < hi_addr and base % 4 == 0:
                     votes[base] += 1
         if votes:
-            base, hits = votes.most_common(1)[0]
+            # Equal scores occur when calls include a leaf without a stack
+            # frame. Preserve the lowest-address tie break of the shared
+            # placement algorithm instead of relying on set iteration order.
+            base = min(votes, key=lambda address: (-votes[address], address))
+            hits = votes[base]
             if best is None or hits > best[0]:
                 best = (hits, base, own)
     if best is None:
