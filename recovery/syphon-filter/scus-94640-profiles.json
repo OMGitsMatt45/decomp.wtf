@@ -1,0 +1,46 @@
+{
+  "24495e59e5d179c970f6946f1224e93b9619f326e8f654afbeae79d3a3695365": {
+    "assembler": {
+      "tool": "maspsx",
+      "version": "2.56"
+    },
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "702696a2d5b9ef3cd5528f1fd55e41dcda14708901f0985066e6389a49571ff0": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "87240cd42ab4a74f623b1fae9f60e8eff5a1ed85cca5bac95f5d7f6663fbc5e9": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "8828ad46cc12142a22f59ed01cbba0be3491b9123d0c6f5e9499a07b6b672d6b": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "fef12835a1f14ffb2b0c17a719c8ee5ec93ef276b205f542dbb79f51e103d43f": {
+    "assembler": null,
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c",
+    "toolchain": "gcc-2.7.2-psx"
+  }
+}

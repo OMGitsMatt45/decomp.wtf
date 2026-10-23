@@ -1,0 +1,320 @@
+{
+  "format": 1,
+  "modules": [
+    {
+      "code_end": "0x3a03c",
+      "code_start": "0x54e4",
+      "codec": "hbd-lzss",
+      "gp": "0x800bc668",
+      "load": "0x800f4980",
+      "name": "dq_field_engine",
+      "offset": 344272,
+      "path": "HBD1PS1D.W71",
+      "size": 238396,
+      "stored_size": 113528
+    },
+    {
+      "code_end": "0x4f1b4",
+      "code_start": "0x11b68",
+      "codec": "hbd-lzss",
+      "gp": "0x800bc668",
+      "load": "0x800f5f18",
+      "name": "dq_battle_engine",
+      "offset": 301992176,
+      "path": "HBD1PS1D.W71",
+      "size": 367096,
+      "stored_size": 190704
+    },
+    {
+      "code_end": "0x1390",
+      "code_start": "0x84",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299189304,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299225572,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 963360,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 999628,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 717908,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299813624,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299849892,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300438280,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300474548,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_0",
+      "offset": 681640,
+      "path": "HBD1PS1D.W71",
+      "size": 5008,
+      "stored_size": 5008
+    },
+    {
+      "code_end": "0x1314",
+      "code_start": "0xc",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299194312,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 968368,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299818632,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300443288,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_1",
+      "offset": 686648,
+      "path": "HBD1PS1D.W71",
+      "size": 4884,
+      "stored_size": 4884
+    },
+    {
+      "code_end": "0x2578",
+      "code_start": "0x1518",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299199196,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 973252,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299823516,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300448172,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_2",
+      "offset": 691532,
+      "path": "HBD1PS1D.W71",
+      "size": 9648,
+      "stored_size": 9648
+    },
+    {
+      "code_end": "0x2ff4",
+      "code_start": "0x498",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299208844,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 982900,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299833164,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300457820,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_3",
+      "offset": 701180,
+      "path": "HBD1PS1D.W71",
+      "size": 12276,
+      "stored_size": 12276
+    },
+    {
+      "code_end": "0x1164",
+      "code_start": "0xc",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299221120,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 995176,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299845440,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300470096,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_4",
+      "offset": 713456,
+      "path": "HBD1PS1D.W71",
+      "size": 4452,
+      "stored_size": 4452
+    },
+    {
+      "code_end": "0x139c",
+      "code_start": "0x84",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299230580,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 1004636,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299854900,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300479556,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_6",
+      "offset": 722916,
+      "path": "HBD1PS1D.W71",
+      "size": 5020,
+      "stored_size": 5020
+    },
+    {
+      "code_end": "0x1330",
+      "code_start": "0xec",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299235600,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 1009656,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299859920,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300484576,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_7",
+      "offset": 727936,
+      "path": "HBD1PS1D.W71",
+      "size": 4912,
+      "stored_size": 4912
+    },
+    {
+      "code_end": "0x84c",
+      "code_start": "0x10",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299240512,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 1014568,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299864832,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300489488,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_8",
+      "offset": 732848,
+      "path": "HBD1PS1D.W71",
+      "size": 2124,
+      "stored_size": 2124
+    },
+    {
+      "code_end": "0xcbc",
+      "code_start": "0xc",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 299242636,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 1016692,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 299866956,
+          "path": "HBD1PS1D.W71"
+        },
+        {
+          "offset": 300491612,
+          "path": "HBD1PS1D.W71"
+        }
+      ],
+      "gp": "0x800bc668",
+      "load": "0x80011f00",
+      "name": "dq_vram_9",
+      "offset": 734972,
+      "path": "HBD1PS1D.W71",
+      "size": 3260,
+      "stored_size": 3260
+    }
+  ],
+  "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a"
+}

@@ -1,0 +1,105 @@
+{
+  "0326d222cf9cd7c8647fd85495874a17e1c6494be66f674cd618fe657a0ad6a8": {
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "07f33f7b7c2e220ebaa3f9bdf4aa0198dd702cccab97ca1cb1eb7fbe7d9760ce": {
+    "assembler": {
+      "tool": "maspsx",
+      "version": "2.56"
+    },
+    "flags": [
+      "-O2",
+      "-G0",
+      "-fno-strength-reduce"
+    ],
+    "language": "c",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "1b4567ba0ee7423af0df83e6f6aaa68c8ea9508b1fac7e999856d36840c0e7c9": {
+    "assembler": {
+      "tool": "maspsx",
+      "version": "2.56"
+    },
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "2d7294fb25a6a7a66318aafa88ce6f01b0e95a0c62e8a2999f02825de9badd4a": {
+    "assembler": null,
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "38c494b16486b10af6b7665de01fc209c3bf342d172292711c816deb295df0e3": {
+    "assembler": {
+      "tool": "maspsx",
+      "version": "2.56"
+    },
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "52fe991977cfda535fc242a8248c7596a6c5636fb18af9125582fac2f8820997": {
+    "assembler": null,
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "5316b13707cd1f0454334a8d1f6e46425fadfffdee63280cc0a65c09002af2ac": {
+    "assembler": null,
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "702696a2d5b9ef3cd5528f1fd55e41dcda14708901f0985066e6389a49571ff0": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.8.1-psx"
+  },
+  "87240cd42ab4a74f623b1fae9f60e8eff5a1ed85cca5bac95f5d7f6663fbc5e9": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "8828ad46cc12142a22f59ed01cbba0be3491b9123d0c6f5e9499a07b6b672d6b": {
+    "flags": [
+      "-O2",
+      "-G8"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.7.2-psx"
+  },
+  "a5bac4ab852a746085d3f67f69ed2a88e1d343abfd8ced35e313532cfd5a5788": {
+    "flags": [
+      "-O2",
+      "-G0"
+    ],
+    "language": "c++",
+    "toolchain": "gcc-2.7.2-psx"
+  }
+}

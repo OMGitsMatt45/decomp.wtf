@@ -1,0 +1,1116 @@
+{
+  "format": 1,
+  "main_data": [
+    {
+      "offset": 747880,
+      "sha256": "bdfb33e0d3f4e8c0215bedaf6abb311e5e06f6e5fc5aeaf93470a58d20420c50",
+      "size": 169580
+    },
+    {
+      "offset": 1445672,
+      "sha256": "c2e95f3ce44884540263ca2cf1e4ca04672d07adb9054daee853d3fa97516afe",
+      "size": 109580
+    },
+    {
+      "offset": 1555256,
+      "sha256": "00cea043289f94cc138810e0a5356876dde8aa4cac432a6f46e13993f581ebe1",
+      "size": 131432
+    },
+    {
+      "offset": 1686688,
+      "sha256": "3b82837ae65ed3e903d8ec30c71192a376eba0a1d64e87e5f8979df0ecb34c25",
+      "size": 199396
+    }
+  ],
+  "modules": [
+    {
+      "code_end": "0x100ec",
+      "code_start": "0x4c0",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3559424,
+          "path": "FOG/AFGHAN1.FOG"
+        },
+        {
+          "offset": 3192832,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2813952,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 4114432,
+          "path": "FOG/AFRICA1.FOG"
+        },
+        {
+          "offset": 4159488,
+          "path": "FOG/AFRICA2.FOG"
+        },
+        {
+          "offset": 3278848,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 3164160,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 2656256,
+          "path": "FOG/JUNGLE3.FOG"
+        },
+        {
+          "offset": 3641344,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 3063808,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 2904064,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 2988032,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 3174400,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 3047424,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2852864,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 3104768,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 3334144,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 3190784,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 2973696,
+          "path": "FOG/TRIAGE2.FOG"
+        },
+        {
+          "offset": 2729984,
+          "path": "FOG2/ARENA01.FOG"
+        },
+        {
+          "offset": 3864576,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3624960,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3753984,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3350528,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2656256,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2678784,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2738176,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 4085760,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 3078144,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2226176,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2197504,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2344960,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3364864,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2273280,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2174976,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2177024,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2207744,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2158592,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2289664,
+          "path": "FOG2/ARENA20.FOG"
+        },
+        {
+          "offset": 13840,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1700528,
+          "path": "SCUS_946.40"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x8015e978",
+      "name": "init",
+      "offset": 0,
+      "path": "BIN/INIT.OVL",
+      "size": 73136,
+      "stored_size": 73136
+    },
+    {
+      "code_end": "0x8d5c",
+      "code_start": "0x478",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3297280,
+          "path": "FOG/AFGHAN1.FOG"
+        },
+        {
+          "offset": 2781184,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2553856,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 3805184,
+          "path": "FOG/AFRICA1.FOG"
+        },
+        {
+          "offset": 3758080,
+          "path": "FOG/AFRICA2.FOG"
+        },
+        {
+          "offset": 2963456,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 2953216,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 2469888,
+          "path": "FOG/JUNGLE3.FOG"
+        },
+        {
+          "offset": 3057664,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 2756608,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 2617344,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 2760704,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 2756608,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 2605056,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2656256,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 2783232,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 2856960,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 2914304,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 2607104,
+          "path": "FOG/TRIAGE2.FOG"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80146950",
+      "name": "menu",
+      "offset": 0,
+      "path": "BIN/MENU.OVL",
+      "size": 38896,
+      "stored_size": 38896
+    },
+    {
+      "code_end": "0x8888",
+      "code_start": "0x430",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2539520,
+          "path": "FOG2/ARENA01.FOG"
+        },
+        {
+          "offset": 3665920,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3432448,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3563520,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3145728,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2465792,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2488320,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2553856,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 3602432,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 2879488,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2115584,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2086912,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2234368,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3254272,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2162688,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2062336,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2066432,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2099200,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2045952,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2179072,
+          "path": "FOG2/ARENA20.FOG"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80146950",
+      "name": "menu2",
+      "offset": 0,
+      "path": "BIN/MENU2.OVL",
+      "size": 37600,
+      "stored_size": 37600
+    },
+    {
+      "code_end": "0x457c",
+      "code_start": "0x340",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3272704,
+          "path": "FOG/AFGHAN1.FOG"
+        },
+        {
+          "offset": 2756608,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2529280,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 3780608,
+          "path": "FOG/AFRICA1.FOG"
+        },
+        {
+          "offset": 3733504,
+          "path": "FOG/AFRICA2.FOG"
+        },
+        {
+          "offset": 2938880,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 2928640,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 2445312,
+          "path": "FOG/JUNGLE3.FOG"
+        },
+        {
+          "offset": 3033088,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 2732032,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 2592768,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 2736128,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 2732032,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 2580480,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2631680,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 2758656,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 2832384,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 2889728,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 2582528,
+          "path": "FOG/TRIAGE2.FOG"
+        },
+        {
+          "offset": 2514944,
+          "path": "FOG2/ARENA01.FOG"
+        },
+        {
+          "offset": 3641344,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3407872,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3538944,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3121152,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2441216,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2463744,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2529280,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 3577856,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 2854912,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2091008,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2062336,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2209792,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3229696,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2138112,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2037760,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2041856,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2074624,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2021376,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2154496,
+          "path": "FOG2/ARENA20.FOG"
+        },
+        {
+          "offset": 86976,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1773664,
+          "path": "SCUS_946.40"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80146950",
+      "name": "movie",
+      "offset": 0,
+      "path": "BIN/MOVIE.OVL",
+      "size": 23024,
+      "stored_size": 23024
+    },
+    {
+      "code_end": "0x6494",
+      "code_start": "0x560",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3336192,
+          "path": "FOG/AFGHAN1.FOG"
+        },
+        {
+          "offset": 2820096,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2592768,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 3844096,
+          "path": "FOG/AFRICA1.FOG"
+        },
+        {
+          "offset": 3796992,
+          "path": "FOG/AFRICA2.FOG"
+        },
+        {
+          "offset": 3002368,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 2992128,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 2508800,
+          "path": "FOG/JUNGLE3.FOG"
+        },
+        {
+          "offset": 3096576,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 2795520,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 2656256,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 2799616,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 2795520,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 2643968,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2695168,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 2822144,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 2895872,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 2953216,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 2646016,
+          "path": "FOG/TRIAGE2.FOG"
+        },
+        {
+          "offset": 2578432,
+          "path": "FOG2/ARENA01.FOG"
+        },
+        {
+          "offset": 3704832,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3471360,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3602432,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3184640,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2504704,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2527232,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2592768,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 3641344,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 2918400,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2154496,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2125824,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2273280,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3293184,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2201600,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2101248,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2105344,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2138112,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2084864,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2217984,
+          "path": "FOG2/ARENA20.FOG"
+        },
+        {
+          "offset": 164520,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1851208,
+          "path": "SCUS_946.40"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "title",
+      "offset": 0,
+      "path": "BIN/TITLE.OVL",
+      "size": 34872,
+      "stored_size": 34872
+    },
+    {
+      "code_end": "0xbd68",
+      "code_start": "0x978",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3645440,
+          "path": "FOG/AFGHAN1.FOG"
+        },
+        {
+          "offset": 3325952,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2889728,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 4245504,
+          "path": "FOG/AFRICA1.FOG"
+        },
+        {
+          "offset": 4239360,
+          "path": "FOG/AFRICA2.FOG"
+        },
+        {
+          "offset": 3430400,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 3250176,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 2734080,
+          "path": "FOG/JUNGLE3.FOG"
+        },
+        {
+          "offset": 3805184,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 3211264,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 3049472,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 3123200,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 3307520,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 3125248,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2983936,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 3235840,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 3524608,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 3319808,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 3100672,
+          "path": "FOG/TRIAGE2.FOG"
+        },
+        {
+          "offset": 2824192,
+          "path": "FOG2/ARENA01.FOG"
+        },
+        {
+          "offset": 3958784,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3719168,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3848192,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3444736,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2750464,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2772992,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2832384,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 4179968,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 3172352,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2301952,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2273280,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2420736,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3440640,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2349056,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2250752,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2252800,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2283520,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2234368,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2365440,
+          "path": "FOG2/ARENA20.FOG"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "title2",
+      "offset": 0,
+      "path": "BIN/TITLE2.OVL",
+      "size": 57384,
+      "stored_size": 57384
+    },
+    {
+      "code_end": "0x64",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "level_africa1",
+      "offset": 3905536,
+      "path": "FOG/AFRICA1.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x7e8",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "level_africa2",
+      "offset": 3860480,
+      "path": "FOG/AFRICA2.FOG",
+      "size": 4096,
+      "stored_size": 4096
+    },
+    {
+      "code_end": "0x10ac",
+      "code_start": "0x30",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3784704,
+          "path": "FOG2/ARENA02.FOG"
+        },
+        {
+          "offset": 3545088,
+          "path": "FOG2/ARENA03.FOG"
+        },
+        {
+          "offset": 3674112,
+          "path": "FOG2/ARENA04.FOG"
+        },
+        {
+          "offset": 3268608,
+          "path": "FOG2/ARENA05.FOG"
+        },
+        {
+          "offset": 2576384,
+          "path": "FOG2/ARENA06.FOG"
+        },
+        {
+          "offset": 2598912,
+          "path": "FOG2/ARENA07.FOG"
+        },
+        {
+          "offset": 2658304,
+          "path": "FOG2/ARENA08.FOG"
+        },
+        {
+          "offset": 3723264,
+          "path": "FOG2/ARENA09.FOG"
+        },
+        {
+          "offset": 2996224,
+          "path": "FOG2/ARENA10.FOG"
+        },
+        {
+          "offset": 2195456,
+          "path": "FOG2/ARENA11.FOG"
+        },
+        {
+          "offset": 2166784,
+          "path": "FOG2/ARENA12.FOG"
+        },
+        {
+          "offset": 2314240,
+          "path": "FOG2/ARENA13.FOG"
+        },
+        {
+          "offset": 3334144,
+          "path": "FOG2/ARENA14.FOG"
+        },
+        {
+          "offset": 2242560,
+          "path": "FOG2/ARENA15.FOG"
+        },
+        {
+          "offset": 2144256,
+          "path": "FOG2/ARENA16.FOG"
+        },
+        {
+          "offset": 2146304,
+          "path": "FOG2/ARENA17.FOG"
+        },
+        {
+          "offset": 2177024,
+          "path": "FOG2/ARENA18.FOG"
+        },
+        {
+          "offset": 2127872,
+          "path": "FOG2/ARENA19.FOG"
+        },
+        {
+          "offset": 2258944,
+          "path": "FOG2/ARENA20.FOG"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "level_arena1",
+      "offset": 2650112,
+      "path": "FOG2/ARENA01.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2879488,
+          "path": "FOG/AFGHAN2.FOG"
+        },
+        {
+          "offset": 2637824,
+          "path": "FOG/AFGHAN3.FOG"
+        },
+        {
+          "offset": 3082240,
+          "path": "FOG/JUNGLE.FOG"
+        },
+        {
+          "offset": 3061760,
+          "path": "FOG/JUNGLE2.FOG"
+        },
+        {
+          "offset": 3174400,
+          "path": "FOG/LONDON1.FOG"
+        },
+        {
+          "offset": 2863104,
+          "path": "FOG/LONDON2.FOG"
+        },
+        {
+          "offset": 2709504,
+          "path": "FOG/LONDON3.FOG"
+        },
+        {
+          "offset": 2869248,
+          "path": "FOG/MCAVES.FOG"
+        },
+        {
+          "offset": 2865152,
+          "path": "FOG/RIDGE.FOG"
+        },
+        {
+          "offset": 2701312,
+          "path": "FOG/SENATE.FOG"
+        },
+        {
+          "offset": 2775040,
+          "path": "FOG/SENATE2.FOG"
+        },
+        {
+          "offset": 2883584,
+          "path": "FOG/SNOWCAMP.FOG"
+        },
+        {
+          "offset": 2967552,
+          "path": "FOG/TOKYO.FOG"
+        },
+        {
+          "offset": 3006464,
+          "path": "FOG/TRIAGE1.FOG"
+        },
+        {
+          "offset": 2697216,
+          "path": "FOG/TRIAGE2.FOG"
+        }
+      ],
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "level_generic",
+      "offset": 3399680,
+      "path": "FOG/AFGHAN1.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0xdd4",
+      "code_start": "0x40",
+      "codec": "raw",
+      "gp": "0x80121938",
+      "load": "0x80150950",
+      "name": "level_jungle3",
+      "offset": 2553856,
+      "path": "FOG/JUNGLE3.FOG",
+      "size": 4096,
+      "stored_size": 4096
+    }
+  ],
+  "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38"
+}

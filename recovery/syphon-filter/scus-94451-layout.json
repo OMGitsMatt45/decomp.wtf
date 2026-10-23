@@ -1,0 +1,775 @@
+{
+  "format": 1,
+  "main_data": [
+    {
+      "offset": 736240,
+      "sha256": "bdfb33e0d3f4e8c0215bedaf6abb311e5e06f6e5fc5aeaf93470a58d20420c50",
+      "size": 169580
+    },
+    {
+      "offset": 1113028,
+      "sha256": "f27546ee6165cb4863feaf255b7279a67d1731a21af201d242a42c1a1f54b75a",
+      "size": 52
+    },
+    {
+      "offset": 1420296,
+      "sha256": "c02b53084bb7bf035f3bd458a72af1042ea24ead2d676211d1f2e46fbb229053",
+      "size": 155664
+    },
+    {
+      "offset": 1575960,
+      "sha256": "a1d813f03355b0ede910dee53ab3838c0c035e94fe8c7d7145b54ce012f696d2",
+      "size": 167564
+    },
+    {
+      "offset": 1743528,
+      "sha256": "b30e70134de6fcf783c1d74b2eda367b15f6fe451ba80acb608c8ec92ab59937",
+      "size": 208660
+    }
+  ],
+  "modules": [
+    {
+      "code_end": "0xfef8",
+      "code_start": "0x560",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3999744,
+          "path": "FOG/AIRBASE.FOG"
+        },
+        {
+          "offset": 3158016,
+          "path": "FOG/AIRBASEX.FOG"
+        },
+        {
+          "offset": 2234368,
+          "path": "FOG/ARENA01.FOG"
+        },
+        {
+          "offset": 3188736,
+          "path": "FOG/ARENA02.FOG"
+        },
+        {
+          "offset": 3414016,
+          "path": "FOG/ARENA03.FOG"
+        },
+        {
+          "offset": 3194880,
+          "path": "FOG/ARENA04.FOG"
+        },
+        {
+          "offset": 2162688,
+          "path": "FOG/ARENA05.FOG"
+        },
+        {
+          "offset": 2254848,
+          "path": "FOG/ARENA06.FOG"
+        },
+        {
+          "offset": 2162688,
+          "path": "FOG/ARENA07.FOG"
+        },
+        {
+          "offset": 2027520,
+          "path": "FOG/ARENA08.FOG"
+        },
+        {
+          "offset": 3270656,
+          "path": "FOG/ARENA09.FOG"
+        },
+        {
+          "offset": 2338816,
+          "path": "FOG/ARENA10.FOG"
+        },
+        {
+          "offset": 2199552,
+          "path": "FOG/ARENA11.FOG"
+        },
+        {
+          "offset": 2267136,
+          "path": "FOG/ARENA12.FOG"
+        },
+        {
+          "offset": 2430976,
+          "path": "FOG/ARENA13.FOG"
+        },
+        {
+          "offset": 3252224,
+          "path": "FOG/ARENA14.FOG"
+        },
+        {
+          "offset": 2150400,
+          "path": "FOG/ARENA15.FOG"
+        },
+        {
+          "offset": 2215936,
+          "path": "FOG/ARENA16.FOG"
+        },
+        {
+          "offset": 2084864,
+          "path": "FOG/ARENA17.FOG"
+        },
+        {
+          "offset": 2021376,
+          "path": "FOG/ARENA18.FOG"
+        },
+        {
+          "offset": 2269184,
+          "path": "FOG/ARENA19.FOG"
+        },
+        {
+          "offset": 2230272,
+          "path": "FOG/ARENA20.FOG"
+        },
+        {
+          "offset": 3969024,
+          "path": "FOG/BRIDGE.FOG"
+        },
+        {
+          "offset": 4096000,
+          "path": "FOG/COLO.FOG"
+        },
+        {
+          "offset": 4194304,
+          "path": "FOG/HWAY.FOG"
+        },
+        {
+          "offset": 2463744,
+          "path": "FOG/MOVIE1.FOG"
+        },
+        {
+          "offset": 2863104,
+          "path": "FOG/TRAIN.FOG"
+        },
+        {
+          "offset": 3901440,
+          "path": "FOG/TRAIN2.FOG"
+        },
+        {
+          "offset": 3948544,
+          "path": "FOG/WRECK.FOG"
+        },
+        {
+          "offset": 13032,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1756560,
+          "path": "SCUS_944.51"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80158878",
+      "name": "init",
+      "offset": 0,
+      "path": "BIN/INIT.OVL",
+      "size": 72592,
+      "stored_size": 72592
+    },
+    {
+      "code_end": "0x8adc",
+      "code_start": "0x458",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3735552,
+          "path": "FOG/AIRBASE.FOG"
+        },
+        {
+          "offset": 2772992,
+          "path": "FOG/AIRBASEX.FOG"
+        },
+        {
+          "offset": 2113536,
+          "path": "FOG/ARENA01.FOG"
+        },
+        {
+          "offset": 3065856,
+          "path": "FOG/ARENA02.FOG"
+        },
+        {
+          "offset": 3284992,
+          "path": "FOG/ARENA03.FOG"
+        },
+        {
+          "offset": 3069952,
+          "path": "FOG/ARENA04.FOG"
+        },
+        {
+          "offset": 2039808,
+          "path": "FOG/ARENA05.FOG"
+        },
+        {
+          "offset": 2131968,
+          "path": "FOG/ARENA06.FOG"
+        },
+        {
+          "offset": 2039808,
+          "path": "FOG/ARENA07.FOG"
+        },
+        {
+          "offset": 1904640,
+          "path": "FOG/ARENA08.FOG"
+        },
+        {
+          "offset": 3147776,
+          "path": "FOG/ARENA09.FOG"
+        },
+        {
+          "offset": 2213888,
+          "path": "FOG/ARENA10.FOG"
+        },
+        {
+          "offset": 2076672,
+          "path": "FOG/ARENA11.FOG"
+        },
+        {
+          "offset": 2144256,
+          "path": "FOG/ARENA12.FOG"
+        },
+        {
+          "offset": 2308096,
+          "path": "FOG/ARENA13.FOG"
+        },
+        {
+          "offset": 3129344,
+          "path": "FOG/ARENA14.FOG"
+        },
+        {
+          "offset": 2027520,
+          "path": "FOG/ARENA15.FOG"
+        },
+        {
+          "offset": 2093056,
+          "path": "FOG/ARENA16.FOG"
+        },
+        {
+          "offset": 1961984,
+          "path": "FOG/ARENA17.FOG"
+        },
+        {
+          "offset": 1898496,
+          "path": "FOG/ARENA18.FOG"
+        },
+        {
+          "offset": 2146304,
+          "path": "FOG/ARENA19.FOG"
+        },
+        {
+          "offset": 2107392,
+          "path": "FOG/ARENA20.FOG"
+        },
+        {
+          "offset": 3690496,
+          "path": "FOG/BRIDGE.FOG"
+        },
+        {
+          "offset": 3764224,
+          "path": "FOG/COLO.FOG"
+        },
+        {
+          "offset": 3878912,
+          "path": "FOG/HWAY.FOG"
+        },
+        {
+          "offset": 2340864,
+          "path": "FOG/MOVIE1.FOG"
+        },
+        {
+          "offset": 2670592,
+          "path": "FOG/TRAIN.FOG"
+        },
+        {
+          "offset": 3710976,
+          "path": "FOG/TRAIN2.FOG"
+        },
+        {
+          "offset": 3655680,
+          "path": "FOG/WRECK.FOG"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80142150",
+      "name": "menu",
+      "offset": 0,
+      "path": "BIN/MENU.OVL",
+      "size": 38240,
+      "stored_size": 38240
+    },
+    {
+      "code_end": "0x457c",
+      "code_start": "0x340",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3710976,
+          "path": "FOG/AIRBASE.FOG"
+        },
+        {
+          "offset": 2748416,
+          "path": "FOG/AIRBASEX.FOG"
+        },
+        {
+          "offset": 2088960,
+          "path": "FOG/ARENA01.FOG"
+        },
+        {
+          "offset": 3041280,
+          "path": "FOG/ARENA02.FOG"
+        },
+        {
+          "offset": 3260416,
+          "path": "FOG/ARENA03.FOG"
+        },
+        {
+          "offset": 3045376,
+          "path": "FOG/ARENA04.FOG"
+        },
+        {
+          "offset": 2015232,
+          "path": "FOG/ARENA05.FOG"
+        },
+        {
+          "offset": 2107392,
+          "path": "FOG/ARENA06.FOG"
+        },
+        {
+          "offset": 2015232,
+          "path": "FOG/ARENA07.FOG"
+        },
+        {
+          "offset": 1880064,
+          "path": "FOG/ARENA08.FOG"
+        },
+        {
+          "offset": 3123200,
+          "path": "FOG/ARENA09.FOG"
+        },
+        {
+          "offset": 2189312,
+          "path": "FOG/ARENA10.FOG"
+        },
+        {
+          "offset": 2052096,
+          "path": "FOG/ARENA11.FOG"
+        },
+        {
+          "offset": 2119680,
+          "path": "FOG/ARENA12.FOG"
+        },
+        {
+          "offset": 2283520,
+          "path": "FOG/ARENA13.FOG"
+        },
+        {
+          "offset": 3104768,
+          "path": "FOG/ARENA14.FOG"
+        },
+        {
+          "offset": 2002944,
+          "path": "FOG/ARENA15.FOG"
+        },
+        {
+          "offset": 2068480,
+          "path": "FOG/ARENA16.FOG"
+        },
+        {
+          "offset": 1937408,
+          "path": "FOG/ARENA17.FOG"
+        },
+        {
+          "offset": 1873920,
+          "path": "FOG/ARENA18.FOG"
+        },
+        {
+          "offset": 2121728,
+          "path": "FOG/ARENA19.FOG"
+        },
+        {
+          "offset": 2082816,
+          "path": "FOG/ARENA20.FOG"
+        },
+        {
+          "offset": 3665920,
+          "path": "FOG/BRIDGE.FOG"
+        },
+        {
+          "offset": 3739648,
+          "path": "FOG/COLO.FOG"
+        },
+        {
+          "offset": 3854336,
+          "path": "FOG/HWAY.FOG"
+        },
+        {
+          "offset": 2316288,
+          "path": "FOG/MOVIE1.FOG"
+        },
+        {
+          "offset": 2646016,
+          "path": "FOG/TRAIN.FOG"
+        },
+        {
+          "offset": 3686400,
+          "path": "FOG/TRAIN2.FOG"
+        },
+        {
+          "offset": 3631104,
+          "path": "FOG/WRECK.FOG"
+        },
+        {
+          "offset": 85624,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1829152,
+          "path": "SCUS_944.51"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80142150",
+      "name": "movie",
+      "offset": 0,
+      "path": "BIN/MOVIE.OVL",
+      "size": 23024,
+      "stored_size": 23024
+    },
+    {
+      "code_end": "0xac04",
+      "code_start": "0x7a0",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3774464,
+          "path": "FOG/AIRBASE.FOG"
+        },
+        {
+          "offset": 2811904,
+          "path": "FOG/AIRBASEX.FOG"
+        },
+        {
+          "offset": 2152448,
+          "path": "FOG/ARENA01.FOG"
+        },
+        {
+          "offset": 3104768,
+          "path": "FOG/ARENA02.FOG"
+        },
+        {
+          "offset": 3323904,
+          "path": "FOG/ARENA03.FOG"
+        },
+        {
+          "offset": 3108864,
+          "path": "FOG/ARENA04.FOG"
+        },
+        {
+          "offset": 2078720,
+          "path": "FOG/ARENA05.FOG"
+        },
+        {
+          "offset": 2170880,
+          "path": "FOG/ARENA06.FOG"
+        },
+        {
+          "offset": 2078720,
+          "path": "FOG/ARENA07.FOG"
+        },
+        {
+          "offset": 1943552,
+          "path": "FOG/ARENA08.FOG"
+        },
+        {
+          "offset": 3186688,
+          "path": "FOG/ARENA09.FOG"
+        },
+        {
+          "offset": 2252800,
+          "path": "FOG/ARENA10.FOG"
+        },
+        {
+          "offset": 2115584,
+          "path": "FOG/ARENA11.FOG"
+        },
+        {
+          "offset": 2183168,
+          "path": "FOG/ARENA12.FOG"
+        },
+        {
+          "offset": 2347008,
+          "path": "FOG/ARENA13.FOG"
+        },
+        {
+          "offset": 3168256,
+          "path": "FOG/ARENA14.FOG"
+        },
+        {
+          "offset": 2066432,
+          "path": "FOG/ARENA15.FOG"
+        },
+        {
+          "offset": 2131968,
+          "path": "FOG/ARENA16.FOG"
+        },
+        {
+          "offset": 2000896,
+          "path": "FOG/ARENA17.FOG"
+        },
+        {
+          "offset": 1937408,
+          "path": "FOG/ARENA18.FOG"
+        },
+        {
+          "offset": 2185216,
+          "path": "FOG/ARENA19.FOG"
+        },
+        {
+          "offset": 2146304,
+          "path": "FOG/ARENA20.FOG"
+        },
+        {
+          "offset": 3729408,
+          "path": "FOG/BRIDGE.FOG"
+        },
+        {
+          "offset": 3803136,
+          "path": "FOG/COLO.FOG"
+        },
+        {
+          "offset": 3917824,
+          "path": "FOG/HWAY.FOG"
+        },
+        {
+          "offset": 2379776,
+          "path": "FOG/MOVIE1.FOG"
+        },
+        {
+          "offset": 2709504,
+          "path": "FOG/TRAIN.FOG"
+        },
+        {
+          "offset": 3749888,
+          "path": "FOG/TRAIN2.FOG"
+        },
+        {
+          "offset": 3694592,
+          "path": "FOG/WRECK.FOG"
+        },
+        {
+          "offset": 155624,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1899152,
+          "path": "SCUS_944.51"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "title",
+      "offset": 0,
+      "path": "BIN/TITLE.OVL",
+      "size": 53032,
+      "stored_size": 53032
+    },
+    {
+      "code_end": "0xd0",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_airbase",
+      "offset": 3840000,
+      "path": "FOG/AIRBASE.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x2e8",
+      "code_start": "0x48",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_airbasex",
+      "offset": 2895872,
+      "path": "FOG/AIRBASEX.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0xfe8",
+      "code_start": "0x90",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3162112,
+          "path": "FOG/ARENA02.FOG"
+        },
+        {
+          "offset": 3387392,
+          "path": "FOG/ARENA03.FOG"
+        },
+        {
+          "offset": 3168256,
+          "path": "FOG/ARENA04.FOG"
+        },
+        {
+          "offset": 2136064,
+          "path": "FOG/ARENA05.FOG"
+        },
+        {
+          "offset": 2228224,
+          "path": "FOG/ARENA06.FOG"
+        },
+        {
+          "offset": 2136064,
+          "path": "FOG/ARENA07.FOG"
+        },
+        {
+          "offset": 2000896,
+          "path": "FOG/ARENA08.FOG"
+        },
+        {
+          "offset": 3244032,
+          "path": "FOG/ARENA09.FOG"
+        },
+        {
+          "offset": 2312192,
+          "path": "FOG/ARENA10.FOG"
+        },
+        {
+          "offset": 2172928,
+          "path": "FOG/ARENA11.FOG"
+        },
+        {
+          "offset": 2240512,
+          "path": "FOG/ARENA12.FOG"
+        },
+        {
+          "offset": 2404352,
+          "path": "FOG/ARENA13.FOG"
+        },
+        {
+          "offset": 3225600,
+          "path": "FOG/ARENA14.FOG"
+        },
+        {
+          "offset": 2123776,
+          "path": "FOG/ARENA15.FOG"
+        },
+        {
+          "offset": 2189312,
+          "path": "FOG/ARENA16.FOG"
+        },
+        {
+          "offset": 2058240,
+          "path": "FOG/ARENA17.FOG"
+        },
+        {
+          "offset": 1994752,
+          "path": "FOG/ARENA18.FOG"
+        },
+        {
+          "offset": 2242560,
+          "path": "FOG/ARENA19.FOG"
+        },
+        {
+          "offset": 2203648,
+          "path": "FOG/ARENA20.FOG"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_arena1",
+      "offset": 2207744,
+      "path": "FOG/ARENA01.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0xc0",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_bridge",
+      "offset": 3796992,
+      "path": "FOG/BRIDGE.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0xfa0",
+      "code_start": "0x38",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_colo",
+      "offset": 3895296,
+      "path": "FOG/COLO.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_gulag",
+      "offset": 2441216,
+      "path": "FOG/MOVIE1.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x18f0",
+      "code_start": "0x30",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_hway",
+      "offset": 4003840,
+      "path": "FOG/HWAY.FOG",
+      "size": 14336,
+      "stored_size": 14336
+    },
+    {
+      "code_end": "0x1bb0",
+      "code_start": "0x58",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_train",
+      "offset": 2772992,
+      "path": "FOG/TRAIN.FOG",
+      "size": 8192,
+      "stored_size": 8192
+    },
+    {
+      "code_end": "0x2b4",
+      "code_start": "0x38",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_train2",
+      "offset": 3811328,
+      "path": "FOG/TRAIN2.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x194",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_wreck",
+      "offset": 3758080,
+      "path": "FOG/WRECK.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    }
+  ],
+  "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4"
+}

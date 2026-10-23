@@ -1,0 +1,499 @@
+{
+  "format": 1,
+  "main_data": [
+    {
+      "offset": 736240,
+      "sha256": "bdfb33e0d3f4e8c0215bedaf6abb311e5e06f6e5fc5aeaf93470a58d20420c50",
+      "size": 169580
+    },
+    {
+      "offset": 1113028,
+      "sha256": "f27546ee6165cb4863feaf255b7279a67d1731a21af201d242a42c1a1f54b75a",
+      "size": 52
+    },
+    {
+      "offset": 1420296,
+      "sha256": "c02b53084bb7bf035f3bd458a72af1042ea24ead2d676211d1f2e46fbb229053",
+      "size": 155664
+    },
+    {
+      "offset": 1575960,
+      "sha256": "a1d813f03355b0ede910dee53ab3838c0c035e94fe8c7d7145b54ce012f696d2",
+      "size": 167564
+    },
+    {
+      "offset": 1743528,
+      "sha256": "b30e70134de6fcf783c1d74b2eda367b15f6fe451ba80acb608c8ec92ab59937",
+      "size": 208660
+    }
+  ],
+  "modules": [
+    {
+      "code_end": "0xfef8",
+      "code_start": "0x560",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3848192,
+          "path": "FOG/CHINBOSS.FOG"
+        },
+        {
+          "offset": 4395008,
+          "path": "FOG/DARKMUSE.FOG"
+        },
+        {
+          "offset": 4018176,
+          "path": "FOG/DISCO.FOG"
+        },
+        {
+          "offset": 3696640,
+          "path": "FOG/GARAGE.FOG"
+        },
+        {
+          "offset": 4108288,
+          "path": "FOG/GULAG.FOG"
+        },
+        {
+          "offset": 4190208,
+          "path": "FOG/GULAG2.FOG"
+        },
+        {
+          "offset": 4487168,
+          "path": "FOG/LABS1.FOG"
+        },
+        {
+          "offset": 4495360,
+          "path": "FOG/LABS2.FOG"
+        },
+        {
+          "offset": 4192256,
+          "path": "FOG/MOSCOW.FOG"
+        },
+        {
+          "offset": 4306944,
+          "path": "FOG/MOSCOW2.FOG"
+        },
+        {
+          "offset": 3416064,
+          "path": "FOG/MOSCOW3.FOG"
+        },
+        {
+          "offset": 2463744,
+          "path": "FOG/MOVIE2.FOG"
+        },
+        {
+          "offset": 4200448,
+          "path": "FOG/SLUMS.FOG"
+        },
+        {
+          "offset": 4247552,
+          "path": "FOG/SLUMS2.FOG"
+        },
+        {
+          "offset": 13032,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1756560,
+          "path": "SCUS_944.92"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80158878",
+      "name": "init",
+      "offset": 0,
+      "path": "BIN/INIT.OVL",
+      "size": 72592,
+      "stored_size": 72592
+    },
+    {
+      "code_end": "0x8adc",
+      "code_start": "0x458",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3551232,
+          "path": "FOG/CHINBOSS.FOG"
+        },
+        {
+          "offset": 3995648,
+          "path": "FOG/DARKMUSE.FOG"
+        },
+        {
+          "offset": 3723264,
+          "path": "FOG/DISCO.FOG"
+        },
+        {
+          "offset": 3516416,
+          "path": "FOG/GARAGE.FOG"
+        },
+        {
+          "offset": 3823616,
+          "path": "FOG/GULAG.FOG"
+        },
+        {
+          "offset": 3887104,
+          "path": "FOG/GULAG2.FOG"
+        },
+        {
+          "offset": 4069376,
+          "path": "FOG/LABS1.FOG"
+        },
+        {
+          "offset": 4102144,
+          "path": "FOG/LABS2.FOG"
+        },
+        {
+          "offset": 3895296,
+          "path": "FOG/MOSCOW.FOG"
+        },
+        {
+          "offset": 4022272,
+          "path": "FOG/MOSCOW2.FOG"
+        },
+        {
+          "offset": 3137536,
+          "path": "FOG/MOSCOW3.FOG"
+        },
+        {
+          "offset": 2340864,
+          "path": "FOG/MOVIE2.FOG"
+        },
+        {
+          "offset": 3885056,
+          "path": "FOG/SLUMS.FOG"
+        },
+        {
+          "offset": 3936256,
+          "path": "FOG/SLUMS2.FOG"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80142150",
+      "name": "menu",
+      "offset": 0,
+      "path": "BIN/MENU.OVL",
+      "size": 38240,
+      "stored_size": 38240
+    },
+    {
+      "code_end": "0x457c",
+      "code_start": "0x340",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3526656,
+          "path": "FOG/CHINBOSS.FOG"
+        },
+        {
+          "offset": 3971072,
+          "path": "FOG/DARKMUSE.FOG"
+        },
+        {
+          "offset": 3698688,
+          "path": "FOG/DISCO.FOG"
+        },
+        {
+          "offset": 3491840,
+          "path": "FOG/GARAGE.FOG"
+        },
+        {
+          "offset": 3799040,
+          "path": "FOG/GULAG.FOG"
+        },
+        {
+          "offset": 3862528,
+          "path": "FOG/GULAG2.FOG"
+        },
+        {
+          "offset": 4044800,
+          "path": "FOG/LABS1.FOG"
+        },
+        {
+          "offset": 4077568,
+          "path": "FOG/LABS2.FOG"
+        },
+        {
+          "offset": 3870720,
+          "path": "FOG/MOSCOW.FOG"
+        },
+        {
+          "offset": 3997696,
+          "path": "FOG/MOSCOW2.FOG"
+        },
+        {
+          "offset": 3112960,
+          "path": "FOG/MOSCOW3.FOG"
+        },
+        {
+          "offset": 2316288,
+          "path": "FOG/MOVIE2.FOG"
+        },
+        {
+          "offset": 3860480,
+          "path": "FOG/SLUMS.FOG"
+        },
+        {
+          "offset": 3911680,
+          "path": "FOG/SLUMS2.FOG"
+        },
+        {
+          "offset": 85624,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1829152,
+          "path": "SCUS_944.92"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x80142150",
+      "name": "movie",
+      "offset": 0,
+      "path": "BIN/MOVIE.OVL",
+      "size": 23024,
+      "stored_size": 23024
+    },
+    {
+      "code_end": "0xac04",
+      "code_start": "0x7a0",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 3590144,
+          "path": "FOG/CHINBOSS.FOG"
+        },
+        {
+          "offset": 4034560,
+          "path": "FOG/DARKMUSE.FOG"
+        },
+        {
+          "offset": 3762176,
+          "path": "FOG/DISCO.FOG"
+        },
+        {
+          "offset": 3555328,
+          "path": "FOG/GARAGE.FOG"
+        },
+        {
+          "offset": 3862528,
+          "path": "FOG/GULAG.FOG"
+        },
+        {
+          "offset": 3926016,
+          "path": "FOG/GULAG2.FOG"
+        },
+        {
+          "offset": 4108288,
+          "path": "FOG/LABS1.FOG"
+        },
+        {
+          "offset": 4141056,
+          "path": "FOG/LABS2.FOG"
+        },
+        {
+          "offset": 3934208,
+          "path": "FOG/MOSCOW.FOG"
+        },
+        {
+          "offset": 4061184,
+          "path": "FOG/MOSCOW2.FOG"
+        },
+        {
+          "offset": 3176448,
+          "path": "FOG/MOSCOW3.FOG"
+        },
+        {
+          "offset": 2379776,
+          "path": "FOG/MOVIE2.FOG"
+        },
+        {
+          "offset": 3923968,
+          "path": "FOG/SLUMS.FOG"
+        },
+        {
+          "offset": 3975168,
+          "path": "FOG/SLUMS2.FOG"
+        },
+        {
+          "offset": 155624,
+          "path": "XLOAD.HOG"
+        },
+        {
+          "offset": 1899152,
+          "path": "SCUS_944.92"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "title",
+      "offset": 0,
+      "path": "BIN/TITLE.OVL",
+      "size": 53032,
+      "stored_size": 53032
+    },
+    {
+      "code_end": "0xbc",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_chinboss",
+      "offset": 3667968,
+      "path": "FOG/CHINBOSS.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_darkmuse",
+      "offset": 4112384,
+      "path": "FOG/DARKMUSE.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x1004",
+      "code_start": "0x58",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_disco",
+      "offset": 3840000,
+      "path": "FOG/DISCO.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0xfb0",
+      "code_start": "0x40",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_garage",
+      "offset": 3614720,
+      "path": "FOG/GARAGE.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "copies": [
+        {
+          "offset": 2441216,
+          "path": "FOG/MOVIE2.FOG"
+        }
+      ],
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_gulag",
+      "offset": 3936256,
+      "path": "FOG/GULAG.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_gulag2",
+      "offset": 4016128,
+      "path": "FOG/GULAG2.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x258",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_labs1",
+      "offset": 4206592,
+      "path": "FOG/LABS1.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x30",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_labs2",
+      "offset": 4220928,
+      "path": "FOG/LABS2.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0xcc",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_moscow",
+      "offset": 4014080,
+      "path": "FOG/MOSCOW.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x50",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_moscow2",
+      "offset": 4126720,
+      "path": "FOG/MOSCOW2.FOG",
+      "size": 4096,
+      "stored_size": 4096
+    },
+    {
+      "code_end": "0x72c",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_moscow3",
+      "offset": 3233792,
+      "path": "FOG/MOSCOW3.FOG",
+      "size": 6144,
+      "stored_size": 6144
+    },
+    {
+      "code_end": "0x308",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_slums",
+      "offset": 4007936,
+      "path": "FOG/SLUMS.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    },
+    {
+      "code_end": "0x4f8",
+      "code_start": "0x28",
+      "codec": "raw",
+      "gp": "0x8011ec64",
+      "load": "0x8014b950",
+      "name": "level_slums2",
+      "offset": 4075520,
+      "path": "FOG/SLUMS2.FOG",
+      "size": 2048,
+      "stored_size": 2048
+    }
+  ],
+  "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a"
+}
