@@ -46,6 +46,14 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
   increased by 186; unresolved functions retain assembly.
 - Export helper upgrades with backups, preserving edited sources and assets.
   Commands and limits are in the [resource guide](../psx-resources.md).
+- Fixed-size raw GPU upload edits for all six previously guarded HBD members on
+  each supplied DQVII disc, with loader-constructor execution and sector parity
+  checks. Unknown type/geometry combinations remain guarded.
+- Standard audio Q position/catalogue/ISRC retiming during CHD data-track growth,
+  preserving other subchannels, audio and stored/virtual pregaps and postgaps.
+  MAME verifies/extracts all three original timing fixtures.
+- Memory-load/store recovery templates, explicit zero-filled assembly fragments,
+  reduced draft overhead and continued full private retail recovery passes.
 
 ## Validation boundaries
 
@@ -54,11 +62,11 @@ Private retail inputs broaden coverage; they do not qualify every game's loader.
 Raw overlay placement still needs review. Proprietary archives/codecs and
 unknown relocation tables need specific loader facts/adapters; interleaved or
 multi-extent ISO layouts, missing tracks and new loader
-relocation tables remain outside this workflow. Moving audio with opaque
-nonzero subcode and protected mastering require specific adapters. Source growth
+relocation tables remain outside this workflow. Nonstandard/protected subcode
+and unknown mastering require specific adapters. Source growth
 requires explicit loaded-space review; zero bytes alone do not establish nonuse.
-Six DQVII HBD members per disc retain unknown flags; block growth cannot change
-absolute block positions. Most recognized executable functions remain assembly.
+HBD block growth cannot change absolute block positions. Most recognized
+executable functions remain assembly while source recovery continues.
 
 No additional PSY-Q compiler or ASPSX version is registered. The pinned compiler
 ports, binutils, maspsx, splat and m2c remain the tools to reuse. BIOS/firmware is

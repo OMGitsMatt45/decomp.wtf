@@ -54,12 +54,26 @@ def imported(tmp_path, recover=False):
     return net, slugs, originals
 
 
-def test_one_project_builds_both_discs_and_shares_verified_cpp(tmp_path):
+@pytest.mark.parametrize("custom_path", [False, True], ids=["default-export", "separate-export"])
+def test_one_project_builds_both_discs_and_shares_verified_cpp(tmp_path, custom_path):
     net, slugs, originals = imported(tmp_path, recover=True)
     overview = net.set_psx_disc_set(slugs[0], slugs, "Original two-disc game")
     assert overview["disc_set"]["title"] == "Original two-disc game"
     assert net.overview(slugs[1])["disc_set"] == overview["disc_set"]
-    result = net.export_rom(slugs[1], log=lambda *_: None)
+    if custom_path:
+        from decompnet.rom.psx_set import export_set
+        old = Path(net.project_row(slugs[0])["root"]) / "source-set"
+        old.mkdir()
+        (old / "edited.cpp").write_text("// keep previous work\n")
+        for protected in (old.parent, old.parent.parent):
+            with pytest.raises(NetworkError, match="overlaps"):
+                export_set(net, slugs[1], protected, log=lambda *_: None)
+        destination = tmp_path / "separate combined project"
+        result = export_set(net, slugs[1], destination, log=lambda *_: None)
+        assert Path(result["path"]) == destination
+        assert (old / "edited.cpp").read_text() == "// keep previous work\n"
+    else:
+        result = net.export_rom(slugs[1], log=lambda *_: None)
     assert result["identical"] and result["scope"] == "disc-set", result
     assert result["matched"] == 2 and result["shared_sources"] == 1
     tree = Path(result["path"])
@@ -69,7 +83,7 @@ def test_one_project_builds_both_discs_and_shares_verified_cpp(tmp_path):
         assert zipped.testzip() is None
         assert len([name for name in zipped.namelist() if "/shared/src/" in name]) == 1
         for disc, original in zip(manifest["discs"], originals):
-            assert zipped.read("source-set/" + disc["output"]) == original
+            assert zipped.read(tree.name + "/" + disc["output"]) == original
         assert not any("/discs/disc-1/build/" in name for name in zipped.namelist())
     assert len(list((tree / "shared/src").glob("*.cpp"))) == 1
     for disc, original in zip(manifest["discs"], originals):

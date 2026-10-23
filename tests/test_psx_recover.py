@@ -55,12 +55,13 @@ def test_console_recovery_judges_real_cpp_and_exports_exact_disc(tmp_path, capsy
 
 
 @pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools and m2c")
-def test_console_machine_drafts_recover_a_memory_leaf_beyond_integer_templates(tmp_path, capsys):
+def test_console_machine_drafts_recover_a_branching_memory_function_beyond_templates(tmp_path, capsys):
     cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
         "toolchain": "gcc-2.7.2-psx", "language": "c", "sandbox": "none"}})
-    obj = compiler.compile_source(cfg, "", "int memory_leaf(int *p) { return p[2]; }")
+    obj = compiler.compile_source(cfg, "", "int memory_leaf(int *p) { int value = 0; if (p) value = p[2]; return value; }")
     assert obj.ok, obj.log
     function = elfobj.extract_function(obj.obj, "memory_leaf")
+    assert not function.relocs
     assert function and not leaf_candidates(function.code, "memory_leaf")
     exe = bytearray(_resident_exe())
     struct.pack_into("<I", exe, 0x808, 0x0C000000 | (0x80010500 >> 2 & 0x3FFFFFF))
@@ -74,6 +75,34 @@ def test_console_machine_drafts_recover_a_memory_leaf_beyond_integer_templates(t
     assert main(["--db", str(tmp_path / "app.db"), "psx", "recover", slug, "--workspace", str(tmp_path / "projects"), "--max-insns", "12"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["m2c_available"] and fn["name"] in result["matched"]
+
+
+@pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+@pytest.mark.parametrize("body", ["void memory_leaf(int p, int v) { *(int *)(p + 4) = v; }",
+    "int memory_leaf(int p) { return *(signed char *)(p + 3); }",
+    "int memory_leaf(int p, int v) { int old = *(int *)p; *(int *)p = v; return old; }"],
+    ids=["store", "signed-load", "load-before-store"])
+def test_console_memory_templates_preserve_side_effects_and_load_order(tmp_path, capsys, toolchain, body):
+    cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+        "toolchain": toolchain, "language": "c++", "sandbox": "none"}})
+    obj = compiler.compile_source(cfg, "", body)
+    assert obj.ok, obj.log
+    code = elfobj.extract_function(obj.obj, "memory_leaf").code
+    assert leaf_candidates(code, "memory_leaf")
+    exe = bytearray(_resident_exe())
+    struct.pack_into("<I", exe, 0x808, 0x0C000000 | (0x80010500 >> 2 & 0x3FFFFFF))
+    exe[0xD00:0xD00 + len(code)] = code
+    original = _iso({"SYSTEM.CNF": b"BOOT=cdrom:\\GAME.EXE;1\n", "GAME.EXE": exe})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, toolchain=toolchain, confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda c: c["compiler"].update(sandbox="none"))
+    row = net.project_row(slug)
+    fn = net.store.one("SELECT name FROM functions WHERE project_id=? AND vram=?", row["id"], 0x80010500)
+    assert main(["--db", str(tmp_path / "app.db"), "psx", "recover", slug, "--workspace", str(tmp_path / "projects"), "--leaves-only", "--max-insns", "12"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert fn["name"] in result["matched"]
+    assert net.export_rom(slug, log=lambda *_: None)["identical"]
 
 
 @pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools and m2c")

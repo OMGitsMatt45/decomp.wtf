@@ -8,7 +8,7 @@ from ..network import NetworkError
 
 
 def leaf_candidates(code, name):
-    """Straight-line integer leaves only; m2c handles richer control flow later."""
+    """Straight-line integer/memory leaves; m2c handles richer control flow."""
     if len(code) % 4 or not 8 <= len(code) <= 128:
         return []
     words = struct.unpack(f"<{len(code) // 4}I", code)
@@ -28,7 +28,7 @@ def leaf_candidates(code, name):
         if a == "0" and operator in ("+", "|", "^"):
             return b
         return f"({a} {operator} {b})"
-    changed = False
+    changed, statements = False, []
     try:
         for index, word in enumerate(words):
             if not word or index == len(words) - 2:
@@ -37,7 +37,17 @@ def leaf_candidates(code, name):
             immediate = word & 65535
             signed = immediate - (65536 if immediate & 32768 else 0)
             target = rt
-            if opcode == 9:
+            if opcode in (32, 33, 35, 36, 37, 40, 41, 43):
+                address = f"((unsigned char *)({value(rs)}) + ({signed}))"
+                kind = {32: "signed char", 33: "short", 35: "int", 36: "unsigned char", 37: "unsigned short",
+                        40: "unsigned char", 41: "unsigned short", 43: "int"}[opcode]
+                location = f"*(({kind} *){address})"
+                if opcode in (40, 41, 43):
+                    statements.append(f"{location} = {value(rt)};")
+                    continue
+                expression = f"loaded{index}"
+                statements.append(f"int {expression} = {location};")
+            elif opcode == 9:
                 expression = binary(value(rs), "+", str(signed))
             elif opcode in (12, 13, 14):
                 expression = binary(value(rs), {12: "&", 13: "|", 14: "^"}[opcode], str(immediate))
@@ -69,12 +79,14 @@ def leaf_candidates(code, name):
                 return []
     except ValueError:
         return []
-    if not changed:
+    if not changed and not statements:
         return [f"void {name}(void) {{}}"]
-    if 2 not in registers:
+    if 2 not in registers and not statements:
         return []
     parameters = ", ".join(f"int a{i}" for i in range(max(used, default=-1) + 1)) or "void"
-    return [f"int {name}({parameters}) {{ return {registers[2]}; }}"]
+    returns = "int" if 2 in registers else "void"
+    body = " ".join(statements + ([f"return {registers[2]};"] if 2 in registers else []))
+    return [f"{returns} {name}({parameters}) {{ {body} }}"]
 
 
 def _profile_search(net, slug, agent, fn, machine_drafts):
@@ -144,10 +156,11 @@ def recover(net, slug, *, limit=0, max_insns=0, machine_drafts=True, search_prof
     from .. import seeds
     available = seeds.available()
     functions = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY n_insns,vram,id", project["id"])
-    eligible = [fn for fn in functions if not max_insns or fn["n_insns"] <= max_insns]
+    fragments = sum(not any(fn["target"]) for fn in functions)
+    eligible = [fn for fn in functions if any(fn["target"]) and (not max_insns or fn["n_insns"] <= max_insns)]
     agent, _ = net.local_agent("console-recovery")
     result = {"project": slug, "eligible": len(eligible), "tried": 0, "matched": [], "near": 0, "failed": 0,
-              "claimed": 0, "m2c_available": available, "interrupted": False, "profile_matches": {}}
+              "claimed": 0, "m2c_available": available, "interrupted": False, "profile_matches": {}, "assembly_fragments": fragments}
     started = time.monotonic()
     try:
         for fn in eligible:
@@ -167,7 +180,7 @@ def recover(net, slug, *, limit=0, max_insns=0, machine_drafts=True, search_prof
                         outcome = "match"
                         break
                 if outcome != "match" and machine_drafts and available:
-                    outcome = net._autopilot_one(agent, project, fn["id"])
+                    outcome = net._autopilot_one(agent, project, fn["id"], prepare_seed=False)
                 if outcome != "match" and search_profiles:
                     if selected := _profile_search(net, slug, agent, fn, machine_drafts):
                         result["profile_matches"][fn["name"]] = selected

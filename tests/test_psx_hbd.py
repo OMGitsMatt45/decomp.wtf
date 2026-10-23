@@ -94,6 +94,29 @@ def test_hbd_respects_raw_alignment_allocation_hints_and_unknown_flags():
         psx_hbd.decoded(read, item["members"][0])
 
 
+@pytest.mark.parametrize("height", [70, 32, 300])
+def test_gpu_upload_headers_keep_packed_rectangle_and_only_accept_same_length_edits(height):
+    x, y, width = 896, 0 if height != 32 else 208, 64 if height != 32 else 16
+    packed = x | y << 10 | width << 20 | (height >> 8) << 30
+    flags, data = height & 255, bytes((i * 7) % 256 for i in range(width * height * 2))
+    header = struct.pack("<IIIHH", len(data), len(data), packed, flags, 1)
+    sectors = (32 + len(data) + 2047) // 2048
+    original = (struct.pack("<4I", 1, sectors, len(data), 1) + header + data).ljust(sectors * 2048, b"\0")
+    read = lambda at, count: original[at:at + count]
+    member = psx_hbd.block(read, len(original), 0)["members"][0]
+    assert member["codec"] == "raw" and member["upload"] == {"x": x, "y": y, "width_words": width, "height": height}
+    assert psx_hbd.decoded(read, member) == data
+    replacement = bytes([data[0] ^ 1]) + data[1:]
+    result, _ = psx_hbd.replace(read, len(original), 0, {0: replacement})
+    assert result[:32] == original[:32] and result[32:32 + len(data)] == replacement
+    with pytest.raises(RomError, match="rectangle"):
+        psx_hbd.replace(read, len(original), 0, {0: data + b"1234"})
+    for invalid in (packed ^ (1 << 20), packed | 1023, packed | (511 << 10)):
+        assert psx_hbd.upload_rectangle(len(data), len(data), invalid, flags, 1) is None
+    assert psx_hbd.upload_rectangle(len(data), len(data), packed, flags | 256, 1) is None
+    assert psx_hbd.upload_rectangle(len(data), len(data) + 1, packed, flags, 1) is None
+
+
 def test_console_archive_inventory_and_extraction_do_not_need_compilers(tmp_path, capsys):
     packed, values = archive(1)
     image = _iso({"SYSTEM.CNF": b"BOOT=cdrom:\\GAME.EXE;1\n", "GAME.EXE": _resident_exe(), "DATA.HBD": packed})

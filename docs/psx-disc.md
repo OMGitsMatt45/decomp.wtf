@@ -123,8 +123,9 @@ updates map CRCs, hunk CRCs and raw/metadata SHA-1 hashes. Every output frame is
 read back and compared before publication. Combined builds verify logical
 geometry and decoded hashes while allowing the compressed container size to
 change. Explicit resource growth can also extend a supported first data track,
-update its metadata and shift audio with zero subcode; opaque nonzero subcode
-requires mastering review. Compression can produce a larger CHD than the original. No additional
+update its metadata and retime validated interleaved audio Q, including catalogue
+and ISRC timestamps. P/R-W bits and audio stay unchanged. Unknown/protected
+subcode requires mastering review. Compression can produce a larger CHD than the original. No additional
 tool or download is required. Existing matching builds retain the exact original
 compressed container.
 
@@ -260,13 +261,16 @@ function-level compiler/link checks; the earlier retail ZIPs were not replaced.
 Both DQVII HBD archives now parse 3,729 blocks and 24,716 members each, with all
 5,342 standard compressed members independently decoded. Member edits on both
 discs changed only the intended two sectors and passed independent parity
-checks. Six members per disc retain unknown flags and stay guarded. Most
-executable functions still require further source recovery.
+checks. The six formerly guarded type 1 members per disc are now recognized as
+raw GPU uploads. Their packed rectangles were verified by isolated execution of
+the original loader constructor; fixed-size edits pass independent parity checks
+and leave all other sectors identical. Broader source recovery passes continue;
+most executable functions still require further source recovery.
 
 ```sh
 uv sync --locked --group dev
 uv run --no-sync python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py tests/test_psx_assets.py tests/test_psx_hbd.py tests/test_psx_recover.py tests/test_psx_relocation_authoring.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py tests/test_psx_assets.py tests/test_psx_hbd.py tests/test_psx_subcode.py tests/test_psx_recover.py tests/test_psx_relocation_authoring.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 

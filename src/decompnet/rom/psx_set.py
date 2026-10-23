@@ -144,7 +144,15 @@ def export_set(net, slug, out=None, log=print):
     _, cfg = member(net, slug)
     meta = cfg["psx_disc_set"]
     rows = members(net, meta)
-    out = Path(rows[0][0]["root"]) / "source-set"
+    out = Path(out) if out is not None else Path(rows[0][0]["root"]) / "source-set"
+    for proj, cfg in rows:
+        work, disc = Path(proj["root"]), cfg["psx_disc"]
+        media = disc.get("media", {})
+        inputs = [work, work / cfg["rom"]["file"], work / disc["file"]]
+        inputs += [work / media["directory"] / item["name"] for item in media.get("companions", [])]
+        if any(out.resolve() == pin.resolve() or out.resolve() in pin.resolve().parents or
+               out.with_suffix(".zip").resolve() == pin.resolve() for pin in inputs):
+            raise NetworkError("combined export destination overlaps an original project or retained disc input")
     out.with_suffix(".zip").unlink(missing_ok=True)
     if out.exists():
         for child in out.iterdir():

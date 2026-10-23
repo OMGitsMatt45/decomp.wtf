@@ -454,7 +454,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "Use `decompnet psx replace PATH --file ISO/PATH --input EDITED_FILE` for resources, "
                        "adding `--relocate` after reviewing file addressing if growth exceeds the original allocation. "
                        "The build updates ISO extents, volume bounds, CUE audio indices and supported CHD track metadata. "
-                       "Moved audio with opaque nonzero subcode requires mastering review. "
+                       "Ordinary audio Q packets are validated and retimed; protected or unknown subcode requires mastering review. "
                        "`decompnet psx archive` inspects/extracts Heartbeat HBD members and stages bounded edits. "
                        "Reviewed zlib/gzip/HBD-LZSS modules recompress within declared capacity; additive "
                        "R_MIPS_32/R_MIPS_26 loader fixups can change only with an explicit reviewed base. "

@@ -1567,7 +1567,7 @@ class RomNetwork(Network):
             from .gbengine import export_rom as export
         if self.cfg(proj).get("psx_disc_set"):
             from ..rom.psx_set import export_set as export
-        folder = "source-shiftable" if format == "shiftable" else "source"
+        folder = "source-set" if self.cfg(proj).get("psx_disc_set") else "source-shiftable" if format == "shiftable" else "source"
         res = export(self, slug, Path(proj["root"]) / folder, log=log,
                      **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
@@ -1868,7 +1868,7 @@ class RomNetwork(Network):
             with self.store.tx() as db:
                 db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))
 
-    def _autopilot_one(self, agent, proj, fid: int) -> str:
+    def _autopilot_one(self, agent, proj, fid: int, *, prepare_seed=True) -> str:
         """match | near | far | fail | skip, for one function's draft."""
         now = time.time()
         with self.store.tx() as db:
@@ -1878,7 +1878,8 @@ class RomNetwork(Network):
                 return "skip"
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fid, agent.id, now, now + 300))
         try:
-            self._seed_for(fn, proj)  # the readable draft, for the agents that come after
+            if prepare_seed:
+                self._seed_for(fn, proj)  # the readable draft, for the agents that come after
             ctx = self._context(proj["id"], fn["unit"])
             data_asm = "\n".join(self._jtbl_asm(proj, fn)) if "jtbl_" in (fn["asm"] or "") else None
             selected = function_config(self.cfg(proj), fn["name"])

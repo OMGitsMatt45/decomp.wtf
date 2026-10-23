@@ -41,7 +41,7 @@ def add_parser(subparsers):
     recover.add_argument("--workspace", required=True, type=Path)
     recover.add_argument("--limit", type=int, default=0, help="maximum attempted functions; 0 means all")
     recover.add_argument("--max-insns", type=int, default=0)
-    recover.add_argument("--leaves-only", action="store_true", help="try deterministic integer leaves without m2c")
+    recover.add_argument("--leaves-only", action="store_true", help="try deterministic integer/memory leaves without m2c")
     recover.add_argument("--search-profiles", action="store_true", help="try installed PS1 GCC versions at O0/O1/O2; save only exact matching profiles")
     extract = sub.add_parser("extract", help="extract a resource from an exported disc project")
     replace = sub.add_parser("replace", help="stage an edited resource for the next mod build")

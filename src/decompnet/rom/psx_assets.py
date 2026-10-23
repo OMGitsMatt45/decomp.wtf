@@ -363,6 +363,12 @@ def apply(root, meta, output):
         inserted = next_lba - cut
         if chd_growth:
             inserted = (next_lba + 3) // 4 * 4 - cut
+        tail_output_sha = tail_sha
+        if chd_growth:
+            from .psx_chd_tracks import retimed_tail_digest
+            expected_size, tail_output_sha = retimed_tail_digest(stream, next_lba)
+            if expected_size != tail_size:
+                raise RomError("retimed CHD audio size differs")
         if inserted:
             pvd = disc.sector(16)
             old_blocks = int.from_bytes(pvd[80:84], "little")
@@ -420,6 +426,7 @@ def apply(root, meta, output):
         psx_media.inside(media_root, cue[0]["name"]).write_bytes(data)
     return {"format": 1, "original_sha256": layout["sha256"], "insert_lba": cut, "insert_frames": inserted,
             "data_frames": next_lba, "tail_size": tail_size, "tail_sha256": tail_sha,
+            "tail_output_sha256": tail_output_sha,
             **({"chd": proof} if media.get("kind") == "chd" else {}),
             "output_size": output.stat().st_size, "files": changed, "archives": archive_changes, "references": references}
 
@@ -431,6 +438,7 @@ def verify(root, meta, output, report):
     media = layout.get("media", {})
     original = root / meta["disc"]["image"]
     cue = _cue(root, meta)
+    expected_tail = report["tail_size"], report["tail_sha256"]
     with opened(original, layout) as (_, stream):
         stream.seek(0, 2)
         cut = stream.tell() // layout["sector_size"]
@@ -447,14 +455,17 @@ def verify(root, meta, output, report):
                 elif psx_media.record(copied, item["name"]) != item:
                     raise RomError("modified disc lost an original companion audio track")
         if media.get("kind") == "chd" and report["insert_frames"]:
-            from .psx_chd_tracks import tracks
+            from .psx_chd_tracks import tracks, retimed_tail_digest
             cut = tracks(stream)[0]["padded"]
+            expected_tail = retimed_tail_digest(stream, report["data_frames"])
         if cut != report["insert_lba"] or _tail_hash(stream, cut * layout["sector_size"]) != (report["tail_size"], report["tail_sha256"]):
             raise RomError("resource insertion boundary differs from its original track layout")
+        if report.get("tail_output_sha256", report["tail_sha256"]) != expected_tail[1]:
+            raise RomError("retimed audio hash differs from its original track proof")
     with opened(output, layout) as (disc, stream):
         if (disc.size, disc.skip) != (layout["sector_size"], layout["skip"]):
             raise RomError("resource authoring changed the disc sector format")
-        if _tail_hash(stream, (report["insert_lba"] + report["insert_frames"]) * disc.size) != (report["tail_size"], report["tail_sha256"]):
+        if _tail_hash(stream, (report["insert_lba"] + report["insert_frames"]) * disc.size) != expected_tail:
             raise RomError("resource authoring changed retained audio or trailing track bytes")
         stream.seek(0, 2)
         if media.get("kind") != "chd" and output.stat().st_size != layout["original_size"] + report["insert_frames"] * disc.size:

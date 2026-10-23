@@ -50,7 +50,13 @@
     "Explicit additive R_MIPS_32/R_MIPS_26 inverse authoring at existing sites in raw, zlib and HBD-LZSS modules",
     "Agent-free console C/C++ recovery with full exact judge, claims, interruption/resumption and installed compiler-profile search; failed probes retain settings",
     "Copied export-helper upgrades with backups, preserved source/assets and actionable rejection of outdated asset build helpers",
-    "Pinned original protection against equal output paths and predictable temporary-name collisions"
+    "Pinned original protection against equal output paths and predictable temporary-name collisions",
+    "Type 1 Heartbeat raw GPU uploads: packed rectangle bounds/byte counts, high height bits, fixed-size edits and preserved metadata",
+    "Validated interleaved audio Q ADR 1 position, ADR 2 catalogue and ADR 3 ISRC retiming, preserving PCM and all P/R-W bits",
+    "Q CRC/BCD/control/track/index/relative/absolute-time checks, missing-Q preservation, stored/virtual pregaps and postgaps, CD time distinct from CHD alignment padding",
+    "Independent MAME verify/extract of three grown Q-bearing CHDs and independent bitwise Q CRC validation",
+    "Memory-leaf C/C++ recovery with load/store ordering, all-zero assembly entries retained without consuming attempt limits, and one m2c draft per console attempt",
+    "Combined exports honor a separate destination and reject project/input overlap, preserving previous edited source"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -99,8 +105,8 @@
     "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
     "Additional PSY-Q compiler or Sony ASPSX versions",
     "Retail playthroughs and disc-swap gameplay",
-    "Absent-track reconstruction, unknown mastering/protection, and moving opaque nonzero audio subcode without a retiming adapter",
-    "New loader relocation sites/tables, additive HI16/LO16 authoring, unknown HBD flags and block-allocation changes requiring external address-table updates",
+    "Absent-track reconstruction, unknown mastering/protection, and nonstandard/protected subcode or unreviewed leading data pregaps",
+    "New loader relocation sites/tables, additive HI16/LO16 authoring, unrecognized HBD layouts and block-allocation changes requiring external address-table updates",
     "Runtime correctness of newly declared retail mod reserves or resource-loader facts; whole-game mod playthroughs"
   ],
   "previous_native_qualification": {
@@ -313,8 +319,8 @@
       "qualification": "Original ISO and Mode 2 raw fixtures; two exclusive compressed overlays with C++ growth."
     },
     "chd": {
-      "scope": "Standalone and combined CHD v5 projects; fixed-geometry source mods and reviewed first-data-track resource growth with CHT2 metadata, four-frame alignment and zero moved audio subcode.",
-      "audio_and_subcode": "Lossless 16-bit stereo CD FLAC and all 96 raw subcode bytes; omitted sector parity restored without changing original EDC.",
+      "scope": "Standalone/combined CHD v5 source/resource builds; reviewed first-track growth can retime validated ordinary interleaved audio Q with CHT2 track geometry.",
+      "audio_and_subcode": "PCM, P and R-W remain unchanged. Validated Q absolute/sector timestamps and CRCs are updated; absent Q stays absent. Unknown/protected packets remain guarded.",
       "metadata": "Original metadata tags, flags, ordering and other payloads retained; reviewed growth changes first-track FRAMES while retaining audio/pregaps.",
       "output_codec": "Standard raw-deflate zlib, with raw hunks for incompressible content; may be larger than the original.",
       "verification": "Every output decoded hunk compared to intended original/patched/inserted frames before publication; hunk/map CRC16, raw/metadata SHA-1, aggregate decoded SHA-256 and expected track geometry verified.",
@@ -581,11 +587,13 @@
         "standard_lzss_members_independently_verified": 5342,
         "raw_members_verified": 19368,
         "raw_allocation_hints": 842,
-        "guarded_flags": {
+        "errors": 0,
+        "previously_guarded_height_values": {
           "70": 3,
           "32": 3
         },
-        "errors": 0
+        "gpu_upload_members_newly_verified": 6,
+        "unknown_codecs_remaining": 0
       },
       {
         "archive": "HBD1PS1D.W72",
@@ -595,11 +603,13 @@
         "standard_lzss_members_independently_verified": 5342,
         "raw_members_verified": 19368,
         "raw_allocation_hints": 842,
-        "guarded_flags": {
+        "errors": 0,
+        "previously_guarded_height_values": {
           "70": 3,
           "32": 3
         },
-        "errors": 0
+        "gpu_upload_members_newly_verified": 6,
+        "unknown_codecs_remaining": 0
       }
     ],
     "member_edits": [
@@ -712,5 +722,94 @@
   "independent_iso_qualification": {
     "tool": "pycdlib 1.22.0 (locked dev dependency, installed automatically by dev sync)",
     "scope": "Original ISO and Mode 2 raw fixtures generated/read independently; nested grown-file bytes, directory extent and volume bounds verified."
+  },
+  "guarded_case_validation": {
+    "scope": "Previously guarded storage cases; no whole-game runtime qualification.",
+    "retail_hbd": [
+      {
+        "disc": 1,
+        "gpu_upload_members": 6,
+        "unknown_codecs_remaining": 0,
+        "constructor_executed": true,
+        "constructor_address": "0x80076ad8",
+        "rectangle_unpack_address": "0x80076c78",
+        "allocator_stubbed": true,
+        "changed_lbas": [
+          146686,
+          146687,
+          146991,
+          146992,
+          147331
+        ],
+        "all_other_sectors_identical": true,
+        "independent_parity_verified": true,
+        "full_game_runtime_tested": false
+      },
+      {
+        "disc": 2,
+        "gpu_upload_members": 6,
+        "unknown_codecs_remaining": 0,
+        "constructor_executed": true,
+        "constructor_address": "0x80076ad8",
+        "rectangle_unpack_address": "0x80076c78",
+        "allocator_stubbed": true,
+        "changed_lbas": [
+          146686,
+          146687,
+          146991,
+          146992,
+          147331
+        ],
+        "all_other_sectors_identical": true,
+        "independent_parity_verified": true,
+        "full_game_runtime_tested": false
+      }
+    ],
+    "original_chd_q_fixtures": [
+      {
+        "pregap_case": "virtual",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "4ac1b1ba50744497bb12c291bbf2ec5d0911d4fd420803b918732f5c77f66af1"
+      },
+      {
+        "pregap_case": "stored",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "31bf90d59ec065fee6531cf02c89a90205572c5bda4fa1d68fce3ab91689eed9"
+      },
+      {
+        "pregap_case": "postgap",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "9f911f555c5e05245b3b75bdf3e0cca297bca189be9679488247093ca99b7ae8"
+      }
+    ],
+    "new_source_recovery": "Full private passes are running; exact matches remain in the private databases. Final totals and complete exports will be recorded separately.",
+    "pending_native_extension": {
+      "status": "awaiting native qualification",
+      "required_tests": 224,
+      "local_full_run_passed": 223,
+      "local_full_run_skipped": 0,
+      "followup": "Two export-destination cases and all 18 Q cases passed after final path/absent-Q checks; native runs cover the full final test set."
+    }
   }
 }

@@ -65,8 +65,13 @@ CUE growth preserves data/audio pregaps, shifts audio INDEX values in a shared
 BIN and retains the audio bytes. Separate audio files remain unchanged. CHD v5
 growth supports ordered CHT2 metadata with a first MODE1_RAW/MODE2_RAW track and
 optional audio tracks. It updates the first track length, keeps four-frame
-alignment and retains other metadata and audio. Moving opaque nonzero audio
-subcode is refused because absolute Q timing needs a mastering adapter. Original
+alignment and retains other metadata and audio. Ordinary interleaved audio Q
+packets are validated against track metadata and retimed, including position,
+catalogue and ISRC packets. Audio samples and every P/R-W bit stay unchanged.
+Stored/virtual audio pregaps and postgaps retain their timing; CHD alignment
+padding is excluded from CD time. Invalid CRCs, inconsistent positions, unknown
+packet/encoding forms and protected mastering remain guarded. Nonzero Q with a
+leading data-track pregap needs a dedicated layout review. Original
 CHD track padding must be zero before it can become ordinary data sectors.
 Nonstandard EDC/ECC also requires mastering review. Fixed-geometry CHD edits
 continue to retain audio and subcode verbatim.
@@ -98,9 +103,14 @@ Raw members and the standard `0x500` LZSS form support decoded extraction and
 replacement. The decoder handles a zero-filled 4,096-byte ring, bounded output
 and zero alignment/terminators. Raw allocation hints larger than stored bytes
 are retained without inventing missing data; edits to those members must keep
-the original stored length. Unknown flags stay guarded: `extract --stored`
-can retrieve their exact bytes for investigation. Flags `0x46` and `0x20`
-were observed on six members per supplied DQVII disc and are not decoded.
+the original stored length. Type 1 GPU uploads also support raw extraction and
+fixed-size replacement. Their header packs x/y/width into the destination word
+and height into its top bits plus the low byte at +12. That byte is not always
+a compression flag: `0x46` and `0x20` are heights on the supplied DQVII members.
+The parser checks the VRAM rectangle and exact byte count; authoring keeps the
+rectangle and header intact. All six formerly guarded members per supplied
+DQVII disc now pass these checks. Other unknown layouts stay guarded;
+`extract --stored` retrieves their original bytes for investigation.
 
 Repacking retains all other members, flags, types, unknown words, disc tags and
 absolute block positions. It can consume verified zero padding within a block's
@@ -134,12 +144,20 @@ decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --l
 decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --limit 200 --search-profiles
 ```
 
-Recovery tries deterministic integer-leaf source candidates and m2c drafts,
+Recovery tries deterministic integer/memory-leaf source candidates and m2c drafts,
 then accepts only exact compiler and full-link matches. It uses the project's
 C/C++ language and original PS1 compiler settings. `--leaves-only` omits m2c;
 `--search-profiles` also probes installed GCC 2.7.2/2.8.1 at O0/O1/O2 and saves
 compiler settings only after an exact match. Failed probes keep existing
 settings. No inline-assembly replacement is saved as recovered C/C++.
+
+Omit `--limit` and `--max-insns` for a full pass through remaining functions.
+The templates model aligned loads, stores and preserved load-before-store
+values. Zero-filled entries are reported as `assembly_fragments` and retained
+as assembly; they do not consume the attempt limit or become invented C stubs.
+Console recovery generates one m2c draft per attempt rather than a second
+browser preview draft. A full pass is a set of verified candidates, not a claim
+that every binary function has been recovered.
 
 Progress goes to stderr and the final JSON reports accepted functions, failed
 attempts, profile changes and remaining work. Reruns skip matched functions;
@@ -158,9 +176,20 @@ Primary Heartbeat format research:
 
 The private DQVII validation compared all 5,342 standard compressed members per
 disc against the independent DQIV_PSX_TOOLS decoder, then checked actual member
-edits on both discs with independent sector parity tests. Those checks qualify
+edits on both discs with independent sector parity tests. The six raw GPU
+uploads on each disc additionally pass isolated execution of the original
+retail header constructor, with its allocator stubbed, reproducing the expected
+rectangles and zero encoding byte. All twelve upload edits preserve unrelated
+sectors and pass independent parity checks. Those checks qualify
 the measured storage format, not all Heartbeat games or runtime semantics.
 Original fixtures additionally use pycdlib to read resized ISO files and MAME
 chdman to verify/extract grown CHDs. The [validation record](psx-validation.json)
 distinguishes native regression tests, private structural checks and prior
 complete retail builds. No retail bytes or derived source are published.
+
+Q packet layouts and CRC behavior follow the
+[PSX-SPX subchannel specification](https://github.com/psx-spx/psx-spx.github.io/blob/master/docs/cdromformat.md#cdrom-subchannels).
+The CD timeline follows
+[MAME's CHD track/pregap mapping](https://github.com/mamedev/mame/blob/master/src/lib/util/cdrom.cpp).
+MAME also independently verifies/extracts authored fixtures containing retimed
+position, catalogue and ISRC packets with stored/virtual pregaps and postgaps.

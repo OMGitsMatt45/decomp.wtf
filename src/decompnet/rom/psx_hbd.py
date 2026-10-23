@@ -11,6 +11,21 @@ from .n64 import RomError
 from . import psx_lzss
 
 
+def upload_rectangle(stored, decoded, destination, flags, kind):
+    """Type 1 packs x/y/width in +8, height across +12 and +8's top bits.
+
+    DQVII's loader at 0x80076C78 unpacks these into a GPU upload RECT.
+    The high byte at +13 is a separate encoding field and must be zero here.
+    """
+    if kind != 1 or flags >> 8:
+        return None
+    x, y, width = destination & 1023, destination >> 10 & 1023, destination >> 20 & 1023
+    height = (flags & 255) | (destination >> 30 << 8)
+    if not width or not height or x + width > 1024 or y + height > 512 or stored != decoded or stored != width * height * 2:
+        return None
+    return {"x": x, "y": y, "width_words": width, "height": height}
+
+
 def block(read, size, sector):
     at = sector * 2048
     if not 0 <= at <= size - 16:
@@ -29,9 +44,11 @@ def block(read, size, sector):
         stored, decoded, unknown, flags, kind = struct.unpack_from("<IIIHH", table, index * 16)
         if stored > 16 << 20 or decoded > 16 << 20 or cursor + stored > at + sectors * 2048:
             return None
+        rectangle = upload_rectangle(stored, decoded, unknown, flags, kind)
         members.append({"index": index, "offset": cursor, "stored_size": stored, "size": decoded,
                         "unknown": unknown, "flags": flags, "type": kind,
-                        "codec": "hbd-lzss" if flags == 0x500 else "raw" if flags == 0 else "unknown"})
+                        "codec": "hbd-lzss" if flags == 0x500 else "raw" if rectangle or flags == 0 and kind != 1 else "unknown",
+                        **({"upload": rectangle} if rectangle else {})})
         cursor += stored
     if cursor != at + table_size + payload:
         return None
@@ -97,6 +114,8 @@ def replace(read, size, sector, replacements):
             data = replacements[index]
             baseline = decoded(read, member)
             if data != baseline:
+                if member.get("upload") and len(data) != member["stored_size"]:
+                    raise RomError("Heartbeat GPU uploads must retain their original rectangle and byte length")
                 stored = psx_lzss.encode(data) if member["codec"] == "hbd-lzss" else data
                 decoded_size = len(data)
                 if member["codec"] == "raw":

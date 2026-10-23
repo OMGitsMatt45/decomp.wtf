@@ -16,7 +16,7 @@ For sequential recovery without an AI agent, use the console:
 decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --limit 200 --max-insns 24
 ```
 
-It tries integer-leaf candidates and m2c drafts, saving only exact compiler and
+It tries integer/memory-leaf candidates and m2c drafts, saving only exact compiler and
 full-link matches. `--search-profiles` also probes installed original GCC
 versions at O0/O1/O2 and persists a profile only after a match. Reruns skip
 matched functions; unresolved functions remain assembly. See the
