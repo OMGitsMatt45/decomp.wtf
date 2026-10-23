@@ -18,7 +18,7 @@ from decompnet.app.engine import RomNetwork
 from decompnet.app.server import build
 from decompnet.cli import main
 from decompnet.rom import detect, psx_layout
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_overlays import _iso, _overlay, _resident_exe
 
 pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")

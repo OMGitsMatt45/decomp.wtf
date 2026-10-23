@@ -19,7 +19,7 @@ from elftools.elf.elffile import ELFFile
 def tools_for(arch: str) -> Path:
     from decompnet import toolchains
 
-    tid = "gc-wii-binutils" if arch == "ppc" else "binutils-arm"
+    tid = "binutils-arm"
     root = toolchains.ensure(tid, log=lambda *_: None)
     return root if arch == "ppc" else root / "bin"
 

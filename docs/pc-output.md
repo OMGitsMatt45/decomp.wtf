@@ -36,9 +36,10 @@ integrated here. GameCube/Wii requires a PowerPC execution and hardware runtime
 or a title-specific source port. GB/GBC currently provides an assembly workflow,
 not a PC exporter.
 
-## First active target: DQVII
+## First active platform: DS; DQVII retained for later PS1 integration
 
-Keep the existing DQVII imports, original hashes, HBD/archive work, reviewed
+Start with the shared application contract and DS backend. Preserve the existing
+DQVII imports, original hashes, HBD/archive work, reviewed
 engine/VRAM module placements and recovered source. Evaluate
 [PSXRecomp](https://github.com/RetroPortingToolKit/psxrecomp) as an optional
 backend rather than assuming we must build all PS1 hardware services ourselves.
@@ -68,6 +69,27 @@ Resume
 targeted source recovery when it enables hooks, fixes or understanding
 of a runtime failure, rather than making 100% matching a prerequisite for a port.
 
+The redesign removes N64, GameCube and Wii application workflows; their prior
+implementation is preserved in PR #27. Low-level shared MIPS helpers and old
+qualification records do not advertise those platforms as supported.
+
 One decomp.wtf fork can contain these optional adapters and pinned dependencies.
 They do not require another fork of decomp.wtf per console. Validate one game
 and backend first, then broaden to other Dragon Quest and Pokémon titles.
+
+
+## Implemented shared contract
+
+`decompnet.pc` defines a PC backend adapter and atomic project export. Each
+adapter writes `pc-project.json` with schema `decomp.wtf.pc-project/v1`, a
+remaining platform, pinned backend and runtime identities, ordered SHA-256 input
+identities, `native-source`/`static-recompiled`/`hybrid` execution, a CMake target,
+source-file hashes and explicit interpreter/runtime-compilation fallback flags.
+Integrity verification does not claim a successful build or gameplay. Existing
+output directories are preserved; invalid staged output is discarded.
+
+`decomp pc status --platform nds` reports availability. `decomp pc verify PATH`
+checks a generated project. Application project overviews expose PC capabilities
+separately from matching-console reconstruction. No platform backend is
+registered yet. An original host fixture proves the adapter and CMake build/run
+path only; it does not execute a DS game or establish a DS hardware runtime.

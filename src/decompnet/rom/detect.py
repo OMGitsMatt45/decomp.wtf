@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 import struct
 from pathlib import Path
 
-from . import chd, gb, gba, n64, overlays, ps2, psx
-from .n64 import RomError
+from . import chd, gb, gba, overlays, ps2, psx
+from .. import platforms
+from .errors import RomError
 
-PLATFORMS = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2", "gba": "Game Boy Advance",
-             "gb": "Game Boy", "gbc": "Game Boy Color", "nds": "Nintendo DS", "gc": "GameCube", "wii": "Wii"}
+PLATFORMS = platforms.NAMES
 SMALL = 64 * 1024 * 1024  # ROMs and programs are read whole; disc images are read from disk
 
 
@@ -38,9 +38,7 @@ def _program(data: bytes, name: str = "") -> Picked | None:
         return Picked(info["platform"], data, "rom." + info["platform"], info, False)
     if gba.is_gba(data):
         return Picked("gba", data, "rom.gba", gba.read_info(data), False)
-    if data[:4] in n64.MAGIC:
-        rom, info = n64.read_info(data)
-        return Picked("n64", rom, "rom.z64", info.to_dict() | {"platform": "n64", "gp": 0}, True)
+    platforms.require(platforms.removed_input(data[:0x440], len(data)), RomError)
     if data[:8] == b"PS-X EXE":
         exe, info = psx.read_exe(data, name)
         return Picked("psx", exe, "game.exe", info, False)
@@ -55,6 +53,8 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
     if isinstance(src, (str, Path)):
         path = Path(src)
         name = name or path.name
+        with path.open('rb') as source:
+            platforms.require(platforms.removed_input(source.read(0x440), path.stat().st_size), RomError)
         if path.suffix.lower() == ".cue":
             from . import psx_media
             media = psx_media.cue(path)
@@ -92,8 +92,8 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
         return _from_disc(src)
     if src[:4] == b"\x7fELF":
         raise RomError("this ELF program isn't for a console decomp.wtf can split from scratch yet")
-    raise RomError("this isn't a ROM, disc or game program this app can read: pick an N64 ROM (.z64, .n64, .v64), "
-                   "a PlayStation 1 or 2 disc image (.bin, .iso, .chd) or its program file (e.g. SLUS_200.00)")
+    raise RomError("pick a supported DS/GBA/GB/GBC ROM, a PlayStation 1 or 2 disc image "
+                   "(.bin, .iso, .chd) or its program file")
 
 
 def _from_disc(src) -> Picked:

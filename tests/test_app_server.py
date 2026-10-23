@@ -16,8 +16,8 @@ from decompnet.app.engine import RomNetwork
 from decompnet.app.server import build
 
 # the tests that import the demo ROM (the rest, such as the GUI's security, run anywhere)
-needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
-                                reason="needs gcc-2.7.2-kmc")
+needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-psx") is None or not shutil.which("ld.lld"),
+                                reason="needs gcc-2.7.2-psx")
 PORT, SECRET = 6499, "s3cret-for-tests"
 
 
@@ -67,7 +67,8 @@ def test_import_demo_and_follow_it_live(app):
     client, net, _ = app
     h = {"X-Decomp": "1"}
     assert client.post("/api/import?confirmed=0", content=b"x" * 10, headers=h).status_code == 400
-    job = client.post("/api/import?demo=1", content=b"", headers=h).json()["job"]
+    from .psx_fixture import ROM
+    job = client.post("/api/import?confirmed=1", content=ROM.read_bytes(), headers=h).json()["job"]
     for _ in range(200):
         j = client.get(f"/api/job?id={job}").json()
         if j["state"] != "running":
@@ -82,7 +83,7 @@ def test_import_demo_and_follow_it_live(app):
     assert client.get(f"/api/map?slug={slug}&since={full['sig']}").json() == {"sig": full["sig"], "same": True}
     live = client.get(f"/api/live?slug={slug}").json()
     assert live["overview"]["functions"] >= 95 and live["events"][0]["kind"] == "import"
-    detail = client.get(f"/api/function?slug={slug}&name=func_80000460").json()
+    detail = client.get(f"/api/function?slug={slug}&name=func_80010410").json()
     assert "glabel" in detail["asm"]
 
 

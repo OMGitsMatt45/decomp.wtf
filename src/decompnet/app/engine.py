@@ -24,39 +24,30 @@ import threading
 import time
 from pathlib import Path
 
-from .. import cpp, scoring, seeds, similarity, toolchains
+from .. import cpp, platforms, scoring, seeds, similarity, toolchains
 from ..elfobj import FunctionObj
 from ..network import Agent, Network, NetworkError, _hash_token
 from ..project import function_config
 from ..rom import detect, gb, match, match_gb, sm83, split
 from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 
-DEFAULT_TOOLCHAIN = {"KMC": "gcc-2.7.2-kmc", "IDO": "ido-7.1", "PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
+DEFAULT_TOOLCHAIN = {"PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
                      "AGBCC": "agbcc"}
 # How ready each platform is for a full decomp you can port and mod; the GUI and the README show it.
 # recommended: the most tested path, from import to a project that builds the game (GameCube and Wii: the same kind
 # of project as decomp.dev's, linked file by file as it's finished; N64: tested on real games, rebuilt byte for byte).
 # beta: works and is tested on homemade games, less so on real ones yet.
-PLATFORM_STATUS = {"gc": "recommended", "wii": "recommended", "n64": "recommended",
-                   "psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
+PLATFORM_STATUS = {"psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
 COMPILERS = {
-    "gcc-2.7.2-kmc": "many third-party N64 games",
-    "ido-7.1": "most later first-party N64 games",
-    "ido-5.3": "early N64 games (1996-97)",
     "gcc-2.7.2-psx": "PlayStation games (PSY-Q era GCC)",
     "gcc-2.8.1-psx": "later PlayStation games",
     "ee-gcc-2.96": "PlayStation 2 games (Sony's EE GCC)",
     "agbcc": "Game Boy Advance games (pret's agbcc, GCC 2.95)",
 }
-SHORT_NAMES = {"gcc-2.7.2-kmc": "KMC GCC 2.7.2", "ido-7.1": "IDO 7.1", "ido-5.3": "IDO 5.3",
-               "gcc-2.7.2-psx": "GCC 2.7.2 (PS1)", "gcc-2.8.1-psx": "GCC 2.8.1 (PS1)", "ee-gcc-2.96": "EE-GCC 2.96",
+SHORT_NAMES = {"gcc-2.7.2-psx": "GCC 2.7.2 (PS1)", "gcc-2.8.1-psx": "GCC 2.8.1 (PS1)", "ee-gcc-2.96": "EE-GCC 2.96",
                "agbcc": "agbcc"}
 # CodeWarrior versions in the `mwcc` pack (GameCube, Wii) and the `mwccarm` pack (DS), for games started from scratch.
 MW_VERSIONS = {
-    "gc": ["GC/1.0", "GC/1.1", "GC/1.1p1", "GC/1.2.5", "GC/1.2.5n", "GC/1.3", "GC/1.3.2", "GC/1.3.2r", "GC/2.0",
-           "GC/2.0p1", "GC/2.5", "GC/2.6", "GC/2.7", "GC/3.0a3", "GC/3.0a3.2", "GC/3.0a3.3", "GC/3.0a3.4", "GC/3.0a5",
-           "GC/3.0a5.2"],
-    "wii": ["Wii/0x4201_127", "Wii/1.0RC1", "Wii/1.0a", "Wii/1.0", "Wii/1.1", "Wii/1.3", "Wii/1.5", "Wii/1.6", "Wii/1.7"],
     "ds": ["DS/1.2/base", "DS/1.2/sp2", "DS/1.2/sp2p3", "DS/1.2/sp3", "DS/1.2/sp4", "DS/2.0/base", "DS/2.0/sp1",
            "DS/2.0/sp1p2", "DS/2.0/sp1p5", "DS/2.0/sp1p6", "DS/2.0/sp1p7", "DS/2.0/sp2", "DS/2.0/sp2p2", "DS/2.0/sp2p3",
            "DS/2.0/sp2p4", "DS/dsi/1.1", "DS/dsi/1.1p1", "DS/dsi/1.2", "DS/dsi/1.2p1", "DS/dsi/1.2p2", "DS/dsi/1.3",
@@ -69,13 +60,12 @@ TOOLS = {
     "m2c": "machine-made first drafts (MIPS, PowerPC, ARM)",
     "objdiff-cli": "judges forks of public decomps, function by function",
     "ghidra": "drafts for PC, Switch and other platforms m2c can't read (540 MB, needs Java 21+)",
-    "mwcc": "CodeWarrior, the compilers of GameCube and Wii games (proprietary)",
     "mwccarm": "CodeWarrior for DS, the compilers of DS games (proprietary)",
     "dsd": "ds-decomp: analyses DS ROMs and rebuilds them",
 }
 # Functions this small are handed out in batches (claim_function count): agents match most on the first try.
 BATCH_INSNS = 48
-PLATFORM_COMPILERS = {"n64": ["gcc-2.7.2-kmc", "ido-7.1", "ido-5.3"], "psx": ["gcc-2.7.2-psx", "gcc-2.8.1-psx"],
+PLATFORM_COMPILERS = {"psx": ["gcc-2.7.2-psx", "gcc-2.8.1-psx"],
                       "ps2": ["ee-gcc-2.96"], "gba": ["agbcc"], "gb": ["rgbds"], "gbc": ["rgbds"]}
 _AUTO_TOKEN = re.compile(r"\b(?:func|D|B|jtbl|RO|STR|FLT|DBL)_[0-9A-F]{8}\b")
 _ADDRESS = re.compile(r"^(?:0x)?([0-9A-Fa-f]{8})$")
@@ -405,6 +395,12 @@ class RomNetwork(Network):
         as a target. Returns the slug."""
         if not confirmed:
             raise NetworkError("confirm that this is your own legally obtained copy of the game")
+        if isinstance(data, (str, Path)):
+            with Path(data).open('rb') as source:
+                removed = platforms.removed_input(source.read(0x440), Path(data).stat().st_size)
+        else:
+            removed = platforms.removed_input(data[:0x440], len(data))
+        platforms.require(removed, NetworkError)
         project_file = self._community_layout(data, name)
         boot_picked = None
         if project_file is not None:
@@ -412,7 +408,7 @@ class RomNetwork(Network):
             boot_picked = boot.identify(project_file)
         if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
             if reviewed_layout is not None:
-                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
+                raise NetworkError("reviewed layouts require a PS1 disc")
             compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
             return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
         picked = boot_picked or detect.identify(data, name)
@@ -420,22 +416,14 @@ class RomNetwork(Network):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         rom, info = picked.data, picked.info
         if compiler_profile is not None:
-            from ..rom.n64_profiles import profile
-            if picked.platform != "n64":
-                raise NetworkError("portable compiler profiles require an N64 cartridge")
-            compiler_profile = profile({}, compiler_profile)
-            toolchain, flags = compiler_profile["toolchain"], compiler_profile["flags"]
+            raise NetworkError("cartridge compiler profiles were removed; use PS1 per-function profiles")
         layout_id, psx_modules = None, None
         if reviewed_layout is not None:
-            from ..rom import n64_layout
-            if picked.platform not in ("n64", "psx"):
-                raise NetworkError("reviewed layouts require an N64 cartridge or PS1 disc")
+            if picked.platform != "psx":
+                raise NetworkError("reviewed layouts require a PS1 disc")
             try:
-                if picked.platform == "psx":
-                    from ..rom.psx_layout import apply
-                    psx_modules = apply(picked, data, reviewed_layout)
-                else:
-                    n64_layout.reviewed(rom, reviewed_layout)
+                from ..rom.psx_layout import apply
+                psx_modules = apply(picked, data, reviewed_layout)
             except ValueError as error:
                 raise NetworkError(str(error)) from error
             layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
@@ -446,8 +434,7 @@ class RomNetwork(Network):
                     previous.get("psx_disc", {}).get("identity", previous.get("psx_disc", {}).get("sha256")) == \
                     (picked.disc or {}).get("identity", (picked.disc or {}).get("sha256")) and \
                     (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
-                    (not flags or previous_compiler.get("flags") == flags) and \
-                    (compiler_profile is None or profile(previous_compiler, {}) == compiler_profile):
+                    (not flags or previous_compiler.get("flags") == flags):
                 log(f"already imported as {p['slug']}")
                 return p["slug"]
         base = _slugify(info["title"])
@@ -472,7 +459,7 @@ class RomNetwork(Network):
             log(f"{len(picked.overlays)} overlay{'s' if len(picked.overlays) != 1 else ''} on the disc: "
                 + ", ".join(f"{o[0]} at 0x{o[2]:08X}" for o in picked.overlays[:6]) + (", ..." if len(picked.overlays) > 6 else ""))
         res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays,
-                              reviewed_layout=reviewed_layout if picked.platform == "n64" else None, psx_modules=psx_modules)
+                              psx_modules=psx_modules)
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
@@ -610,21 +597,18 @@ class RomNetwork(Network):
         return slug
 
     def _community_layout(self, data: bytes | Path, name: str = "") -> Path | None:
-        """The file, when the game starts as a community-layout project: a GameCube/Wii program (DOL) or disc image
-        (dtk-template), or a DS ROM (ds-decomp). Bytes are saved to a file first."""
-        from ..forks import scratch_dsd, scratch_dtk
+        """A DS ROM starts as a ds-decomp project. Save uploads only after detection."""
+        from ..forks import scratch_dsd
 
         head = Path(data).open("rb").read(0x440) if isinstance(data, (str, Path)) else bytes(data[:0x440])
-        small = Path(data).read_bytes() if isinstance(data, (str, Path)) and Path(data).stat().st_size < 64 << 20 else data
         nds = scratch_dsd.is_nds(head)
-        if not nds and scratch_dtk.disc_kind(head) is None and not (isinstance(small, (bytes, bytearray))
-                                                                   and scratch_dtk.is_dol(small)):
+        if not nds:
             return None
         if isinstance(data, (str, Path)):
             return Path(data)
         uploads = self.workspace / ".decomp" / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
-        path = uploads / (Path(name).name or ("game.nds" if nds else "main.dol" if scratch_dtk.is_dol(data) else "game.iso"))
+        path = uploads / (Path(name).name or "game.nds")
         path.write_bytes(data)
         return path
 
@@ -766,7 +750,7 @@ class RomNetwork(Network):
                  f"source language: {cpp.language(function_config(self.cfg(proj), fn['name']))}",
                  f"compiler: {function_config(self.cfg(proj), fn['name'])['compiler']['toolchain']} " +
                  ' '.join(function_config(self.cfg(proj), fn['name'])['compiler'].get('flags', [])),
-                 f"frontend: {cpp.ido_frontend(function_config(self.cfg(proj), fn['name'])) or cpp.language(function_config(self.cfg(proj), fn['name']))}",
+                 f"frontend: {cpp.language(function_config(self.cfg(proj), fn['name']))}",
                  f"address 0x{fn['vram']:08X}, ROM offset 0x{fn['rom_offset']:X}, segment {fn['unit']}"]
         calls = sorted(x["calls"].get(fn["vram"], ()))
         callers = sorted(x["called_by"].get(fn["vram"], ()))
@@ -1105,12 +1089,7 @@ class RomNetwork(Network):
         rewritten = {r["id"]: word.sub(new, r["matched_source"]) for r in matched}
         renamed_rows = [dict(r) | {"name": new if r["name"] == old else r["name"]} for r in matched]
         renamed_cfg = self.cfg(proj)
-        if renamed_cfg.get("n64_layout"):
-            owner = self._symbol_module(proj, old)
-            if owner is None:
-                raise NetworkError("use a module-qualified symbol name for a reviewed N64 layout")
-            renamed_cfg.setdefault("symbol_modules", {}).pop(old, None)
-            renamed_cfg["symbol_modules"][new] = owner
+        pass
         profiles = renamed_cfg.get("function_compilers", {})
         if old in profiles:
             profiles[new] = profiles.pop(old)
@@ -1160,8 +1139,7 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         cfg = self.cfg(proj)
-        if cfg.get("n64_layout") and (info.get("protocol") != 2 or info.get("n64_layout") != cfg["n64_layout"]):
-            raise NetworkError("this room must use the same reviewed N64 layout and module-aware protocol")
+        pass
         cfg["link"] = info
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
@@ -1475,28 +1453,7 @@ class RomNetwork(Network):
                                                   time.time(), unit))
 
     def apply_remote_compilers(self, slug: str, default: dict, overrides: dict) -> None:
-        from ..rom.n64_profiles import profile
-        proj = self._project(slug)
-        cfg = self.cfg(proj)
-        if cfg.get("platform") != "n64" or not isinstance(overrides, dict):
-            raise NetworkError("invalid N64 room compiler profiles")
-        selected = profile({}, default)
-        known = {r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=?", proj["id"])}
-        if set(overrides) - known:
-            raise NetworkError("a room compiler profile refers to an unknown function")
-        profiles = {name: profile(selected, value) for name, value in overrides.items()}
-        if all(cfg["compiler"].get(k) == v for k, v in selected.items()) and cfg.get("function_compilers", {}) == profiles:
-            return
-        previous = profile(cfg["compiler"], {})
-        affected = [r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=? AND status='open'", proj["id"])
-                    if {**previous, **cfg.get("function_compilers", {}).get(r["name"], {})} !=
-                       {**selected, **profiles.get(r["name"], {})}]
-        cfg["compiler"] = {**cfg["compiler"], **selected}
-        cfg["function_compilers"] = profiles
-        with self.store.tx() as db:
-            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-            db.executemany("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND name=? AND status='open'",
-                           [(proj["id"], name) for name in affected])
+        raise NetworkError("cartridge compiler sync was removed")
 
     def apply_remote_layout(self, slug: str, functions: list[dict], symbols: list[dict]) -> None:
         """Mirror names/splits using cartridge identity, including exclusive overlays."""
@@ -1582,10 +1539,16 @@ class RomNetwork(Network):
 
     def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
-        if format not in ("matching", "shiftable"):
-            raise NetworkError("choose matching or shiftable export")
-        if format == "shiftable" and (self.fork_slug(slug) or self.cfg(self._project(slug)).get("platform") != "n64"):
-            raise NetworkError("shiftable exports require an N64 cartridge project")
+        if format == 'pc':
+            from .. import pc
+            proj = self._project(slug)
+            try:
+                return pc.export({**self.cfg(proj), 'root': proj['root']}, Path(proj['root'])/'pc-source')
+            except pc.PCError as error:
+                raise NetworkError(str(error)) from error
+        if format != "matching":
+            raise NetworkError("choose matching console reconstruction or pc export")
+        pass
         if self.fork_slug(slug):  # a fork's work is already in its source tree, committed
             return {"path": self._project(slug)["root"], "identical": None}
         from ..rom.export import export_rom
@@ -1627,6 +1590,7 @@ class RomNetwork(Network):
     # ------------------------------------------------------------------ for the GUI
 
     def overview(self, slug: str) -> dict:
+        from .. import pc
         proj = self._project(slug)
         last = self.store.one("SELECT MAX(created_at) AS t FROM events WHERE project_id=?", proj["id"])["t"]
         cfg = self.cfg(proj)
@@ -1641,7 +1605,9 @@ class RomNetwork(Network):
                                                  k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm")},
                                              "helper_matches": helpers,
                                              "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",
-                                             "priority": cfg.get("priority", [])}
+                                             "priority": cfg.get("priority", []),
+                                             "outputs": {"pc": pc.status(cfg.get('platform', '')),
+                                                         "matching_console": True}}
 
     def _overview(self, slug: str, proj) -> dict:
         if (fork := self.fork_slug(slug)):
@@ -1654,12 +1620,12 @@ class RomNetwork(Network):
         tc = toolchains.get(cfg["compiler"]["toolchain"])
         return {
             "slug": proj["slug"], "title": proj["name"], "description": proj["description"],
-            "platform": cfg.get("platform", "n64"), "platform_name": detect.PLATFORMS.get(cfg.get("platform", "n64"), ""),
-            "compilers": PLATFORM_COMPILERS.get(cfg.get("platform", "n64"), []),
+            "platform": cfg.get("platform", ""), "platform_name": detect.PLATFORMS.get(cfg.get("platform", ""), ""),
+            "compilers": PLATFORM_COMPILERS.get(cfg.get("platform", ""), []),
             "rom": {k: cfg["rom"].get(k) for k in ("title", "game_code", "region", "size", "sha1", "byte_order", "compiler_guess")},
             "compiler": {"toolchain": tc.id,
-                         "name": SHORT_NAMES.get(tc.id, tc.name) + (" (SGI/EDG 2.19)" if cpp.ido_frontend(cfg) == "edg" else ""),
-                         "cpp_frontend": cpp.ido_frontend(cfg), "flags": cfg["compiler"]["flags"],
+                         "name": SHORT_NAMES.get(tc.id, tc.name),
+                         "flags": cfg["compiler"]["flags"],
                          "installed": tc.supported and toolchains.installed(tc.id) is not None, "proprietary": tc.proprietary,
                          "supported": tc.supported, "wsl": tc.via_wsl, "language": cpp.language(cfg),
                          "why": tc.unsupported_reason},
@@ -1678,7 +1644,7 @@ class RomNetwork(Network):
                       "files": len(cfg["psx_disc"].get("files", [])), "programs": len(cfg["psx_disc"].get("maps", [])),
                       "reason": cfg["psx_disc"].get("reason")} if cfg.get("psx_disc") else None),
             "disc_set": cfg.get("psx_disc_set"),
-            "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
+            "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "") in ("psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }
 
@@ -2085,13 +2051,7 @@ class RomNetwork(Network):
         tc = toolchains.get(toolchain)
         cfg = self.cfg(proj)
         cfg["compiler"] = {"toolchain": tc.id, "flags": flags or tc.flags, "timeout": 20}
-        if cfg.get("platform") == "n64":
-            from ..rom.n64_profiles import profile
-            cfg["compiler"].update(profile(cfg["compiler"], {}))
-            candidate = dict(proj) | {"config": json.dumps(cfg)}
-            failed = self.regression_test(candidate, None, header_for=lambda fn: self._context(proj["id"], fn["unit"])["header"])
-            if failed:
-                raise NetworkError("the compiler change would invalidate saved matches: " + failed[0][0])
+        pass
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             db.execute("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND status='open'", (proj["id"],))
@@ -2101,12 +2061,9 @@ class RomNetwork(Network):
         """Select one function's period compiler; existing matches must survive."""
         proj = self._project(slug)
         cfg = self.cfg(proj)
-        if cfg.get("platform") not in ("n64", "psx") or not self.is_rom(proj):
-            raise NetworkError("per-function compiler profiles require an N64 or PS1 project")
-        if cfg["platform"] == "psx":
-            from ..rom.psx_modules import profile
-        else:
-            from ..rom.n64_profiles import profile
+        if cfg.get("platform") != "psx" or not self.is_rom(proj):
+            raise NetworkError("per-function compiler profiles require a PS1 project")
+        from ..rom.psx_modules import profile
         if slug in self.links:
             raise NetworkError("change compiler profiles on the room host, then sync this member")
         fn = self._function(function, slug)

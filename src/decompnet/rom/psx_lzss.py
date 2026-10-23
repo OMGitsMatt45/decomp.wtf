@@ -4,7 +4,7 @@ The wire format is documented by the DQIV PSX format research linked in the
 PS1 guide. This implementation bounds output by the archive's declared size.
 """
 
-from .n64 import RomError
+from .errors import RomError
 
 
 def decode(source, size):

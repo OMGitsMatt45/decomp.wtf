@@ -19,7 +19,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from .n64 import RomError
+from .errors import RomError
 
 MAGIC = b"MComprHD"
 CD_FRAME, CD_DATA, CD_SUB = 2448, 2352, 96

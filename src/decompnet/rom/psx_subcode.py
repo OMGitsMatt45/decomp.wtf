@@ -2,7 +2,7 @@
 
 import binascii
 
-from .n64 import RomError
+from .errors import RomError
 
 
 def bcd(byte, limit=100):

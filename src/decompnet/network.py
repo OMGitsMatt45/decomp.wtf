@@ -120,12 +120,15 @@ class Network:
     # ---------------------------------------------------------------- helpers
 
     def _project(self, slug: str | None):
+        from . import platforms
         if slug:
             row = self.store.one("SELECT * FROM projects WHERE slug=?", slug)
             if row is None:
                 raise NetworkError(f"no project {slug!r}; call list_projects")
+            platforms.require(json.loads(row['config']).get('platform', ''), NetworkError)
             return row
-        rows = self.store.all("SELECT * FROM projects")
+        rows = [row for row in self.store.all("SELECT * FROM projects")
+                if platforms.enabled(json.loads(row['config']).get('platform', ''))]
         if len(rows) == 1:
             return rows[0]
         raise NetworkError("several projects exist; pass `project` (see list_projects)")
@@ -145,6 +148,10 @@ class Network:
             )
         if row is None:
             raise NetworkError(f"no function {name!r}" + (f" in {project!r}" if project else ""))
+        from . import platforms
+        parent = self.store.one('SELECT config FROM projects WHERE id=?', row['project_id'])
+        if parent:
+            platforms.require(json.loads(parent['config']).get('platform', ''), NetworkError)
         return row
 
     def _context(self, project_id: int, unit: str | None = ""):
@@ -220,6 +227,9 @@ class Network:
             return "No projects yet."
         out = []
         for r in rows:
+            from . import platforms
+            if not platforms.enabled(json.loads(r['config']).get('platform', '')):
+                continue
             pct = 100 * (r["matched_bytes"] or 0) / (r["bytes"] or 1)
             legal = json.loads(r["config"]).get("legal", {})
             out.append(f"- {r['slug']}: {r['name']} [{r['arch']}] — {r['matched'] or 0}/{r['total']} functions "
@@ -666,6 +676,9 @@ class Network:
             self._expire_claims(db)
         projects = []
         for p in self.store.all("SELECT * FROM projects ORDER BY slug"):
+            from . import platforms
+            if not platforms.enabled(json.loads(p['config']).get('platform', '')):
+                continue
             agg = self.store.one(
                 "SELECT COUNT(*) AS total, SUM(status='matched') AS matched, SUM(size) AS bytes, "
                 "SUM(CASE WHEN status='matched' THEN size ELSE 0 END) AS matched_bytes, SUM(attempts) AS attempts "

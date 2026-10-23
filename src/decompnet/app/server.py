@@ -32,7 +32,7 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Redire
 
 from .. import __version__, hostenv, toolchains
 from ..network import NetworkError
-from ..rom.n64 import RomError
+from ..rom.errors import RomError
 from . import agents, chat, collab, connect, tools, updates
 from .engine import COMPILERS, MW_VERSIONS, PLATFORM_STATUS, SHORT_NAMES, TOOLS, RomNetwork
 
@@ -261,7 +261,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     build_id = (updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
     manager = agents.Manager(net, home, mcp_url)
     jobs = Jobs(home / "logs" / "decomp.log")
-    n64_layouts = {}  # short-lived reviewed metadata, consumed by one import
+    reviewed_layouts = {}  # short-lived reviewed metadata, consumed by one import
     settings = Settings(home / "settings.json")
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
 
@@ -385,7 +385,10 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         """(slug, overview or None, why not) for every project. One that can't be read is still listed, with the
         reason: before, one odd project emptied the whole sidebar, or quietly went missing from it."""
         out = []
-        for p in net.store.all("SELECT slug, name FROM projects ORDER BY id DESC"):
+        for p in net.store.all("SELECT slug, name, config FROM projects ORDER BY id DESC"):
+            from .. import platforms
+            if not platforms.enabled(json.loads(p["config"]).get("platform", "")):
+                continue
             try:
                 out.append((p["slug"], net.overview(p["slug"]), ""))
             except Exception as e:  # noqa: BLE001
@@ -405,7 +408,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                 "projects": projects, "toolchains": tcs, "agents": agents.detect(),
                 "api_presets": agents.API_PRESETS, "settings": settings.public(), "mcp_url": mcp_url,
                 "platform_status": PLATFORM_STATUS,
-                "codewarrior": {"installed": toolchains.installed("mwcc") is not None,
+                "pc_output": {p: __import__("decompnet.pc", fromlist=["status"]).status(p) for p in PLATFORM_STATUS},
+                "codewarrior": {"installed": False,
                                 "ds_installed": toolchains.installed("mwccarm") is not None, **MW_VERSIONS}}
 
     def autopilot(slug: str) -> None:
@@ -439,9 +443,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     async def api_state(request: Request) -> Response:
         return guard(request) or JSONResponse(await call(state))
 
-    @mcp.custom_route("/api/n64/layout", methods=["POST"])
     @mcp.custom_route("/api/rom/layout", methods=["POST"])
-    async def api_n64_layout(request: Request) -> Response:
+    async def api_rom_layout(request: Request) -> Response:
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
@@ -449,13 +452,13 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         if not isinstance(layout, dict) or len(json.dumps(layout)) > 1024 * 1024:
             return fail(ValueError("choose a reviewed N64/PS1 layout JSON file smaller than 1 MiB"))
         now = time.monotonic()
-        for key, (created, _) in list(n64_layouts.items()):
+        for key, (created, _) in list(reviewed_layouts.items()):
             if now - created > 900:
-                del n64_layouts[key]
-        if len(n64_layouts) >= 32:
-            del n64_layouts[next(iter(n64_layouts))]
+                del reviewed_layouts[key]
+        if len(reviewed_layouts) >= 32:
+            del reviewed_layouts[next(iter(reviewed_layouts))]
         token = uuid.uuid4().hex
-        n64_layouts[token] = (now, layout)
+        reviewed_layouts[token] = (now, layout)
         return JSONResponse({"id": token})
 
     @mcp.custom_route("/api/import", methods=["POST"])
@@ -466,17 +469,14 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         q = request.query_params
         toolchain = q.get("toolchain") or None
         layout = None
-        layout_token = q.get("reviewed_layout") or q.get("n64_layout")
+        layout_token = q.get("reviewed_layout")
         if layout_token:
-            pending = n64_layouts.pop(layout_token, None)
+            pending = reviewed_layouts.pop(layout_token, None)
             if pending is None or time.monotonic() - pending[0] > 900:
                 return fail(ValueError("the reviewed layout expired; select it again"))
             layout = pending[1]
         if q.get("demo") == "1":
-            game: bytes | Path | None = _static("demo/demo-quest-64.z64")
-            if game is None:
-                return fail(ValueError("the demo ROM is missing from this install"))
-            name = "demo-quest-64.z64"
+            return fail(ValueError("The N64 demo was removed. Use the preserved main branch in PR #27."))
         else:
             if q.get("confirmed") != "1":
                 return fail(ValueError("confirm that this is your own legally obtained copy of the game"))

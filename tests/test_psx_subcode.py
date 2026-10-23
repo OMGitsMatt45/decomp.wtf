@@ -9,7 +9,7 @@ import pytest
 from decompnet.rom import detect, psx_assets, psx_disc, psx_media, psx_subcode
 from decompnet.rom.chd import Chd
 from decompnet.rom.chd_write import rewrite
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_psx_disc import joined
 
 

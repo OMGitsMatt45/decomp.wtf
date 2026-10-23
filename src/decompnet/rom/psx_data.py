@@ -4,7 +4,7 @@ import hashlib
 import re
 import struct
 
-from .n64 import RomError
+from .errors import RomError
 
 
 MAX_RANGES = 128

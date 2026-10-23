@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from .n64 import RomError
+from .errors import RomError
 from . import psx_disc, psx_media, psx_sector, psx_layout
 
 

@@ -41,18 +41,17 @@ def gp_register_annotations(source: str) -> list[tuple[int, int]]:
 
 def language(config: dict) -> str:
     compiler = config.get("compiler", {})
-    platform, toolchain = config.get("platform", "n64"), compiler.get("toolchain")
+    platform, toolchain = config.get("platform", ""), compiler.get("toolchain")
     if config.get("rom", {}).get("boot_utility") and compiler.get("language") == "asm" \
             and compiler.get("assembly_dialect") == "gnu" \
             and ((platform == "nds" and toolchain == "binutils-arm")
-                 or (platform in ("gc", "wii") and toolchain == "gc-wii-binutils")):
+):
         return "asm"
     if platform in ("gb", "gbc") or compiler.get("language") == "asm":
         if platform not in ("gb", "gbc") or toolchain != "rgbds" or compiler.get("language", "asm") != "asm":
             raise ValueError("GB/GBC assembly projects require RGBDS and compiler.language = 'asm'")
         return "asm"
-    supported = (platform == "n64" and toolchain in ("gcc-2.7.2-kmc", "ido-7.1", "ido-5.3")) \
-        or (platform == "gba" and toolchain == "agbcc") \
+    supported = (platform == "gba" and toolchain == "agbcc") \
         or (platform == "psx" and toolchain in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")) \
         or (platform == "ps2" and toolchain == "ee-gcc-2.96")
     default = "c++" if config.get("kind") == "rom" and supported else "c"
@@ -62,11 +61,6 @@ def language(config: dict) -> str:
     return value
 
 
-def ido_frontend(config: dict) -> str | None:
-    compiler = config.get("compiler", {})
-    if language(config) == "c++" and compiler.get("toolchain") in ("ido-5.3", "ido-7.1"):
-        return compiler.get("cpp_frontend", "edg")
-    return None
 
 
 def game_abi(source: str) -> str:

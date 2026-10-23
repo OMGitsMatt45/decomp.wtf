@@ -178,10 +178,7 @@ class ForkProject:
             return {"what": g.get("what", "your copy of the game"), "path": path, "sha1": g.get("sha1"),
                     "help": g.get("help", ""), "auto": path is not None}
         if kind == "dtk":
-            v = version or (self.versions()[0] if self.versions() else "")
-            return {"what": "your copy of the game's disc (ISO, GCM, RVZ, WIA, WBFS, CISO, NFS or GCZ)",
-                    "path": f"orig/{v}/", "sha1": None, "auto": True,
-                    "help": f"Version {v}. The build checks the disc's main executable against the project's hash."}
+            raise ForkError("GameCube/Wii project backend was removed; see PR #27")
         if kind == "configure":
             v = version or ""
             if v and (self.root / "orig" / v).is_dir():
@@ -257,18 +254,15 @@ class ForkProject:
             m = self.manifest
             cmds = m.get("setup", [])
             if m.get("created") == "from scratch" and cmds:  # point at this computer's tools, not the creator's
-                from . import scratch_dsd, scratch_dtk
+                from . import scratch_dsd
 
-                args = (scratch_dsd if m.get("platform") == "nds" else scratch_dtk).tool_args()
+                args = scratch_dsd.tool_args()
                 first = cmds[0]
                 keep = next((i for i, c in enumerate(first) if c.startswith("--")), len(first))
                 cmds = [[*first[:keep], *args], *cmds[1:]]
             return [[sys.executable if c == "python" else c for c in cmd] for cmd in cmds]
         if kind == "dtk":
-            cmd = [sys.executable, "configure.py"]
-            if version and len(self.versions()) > 1:
-                cmd += ["--version", version]
-            return [cmd, [_tool("ninja") or "ninja"]]
+            raise ForkError("GameCube/Wii project backend was removed; see PR #27")
         if kind == "configure":
             return [[sys.executable, "configure.py"], [_tool("ninja") or "ninja"]]
         if kind == "splat":
@@ -318,35 +312,7 @@ class ForkProject:
         return code == 0, "\n".join(out[-60:])
 
     def unpack_disc(self, version: str | None, log=print) -> int:
-        """A dtk project that reads an extracted disc (orig/<version>/sys/main.dol, files/...) instead of the disc
-        image: copy the files its config names out of the user's disc image with decomp.wtf's own dtk, as the README's
-        "extract the disc with Dolphin" step would. Returns how many files were copied."""
-        if self.kind() != "dtk" or not version:
-            return 0
-        cfg, orig = self.root / "config" / version / "config.yml", self.root / "orig" / version
-        if not cfg.is_file() or not orig.is_dir():
-            return 0
-        text = cfg.read_text(errors="replace", encoding="utf-8")
-        if re.search(r"^\s*object_base\s*:", text, re.M):
-            return 0  # this dtk reads the disc image itself
-        wanted = sorted({m.group(1) for m in re.finditer(rf"orig/{re.escape(version)}/([^\s'\"#,\]]+)", text)})
-        missing = [w for w in wanted if not w.endswith("/") and ".." not in w and not (orig / w).exists()]
-        if not missing:
-            return 0
-        from . import scratch_dtk
-
-        discs = [(p, scratch_dtk.disc_id(p)) for p in sorted(orig.iterdir()) if p.is_file() and p.stat().st_size > 1 << 20]
-        discs = [(p, gid) for p, gid in discs if gid]
-        disc = next((p for p, gid in discs if gid == version), None) or (discs[0][0] if len(discs) == 1 else None)
-        if disc is None:
-            return 0  # no disc image here (or only other versions): the project's own error says what's missing
-        log(f"taking the {len(missing)} files the project reads out of your disc image ({disc.name})")
-        by_dir: dict[str, list[str]] = {}
-        for w in missing:
-            by_dir.setdefault(str(Path(w).parent), []).append(w)
-        for parent, files in by_dir.items():
-            scratch_dtk.vfs_copy(disc, files, orig / parent)
-        return len(missing)
+        return 0
 
     def setup(self, version: str | None = None, log=print) -> None:
         self.unpack_disc(version, log=log)

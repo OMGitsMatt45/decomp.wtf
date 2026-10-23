@@ -1,4 +1,4 @@
-"""Exercise the shipped native DLL from short-lived Python worker threads."""
+"""Exercise retained MIPS analysis and scope guards in short-lived worker threads."""
 
 import subprocess
 import sys
@@ -11,33 +11,31 @@ def test_native_analyzer_worker_lifetimes(operation):
     # Isolate a native crash so CI retains the exception and the offending operation.
     source = r'''
 from concurrent.futures import ThreadPoolExecutor
+import struct
 import sys
-from decompnet.rom import _n64_native as native
-image = bytearray(0x40000)
-image[:4] = bytes.fromhex('80371240')
-image[8:12] = (0x80000400).to_bytes(4, 'big')
-image[0x1000:0x1004] = bytes.fromhex('70000000')  # an invalid MIPS word stops after one callback
-image = bytes(image)
-operation = sys.argv[1]
+from decompnet.rom import mips_scan, overlays
+from decompnet import platforms
+words=[]
+for i in range(8):
+    words.extend([0x27bdfff0,0x0c000000|((0x80010000+i*16)&0x0fffffff)//4,0x03e00008,0])
+image=struct.pack('>32I',*words)
+operation=sys.argv[1]
 def work(index):
-    if operation == 'normalize':
-        assert native.normalize(image)[0] == image
-    elif operation == 'inspect':
-        assert native.normalize(image, inspect=True)[0] == image
-    elif operation == 'invalid':
-        try:
-            native.normalize(b'bad')
-        except ValueError as error:
-            assert 'N64 ROM' in str(error)
-        else:
-            raise AssertionError('invalid input accepted')
+    if operation=='normalize':
+        assert mips_scan._frame(0x27bdfff0) and not mips_scan._frame(0)
+    elif operation=='inspect':
+        assert len(mips_scan._jal_targets(tuple(words)))==8
+    elif operation=='invalid':
+        try:platforms.require('n64')
+        except ValueError:pass
+        else:raise AssertionError('retired target accepted')
     else:
-        assert native.find_segments(image, []) == []
+        assert mips_scan._place(image,0,len(image),0,[])[2]==0x80010000
 for generation in range(20):
     with ThreadPoolExecutor(max_workers=4) as pool:
-        list(pool.map(work, range(8)))
-print(operation, 'worker lifetimes OK', flush=True)
+        list(pool.map(work,range(8)))
+print(operation,'shared MIPS worker lifetimes OK',flush=True)
 '''
     run = subprocess.run([sys.executable, "-X", "faulthandler", "-c", source, operation],
                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
-    assert run.returncode == 0, f"{operation}: native worker exit {run.returncode}\n{run.stdout}\n{run.stderr}"
+    assert run.returncode == 0, f"{operation}: shared MIPS worker exit {run.returncode}\n{run.stdout}\n{run.stderr}"

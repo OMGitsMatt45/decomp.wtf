@@ -16,7 +16,7 @@ import pytest
 from decompnet.app.engine import RomNetwork
 from decompnet.cli import main
 from decompnet.rom import detect, psx, psx_layout, psx_disc, psx_modify
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_overlays import _iso, _overlay, _resident_exe
 from .test_psx_disc import joined
 from .test_psx_modify import valid_raw

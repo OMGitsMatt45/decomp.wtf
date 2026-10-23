@@ -4,8 +4,10 @@ import struct
 
 import pytest
 
-from decompnet.forks import scratch_dsd, scratch_dtk
+from decompnet.forks import scratch_dsd
 from decompnet.forks.project import ForkError
+from decompnet.app.engine import RomNetwork
+from decompnet.network import NetworkError
 
 
 @pytest.mark.parametrize("table", [(0, 0), (0x300, 4), (0x400, 32)])
@@ -30,6 +32,8 @@ def test_apploader_only_gamecube_disc_is_identified_before_extraction(tmp_path, 
     struct.pack_into(">I", head, 0x1C, 0xC2339F3D)
     path = tmp_path / "boot.iso"
     path.write_bytes(head)
-    monkeypatch.setattr(scratch_dtk, "_vfs_read", lambda *args: pytest.fail("no main DOL exists to extract"))
-    with pytest.raises(ForkError, match="no main DOL"):
-        scratch_dtk.game_info(path)
+    net = RomNetwork(tmp_path/'app.db',tmp_path/'projects')
+    monkeypatch.setattr(scratch_dsd,"versions",lambda: pytest.fail("retired input must not start tool setup"))
+    with pytest.raises(NetworkError, match="removed"):
+        net.import_rom(path,confirmed=True)
+    assert not (tmp_path/'projects').exists()

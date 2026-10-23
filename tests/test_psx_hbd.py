@@ -10,7 +10,7 @@ import pytest
 
 from decompnet.cli import main
 from decompnet.rom import psx_hbd, psx_lzss, psx_layout
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_overlays import _iso, _resident_exe
 
 

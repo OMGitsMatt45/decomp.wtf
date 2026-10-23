@@ -7,7 +7,7 @@ import struct
 import pytest
 
 from decompnet.rom import chd, detect, psx, psx_disc
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_overlays import _iso, _overlay, _resident_exe
 
 

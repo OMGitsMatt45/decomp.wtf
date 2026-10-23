@@ -12,7 +12,7 @@ import pytest
 from decompnet.app.engine import RomNetwork
 from decompnet.cli import main
 from decompnet.rom import detect, psx_assets, psx_disc, psx_media, psx_hbd
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_psx_disc import fixture, joined
 from .test_psx_modify import valid_raw
 from .test_psx_media import original_chd

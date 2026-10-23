@@ -9,7 +9,7 @@ import shutil
 import tempfile
 
 from . import psx_disc, psx_media, psx_sector, psx_hbd, psx_layout
-from .n64 import RomError
+from .errors import RomError
 from .psx import _Disc
 
 

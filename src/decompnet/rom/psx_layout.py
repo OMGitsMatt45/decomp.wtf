@@ -12,7 +12,7 @@ import re
 import zlib
 from pathlib import Path
 
-from .n64 import RomError
+from .errors import RomError
 from .psx import _Disc
 
 

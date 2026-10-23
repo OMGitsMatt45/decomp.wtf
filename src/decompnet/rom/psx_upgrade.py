@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 
-from .n64 import RomError
+from .errors import RomError
 from .psx_media import inside
 
 

@@ -11,7 +11,7 @@ import hashlib
 import re
 import struct
 
-from .n64 import RomError
+from .errors import RomError
 
 REGIONS = {"North America": "North America", "Japan": "Japan", "Europe": "Europe"}
 
