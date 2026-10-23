@@ -1,0 +1,75 @@
+name: PlayStation native qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/psx.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'tools/*operational*.py'
+      - 'projects/demo-psx/**'
+      - 'projects/demo-n64/original/**'
+      - 'projects/demo-rom/src/**'
+      - 'projects/zlib-n64/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  psx:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_TEST_PSX_CPP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux native compiler runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-i386
+      - name: Isolate native toolchains in a directory with spaces
+        shell: bash
+        run: echo "DECOMPNET_TOOLCHAINS=$RUNNER_TEMP/PlayStation tools with spaces" >> "$GITHUB_ENV"
+      - name: Install pinned compilers and prepare original fixtures
+        run: uv run --no-sync python -m tools.operational --psx-only
+      - name: Qualify original PS1 compilers, multi-overlay discs and clean exports
+        run: >-
+          uv run --no-sync python tools/run_operational.py
+          tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py
+          tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py
+          tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py
+          tests/test_psx_assets.py tests/test_psx_hbd.py tests/test_psx_subcode.py tests/test_psx_recover.py
+          tests/test_psx_calls.py tests/test_psx_drafts.py tests/test_psx_assembler.py
+          tests/test_psx_abi.py tests/test_psx_config.py tests/test_psx_bios.py
+          tests/test_psx_main_data.py tests/test_psx_data_review.py
+          tests/test_psx_candidates.py tests/test_psx_profile_concurrency.py
+          tests/test_psx_pointer_candidates.py
+          tests/test_psx_module_copies.py tests/test_psx_registers.py tests/test_psx_boundaries.py tests/test_psx_failures.py
+          tests/test_psx_relocation_authoring.py tests/test_overlays.py
+          "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+      - name: Require every PS1 suite without skips
+        run: uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
+      - name: Preserve shared source-project guards and collaboration on PS1
+        run: uv run --no-sync python -m pytest -q tests/test_forks.py -k "not ghidra"
+      - name: Report failures
+        if: always()
+        run: uv run --no-sync python tools/operational_report.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: psx-qualification-${{ matrix.os }}
+          path: |
+            operational-results.xml
+            operational-output.log

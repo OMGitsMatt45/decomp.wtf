@@ -1,0 +1,283 @@
+"""PS1 browser/CLI disc workflows and source-built mutually exclusive overlays."""
+
+import json
+import os
+from pathlib import Path
+import shutil
+import struct
+import subprocess
+import sys
+import time
+
+import pytest
+from starlette.testclient import TestClient
+
+from decompnet import compiler, elfobj, project, toolchains
+from decompnet.app.engine import RomNetwork
+from decompnet.app.server import build
+from decompnet.cli import main
+from decompnet.network import NetworkError
+from .test_overlays import _iso, _overlay, _resident_exe
+from .test_psx_disc import fixture
+
+pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 compilers and binutils")
+
+
+def test_binary_exe_header_mastering_bytes_are_preserved(tmp_path):
+    exe = bytearray(_resident_exe())
+    exe[0x10:0x14] = struct.pack("<I", 0x80010000)
+    exe[0x38:0x4C] = bytes(range(1, 21))
+    exe[0x4C:0x70] = b'North America  "binary"\n\xff\x97\0'.ljust(0x24, b' ')
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": bytes(exe)})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"], result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
+def test_overlay_gp_bss_and_mixed_period_profiles(tmp_path):
+    base, address, data_at = 0x80180000, 0x80180500, 0x80181000
+    tools = toolchains.require("binutils-mips")
+    suffix = ".exe" if sys.platform == "win32" else ""
+    modules = []
+    for number, gp in enumerate((0x80188000, 0x80189000)):
+        cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+            "toolchain": "gcc-2.7.2-psx", "language": "c", "sandbox": "none", "flags": ["-O2", "-G8"]}})
+        compiled = compiler.compile_source(cfg, "", "int module_value(void) { static volatile int state = 7; return state; }")
+        assert compiled.ok, compiled.log
+        obj, script, elf, binary = [tmp_path / (name + str(number)) for name in ("original.o", "layout.ld", "original.elf", "original.bin")]
+        obj.write_bytes(compiled.obj)
+        script.write_text(f"SECTIONS {{ .text 0x{address:X} : {{ *(.text) }} .sdata 0x{data_at:X} : {{ *(.sdata) }} "
+                          "/DISCARD/ : { *(.reginfo) *(.MIPS.abiflags) *(.pdr) *(.comment) } }\n" + f"_gp = 0x{gp:X};\n")
+        for command in ([str(tools / ("mips-ps2-decompals-ld" + suffix)), "-EL", "-T", str(script), "-o", str(elf), str(obj)],
+                        [str(tools / ("mips-ps2-decompals-objcopy" + suffix)), "-O", "binary", str(elf), str(binary)]):
+            subprocess.run(command, check=True, capture_output=True)
+        body = bytearray(_overlay(base, 40).ljust(0x1800, b"\0"))
+        struct.pack_into("<I", body, 8, 0x0C000000 | ((address >> 2) & 0x03FFFFFF))
+        code = binary.read_bytes()
+        body[0x500:0x500 + len(code)] = code
+        header = bytearray(0x800)
+        header[:8] = b"PS-X EXE"
+        struct.pack_into("<IIII", header, 0x10, base, gp, base, len(body))
+        struct.pack_into("<II", header, 0x28, base + 0x1900, 0x80)
+        modules.append(bytes(header + body))
+    resident = bytearray(_resident_exe())
+    struct.pack_into("<I", resident, 0x14, 0x80018000)
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": bytes(resident),
+                     "BATTLE.EXE": modules[0], "FIELD.EXE": modules[1]})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda cfg: cfg["compiler"].update(sandbox="none"))
+    proj = net.project_row(slug)
+    functions = net.store.all("SELECT * FROM functions WHERE project_id=? AND vram=? ORDER BY unit", proj["id"], address)
+    assert len(functions) == 2
+    agent, _ = net.local_agent("module-test")
+    for fn, tcid, gp in zip(functions, ("gcc-2.7.2-psx", "gcc-2.8.1-psx"), (0x80188000, 0x80189000)):
+        assert net._rom_target(fn).gp == gp
+        assert net.cfg(proj)["psx_modules"][fn["unit"]]["bss_size"] == 0x80
+        net.set_function_compiler(slug, fn["name"], {"toolchain": tcid, "language": "c++", "flags": ["-O2", "-G8"]})
+        source = f"int {fn['name']}(void) {{ static volatile int state = 7; return state; }}"
+        result = net.attempt(agent, fn["name"], source, slug)
+        assert result["matched"], result
+        with pytest.raises(NetworkError, match="invalidate"):
+            net.set_function_compiler(slug, fn["name"], {"flags": ["-O0", "-G0"]})
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["matched"] == 2 and not result["fallback"], result
+    tree = Path(result["path"])
+    assert (tree / result["disc"]["output"]).read_bytes() == original
+    manifest = json.loads((tree / "build.json").read_text())
+    for folder in ("asm", "assets", "build"):
+        shutil.rmtree(tree / folder)
+    (tree / manifest["image"]).unlink()
+    rebuilt = subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True, timeout=120)
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert (tree / manifest["disc"]["output"]).read_bytes() == original
+
+    # Changed code uses each exclusive module's own GP with a reviewed pinned
+    # global. The original static storage remains in the baseline assembly.
+    for fn in (f for f in manifest["functions"] if f["vram"] == address):
+        manifest["module_symbols"][fn["seg"]]["pinned_state"] = data_at + 4
+        # GCC 2.8.1 honors an external small-data section declaration; 2.7.2
+        # emits a larger absolute-address sequence for this declaration.
+        fn["compiler"]["toolchain"] = "gcc-2.8.1-psx"
+        (tree / fn["source"]).write_text(
+            f'extern "C" {{ extern volatile int pinned_state __attribute__((section(".sdata"))); '
+            f'int {fn["name"]}(void) {{ return pinned_state; }} }}\n')
+    (tree / "build.json").write_text(json.dumps(manifest))
+    modified = subprocess.run([sys.executable, "build.py", "mod"], cwd=tree, capture_output=True, text=True, timeout=120)
+    assert modified.returncode == 0, modified.stdout + modified.stderr
+    report = json.loads((tree / "build/psx-mod-result.json").read_text())
+    assert len(report["changed_functions"]) == 2 and len(report["disc"]["files"]) == 2
+    program = (tree / "build/psx-mod/program.exe").read_bytes()
+    for fn in (f for f in manifest["functions"] if f["vram"] == address):
+        gp = manifest["psx_modules"][fn["seg"]]["gp"]
+        instruction = int.from_bytes(program[fn["rom"]:fn["rom"] + 4], "little")
+        assert instruction >> 21 & 31 == 28
+        assert instruction & 65535 == (data_at + 4 - gp) & 65535
+
+
+@pytest.mark.parametrize("tcid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+def test_two_overlays_match_their_own_cpp_and_rebuild_from_clean_sources(tmp_path, tcid):
+    assert all(toolchains.installed(t) is not None for t in (tcid, "binutils-mips"))
+    base, count = 0x80180000, 40
+    address = base + 64 + count * 32
+    cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+        "toolchain": tcid, "language": "c", "sandbox": "none"}})
+
+    def module(value):
+        result = compiler.compile_source(cfg, "", f"int disc_value(int x) {{ return x + {value}; }}")
+        assert result.ok, result.log
+        fn = elfobj.extract_function(result.obj, "disc_value")
+        assert fn and not fn.relocs
+        calls = bytearray(_overlay(base + 64, count))
+        struct.pack_into("<I", calls, 8, 0x0C000000 | ((address >> 2) & 0x03FFFFFF))
+        return bytes(64) + calls + fn.code
+
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\DEMOQ_PS1.EXE;1\n", "DEMOQ_PS1.EXE": _resident_exe(),
+                     "BATTLE.BIN": module(7), "FIELD.BIN": module(9), "DATA.BIN": b"unrelated file"})
+    work = tmp_path / "PS1 project with spaces"
+    work.mkdir()
+    net = RomNetwork(work / "app.db", work / "projects")
+    slug = net.import_rom(original, toolchain=tcid, confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda cfg: cfg["compiler"].update(sandbox="none"))
+    proj = net.project_row(slug)
+    functions = net.store.all("SELECT * FROM functions WHERE project_id=? AND vram=? ORDER BY unit", proj["id"], address)
+    assert len(functions) == 2
+    first, _ = net.local_agent("battle-agent")
+    second, _ = net.local_agent("field-agent")
+    for agent, fn, value in zip((first, second), functions, (7, 9)):
+        assert net.claim_row(agent, slug, fn["name"])["id"] == fn["id"]
+        assert net.reader(proj, fn)(address, fn["size"]) == elfobj.extract_function(
+            compiler.compile_source(cfg, "", f"int disc_value(int x) {{ return x + {value}; }}").obj, "disc_value").code
+        source = f"int {fn['name']}(int x) {{ return x + {value}; }}"
+        wrong = net.attempt(agent, fn["name"], source.replace(f"+ {value}", "+ 11"), slug)
+        assert not wrong["matched"]
+        result = net.attempt(agent, fn["name"], source, slug)
+        assert result["matched"], result
+    with pytest.raises(NetworkError, match="module-qualified"):
+        net._function(hex(address), slug)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["scope"] == "disc" and result["matched"] == 2, result
+    assert not result["fallback"]
+    tree = Path(result["path"])
+    manifest = json.loads((tree / "build.json").read_text())
+    output = tree / manifest["disc"]["output"]
+    assert output.read_bytes() == original
+    # No generated target, assembly, assets or previous object may carry this rebuild.
+    for name in ("asm", "assets", "build"):
+        shutil.rmtree(tree / name, ignore_errors=True)
+    (tree / manifest["image"]).unlink()
+
+    def run():
+        return subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True, timeout=120)
+
+    built = run()
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert output.read_bytes() == original
+    source = next((tree / "src").rglob("*.cpp"))
+    before = source.read_text()
+    source.write_text(before.replace("+ 7", "+ 11").replace("+ 9", "+ 11"))
+    failed = run()
+    assert failed.returncode != 0 and "not identical" in failed.stdout + failed.stderr
+    assert not output.exists()
+    source.write_text(before)
+    assert run().returncode == 0
+    disc_path = tree / manifest["disc"]["image"]
+    disc_path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    failed = run()
+    assert failed.returncode != 0 and "original PS1 disc differs" in failed.stdout + failed.stderr
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("size,skip", [(2352, 16), (2352, 24), (2448, 24)])
+def test_raw_disc_exports_rebuild_the_complete_image(tmp_path, size, skip):
+    original = fixture(size, skip)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["scope"] == "disc", result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
+@pytest.mark.parametrize("mode", ["boot-only", "separate-raw", "exe-over-resident"])
+def test_disc_exports_with_different_resident_overlay_layouts(tmp_path, mode):
+    files = {"SYSTEM.CNF": b"BOOT = cdrom:\\DEMOQ_PS1.EXE;1\n", "DEMOQ_PS1.EXE": _resident_exe()}
+    if mode == "separate-raw":
+        files["BATTLE.BIN"] = _overlay(0x80180000, 40)
+    elif mode == "exe-over-resident":
+        files["FIELD.EXE"] = _resident_exe()
+    original = _iso(files)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    assert net.overview(slug)["disc"]["programs"] == (1 if mode == "boot-only" else 2)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["scope"] == "disc", result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
+def test_cli_inventory_import_dedup_and_export(tmp_path, capsys):
+    original = fixture()
+    path = tmp_path / "my disc.iso"
+    path.write_bytes(original)
+    base = ["--db", str(tmp_path / "app.db"), "psx"]
+    assert main([*base, "inspect", str(path)]) == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["disc"]["supported"] and len(info["overlays"]) == 2
+    workspace = str(tmp_path / "projects")
+    command = [*base, "import", str(path), "--workspace", workspace, "--own-copy"]
+    assert main(command) == 0
+    slug = json.loads(capsys.readouterr().out)["project"]
+    assert main(command) == 0
+    assert json.loads(capsys.readouterr().out)["project"] == slug
+    # Two discs share an executable but carry different game resources.
+    # They must retain distinct projects and independently reconstruct both.
+    second_disc = bytearray(original)
+    music = next(f for f in info["disc"]["files"] if f["path"] == "MUSIC.VAB")
+    second_disc[music["lba"] * 2048] ^= 1
+    path.write_bytes(second_disc)
+    assert main(command) == 0
+    second_slug = json.loads(capsys.readouterr().out)["project"]
+    assert second_slug != slug
+    path.unlink()  # the imported project retains its own private disc
+    for project_slug, disc_image in ((slug, original), (second_slug, second_disc)):
+        assert main([*base, "export", project_slug, "--workspace", workspace]) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["identical"] and result["scope"] == "disc"
+        assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == disc_image
+
+
+def test_browser_disc_import_export_and_failure_reporting(tmp_path):
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    mcp, _, security = build(net, tmp_path / "home", 6499, "test-secret")
+    app = mcp.streamable_http_app(transport_security=security, host="127.0.0.1")
+
+    def job(client, response):
+        assert response.status_code == 200, response.text
+        deadline = time.monotonic() + 120
+        last = None
+        while time.monotonic() < deadline:
+            last = client.get("/api/job", params={"id": response.json()["job"]}).json()
+            if last["state"] != "running":
+                return last
+            time.sleep(0.02)
+        pytest.fail(f"disc workflow timed out: {last}")
+
+    with TestClient(app, base_url="http://127.0.0.1:6499") as client:
+        assert client.post("/api/import", params={"confirmed": "1"}, content=fixture()).status_code == 401
+        client.cookies.set("decomp_live", "test-secret")
+        h = {"X-Decomp": "1"}
+        client.post("/api/settings", json={"autopilot": False}, headers=h)
+        imported = job(client, client.post("/api/import", params={"confirmed": "1", "name": "my disc.iso"}, content=fixture(), headers=h))
+        assert imported["state"] == "done", imported
+        slug = imported["result"]["slug"]
+        overview = client.get("/api/project", params={"slug": slug}).json()
+        assert overview["disc"]["supported"] and overview["disc"]["programs"] == 3
+        exported = job(client, client.post("/api/export", json={"slug": slug}, headers=h))
+        assert exported["state"] == "done" and exported["result"]["identical"], exported
+        assert exported["result"]["scope"] == "disc"
+        proj = net.project_row(slug)
+        cfg = net.cfg(proj)
+        (Path(proj["root"]) / cfg["psx_disc"]["file"]).write_bytes(b"corrupt disc")
+        failed = job(client, client.post("/api/export", json={"slug": slug}, headers=h))
+        assert failed["state"] == "error" and "original PS1 disc differs" in failed["error"], failed

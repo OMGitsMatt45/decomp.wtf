@@ -27,7 +27,6 @@ LANGUAGE = "C/C++" if len(_LANGUAGES) > 1 else "C++" if "c++" in _LANGUAGES else
 ASSEMBLY_ONLY = False
 EXPORTED_LABELS = {name for symbols in B.get("module_symbols", {}).values() for name in symbols}
 PREAMBLE = {
-    "n64": '.include "macro.inc"\n.set noat\n.set noreorder\n.set gp=64\n.section .text, "ax"\n',
     "psx": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
     "ps2": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
 }
@@ -73,14 +72,11 @@ def sha1(path: Path) -> str:
 
 
 def setup() -> None:
-    if container := B.get("container"):
-        from decompnet.rom.n64_layout import working_image
-        original = ROOT / container["image"]
-        if not original.is_file():
-            fail(f"put your own original cartridge here as {container['image']}")
+    if disc := B.get("disc"):
+        from decompnet.rom.psx_disc import analysis
         try:
-            decoded = working_image(original.read_bytes(), container["layout"])
-        except (ValueError, RuntimeError) as error:
+            decoded = analysis(ROOT / disc["image"], disc["layout"])
+        except (OSError, ValueError, RuntimeError) as error:
             fail(str(error))
         (ROOT / B["image"]).write_bytes(decoded)
     base = ROOT / B["image"]
@@ -91,6 +87,11 @@ def setup() -> None:
     if not (ROOT / "asm" / "nonmatchings").exists():
         print("extracting the assembly and data from your copy (splat)")
         run([sys.executable, "-m", "splat", "split", "splat.yaml"])
+        if B["platform"] == "psx":
+            from decompnet.rom.split import namespace_overlay_labels
+            from decompnet.rom.psx_modules import literal_gp
+            namespace_overlay_labels(ROOT)
+            literal_gp(ROOT)
         for generated in (ROOT / "src").glob("*.c"):
             generated.unlink()  # splat's INCLUDE_ASM files; this tree builds one object per function
     for seg in B["segments"]:
@@ -132,7 +133,8 @@ def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
     for fn in B["functions"]:
         c = c_source(fn)
         if c:
-            obj = f"build/{Path(c).with_suffix('.o').as_posix()}"
+            obj = ("build/shared/" + hashlib.sha256(c.encode()).hexdigest() + ".o" if ".." in Path(c).parts
+                   else f"build/{Path(c).with_suffix('.o').as_posix()}")
             out.append(("c", c, obj))
         else:
             wrap = ROOT / "build" / "wrap" / f"{fn['name']}.s"
@@ -201,6 +203,8 @@ def build_config(fn=None):
     # A missing language in an older export always means C, even after a
     # platform starts defaulting to C++. Preserve the game's external ABI.
     selected = {**B["compiler"], **(fn.get("compiler", {}) if fn else {})}
+    if B["platform"] == "psx" and selected.get("assembler"):
+        toolchains.ensure("maspsx", log=lambda *_: None)
     return compiler_config(ROOT, {"kind": "rom", "platform": B["platform"], "compiler": {
         **selected, "language": selected.get("language", "c"), "include_dirs": ["include"]}})
 
@@ -230,7 +234,8 @@ def validate(fn, obj):
     table.by_name.update({s.name: s for s in found})
     big = B["big_endian"]
     rf = split.parse_function(ROOT / fn["asm"], fn["seg"], big)
-    target = match.target_from_split(rf, table.resolve, big, B.get("gp") or 0)
+    gp = B.get("psx_modules", {}).get(fn["seg"], {}).get("gp", B.get("gp") or 0)
+    target = match.target_from_split(rf, table.resolve, big, gp)
     image = (ROOT / B["image"]).read_bytes()
     segments = [s for s in B["segments"] if s["kind"] == "code"]
     selected = next((s for s in segments if s["name"] == fn["seg"]), None)
@@ -343,10 +348,11 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str, str]], mo
                 lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : {{ {object_pattern(provides[fn['name']])}({section}) }}")
                 n += 1
     # own data of C functions nobody placed yet: kept out of the image; `build.py check` places it
-    lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) }}")
+    lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) build/shared/*({OWN}) }}")
     lines += [f"    /DISCARD/ : {{ {DISCARD} }}", "}", ""]
-    if B.get("gp"):
-        lines.append(f"_gp = 0x{B['gp']:08X};")
+    gp = B.get("psx_modules", {}).get(module or "main", {}).get("gp", B.get("gp") or 0)
+    if gp:
+        lines.append(f"_gp = 0x{gp:08X};")
     lines += [f"{name} = 0x{addr:08X};" for name, addr in B["symbols"].items()]
     if module is not None:
         own_symbols = B.get("module_symbols", {}).get(module, {})
@@ -400,7 +406,10 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *,
         script = f"build/modules/{name}.ld"
         elf, binary = f"build/modules/{name}.elf", f"build/modules/{name}.bin"
         (ROOT / script).write_text(scripts[name] if scripts is not None else linker_script(provides, gaps, name), encoding="utf-8")
-        run([binutils("ld"), *B["ld_flags"], "-T", script, "-o", elf, *sorted(objects)])
+        # A PS-X EXE payload starts at file offset 0x800, independently of
+        # its RAM address. Page-aligned ELF program headers need not fit there.
+        flags = [*B["ld_flags"], *(["-N"] if B["platform"] == "psx" else [])]
+        run([binutils("ld"), *flags, "-T", script, "-o", elf, *sorted(objects)])
         run([binutils("objcopy"), "-O", "binary", elf, binary])
         data = (ROOT / binary).read_bytes()
         if len(data) > end - start:
@@ -410,17 +419,16 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *,
 
 
 def build() -> bool:
-    setup()
     (ROOT / B["output"]).unlink(missing_ok=True)
-    if container := B.get("container"):
-        (ROOT / container["output"]).unlink(missing_ok=True)
+    if program := B.get("program"):
+        (ROOT / program["output"]).unlink(missing_ok=True)
+    if disc := B.get("disc"):
+        (ROOT / disc["output"]).unlink(missing_ok=True)
+        for item in disc.get("artifacts", []):
+            (ROOT / item["output"]).unlink(missing_ok=True)
+    setup()
     todo, provides = objects()
     build_objects(todo)
-    if B["platform"] == "n64":
-        for fn in B["functions"]:
-            if c_source(fn) and (why := validate(fn, (ROOT / provides[fn["name"]]).read_bytes())):
-                print(f"differs: {fn['name']}: {why}")
-                return False
     gaps = fill_gaps(provides)
     code = [s for s in B["segments"] if s["kind"] == "code"]
     size = (ROOT / B["image"]).stat().st_size
@@ -437,13 +445,16 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
-        if container := B.get("container"):
-            size = container["layout"]["original_size"]
-            rebuilt = out[:size]
-            if hashlib.sha256(rebuilt).hexdigest() != container["layout"]["sha256"]:
-                fail("the source-built original N64 container differs")
-            (ROOT / container["output"]).write_bytes(rebuilt)
-            print(f"identical: {container['output']} matches {container['image']} byte for byte")
+        if disc := B.get("disc"):
+            from decompnet.rom.psx_disc import rebuild
+            try:
+                rebuild(ROOT / disc["image"], out, disc["layout"], ROOT / disc["output"])
+                if destination := disc.get("companions_output"):
+                    from decompnet.rom.psx_media import companions
+                    companions(ROOT / disc["image"], disc["layout"], ROOT / destination)
+            except (OSError, ValueError, RuntimeError) as error:
+                fail(str(error))
+            print(f"identical: {disc['output']} matches the complete original PS1 disc byte for byte")
         if program := B.get("program"):
             from decompnet.rom.ps2 import rebuild_elf
 
@@ -496,20 +507,14 @@ def status() -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if args[:1] in (["mod"], ["inventory"]):
-        import argparse
-        parser = argparse.ArgumentParser(description="Build bounded N64 source changes or review their relocations")
-        parser.add_argument("--module")
-        parser.add_argument("--cic", type=int, choices=(6101, 6102, 6103, 6105, 6106))
-        options = parser.parse_args(args[1:])
-        if B.get("format") != "shiftable":
-            fail("export a shiftable N64 project before requesting function reflow")
-        import shiftable
+    if args == ["mod"] and B["platform"] == "psx":
+        import psx_mod
         try:
-            success = shiftable.build(sys.modules[__name__], options.module, options.cic, audit_only=args[0] == "inventory")
-        except (ValueError, OSError) as error:
+            sys.exit(0 if psx_mod.build(sys.modules[__name__]) else 1)
+        except (ValueError, OSError, RuntimeError) as error:
             fail(str(error))
-        sys.exit(0 if success else 1)
+    if args[:1] in (["mod"], ["inventory"]):
+        fail("this project does not support that build command")
     if args[:1] == ["check"] and len(args) == 2:
         sys.exit(0 if check(args[1]) else 1)
     if args[:1] == ["status"]:

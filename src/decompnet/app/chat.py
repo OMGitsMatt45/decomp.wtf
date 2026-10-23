@@ -27,7 +27,7 @@ When the user wants a game decompiled:
 2. open_gui() so the user can watch: the map lights up as functions match.
 3. Work: claim_function -> compile_and_diff, repeat (guide("workflow") has the loop). For a big game, also
    start_agents(count) to add helper agents working in parallel; progress() shows everyone's work.
-4. export_project() writes a decomp project that rebuilds the game byte for byte: the base for ports and mods.
+4. export_project() writes an original-console reconstruction, not a PC game. PC output uses a separate backend; DS is first and no retail PC backend is qualified yet. Never describe matching progress as playable PC output.
 Report progress in terms of functions and % of code matched. The game's code is the user's: never publish it.
 """
 
@@ -101,8 +101,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
     @mcp.tool(meta=tools.ALWAYS_LOAD)
     async def import_game(ctx: Context, path: str, own_copy: bool = False, compiler: str = "") -> str:
         """Start decompiling a game from scratch: the user's own ROM, disc image or program file on this computer
-        (N64, PlayStation 1/2, GameCube, Wii, Game Boy Advance, DS). Finds every function and the compiler, then
-        tries every function's machine draft in the background (free matches).
+        (PlayStation 1/2, Game Boy Advance, DS, Game Boy/Color). Discovers supported code and selects the
+        configured console toolchain. Console reconstruction and native PC output have separate readiness.
 
         Args:
             path: the game file on this computer

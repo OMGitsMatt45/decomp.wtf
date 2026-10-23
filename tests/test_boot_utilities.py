@@ -1,13 +1,11 @@
 """Home-made boot programs exercise the same unusual layouts as real utilities."""
 
 import hashlib
-import io
 import json
 import struct
 from pathlib import Path
 
 import pytest
-from Cryptodome.Cipher import AES
 
 from decompnet import toolchains
 from decompnet.app import tools
@@ -15,7 +13,7 @@ from decompnet.app.engine import RomNetwork
 from decompnet.compiler import CompilerConfig, compile_source, _wrap
 from decompnet.network import NetworkError
 from decompnet.rom import boot, boot_build
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from decompnet.forks.scratch_dsd import crc16
 
 
@@ -42,8 +40,7 @@ def gc_utility():
     return bytes(raw)
 
 
-@pytest.mark.parametrize("platform,make,tid", [("nds", ds_utility, "binutils-arm"),
-                                             ("gc", gc_utility, "gc-wii-binutils")])
+@pytest.mark.parametrize("platform,make,tid", [("nds", ds_utility, "binutils-arm")])
 def test_import_export_and_edited_instructions_are_actually_checked(tmp_path, platform, make, tid):
     if toolchains.installed(tid) is None:
         pytest.skip(f"requires {tid}")
@@ -89,32 +86,6 @@ def test_import_export_and_edited_instructions_are_actually_checked(tmp_path, pl
     assert not (root / "build" / manifest["output"]).exists()
 
 
-def test_wii_update_partition_reads_and_checks_encrypted_sector_hashes():
-    common = bytes.fromhex("ebe42a225e8593e448d9c5457381aaf7")
-    key, title = bytes(range(16)), bytes(range(8))
-    data = gc_utility().ljust(0x7C00, b"\0")
-    hashes = bytearray(0x400)
-    for i in range(31):
-        hashes[20 * i:20 * (i + 1)] = hashlib.sha1(data[i * 0x400:(i + 1) * 0x400]).digest()
-    encrypted_hashes = AES.new(key, AES.MODE_CBC, bytes(16)).encrypt(hashes)
-    encrypted_data = AES.new(key, AES.MODE_CBC, encrypted_hashes[0x3D0:0x3E0]).encrypt(data)
-    disc = bytearray(0x80000)
-    struct.pack_into(">II", disc, 0x40000, 1, 0x40020 // 4)
-    struct.pack_into(">II", disc, 0x40020, 0x50000 // 4, 1)  # Update, no Data partition
-    base = 0x50000
-    issuer = b"Root-CA00000001-XS00000003"
-    disc[base + 0x140:base + 0x140 + len(issuer)] = issuer
-    disc[base + 0x1DC:base + 0x1E4] = title
-    disc[base + 0x1BF:base + 0x1CF] = AES.new(common, AES.MODE_CBC, title + bytes(8)).encrypt(key)
-    struct.pack_into(">II", disc, base + 0x2B8, 0x20000 // 4, 0x8000 // 4)
-    disc[0x70000:0x78000] = encrypted_hashes + encrypted_data
-    partition = boot.WiiPartition(io.BytesIO(disc))
-    assert partition.kind == 1
-    extracted, meta = boot.apploader(partition)
-    assert extracted == data[0x2440:0x2480] and meta["scope"] == "apploader"
-    disc[0x70410] ^= 1
-    with pytest.raises(RomError, match="hash check"):
-        boot.WiiPartition(io.BytesIO(disc)).read(0x440)
 
 
 @pytest.mark.parametrize("source", ['.incbin "/secret"', '.include "x"', '.macro x', '.altmacro',
@@ -144,3 +115,14 @@ def test_docker_sandbox_mounts_pinned_tools_and_runtime_read_only(tmp_path):
     assert "/runtime32/ld-linux.so.2:/lib/ld-linux.so.2:ro" in argv
     assert argv[-2:] == ["compiler-image", "/tools/as"]
     assert "--read-only" in argv and "--network" in argv and "none" in argv
+
+
+def test_removed_disc_utilities_are_rejected_before_tool_setup(tmp_path, monkeypatch):
+    net = RomNetwork(tmp_path / 'app.db', tmp_path)
+    monkeypatch.setattr(toolchains, 'ensure', lambda *a, **k: pytest.fail('removed backend started tools'))
+    raw = gc_utility()
+    for suffix in ('.iso', '.bin'):
+        path = tmp_path / ('utility' + suffix)
+        path.write_bytes(raw)
+        with pytest.raises(NetworkError, match='removed'):
+            net.import_rom(path, confirmed=True, log=lambda *_: None)

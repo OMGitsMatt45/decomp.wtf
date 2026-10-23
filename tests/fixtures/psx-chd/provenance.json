@@ -1,0 +1,33 @@
+{
+  "generator": "chdman - MAME Compressed Hunks of Data (CHD) manager 0.276 (unknown)",
+  "source": "tests/psx_chd_fixture.py; entirely original fixtures",
+  "decoded_size": 166464,
+  "decoded_sha256": "332596bb95c27928d6a59a0e3367956578b22c86f0d48af3c9ff45a4989bc597",
+  "files": {
+    "cdlz.chd": {
+      "size": 42940,
+      "sha256": "be5f716296941f817093864aae4bc4aa0ed0adc8aa72458c1548d20dbe016a0c",
+      "chdman_verified": true
+    },
+    "cdzl.chd": {
+      "size": 44168,
+      "sha256": "d0b8680703212af50a5de8bbc42745da36704075024e564ec745f844c92e786f",
+      "chdman_verified": true
+    },
+    "cdfl.chd": {
+      "size": 60892,
+      "sha256": "4d34f2c8ff2cedf3ae0810a0adb7ed5348da9eacc7243e1f8e69c6eab66cd372",
+      "chdman_verified": true
+    },
+    "lzma.chd": {
+      "size": 44820,
+      "sha256": "0f1ba4a68820ea55fc1e07bb16ff82a057e02e4a8ad6ab07eb27dfc1c0ddaf52",
+      "chdman_verified": true
+    },
+    "zlib.chd": {
+      "size": 45930,
+      "sha256": "caed9002790a16f5de571d5a381e6f41cbeefc9a50166817859afbd20a851cab",
+      "chdman_verified": true
+    }
+  }
+}

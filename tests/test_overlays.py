@@ -32,6 +32,15 @@ def test_an_overlay_is_placed_at_its_load_address():
     assert overlays.place(data, "psx", [(0x800F0000, 0x80120000)]) is None  # over the resident program: no
 
 
+def test_overlay_leaf_calls_do_not_shift_the_load_address():
+    for platform, base in (("psx", 0x80180000), ("ps2", 0x00400000)):
+        calls = bytearray(_overlay(base + 64, 40))
+        leaf = base + 64 + len(calls)
+        struct.pack_into("<I", calls, 8, 0x0C000000 | ((leaf >> 2) & 0x03FFFFFF))
+        data = bytes(64) + calls + struct.pack("<II", JR_RA, 0x24820007)
+        assert overlays.place(data, platform, []) == (base, 64)
+
+
 def test_ps2_elf_overlays_say_where_they_go():
     code = _overlay(0x00400000, 40)
     phoff = 52
@@ -63,6 +72,28 @@ def test_overlays_are_split_with_the_program(tmp_path):
             call = by_address[address].lines[2]
             assert call.mnemonic == "jal" and call.operands == by_address[callee].name
     assert res.image == "game.overlays.exe"
+
+
+def test_namespaced_overlay_local_jumps_preserve_targets_and_draft_labels(tmp_path):
+    from decompnet.app.engine import RomNetwork
+    from decompnet.rom import match
+
+    listing = tmp_path / "overlay.s"
+    listing.write_text("""glabel func_ovl_init_8014C58C
+/* 000000 8014C58C 65310508 */ j .Lovl_init_8014C594
+/* 000004 8014C590 00000000 */ nop
+.Lovl_init_8014C594:
+/* 000008 8014C594 0800E003 */ jr $ra
+/* 00000C 8014C598 00000000 */ nop
+""")
+    function = split.parse_function(listing, "ovl_init", False)
+    assert function.labels == {0x8014C594}
+    assert function.lines[0].operands == ".L8014C594"
+    source = RomNetwork._asm_source(function)
+    assert "j          .L8014C594" in source and ".L8014C594:" in source
+    function.lines[0].operands = ".Lovl_init_8014C594"
+    target = match.target_from_split(function, lambda _: None, False)
+    assert target.relocs == [(0, 4, 0x8014C594)]
 
 
 def _iso(files: dict[str, bytes]) -> bytes:

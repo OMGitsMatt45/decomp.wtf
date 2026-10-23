@@ -7,28 +7,28 @@ from pathlib import Path
 
 from decompnet import toolchains
 
-TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96", "ido-5.3", "ido-7.1",
-         "arm-gnu", "binutils-arm", "agbcc", "m2c", "luvdis", "binutils-mips", "gc-wii-binutils", "objdiff-cli", "dtk",
-         "sjiswrap", "dtk-template", "mwcc", "mwccarm", "dsd", "cloudflared", "coddog", "maspsx", "ghidra")
+TOOLS = ("gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96",
+         "arm-gnu", "binutils-arm", "agbcc", "m2c", "luvdis", "binutils-mips", "objdiff-cli",
+         "mwccarm", "dsd", "cloudflared", "coddog", "maspsx", "ghidra")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--ds-only", action="store_true", help="prepare the native Nintendo DS qualification")
-    scope.add_argument("--n64-only", action="store_true", help="prepare the four native Nintendo 64 compiler paths")
+    scope.add_argument("--psx-only", action="store_true", help="prepare native PS1 C/C++ and disc qualification")
     args = parser.parse_args()
-    selected = (("gcc-2.7.2-kmc", "ido-5.3", "ido-7.1", "binutils-mips", "m2c") if args.n64_only else
+    selected = (("gcc-2.7.2-psx", "gcc-2.8.1-psx", "binutils-mips", "m2c", "maspsx") if args.psx_only else
                 ("arm-gnu", "mwccarm", "dsd", "objdiff-cli", "m2c") if args.ds_only else TOOLS)
-    fixtures = ("zlib-n64/prepare.py", "demo-rom/build.py") if args.n64_only else ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
-        "zlib-n64/prepare.py", "demo-rom/build.py", "demo-psx/build.py", "demo-ps2/build.py",
-        "demo-gba/build.py", "demo-ds/build.py", "demo-gc/build.py")
+    fixtures = ("zlib-n64/prepare.py", "demo-psx/build.py") if args.psx_only else ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
+        "zlib-n64/prepare.py", "demo-psx/build.py", "demo-ps2/build.py",
+        "demo-gba/build.py", "demo-ds/build.py")
     try:
         for tid in selected:
             toolchains.install(tid, accept_license=True)
             if sys.platform == "win32" and toolchains.get(tid).via_wsl:
                 raise RuntimeError(f"{tid} unexpectedly selected WSL")
-        if not args.n64_only and toolchains.get("wibo").supported:
+        if not args.psx_only and toolchains.get("wibo").supported:
             toolchains.install("wibo")
         root = Path(__file__).resolve().parents[1]
         for script in fixtures:

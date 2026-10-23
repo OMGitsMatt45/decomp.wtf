@@ -1,162 +1,36 @@
-"""Executable boot utilities which do not use the usual Nintendo SDK layouts.
-
-These are assembly projects, not completed C/C++ decomps. DS utilities retain the
-whole cartridge; apploader-only discs expose their actual boot program, not a
-fabricated main DOL. Unanalysed bytes remain explicit base-image ranges.
-"""
-
+"""Assembly-only DS boot utilities with explicit original-image provenance."""
 from __future__ import annotations
-
 import hashlib
 import struct
-import subprocess
-import tempfile
 from pathlib import Path
-
 import capstone
-
-from .n64 import RomError
-
-
-def _exact(source, offset: int, size: int) -> bytes:
-    if offset < 0 or size < 0 or size > 64 << 20:
-        raise RomError("invalid boot program range")
-    source.seek(offset)
-    data = source.read(size)
-    if len(data) != size:
-        raise RomError("truncated boot program")
-    return data
-
-
-class WiiPartition:
-    """Bounded decrypted reads, including update-only discs. No disc keys are saved."""
-
-    def __init__(self, source):
-        from Cryptodome.Cipher import AES
-
-        self.source, self.pos = source, 0
-        groups = _exact(source, 0x40000, 32)
-        partitions = []
-        for count, table in struct.iter_unpack(">II", groups):
-            if count > 256:
-                raise RomError("invalid Wii partition count")
-            partitions.extend((offset * 4, kind) for offset, kind in
-                              struct.iter_unpack(">II", _exact(source, table * 4, count * 8)))
-        if not partitions:
-            raise RomError("Wii disc has no partitions")
-        # Prefer a game partition, then an update partition, then another type.
-        base, self.kind = min(partitions, key=lambda p: (p[1] != 0, p[1] != 1))
-        head = _exact(source, base, 0x2C0)
-        issuer = head[0x140:0x180].split(b"\0", 1)[0]
-        if issuer != b"Root-CA00000001-XS00000003" or head[0x1F1] != 0:
-            raise RomError("this utility uses an unsupported Wii ticket key type")
-        # Standard retail Wii disc-format common key, also used by nod/Dolphin.
-        common = bytes.fromhex("ebe42a225e8593e448d9c5457381aaf7")
-        self.key = AES.new(common, AES.MODE_CBC, head[0x1DC:0x1E4] + bytes(8)).decrypt(head[0x1BF:0x1CF])
-        offset, size = struct.unpack_from(">II", head, 0x2B8)
-        self.start, self.sectors = base + offset * 4, size * 4 // 0x8000
-        self.size = self.sectors * 0x7C00
-        self.cached = (-1, b"")
-
-    def seek(self, offset: int):
-        if not 0 <= offset <= self.size:
-            raise RomError("boot program extends outside the Wii partition")
-        self.pos = offset
-
-    def read(self, size: int) -> bytes:
-        from Cryptodome.Cipher import AES
-
-        size = min(size, self.size - self.pos)
-        out = bytearray()
-        while size:
-            sector, offset = divmod(self.pos, 0x7C00)
-            if self.cached[0] != sector:
-                raw = _exact(self.source, self.start + sector * 0x8000, 0x8000)
-                data = AES.new(self.key, AES.MODE_CBC, raw[0x3D0:0x3E0]).decrypt(raw[0x400:])
-                hashes = AES.new(self.key, AES.MODE_CBC, bytes(16)).decrypt(raw[:0x400])
-                if any(hashlib.sha1(data[n * 0x400:(n + 1) * 0x400]).digest() != hashes[n * 20:(n + 1) * 20]
-                       for n in range(31)):
-                    raise RomError("Wii partition data failed its sector hash check")
-                self.cached = (sector, data)
-            count = min(size, 0x7C00 - offset)
-            out.extend(self.cached[1][offset:offset + count])
-            self.pos += count
-            size -= count
-        return bytes(out)
-
-
-def apploader(source) -> tuple[bytes, dict]:
-    head = _exact(source, 0x2440, 0x20)
-    entry, size, trailer = struct.unpack_from(">III", head, 0x10)
-    total = size + trailer
-    if not size or total > 0x600000 or not 0x81200000 <= entry < 0x81200000 + size:
-        raise RomError("disc has no valid executable apploader")
-    payload = _exact(source, 0x2460, total)
-    return head + payload, {"arch": "ppc", "scope": "apploader", "entry": entry,
-                            "segments": [{"name": "apploader", "rom_start": 0x20,
-                                          "rom_end": 0x20 + total, "vram": 0x81200000}],
-                            "analysis_end": 0x81200000 + size}
+from .. import platforms
+from .errors import RomError
 
 
 def identify(path: Path):
-    """A native assembly input, or None to use the ordinary community importer."""
-    from ..forks import scratch_dsd, scratch_dtk
-    from ..forks.project import ForkError
-    from ..limits import capped
+    from ..forks import scratch_dsd
     from .detect import Picked
-
-    with path.open("rb") as source:
+    with path.open('rb') as source:
         head = source.read(0x440)
-    if scratch_dsd.is_nds(head):
-        if struct.unpack_from("<II", head, 0x40)[1]:
-            return None
-        data = path.read_bytes()
-        segments, entries = [], []
-        for name, at in (("arm9", 0x20), ("arm7", 0x30)):
-            offset, entry, ram, size = struct.unpack_from("<IIII", head, at)
-            if not size:
-                continue
-            if offset < 0x200 or offset + size > len(data) or not ram <= (entry & ~1) < ram + size:
-                raise RomError(f"invalid DS {name} program range")
-            segments.append({"name": name, "rom_start": offset, "rom_end": offset + size, "vram": ram})
-            entries.append(entry)
-        meta = {"arch": "arm", "scope": "cartridge", "segments": segments, "entries": entries}
-        title = scratch_dsd.game_info(path)["title"]
-        platform, game_id, filename = "nds", head[12:16].decode("ascii", "replace").strip(), "baserom.nds"
-    else:
-        kind = scratch_dtk.disc_kind(head)
-        if kind is None:
-            return None
-        if kind == "gc" and struct.unpack_from(">I", head, 0x420)[0]:
-            return None
-        if kind != "gc":
-            try:
-                scratch_dtk._vfs_read(path, "sys/main.dol")
-                return None
-            except ForkError as error:
-                if not any(token in str(error) for token in ("main DOL", "Data) partition", "Reading DOL")):
-                    raise
-        with tempfile.TemporaryDirectory(prefix="decompwtf-boot-") as temp:
-            iso = path
-            if kind == "packed":
-                iso = Path(temp) / "disc.iso"
-                result = subprocess.run(capped([scratch_dtk._dtk(), "disc", "convert", str(path), str(iso)]),
-                                        capture_output=True, text=True, timeout=1800)
-                if result.returncode:
-                    raise RomError(f"couldn't decode the disc image: {(result.stdout + result.stderr)[-500:]}")
-            with iso.open("rb") as source:
-                boot = source.read(0x440)
-                platform = "wii" if struct.unpack_from(">I", boot, 0x18)[0] == 0x5D1C9EA3 else "gc"
-                reader = WiiPartition(source) if platform == "wii" else source
-                program_boot = _exact(reader, 0, 0x440)
-                if struct.unpack_from(">I", program_boot, 0x420)[0]:
-                    raise RomError("disc utility has a main DOL in a nonstandard partition; import that DOL directly")
-                data, meta = apploader(reader)
-                if platform == "wii":
-                    meta["partition_type"] = reader.kind
-        game_id = boot[:6].decode("ascii", "replace")
-        title = boot[0x20:0x400].split(b"\0", 1)[0].decode("ascii", "replace").strip() or game_id
-        filename = "apploader.img"
+    platforms.require(platforms.removed_input(head, path.stat().st_size), RomError)
+    if not scratch_dsd.is_nds(head):
+        return None
+    if struct.unpack_from("<II", head, 0x40)[1]:
+        return None
+    data = path.read_bytes()
+    segments, entries = [], []
+    for name, at in (("arm9", 0x20), ("arm7", 0x30)):
+        offset, entry, ram, size = struct.unpack_from("<IIII", head, at)
+        if not size:
+            continue
+        if offset < 0x200 or offset + size > len(data) or not ram <= (entry & ~1) < ram + size:
+            raise RomError(f"invalid DS {name} program range")
+        segments.append({"name": name, "rom_start": offset, "rom_end": offset + size, "vram": ram})
+        entries.append(entry)
+    meta = {"arch": "arm", "scope": "cartridge", "segments": segments, "entries": entries}
+    title = scratch_dsd.game_info(path)["title"]
+    platform, game_id, filename = "nds", head[12:16].decode("ascii", "replace").strip(), "baserom.nds"
     with path.open("rb") as source:
         meta["input_sha256"] = hashlib.file_digest(source, "sha256").hexdigest()
     info = {"title": title, "game_code": game_id, "region": "Boot utility", "size": len(data),

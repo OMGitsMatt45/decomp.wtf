@@ -191,14 +191,13 @@ def test_agbcc_runs_stages_without_a_shell_and_stops_on_failure(monkeypatch, fai
 
 
 def test_setup_reports_unavailable_tools_and_continues(windows_catalog, monkeypatch, capsys):
-    windows_catalog("gcc-2.7.2-kmc", parts=[{"url": "unused", "platforms": ["linux-x86_64"]}])
-    windows_catalog("m2c", git="https://example.invalid/m2c")
+    windows_catalog("m2c", parts=[{"url": "unused", "platforms": ["linux-x86_64"]}])
     windows_catalog("objdiff-cli", parts=[{"url": "unused"}])
     calls = []
 
     def install(tid, **kwargs):
         calls.append(tid)
-        if tid == "m2c":
+        if tid == "objdiff-cli":
             raise toolchains.ToolchainError("download failed")
 
     monkeypatch.setattr(toolchains, "install", install)
@@ -206,9 +205,9 @@ def test_setup_reports_unavailable_tools_and_continues(windows_catalog, monkeypa
     monkeypatch.setattr("decompnet.app.agents.detect", lambda: [])
     assert cli.setup(None) == 0
     output = capsys.readouterr().out
-    assert calls == ["m2c", "objdiff-cli"]
+    assert calls == ["objdiff-cli"]
     assert "no native Windows build" in output and "download failed" in output
-    assert "tools unavailable: gcc-2.7.2-kmc, m2c" in output
+    assert "tools unavailable: m2c, objdiff-cli" in output
 
 
 def test_native_windows_update_instructions_do_not_require_wsl(monkeypatch):

@@ -13,8 +13,7 @@ How to use it
 - Similar but unmatched: when you match one, the others get easier; note what you learned on them
   (`add_note`) so other agents benefit.
 
-Beyond this project: games built on the same SDK or engine share code (libultra on N64, the Dolphin and
-Revolution SDKs, NitroSDK on DS, PSY-Q on PS1, sead/nn on Switch, RenderWare, Havok...). Those library
+Beyond this project: games built on the same SDK or engine share code (NitroSDK on DS, PSY-Q on PS1, sead/nn on Switch, RenderWare, Havok...). Those library
 functions are usually matched already in other public decomps.
 
 Scheduling that works (from people who ran agents on decomps before): easiest functions first, then

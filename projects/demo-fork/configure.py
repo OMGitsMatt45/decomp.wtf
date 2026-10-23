@@ -14,10 +14,10 @@ UNITS = ["game"]
 
 
 def main() -> int:
-    rom = ROOT / "baserom.z64"
+    rom = ROOT / "baserom.exe"
     if not rom.exists() or hashlib.sha1(rom.read_bytes()).hexdigest() != SHA1:
-        sys.exit("baserom.z64 is missing or isn't Demo Quest 64")
-    tc = toolchains.get("gcc-2.7.2-kmc")
+        sys.exit("baserom.exe is missing or isn't the original PS1 fixture")
+    tc = toolchains.get("gcc-2.7.2-psx")
     tc_dir = toolchains.require(tc.id)
     cc = [a.replace("{tc}", str(tc_dir)) for a in tc.cc] + tc.flags
     (ROOT / "build" / "expected").mkdir(parents=True, exist_ok=True)
@@ -35,7 +35,7 @@ def main() -> int:
         "build_base": True,
         "units": [{"name": unit, "target_path": f"build/expected/{unit}.o", "base_path": f"build/src/{unit}.o",
                    "metadata": {"source_path": f"src/{unit}.c", "complete": False},
-                   "scratch": {"platform": "n64", "compiler": "gcc2.7.2kmc", "c_flags": " ".join(tc.flags)}}
+                   "scratch": {"platform": "psx", "compiler": "gcc2.7.2psx", "c_flags": " ".join(tc.flags)}}
                   for unit in UNITS],
     }, indent=2))
     print("configured: run ninja")

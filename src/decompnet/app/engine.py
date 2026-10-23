@@ -18,44 +18,33 @@ import json
 import logging
 import re
 import secrets
+import shutil
 import struct
 import threading
 import time
 from pathlib import Path
 
-from .. import cpp, scoring, seeds, similarity, toolchains
+from .. import cpp, platforms, scoring, seeds, similarity, toolchains
 from ..elfobj import FunctionObj
 from ..network import Agent, Network, NetworkError, _hash_token
 from ..project import function_config
 from ..rom import detect, gb, match, match_gb, sm83, split
 from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 
-DEFAULT_TOOLCHAIN = {"KMC": "gcc-2.7.2-kmc", "IDO": "ido-7.1", "PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
+DEFAULT_TOOLCHAIN = {"PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
                      "AGBCC": "agbcc"}
-# How ready each platform is for a full decomp you can port and mod; the GUI and the README show it.
-# recommended: the most tested path, from import to a project that builds the game (GameCube and Wii: the same kind
-# of project as decomp.dev's, linked file by file as it's finished; N64: tested on real games, rebuilt byte for byte).
-# beta: works and is tested on homemade games, less so on real ones yet.
-PLATFORM_STATUS = {"gc": "recommended", "wii": "recommended", "n64": "recommended",
-                   "psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
+# Console reconstruction status. Native PC backend readiness is reported separately.
+PLATFORM_STATUS = {"psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
 COMPILERS = {
-    "gcc-2.7.2-kmc": "many third-party N64 games",
-    "ido-7.1": "most later first-party N64 games",
-    "ido-5.3": "early N64 games (1996-97)",
     "gcc-2.7.2-psx": "PlayStation games (PSY-Q era GCC)",
     "gcc-2.8.1-psx": "later PlayStation games",
     "ee-gcc-2.96": "PlayStation 2 games (Sony's EE GCC)",
     "agbcc": "Game Boy Advance games (pret's agbcc, GCC 2.95)",
 }
-SHORT_NAMES = {"gcc-2.7.2-kmc": "KMC GCC 2.7.2", "ido-7.1": "IDO 7.1", "ido-5.3": "IDO 5.3",
-               "gcc-2.7.2-psx": "GCC 2.7.2 (PS1)", "gcc-2.8.1-psx": "GCC 2.8.1 (PS1)", "ee-gcc-2.96": "EE-GCC 2.96",
+SHORT_NAMES = {"gcc-2.7.2-psx": "GCC 2.7.2 (PS1)", "gcc-2.8.1-psx": "GCC 2.8.1 (PS1)", "ee-gcc-2.96": "EE-GCC 2.96",
                "agbcc": "agbcc"}
-# CodeWarrior versions in the `mwcc` pack (GameCube, Wii) and the `mwccarm` pack (DS), for games started from scratch.
+# CodeWarrior versions in the `mwccarm` pack for DS projects started from scratch.
 MW_VERSIONS = {
-    "gc": ["GC/1.0", "GC/1.1", "GC/1.1p1", "GC/1.2.5", "GC/1.2.5n", "GC/1.3", "GC/1.3.2", "GC/1.3.2r", "GC/2.0",
-           "GC/2.0p1", "GC/2.5", "GC/2.6", "GC/2.7", "GC/3.0a3", "GC/3.0a3.2", "GC/3.0a3.3", "GC/3.0a3.4", "GC/3.0a5",
-           "GC/3.0a5.2"],
-    "wii": ["Wii/0x4201_127", "Wii/1.0RC1", "Wii/1.0a", "Wii/1.0", "Wii/1.1", "Wii/1.3", "Wii/1.5", "Wii/1.6", "Wii/1.7"],
     "ds": ["DS/1.2/base", "DS/1.2/sp2", "DS/1.2/sp2p3", "DS/1.2/sp3", "DS/1.2/sp4", "DS/2.0/base", "DS/2.0/sp1",
            "DS/2.0/sp1p2", "DS/2.0/sp1p5", "DS/2.0/sp1p6", "DS/2.0/sp1p7", "DS/2.0/sp2", "DS/2.0/sp2p2", "DS/2.0/sp2p3",
            "DS/2.0/sp2p4", "DS/dsi/1.1", "DS/dsi/1.1p1", "DS/dsi/1.2", "DS/dsi/1.2p1", "DS/dsi/1.2p2", "DS/dsi/1.3",
@@ -68,13 +57,12 @@ TOOLS = {
     "m2c": "machine-made first drafts (MIPS, PowerPC, ARM)",
     "objdiff-cli": "judges forks of public decomps, function by function",
     "ghidra": "drafts for PC, Switch and other platforms m2c can't read (540 MB, needs Java 21+)",
-    "mwcc": "CodeWarrior, the compilers of GameCube and Wii games (proprietary)",
     "mwccarm": "CodeWarrior for DS, the compilers of DS games (proprietary)",
     "dsd": "ds-decomp: analyses DS ROMs and rebuilds them",
 }
 # Functions this small are handed out in batches (claim_function count): agents match most on the first try.
 BATCH_INSNS = 48
-PLATFORM_COMPILERS = {"n64": ["gcc-2.7.2-kmc", "ido-7.1", "ido-5.3"], "psx": ["gcc-2.7.2-psx", "gcc-2.8.1-psx"],
+PLATFORM_COMPILERS = {"psx": ["gcc-2.7.2-psx", "gcc-2.8.1-psx"],
                       "ps2": ["ee-gcc-2.96"], "gba": ["agbcc"], "gb": ["rgbds"], "gbc": ["rgbds"]}
 _AUTO_TOKEN = re.compile(r"\b(?:func|D|B|jtbl|RO|STR|FLT|DBL)_[0-9A-F]{8}\b")
 _ADDRESS = re.compile(r"^(?:0x)?([0-9A-Fa-f]{8})$")
@@ -322,12 +310,14 @@ class RomNetwork(Network):
     def _rom_target(self, fn) -> match.RomTarget:
         proj = self.store.one("SELECT config FROM projects WHERE id=?", fn["project_id"])
         cfg = json.loads(proj["config"])
+        from ..rom.psx_modules import gp
         return match.RomTarget(fn["name"], fn["vram"], fn["target"], match.RomTarget.relocs_from_json(json.loads(fn["relocs"])),
-                               cfg.get("big_endian", True), cfg.get("gp", 0))
+                               cfg.get("big_endian", True), gp(cfg, fn["unit"]))
 
     def _make_target(self, proj, rf: split.RomFunction, syms: SymbolTable) -> match.RomTarget:
         cfg = self.cfg(proj)
-        return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), cfg.get("gp", 0))
+        from ..rom.psx_modules import gp
+        return match.target_from_split(rf, syms.resolve, cfg.get("big_endian", True), gp(cfg, rf.segment))
 
     def _compile(self, proj, header: str, source: str, fn=None):
         if self.cfg(proj).get("rom", {}).get("boot_utility"):
@@ -402,6 +392,12 @@ class RomNetwork(Network):
         as a target. Returns the slug."""
         if not confirmed:
             raise NetworkError("confirm that this is your own legally obtained copy of the game")
+        if isinstance(data, (str, Path)):
+            with Path(data).open('rb') as source:
+                removed = platforms.removed_input(source.read(0x440), Path(data).stat().st_size)
+        else:
+            removed = platforms.removed_input(data[:0x440], len(data))
+        platforms.require(removed, NetworkError)
         project_file = self._community_layout(data, name)
         boot_picked = None
         if project_file is not None:
@@ -409,36 +405,33 @@ class RomNetwork(Network):
             boot_picked = boot.identify(project_file)
         if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
             if reviewed_layout is not None:
-                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
-            compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
+                raise NetworkError("reviewed layouts require a PS1 disc")
+            compiler = toolchain if toolchain and toolchain.startswith("DS/") else None
             return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
         picked = boot_picked or detect.identify(data, name)
         if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):
             raise NetworkError("GB/GBC assembly uses the pinned RGBDS toolchain with its default flags")
         rom, info = picked.data, picked.info
         if compiler_profile is not None:
-            from ..rom.n64_profiles import profile
-            if picked.platform != "n64":
-                raise NetworkError("portable compiler profiles require an N64 cartridge")
-            compiler_profile = profile({}, compiler_profile)
-            toolchain, flags = compiler_profile["toolchain"], compiler_profile["flags"]
-        layout_id = None
+            raise NetworkError("cartridge compiler profiles were removed; use PS1 per-function profiles")
+        layout_id, psx_modules = None, None
         if reviewed_layout is not None:
-            from ..rom import n64_layout
-            if picked.platform != "n64":
-                raise NetworkError("reviewed N64 layouts require an N64 cartridge")
+            if picked.platform != "psx":
+                raise NetworkError("reviewed layouts require a PS1 disc")
             try:
-                n64_layout.reviewed(rom, reviewed_layout)
+                from ..rom.psx_layout import apply
+                psx_modules = apply(picked, data, reviewed_layout)
             except ValueError as error:
                 raise NetworkError(str(error)) from error
             layout_id = hashlib.sha256(json.dumps(reviewed_layout, sort_keys=True).encode()).hexdigest()
         for p in self.store.all("SELECT slug, config FROM projects"):
             previous = json.loads(p["config"])
             previous_compiler = previous.get("compiler", {})
-            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id and \
+            if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get(picked.platform + "_layout") == layout_id and \
+                    previous.get("psx_disc", {}).get("identity", previous.get("psx_disc", {}).get("sha256")) == \
+                    (picked.disc or {}).get("identity", (picked.disc or {}).get("sha256")) and \
                     (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
-                    (not flags or previous_compiler.get("flags") == flags) and \
-                    (compiler_profile is None or profile(previous_compiler, {}) == compiler_profile):
+                    (not flags or previous_compiler.get("flags") == flags):
                 log(f"already imported as {p['slug']}")
                 return p["slug"]
         base = _slugify(info["title"])
@@ -462,17 +455,38 @@ class RomNetwork(Network):
         if picked.overlays:
             log(f"{len(picked.overlays)} overlay{'s' if len(picked.overlays) != 1 else ''} on the disc: "
                 + ", ".join(f"{o[0]} at 0x{o[2]:08X}" for o in picked.overlays[:6]) + (", ..." if len(picked.overlays) > 6 else ""))
-        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays, reviewed_layout=reviewed_layout)
+        res = split.split_rom(workdir, picked.filename, log=log, overlays=picked.overlays,
+                              psx_modules=psx_modules)
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
+        disc_layout = picked.disc
+        if disc_layout and disc_layout.get("supported"):
+            from ..rom import psx_disc
+            disc_layout = psx_disc.bind(disc_layout, [vars(s) for s in res.segments], rom)
+            from ..rom.psx_media import snapshot
+            picked.disc = disc_layout
+            disc_file = snapshot(data, picked, workdir)
+            if psx_disc.analysis(disc_file, disc_layout) != rom:
+                raise NetworkError("the retained PS1 media disagrees with the imported programs")
+            disc_layout["file"] = disc_file.name
+            log(f"full PS1 disc retained: {len(disc_layout['files'])} filesystem entries, {len(disc_layout['maps'])} program files")
+        elif disc_layout:
+            log("program-only import: " + disc_layout["reason"])
+
         toolchain = toolchain or DEFAULT_TOOLCHAIN.get(res.compiler, DEFAULT_TOOLCHAIN[info["compiler_guess"]])
         tc = toolchains.get(toolchain)
+        module_facts, effective_gp = {}, res.gp
+        if picked.platform == "psx":
+            from ..rom.psx_modules import facts
+            from ..rom.psx_data import merge_facts
+            module_facts = merge_facts(facts(picked.data, picked.overlays, res.gp), psx_modules)
+            effective_gp = module_facts.get("main", {}).get("gp", res.gp)
         default_flags = tc.flags
         if picked.platform in ("psx", "ps2"):
-            default_flags = [f for f in tc.flags if not f.startswith("-G")] + [f"-G{8 if res.gp else 0}"]
+            default_flags = [f for f in tc.flags if not f.startswith("-G")] + [f"-G{8 if effective_gp else 0}"]
         cfg = {
-            "kind": "rom", "platform": picked.platform, "big_endian": picked.big_endian, "gp": res.gp,
+            "kind": "rom", "platform": picked.platform, "big_endian": picked.big_endian, "gp": effective_gp,
             "rom": {**info, "file": res.image or picked.filename, "program": picked.filename},
             "segments": [vars(s) for s in res.segments],
             "compiler": {"toolchain": toolchain, "flags": flags or default_flags, "timeout": 20},
@@ -482,7 +496,13 @@ class RomNetwork(Network):
             "context": {"file": None},
         }
         if layout_id:
-            cfg["n64_layout"] = layout_id
+            cfg[picked.platform + "_layout"] = layout_id
+            if picked.platform == "psx":
+                (workdir / "psx-layout.json").write_text(json.dumps(reviewed_layout, indent=2), encoding="utf-8")
+        if disc_layout:
+            cfg["psx_disc"] = disc_layout
+        if picked.platform == "psx":
+            cfg["psx_modules"] = module_facts
         if compiler_profile is not None:
             cfg["compiler"].update(compiler_profile)
         symbols = SymbolTable()
@@ -513,7 +533,8 @@ class RomNetwork(Network):
                              (slug, info["title"], f"{info['game_code']} · {info['region']} · {len(res.functions)} functions",
                               "mips", int(picked.big_endian), str(workdir), json.dumps(cfg))).lastrowid
             for fn in res.functions:
-                target = match.target_from_split(fn, symbols.resolve, picked.big_endian, res.gp)
+                from ..rom.psx_modules import gp
+                target = match.target_from_split(fn, symbols.resolve, picked.big_endian, gp(cfg, fn.segment))
                 db.execute(
                     "INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,seed,unit,vram,rom_offset) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -573,21 +594,18 @@ class RomNetwork(Network):
         return slug
 
     def _community_layout(self, data: bytes | Path, name: str = "") -> Path | None:
-        """The file, when the game starts as a community-layout project: a GameCube/Wii program (DOL) or disc image
-        (dtk-template), or a DS ROM (ds-decomp). Bytes are saved to a file first."""
-        from ..forks import scratch_dsd, scratch_dtk
+        """A DS ROM starts as a ds-decomp project. Save uploads only after detection."""
+        from ..forks import scratch_dsd
 
         head = Path(data).open("rb").read(0x440) if isinstance(data, (str, Path)) else bytes(data[:0x440])
-        small = Path(data).read_bytes() if isinstance(data, (str, Path)) and Path(data).stat().st_size < 64 << 20 else data
         nds = scratch_dsd.is_nds(head)
-        if not nds and scratch_dtk.disc_kind(head) is None and not (isinstance(small, (bytes, bytearray))
-                                                                   and scratch_dtk.is_dol(small)):
+        if not nds:
             return None
         if isinstance(data, (str, Path)):
             return Path(data)
         uploads = self.workspace / ".decomp" / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
-        path = uploads / (Path(name).name or ("game.nds" if nds else "main.dol" if scratch_dtk.is_dol(data) else "game.iso"))
+        path = uploads / (Path(name).name or "game.nds")
         path.write_bytes(data)
         return path
 
@@ -617,6 +635,25 @@ class RomNetwork(Network):
 
     # ------------------------------------------------------------------ drafts
 
+    def _machine_draft(self, fn, proj, header, data_asm=None, *, valid=False):
+        """Infer source with module facts and conservative direct-call hints."""
+        selected = function_config(self.cfg(proj), fn["name"])
+        language = cpp.language(selected)
+        toolchain = selected["compiler"]["toolchain"]
+        assembly = self._asm_text(fn, proj)
+        gp = self._rom_target(fn).gp if self.is_rom(proj) else 0
+        draft = seeds.generate_from_asm(assembly, fn["name"], toolchain, header, data_asm,
+                                        language=language, valid=valid, gp=gp)
+        if draft and valid and self.cfg(proj).get("platform") == "psx":
+            from ..rom.psx_calls import call_context
+            hints = call_context(self, proj, fn, draft, header)
+            if hints:
+                repaired = seeds.generate_from_asm(assembly, fn["name"], toolchain, header + "\n" + hints,
+                                                    data_asm, language=language, valid=valid, gp=gp)
+                if repaired:
+                    return hints + "\n" + repaired
+        return draft
+
     def _seed_for(self, fn, proj) -> str | None:
         """A draft, made when a function first opens; assembly imports already carry their listing."""
         if self.cfg(proj).get("rom", {}).get("boot_utility"):
@@ -626,14 +663,11 @@ class RomNetwork(Network):
         if fn["seed"] is not None or not seeds.available():
             return fn["seed"]
         selected = function_config(self.cfg(proj), fn["name"])
-        tc = selected["compiler"]["toolchain"]
-        asm = self._asm_text(fn, proj)
         data_asm = None
         if "jtbl_" in fn["asm"]:
             data_asm = "\n".join(self._jtbl_asm(proj, fn))
         ctx = self._context(proj["id"], fn["unit"])
-        draft = seeds.generate_from_asm(asm, fn["name"], tc, ctx["header"] if ctx else "", data_asm,
-                                        language=cpp.language(selected))
+        draft = self._machine_draft(fn, proj, ctx["header"] if ctx else "", data_asm)
         if draft and cpp.language(selected) == "c++":
             draft = cpp.game_abi(draft)
         text = f"/* machine-generated by m2c: a starting point, not a match */\n{draft}" if draft else ""
@@ -713,7 +747,7 @@ class RomNetwork(Network):
                  f"source language: {cpp.language(function_config(self.cfg(proj), fn['name']))}",
                  f"compiler: {function_config(self.cfg(proj), fn['name'])['compiler']['toolchain']} " +
                  ' '.join(function_config(self.cfg(proj), fn['name'])['compiler'].get('flags', [])),
-                 f"frontend: {cpp.ido_frontend(function_config(self.cfg(proj), fn['name'])) or cpp.language(function_config(self.cfg(proj), fn['name']))}",
+                 f"frontend: {cpp.language(function_config(self.cfg(proj), fn['name']))}",
                  f"address 0x{fn['vram']:08X}, ROM offset 0x{fn['rom_offset']:X}, segment {fn['unit']}"]
         calls = sorted(x["calls"].get(fn["vram"], ()))
         callers = sorted(x["called_by"].get(fn["vram"], ()))
@@ -891,6 +925,7 @@ class RomNetwork(Network):
             raise NetworkError(f"`{new_name}` is not a free C identifier")
         if self.cfg(proj).get("platform") == "gba":
             return self._split_gba(agent, proj, fn, addr, new_name, syms)
+        syms = SymbolTable([Symbol(s.name, s.address, s.size, s.kind) for s in syms.by_name.values()])
         rf = self._parse_asm(fn["name"], fn["asm"], fn["unit"])
         try:
             head, tail = split.split_function(rf, addr, new_name)
@@ -902,6 +937,14 @@ class RomNetwork(Network):
             old.size = head.size
         th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
         with self.store.tx() as db:
+            self._expire_claims(db)
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or current["status"] != "open" or any(current[key] != fn[key] for key in
+                    ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")):
+                raise NetworkError("the function target changed before splitting; review its current boundaries")
+            held = db.execute("SELECT agent_id FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
+            if held is not None and held["agent_id"] != agent.id:
+                raise NetworkError(f"{fn['name']} is claimed; finish or release its work before splitting")
             db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL, best_score=NULL "
                        "WHERE id=?", (head.size, len(head.lines), th.code, json.dumps(th.to_json()),
                                       self._asm_source(head), fn["id"]))
@@ -912,12 +955,14 @@ class RomNetwork(Network):
             db.execute("UPDATE symbols SET size=? WHERE project_id=? AND name=?", (head.size, proj["id"], fn["name"]))
             db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                        (proj["id"], new_name, addr, tail.size, "func"))
-            cfg = self.cfg(proj)
+            cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             if fn["name"] in cfg.get("function_compilers", {}):
                 cfg["function_compilers"][new_name] = dict(cfg["function_compilers"][fn["name"]])
                 db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             self._event(db, proj["id"], agent.id, "split", f"{fn['name']} / {new_name}")
         self._xrefs.pop(proj["id"], None)
+        self._syms.pop(proj["id"], None)
+        self.twins.forget(proj)
         return (f"✅ split: {fn['name']} is now {len(head.lines)} instructions; {new_name} at 0x{addr:08X} has "
                 f"{len(tail.lines)}. Continue with {fn['name']} (get_function shows its new assembly).")
 
@@ -1041,12 +1086,7 @@ class RomNetwork(Network):
         rewritten = {r["id"]: word.sub(new, r["matched_source"]) for r in matched}
         renamed_rows = [dict(r) | {"name": new if r["name"] == old else r["name"]} for r in matched]
         renamed_cfg = self.cfg(proj)
-        if renamed_cfg.get("n64_layout"):
-            owner = self._symbol_module(proj, old)
-            if owner is None:
-                raise NetworkError("use a module-qualified symbol name for a reviewed N64 layout")
-            renamed_cfg.setdefault("symbol_modules", {}).pop(old, None)
-            renamed_cfg["symbol_modules"][new] = owner
+        pass
         profiles = renamed_cfg.get("function_compilers", {})
         if old in profiles:
             profiles[new] = profiles.pop(old)
@@ -1096,8 +1136,7 @@ class RomNetwork(Network):
 
         proj = self._project(slug)
         cfg = self.cfg(proj)
-        if cfg.get("n64_layout") and (info.get("protocol") != 2 or info.get("n64_layout") != cfg["n64_layout"]):
-            raise NetworkError("this room must use the same reviewed N64 layout and module-aware protocol")
+        pass
         cfg["link"] = info
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
@@ -1411,28 +1450,7 @@ class RomNetwork(Network):
                                                   time.time(), unit))
 
     def apply_remote_compilers(self, slug: str, default: dict, overrides: dict) -> None:
-        from ..rom.n64_profiles import profile
-        proj = self._project(slug)
-        cfg = self.cfg(proj)
-        if cfg.get("platform") != "n64" or not isinstance(overrides, dict):
-            raise NetworkError("invalid N64 room compiler profiles")
-        selected = profile({}, default)
-        known = {r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=?", proj["id"])}
-        if set(overrides) - known:
-            raise NetworkError("a room compiler profile refers to an unknown function")
-        profiles = {name: profile(selected, value) for name, value in overrides.items()}
-        if all(cfg["compiler"].get(k) == v for k, v in selected.items()) and cfg.get("function_compilers", {}) == profiles:
-            return
-        previous = profile(cfg["compiler"], {})
-        affected = [r["name"] for r in self.store.all("SELECT name FROM functions WHERE project_id=? AND status='open'", proj["id"])
-                    if {**previous, **cfg.get("function_compilers", {}).get(r["name"], {})} !=
-                       {**selected, **profiles.get(r["name"], {})}]
-        cfg["compiler"] = {**cfg["compiler"], **selected}
-        cfg["function_compilers"] = profiles
-        with self.store.tx() as db:
-            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-            db.executemany("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND name=? AND status='open'",
-                           [(proj["id"], name) for name in affected])
+        raise NetworkError("cartridge compiler sync was removed")
 
     def apply_remote_layout(self, slug: str, functions: list[dict], symbols: list[dict]) -> None:
         """Mirror names/splits using cartridge identity, including exclusive overlays."""
@@ -1511,12 +1529,23 @@ class RomNetwork(Network):
 
     # ------------------------------------------------------------------ export
 
+    def set_psx_disc_set(self, slug, projects, title=""):
+        from ..rom.psx_set import configure
+        configure(self, slug, projects, title)
+        return self.overview(slug)
+
     def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
-        if format not in ("matching", "shiftable"):
-            raise NetworkError("choose matching or shiftable export")
-        if format == "shiftable" and (self.fork_slug(slug) or self.cfg(self._project(slug)).get("platform") != "n64"):
-            raise NetworkError("shiftable exports require an N64 cartridge project")
+        if format == 'pc':
+            from .. import pc
+            proj = self._project(slug)
+            try:
+                return pc.export({**self.cfg(proj), 'root': proj['root']}, Path(proj['root'])/'pc-source')
+            except pc.PCError as error:
+                raise NetworkError(str(error)) from error
+        if format != "matching":
+            raise NetworkError("choose matching console reconstruction or pc export")
+        pass
         if self.fork_slug(slug):  # a fork's work is already in its source tree, committed
             return {"path": self._project(slug)["root"], "identical": None}
         from ..rom.export import export_rom
@@ -1528,23 +1557,37 @@ class RomNetwork(Network):
             from .bootengine import export_rom as export
         if proj["arch"] == "sm83":
             from .gbengine import export_rom as export
+        if self.cfg(proj).get("psx_disc_set"):
+            from ..rom.psx_set import export_set as export
         folder = "source-shiftable" if format == "shiftable" else "source"
-        res = export(self, slug, Path(proj["root"]) / folder, log=log,
+        destination = None if self.cfg(proj).get("psx_disc_set") else Path(proj["root"]) / folder
+        res = export(self, slug, destination, log=log,
                      **({"format": format} if export is export_rom else {}))
         with self.store.tx() as db:  # shown on the project page: what's in the tree and whether it rebuilds
             cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             cfg["export"] = {"t": time.time(), "path": str(res["path"]), "identical": res.get("identical"),
+                             "archive": res.get("archive"),
+                             "disc_set_id": res.get("disc_set_id"),
                              "format": format, "shiftable": res.get("shiftable"),
                              "matched": res.get("matched"), "functions": res.get("functions"),
                              "scope": res.get("scope", "program"),
                              "language": res.get("language", cpp.language(cfg)),
                              "fallback": len(res.get("fallback") or [])}
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+            if group := cfg.get("psx_disc_set"):
+                for item in group["discs"]:
+                    row = db.execute("SELECT id,config FROM projects WHERE slug=?", (item["slug"],)).fetchone()
+                    if row:
+                        other = json.loads(row["config"])
+                        if other.get("psx_disc_set") == group:
+                            other["export"] = cfg["export"]
+                            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(other), row["id"]))
         return res
 
     # ------------------------------------------------------------------ for the GUI
 
     def overview(self, slug: str) -> dict:
+        from .. import pc
         proj = self._project(slug)
         last = self.store.one("SELECT MAX(created_at) AS t FROM events WHERE project_id=?", proj["id"])["t"]
         cfg = self.cfg(proj)
@@ -1559,7 +1602,9 @@ class RomNetwork(Network):
                                                  k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm")},
                                              "helper_matches": helpers,
                                              "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",
-                                             "priority": cfg.get("priority", [])}
+                                             "priority": cfg.get("priority", []),
+                                             "outputs": {"pc": pc.status(cfg.get('platform', '')),
+                                                         "matching_console": True}}
 
     def _overview(self, slug: str, proj) -> dict:
         if (fork := self.fork_slug(slug)):
@@ -1572,12 +1617,12 @@ class RomNetwork(Network):
         tc = toolchains.get(cfg["compiler"]["toolchain"])
         return {
             "slug": proj["slug"], "title": proj["name"], "description": proj["description"],
-            "platform": cfg.get("platform", "n64"), "platform_name": detect.PLATFORMS.get(cfg.get("platform", "n64"), ""),
-            "compilers": PLATFORM_COMPILERS.get(cfg.get("platform", "n64"), []),
+            "platform": cfg.get("platform", ""), "platform_name": detect.PLATFORMS.get(cfg.get("platform", ""), ""),
+            "compilers": PLATFORM_COMPILERS.get(cfg.get("platform", ""), []),
             "rom": {k: cfg["rom"].get(k) for k in ("title", "game_code", "region", "size", "sha1", "byte_order", "compiler_guess")},
             "compiler": {"toolchain": tc.id,
-                         "name": SHORT_NAMES.get(tc.id, tc.name) + (" (SGI/EDG 2.19)" if cpp.ido_frontend(cfg) == "edg" else ""),
-                         "cpp_frontend": cpp.ido_frontend(cfg), "flags": cfg["compiler"]["flags"],
+                         "name": SHORT_NAMES.get(tc.id, tc.name),
+                         "flags": cfg["compiler"]["flags"],
                          "installed": tc.supported and toolchains.installed(tc.id) is not None, "proprietary": tc.proprietary,
                          "supported": tc.supported, "wsl": tc.via_wsl, "language": cpp.language(cfg),
                          "why": tc.unsupported_reason},
@@ -1592,7 +1637,11 @@ class RomNetwork(Network):
             "context_version": self._context(proj["id"])["version"],
             "folder": proj["root"],
             "export": cfg.get("export"),
-            "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
+            "disc": ({"supported": cfg["psx_disc"]["supported"],
+                      "files": len(cfg["psx_disc"].get("files", [])), "programs": len(cfg["psx_disc"].get("maps", [])),
+                      "reason": cfg["psx_disc"].get("reason")} if cfg.get("psx_disc") else None),
+            "disc_set": cfg.get("psx_disc_set"),
+            "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "") in ("psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }
 
@@ -1795,6 +1844,12 @@ class RomNetwork(Network):
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or any(current[key] != fn[key] for key in
+                                      ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")):
+                raise NetworkError("the function target changed before compilation; retry against its current boundaries")
+            if current["status"] != "open":
+                return {"matched": False, "score": None}
             if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 raise NetworkError(f"{fn['name']} is claimed")
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
@@ -1815,7 +1870,7 @@ class RomNetwork(Network):
             with self.store.tx() as db:
                 db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))
 
-    def _autopilot_one(self, agent, proj, fid: int) -> str:
+    def _autopilot_one(self, agent, proj, fid: int, *, prepare_seed=True) -> str:
         """match | near | far | fail | skip, for one function's draft."""
         now = time.time()
         with self.store.tx() as db:
@@ -1825,26 +1880,38 @@ class RomNetwork(Network):
                 return "skip"
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fid, agent.id, now, now + 300))
         try:
-            self._seed_for(fn, proj)  # the readable draft, for the agents that come after
+            if prepare_seed:
+                self._seed_for(fn, proj)  # the readable draft, for the agents that come after
             ctx = self._context(proj["id"], fn["unit"])
             data_asm = "\n".join(self._jtbl_asm(proj, fn)) if "jtbl_" in (fn["asm"] or "") else None
-            selected = function_config(self.cfg(proj), fn["name"])
-            draft = seeds.generate_from_asm(self._asm_text(fn, proj), fn["name"], selected["compiler"]["toolchain"],
-                                            ctx["header"], data_asm, valid=True, language=cpp.language(selected))
+            draft = self._machine_draft(fn, proj, ctx["header"], data_asm, valid=True)
             if not draft:
                 return "fail"
-            source = f"/* machine draft (m2c), tried by autopilot */\n{seeds.M2C_MACROS}\n{draft}\n"
-            result = self._compile(proj, ctx["header"], source, fn)
-            if not result.ok:
-                return "fail"
-            cand, verdict, _ = self._evaluate(fn, proj, result.obj)
-            if cand is None:
-                return "fail"
-            d = scoring.diff(self._target_obj(fn, proj), cand)
-            if verdict is not None:
-                d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
-            self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
-            return "match" if d.bytes_match else "near" if d.percent >= 90 else "far"
+            drafts = [draft]
+            if self.cfg(proj).get("platform") == "psx":
+                from ..rom.psx_candidates import recovery_candidates
+                drafts = recovery_candidates(draft, fn["name"], ctx["header"])
+            best_percent = None
+            for candidate in drafts:
+                source = f"/* machine draft (m2c), tried by autopilot */\n{seeds.M2C_MACROS}\n{candidate}\n"
+                result = self._compile(proj, ctx["header"], source, fn)
+                if not result.ok:
+                    if candidate == drafts[0] and self.cfg(proj).get("platform") == "psx" and not self.store.one(
+                            "SELECT 1 FROM attempts WHERE function_id=? AND context_version=? AND compiled=0 AND source=? LIMIT 1",
+                            fn["id"], ctx["version"], source):
+                        self._record(fn, agent, None, source, ctx["version"], compiled=False, via="autopilot")
+                    continue
+                cand, verdict, _ = self._evaluate(fn, proj, result.obj)
+                if cand is None:
+                    continue
+                d = scoring.diff(self._target_obj(fn, proj), cand)
+                if verdict is not None:
+                    d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+                self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
+                if d.bytes_match:
+                    return "match"
+                best_percent = max(best_percent or 0, d.percent)
+            return "fail" if best_percent is None else "near" if best_percent >= 90 else "far"
         finally:
             with self.store.tx() as db:
                 db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fid, agent.id))
@@ -1981,13 +2048,7 @@ class RomNetwork(Network):
         tc = toolchains.get(toolchain)
         cfg = self.cfg(proj)
         cfg["compiler"] = {"toolchain": tc.id, "flags": flags or tc.flags, "timeout": 20}
-        if cfg.get("platform") == "n64":
-            from ..rom.n64_profiles import profile
-            cfg["compiler"].update(profile(cfg["compiler"], {}))
-            candidate = dict(proj) | {"config": json.dumps(cfg)}
-            failed = self.regression_test(candidate, None, header_for=lambda fn: self._context(proj["id"], fn["unit"])["header"])
-            if failed:
-                raise NetworkError("the compiler change would invalidate saved matches: " + failed[0][0])
+        pass
         with self.store.tx() as db:
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             db.execute("UPDATE functions SET seed=NULL,best_score=NULL WHERE project_id=? AND status='open'", (proj["id"],))
@@ -1995,27 +2056,52 @@ class RomNetwork(Network):
 
     def set_function_compiler(self, slug: str, function: str, override: dict | None) -> dict:
         """Select one function's period compiler; existing matches must survive."""
-        from ..rom.n64_profiles import profile
         proj = self._project(slug)
         cfg = self.cfg(proj)
-        if cfg.get("platform") != "n64" or not self.is_rom(proj):
-            raise NetworkError("per-function compiler profiles currently require an N64 cartridge")
+        if cfg.get("platform") != "psx" or not self.is_rom(proj):
+            raise NetworkError("per-function compiler profiles require a PS1 project")
+        from ..rom.psx_modules import profile
         if slug in self.links:
             raise NetworkError("change compiler profiles on the room host, then sync this member")
         fn = self._function(function, slug)
+        original_config = json.loads(proj["config"])
+        original_override = original_config.get("function_compilers", {}).get(fn["name"])
         overrides = dict(cfg.get("function_compilers", {}))
         if override is None:
             overrides.pop(fn["name"], None)
         else:
             overrides[fn["name"]] = profile(cfg["compiler"], override)
+            if cfg["platform"] == "psx" and overrides[fn["name"]].get("assembler"):
+                toolchains.ensure("maspsx", log=lambda *_: None)
+                toolchains.ensure("binutils-mips", log=lambda *_: None)
         cfg["function_compilers"] = overrides
         candidate = dict(proj) | {"config": json.dumps(cfg)}
+        checked_context = None
         if fn["status"] == "matched":
             ctx = self._context(proj["id"], fn["unit"])
+            checked_context = (ctx["unit"], ctx["version"])
             failed = self.regression_test(candidate, ctx["header"], only=[fn])
             if failed:
                 raise NetworkError("the compiler change would invalidate a saved match: " + failed[0][1])
         with self.store.tx() as db:
+            if checked_context is not None:
+                unit = fn["unit"] or ""
+                context = db.execute("SELECT unit, version FROM context_versions WHERE project_id=? AND unit IN (?, '') "
+                                     "ORDER BY unit=? DESC, version DESC LIMIT 1", (proj["id"], unit, unit)).fetchone()
+                if context is None or (context["unit"], context["version"]) != checked_context:
+                    raise NetworkError("the context changed concurrently; retry this function profile")
+            latest = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
+            if ({k: v for k, v in latest.items() if k != "function_compilers"} !=
+                    {k: v for k, v in original_config.items() if k != "function_compilers"} or
+                    latest.get("function_compilers", {}).get(fn["name"]) != original_override):
+                raise NetworkError("the compiler configuration changed concurrently; retry this function profile")
+            merged = dict(latest.get("function_compilers", {}))
+            if override is None:
+                merged.pop(fn["name"], None)
+            else:
+                merged[fn["name"]] = overrides[fn["name"]]
+            latest["function_compilers"] = merged
+            cfg = latest
             db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             db.execute("UPDATE functions SET seed=NULL, best_score=CASE WHEN status='matched' THEN 0 ELSE NULL END WHERE id=?", (fn["id"],))
             self._event(db, proj["id"], None, "compiler", fn["name"])

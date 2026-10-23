@@ -186,7 +186,12 @@ def diff(target: Path | None, base: Path | None, symbol: str | None, cwd: Path, 
     if right is not None and pct is None:
         pct = 100.0 if all(m == " " for m, _, _ in rows) else 0.0
     built = {s.get("name") for s in (data.get("right") or {}).get("symbols", [])}
-    funcs = [s for s in (data.get("left") or {}).get("symbols", []) if s.get("kind") == "SYMBOL_FUNCTION"]
+    # PSY-Q objects can carry code symbols as OBJECT/NOTYPE. objdiff still
+    # disassembles them, and its progress report counts them as functions.
+    # Include that code so ordering and matched-source guards use the same facts.
+    funcs = [s for s in (data.get("left") or {}).get("symbols", [])
+             if s.get("kind") == "SYMBOL_FUNCTION" or
+             (s.get("kind") != "SYMBOL_SECTION" and s.get("instructions"))]
     scores = {s["name"]: (float(s["match_percent"]) if s.get("match_percent") is not None and s["name"] in built else None)
               for s in funcs}
     order = [s["name"] for s in sorted(funcs, key=lambda s: int(s.get("address") or 0))]

@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from .. import platforms
 
 PLATFORMS = {
-    "n64": "Nintendo 64", "gc": "GameCube", "wii": "Wii", "ps": "PlayStation", "ps2": "PlayStation 2",
+    "ps": "PlayStation", "ps2": "PlayStation 2",
     "psp": "PSP", "gba": "Game Boy Advance", "nds": "Nintendo DS", "3ds": "Nintendo 3DS", "switch": "Switch",
     "win32": "Windows PC", "xbox": "Xbox", "xbox360": "Xbox 360",
 }
@@ -19,6 +20,8 @@ PLATFORMS = {
 def normalize(raw: dict) -> list[dict]:
     out = []
     for p in raw.get("projects", []):
+        if not platforms.enabled(p.get('platform', '')):
+            continue
         m = p.get("measures") or {}
         out.append({
             "id": f"{p['owner']}/{p['repo']}", "name": p.get("name") or p["repo"], "platform": p.get("platform", ""),

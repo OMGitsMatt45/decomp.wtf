@@ -18,17 +18,14 @@ from .engine import RomNetwork
 GUIDES = {
     "workflow": "the matching loop, reading diffs, priorities",
     "mips": "MIPS registers, calling convention, delay slots, types from instructions",
-    "gcc-kmc": "matching KMC GCC 2.7.2 code",
-    "ido": "matching IDO 5.3/7.1 code",
     "m2c": "reading the machine-generated draft",
     "data": "globals, strings, tables, floats, data you define",
     "structs": "working out struct layouts from offsets",
-    "n64": "N64 memory map, OS library, graphics/audio data",
     "naming": "naming functions and data",
     "fork": "working in a fork of a public decomp: the loop, conventions, what's allowed",
     "objdiff": "reading objdiff's diffs and match percentages",
-    "ppc": "PowerPC (GameCube, Wii): registers, calling convention, common patterns",
-    "mwcc": "matching Metrowerks CodeWarrior code (GameCube, Wii, DS)",
+    "ppc": "PowerPC registers and calling conventions for external projects",
+    "mwcc": "matching Metrowerks CodeWarrior for DS",
     "cpp": "decompiling C++: classes, vtables, constructors, inlines, name mangling",
     "psx": "matching PlayStation (PSY-Q GCC + maspsx) code",
     "ps2": "matching PlayStation 2 (EE-GCC, MWCC PS2) code",
@@ -42,8 +39,8 @@ GUIDES = {
 
 # Guides worth reading first on each platform.
 PLATFORM_GUIDES = {
-    "n64": ["mips"], "ps": ["mips", "psx"], "ps2": ["mips", "ps2"], "psp": ["mips"],
-    "gc": ["ppc", "mwcc", "cpp"], "wii": ["ppc", "mwcc", "cpp"], "nds": ["arm", "mwcc"], "3ds": ["arm", "cpp"],
+    "ps": ["mips", "psx"], "psx": ["mips", "psx"], "ps2": ["mips", "ps2"], "psp": ["mips"],
+    "nds": ["arm", "mwcc"], "3ds": ["arm", "cpp"],
     "gba": ["arm", "agbcc"], "gb": ["sm83"], "gbc": ["sm83"], "switch": ["aarch64", "cpp"], "win32": ["x86", "cpp"], "xbox": ["x86", "cpp"],
     "xbox360": ["ppc", "cpp"],
 }
@@ -238,14 +235,12 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "edit_file": lambda net, agent, slug, path, old, new, message:
         net.forks.edit_file(agent, _fork(net, slug, "edit_file"), path, old, new, message),
     "file_status": lambda net, agent, slug, path: net.forks.file_status(_fork(net, slug, "file_status"), path),
-    "split_file": lambda net, agent, slug, path, at, new_name="", data="":
-        net.forks.split_file(agent, _fork(net, slug, "split_file"), path, at, new_name, data),
     "configure_arm7_unit": lambda net, agent, slug, path, data="", language="":
         net.forks.configure_arm7_unit(agent, _fork(net, slug, "configure_arm7_unit"), path, data, language),
 }
 
 ROM_ONLY = {"get_context", "edit_context", "rename_symbol", "split_function"}
-FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "split_file", "configure_arm7_unit"}
+FORK_ONLY = {"read_file", "search_code", "edit_file", "file_status", "configure_arm7_unit"}
 
 
 def tool_names(fork: bool) -> list[str]:
@@ -393,8 +388,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
 
     @mcp.tool(meta=ALWAYS_LOAD)
     async def guide(ctx: Context, topic: str = "") -> str:
-        """Decompilation know-how. Call without a topic for the list (workflow, mips, gcc-kmc, ido, m2c,
-        data, structs, n64, naming)."""
+        """Decompilation know-how. Call without a topic for the list (workflow, mips, psx, ps2, arm,
+        mwcc, agbcc, m2c, data, structs, naming)."""
         return await run(ctx, "guide", topic=topic)
 
     @mcp.tool(meta=ALWAYS_LOAD)
@@ -421,16 +416,6 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
         functions still differ, its data next to the original's (with what to fix), why the last link failed.
         A file is linked (the game built from its C) once every function and all its data match."""
         return await run(ctx, "file_status", path=path)
-
-    @mcp.tool(meta=ALWAYS_LOAD)
-    async def split_file(ctx: Context, path: str, at: str, new_name: str = "", data: str = "") -> str:
-        """Forks only (GameCube/Wii): divide a source file in two where the game's original files divided: the
-        function `at` (name or .text offset) and every one after it in the file go to a new file `new_name`
-        (default: text_<offset> next to it), with their C. `data` moves the end of each data section too
-        (".rodata:0x88 .data:0x28": where the new file's part starts; file_status shows the ranges). Kept only if
-        the game still builds byte for byte and every match still matches. A file links only when its code and
-        data are exactly one original file's."""
-        return await run(ctx, "split_file", path=path, at=at, new_name=new_name, data=data)
 
     @mcp.tool(meta=ALWAYS_LOAD)
     async def configure_arm7_unit(ctx: Context, path: str, data: str = "", language: str = "") -> str:

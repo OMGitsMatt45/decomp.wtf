@@ -19,7 +19,7 @@ from pathlib import Path
 from .. import toolchains
 from ..limits import capped
 from . import gba_candidates
-from .n64 import RomError
+from .errors import RomError
 
 BASE = 0x08000000
 

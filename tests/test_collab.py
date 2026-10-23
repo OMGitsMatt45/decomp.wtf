@@ -1,4 +1,4 @@
-"""Rooms: a host and a guest, each with their own copy of Demo Quest 64, working together."""
+"""Rooms: a host and a guest, each with their own copy of the original PS1 fixture, working together."""
 
 import json
 import re
@@ -13,10 +13,10 @@ from decompnet.app.engine import RomNetwork
 from decompnet.network import NetworkError
 
 from .test_app_engine import CLAMP, DAMAGE
-from .test_rom import built  # noqa: F401
+from .psx_fixture import built, fixture_compiler_runtime  # noqa: F401
 
-pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
-                                reason="needs gcc-2.7.2-kmc")
+pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-psx") is None or toolchains.installed("binutils-mips") is None,
+                                reason="needs gcc-2.7.2-psx")
 
 
 @pytest.fixture(scope="module")
@@ -66,26 +66,26 @@ def test_state_carries_work_never_rom_data(room):
 def test_split_and_match_from_the_guest_reach_the_host(room):
     host, slug, guest, gslug, client, code, link = room
     agent, _ = guest.local_agent("claude-1")
-    assert guest.split_function(agent, gslug, "func_800007C4", "0x800007D0").startswith("✅")
-    assert host._function("func_800007D0", slug)  # split on the host...
-    assert guest._function("func_800007D0", gslug)  # ...and mirrored locally
-    brief = guest.claim(agent, gslug, "func_800007D0")
-    assert "glabel func_800007D0" in brief  # the guest's own copy provides the assembly
+    assert guest.split_function(agent, gslug, "func_800103CC", "0x800103D0").startswith("✅")
+    assert host._function("func_80010410", slug)  # split on the host...
+    assert guest._function("func_80010410", gslug)  # ...and mirrored locally
+    brief = guest.claim(agent, gslug, "func_80010410")
+    assert "glabel func_80010410" in brief  # the guest's own copy provides the assembly
     claims = host.live(slug)["claims"]
     assert claims and claims[0]["agent"] == "alex.claude-1"
-    out = guest.compile_and_diff(agent, "func_800007D0", CLAMP, gslug)
+    out = guest.compile_and_diff(agent, "func_80010410", CLAMP, gslug)
     assert out.startswith("✅ MATCH") and "host confirmed" in out
-    assert host._function("func_800007D0", slug)["status"] == "matched"
+    assert host._function("func_80010410", slug)["status"] == "matched"
 
 
 def test_host_work_reaches_the_guest(room):
     host, slug, guest, gslug, client, code, link = room
     hagent, _ = host.local_agent("codex-1")
-    assert host.compile_and_diff(hagent, "func_80000808", DAMAGE, slug).startswith("✅ MATCH")
-    assert host.rename_symbol(hagent, slug, "func_800007D0", "clamp_s32").startswith("✅")
+    assert host.compile_and_diff(hagent, "func_80010450", DAMAGE, slug).startswith("✅ MATCH")
+    assert host.rename_symbol(hagent, slug, "func_80010410", "clamp_s32").startswith("✅")
     assert host.edit_context(hagent, slug, "", "s32 clamp_s32(s32 v, s32 lo, s32 hi);", "prototype").startswith("✅")
     guest.links[gslug].sync()
-    assert guest._function("func_80000808", gslug)["status"] == "matched"
+    assert guest._function("func_80010450", gslug)["status"] == "matched"
     assert guest._function("clamp_s32", gslug)["status"] == "matched"
     assert "clamp_s32(s32 v" in guest.get_context(gslug)
     feed = [e["kind"] for e in guest.live(gslug)["events"]]
@@ -96,16 +96,16 @@ def test_host_work_reaches_the_guest(room):
 def test_guest_edits_go_through_the_host(room):
     host, slug, guest, gslug, client, code, link = room
     agent, _ = guest.local_agent("claude-2")
-    out = guest.rename_symbol(agent, gslug, "func_80000808", "player_take_damage")
+    out = guest.rename_symbol(agent, gslug, "func_80010450", "player_take_damage")
     assert out.startswith("✅")
     assert host._function("player_take_damage", slug)["status"] == "matched"
     assert guest._function("player_take_damage", gslug)
-    guest.add_note(agent, gslug, "player struct is at 0x8004AE34")
-    assert "0x8004AE34" in host.search_notes(slug, "player struct")
+    guest.add_note(agent, gslug, "player struct is at 0x8001B240")
+    assert "0x8001B240" in host.search_notes(slug, "player struct")
 
 
 # The C++ frontend's conditional-expression lowering differs from the original C.
-ABS = "s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }"
+ABS = "s32 func_80010438(s32 v) { if (v < 0) return -v; return v; }"
 
 
 def test_two_friends_work_together(room, built, tmp_path):  # noqa: F811
@@ -120,10 +120,10 @@ def test_two_friends_work_together(room, built, tmp_path):  # noqa: F811
     claims = {c["agent"]: c["name"] for c in host.live(slug)["claims"]}
     assert claims["alex.codex-1"] != claims["bea.claude-1"]  # the host never hands out the same function twice
     guest.release(a_agent, claims["alex.codex-1"], "", gslug)
-    out = guest.compile_and_diff(a_agent, "func_800007F4", ABS, gslug)
+    out = guest.compile_and_diff(a_agent, "func_80010438", ABS, gslug)
     assert out.startswith("✅ MATCH"), out
     bea.links[bslug].sync()
-    assert bea._function("func_800007F4", bslug)["status"] == "matched"  # bea sees alex's match
+    assert bea._function("func_80010438", bslug)["status"] == "matched"  # bea sees alex's match
 
 
 def test_reconnect_after_the_host_restarts(room, built):  # noqa: F811
@@ -195,11 +195,11 @@ def test_better_attempts_reach_the_host_without_a_compile_there(built, tmp_path)
     host, slug, room, code, client = _host(built, tmp_path)
     g, gslug = _guest(tmp_path, "lee", f"http://192.168.1.20:6481/join/{code}#room={slug}", built, client)
     agent, _ = g.local_agent("claude-1")
-    g.claim(agent, gslug, "func_800007F4")
-    res = g.attempt(agent, "func_800007F4", "s32 func_800007F4(s32 v) { return v + 1; }", gslug)
+    g.claim(agent, gslug, "func_80010438")
+    res = g.attempt(agent, "func_80010438", "s32 func_80010438(s32 v) { return v + 1; }", gslug)
     assert res["score"] and not res["matched"]
     for _ in range(50):  # reported from a background thread
-        row = host.store.one("SELECT best_score, best_source FROM functions WHERE name='func_800007F4'")
+        row = host.store.one("SELECT best_score, best_source FROM functions WHERE name='func_80010438'")
         if row["best_score"] is not None:
             break
         __import__("time").sleep(0.1)
