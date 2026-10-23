@@ -27,7 +27,7 @@ When the user wants a game decompiled:
 2. open_gui() so the user can watch: the map lights up as functions match.
 3. Work: claim_function -> compile_and_diff, repeat (guide("workflow") has the loop). For a big game, also
    start_agents(count) to add helper agents working in parallel; progress() shows everyone's work.
-4. export_project() writes a decomp project that rebuilds the game byte for byte: the base for ports and mods.
+4. export_project() writes an original-console reconstruction, not a PC game. PC output uses a separate backend; DS is first and no retail PC backend is qualified yet. Never describe matching progress as playable PC output.
 Report progress in terms of functions and % of code matched. The game's code is the user's: never publish it.
 """
 

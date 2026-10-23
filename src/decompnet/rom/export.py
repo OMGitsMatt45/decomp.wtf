@@ -31,12 +31,11 @@ from . import match, split
 from .symbols import AUTO_NAME
 
 AS_FLAGS = {
-    "n64": ["-EB", "-march=vr4300", "-mabi=32"],
     "psx": ["-EL", "-march=r3000", "-mabi=32"],
     "ps2": ["-EL", "-march=r5900", "-mabi=eabi"],
 }
-LD_ENDIAN = {"n64": "-EB", "psx": "-EL", "ps2": "-EL"}
-IMAGE_EXT = {"n64": ".z64", "psx": ".exe", "ps2": ".bin"}
+LD_ENDIAN = {"psx": "-EL", "ps2": "-EL"}
+IMAGE_EXT = {"psx": ".exe", "ps2": ".bin"}
 _ADDR_COMMENT = re.compile(r"/\*\s*([0-9A-F]+)\s+([0-9A-F]{8})\b")
 _BSS_COMMENT = re.compile(r"/\*\s*([0-9A-F]{8})\s*\*/\s*\.space")
 _DEFINES = re.compile(r"^\s*(?:glabel|dlabel|jlabel|alabel|ehlabel)\s+(\w+)|^\s*\.globl\s+(\w+)|^\s*(\w+):", re.M)
@@ -102,11 +101,11 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     cfg = net.cfg(proj)
     language = cpp.language(cfg)
     extension = "cpp" if language == "c++" else "c"
-    platform = cfg.get("platform", "n64")
+    platform = cfg.get("platform", "")
     if platform not in AS_FLAGS:
         raise ExportError(f"exporting a rebuildable project isn't supported for {platform} yet")
-    if format not in ("matching", "shiftable") or (format == "shiftable" and platform != "n64"):
-        raise ExportError("choose matching, or shiftable for an N64 cartridge")
+    if format != "matching":
+        raise ExportError("choose matching console reconstruction")
     work = Path(proj["root"])
     configs = sorted(work.glob("*.yaml"))
     if not configs:
@@ -122,18 +121,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         if analysis(disc_path, disc) != image:
             raise ExportError("PS1 analysis image differs from the original disc programs")
     container = None
-    provenance_path = work / "n64-provenance.json"
-    if platform == "n64" and provenance_path.is_file():
-        from .n64_layout import working_image
-        metadata = json.loads(provenance_path.read_text(encoding="utf-8"))
-        if metadata["blocks"]:
-            original_path = (work / metadata["original_file"]).resolve()
-            if work.resolve() not in original_path.parents:
-                raise ExportError("N64 original cartridge path is outside the project")
-            original = original_path.read_bytes()
-            if working_image(original, metadata) != image:
-                raise ExportError("N64 analysis image differs from the original compressed modules")
-            container = {"image": "baserom.z64", "output": "build/game.z64", "layout": metadata}
+    pass
 
     if out.exists():
         keep = {".git"}
@@ -151,12 +139,8 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         from . import ps2
         bss_changed = ps2.bss_layout(config, (work / program).read_bytes())
-    if platform == "n64":
-        # A ROM title can contain NULs, quotes or whitespace. Splat's string
-        # form can change those bytes or produce assembly GAS cannot read.
-        config.setdefault("options", {})["header_encoding"] = "word"
-    if platform == "n64" or has_overlays or bss_changed:
-        (out / "splat.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    pass
+    pass
     shutil.copyfile(work / image_name, out / image_name)
     for extra in ("reloc_addrs.txt",):
         if (work / extra).exists():
@@ -369,11 +353,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         "format": format,
         "title": proj["name"], "platform": platform, "image": base, "output": f"build/game{ext}",
         "sha1": hashlib.sha1(image).hexdigest(),
-        "compiler": {**cfg["compiler"], "language": language,
-                     **({"cpp_frontend": cpp.ido_frontend(cfg)} if cpp.ido_frontend(cfg) else {})},
+        "compiler": {**cfg["compiler"], "language": language},
         "gp": cfg.get("gp") or 0,
         "psx_modules": cfg.get("psx_modules", {}),
-        "big_endian": platform == "n64",
+        "big_endian": False,
         "as_flags": [*AS_FLAGS[platform], "-G0", "-no-pad-sections", "-I", "include"],
         "ld_flags": [LD_ENDIAN[platform], "--no-check-sections"],
         "assembly": objects, "segments": layout, "functions": fn_json,
@@ -405,11 +388,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             build["disc"]["artifacts"] = [{"output": build["disc"]["output"],
                 "size": disc["original_size"], "sha256": disc["sha256"]}, *[
                 {**item, "output": "build/disc-media/" + item["name"]} for item in media.get("companions", [])]]
-    if platform == "n64" and (work / "n64-layout.json").is_file():
-        from .n64_layout import number
-        reviewed = json.loads((work / "n64-layout.json").read_text(encoding="utf-8"))
-        build["reflow"] = {m["name"]: number(m["text_end"], "text_end") for m in reviewed["modules"] if "text_end" in m}
-        build["exclusive_groups"] = {m["name"]: m["exclusive_group"] for m in reviewed["modules"] if m.get("exclusive_group")}
+    pass
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         original = (work / program).read_bytes()
         if original.startswith(b"\x7fELF"):
@@ -420,8 +399,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
     if platform == "psx":
         shutil.copyfile(Path(__file__).with_name("psx_mod_build.py"), out / "psx_mod.py")
-    if format == "shiftable":
-        shutil.copyfile(Path(__file__).with_name("export_shift.py"), out / "shiftable.py")
+    pass
     units_json = []
     for f in functions:
         unit = {"name": f"{f['seg']}/{f['name']}", "target_path": f["obj_asm"],
@@ -472,20 +450,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "Resources and loader references are recorded in `psx-assets.json`. "
                        "See the repository's `docs/psx-resources.md` for commands and authoring limits. "
                        "Normal `python build.py` remains a strict matching check.\n")
-    if format == "shiftable":
-        with (out / "README.md").open("a", encoding="utf-8") as docs:
-            docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
-                       "`python build.py inventory` verifies the original assembly baseline and inventories ELF relocations. "
-                       "Edit function sources, then run `python build.py mod` to emit `build/mod.z64`. Function sizes may "
-                       "change within the reviewed trailing zero reserve before data. Data, BSS, file extents and the boot "
-                       "entry stay fixed; moving functions cannot add owned data/BSS. Unknown references, unsupported "
-                       "relocations and exhausted reserve fail instead of producing a mod. `build/relocations.json` and "
-                       "`build/shiftable-result.json` record the fixups, addresses and size budget. Cartridge checksums "
-                       "are updated for the verified CIC; use `--cic` only when you have established its family yourself. "
-                       "Modules and mutually exclusive overlays link independently; `--module NAME` selects one "
-                       "reviewed moving window. Edited reviewed Yaz0, Rare 1172/1173 and gzip streams recompress "
-                       "inside their pinned cartridge allocations and are decoded again for verification. "
-                       "Exhausting compressed storage also fails and removes any previous mod output.\n")
+    pass
     if container:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Compressed cartridge modules\n\nKeep the original cartridge as `baserom.z64`. "
@@ -523,16 +488,13 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         result.update(scope="disc" if "disc" in build else "program", disc={
             "supported": disc["supported"], "reason": disc.get("reason"),
             "output": build.get("disc", {}).get("output"), "programs": len(disc.get("maps", []))})
-    if format == "shiftable" and identical:
-        audit = subprocess.run(capped([sys.executable, "build.py", "inventory"]), cwd=out, capture_output=True,
-                               text=True, timeout=3600, encoding="utf-8", errors="replace")
-        result["shiftable"] = {"ready": audit.returncode == 0, "detail": (audit.stdout + audit.stderr)[-2000:]}
+    pass
     return result
 
 
 def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, total: int, fallback, language: str = "c") -> None:
     lang, extension = ("C/C++", "{c,cpp}") if language == "mixed" else ("C++", "cpp") if language == "c++" else ("C", "c")
-    names = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2"}
+    names = {"psx": "PlayStation", "ps2": "PlayStation 2"}
     notes = "".join(f"\n- `{n}`: kept as assembly, {why}" for n, why in fallback)
     (out / "README.md").write_text(f"""# {title} (decompilation)
 

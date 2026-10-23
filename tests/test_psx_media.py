@@ -14,7 +14,7 @@ import pytest
 
 from decompnet.app.engine import RomNetwork
 from decompnet.rom import chd, detect
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_psx_disc import fixture
 
 pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")

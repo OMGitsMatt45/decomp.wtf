@@ -8,7 +8,7 @@ import zlib
 import pytest
 
 from decompnet.rom import detect, psx_layout
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from decompnet.rom.psx import _Disc
 from .test_overlays import _iso, _resident_exe
 

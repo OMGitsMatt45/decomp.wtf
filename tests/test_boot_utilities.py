@@ -15,7 +15,7 @@ from decompnet.app.engine import RomNetwork
 from decompnet.compiler import CompilerConfig, compile_source, _wrap
 from decompnet.network import NetworkError
 from decompnet.rom import boot, boot_build
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from decompnet.forks.scratch_dsd import crc16
 
 

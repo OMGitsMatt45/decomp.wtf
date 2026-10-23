@@ -4,7 +4,7 @@ Most PlayStation games load part of their code from other files when they need i
 logic, a minigame): overlays. The community's projects list them by hand with the address each is loaded at, found
 in the code that loads them or with an emulator. Here the code says it: every file on the disc is checked for MIPS
 code, and its load address is the one that makes its own calls (jal: absolute addresses) land on its own functions'
-starts (n64code.py does the same for N64 segments).
+starts.
 
 - A PS2 overlay that is an ELF program says where it goes: its loadable segments are taken as they are. IOP modules
   (.IRX: the I/O processor's code, relocatable) are left out.
@@ -18,7 +18,7 @@ import re
 import struct
 from pathlib import Path
 
-from .n64code import JR_RA, _frame, _place
+from .mips_scan import JR_RA, _frame, _place
 
 MAX_FILE = 16 << 20
 PEEK = 64 << 10  # how much of a file is read first: code shows in its first 64 KiB
@@ -27,7 +27,7 @@ RAM = {"psx": (0x80000000, 0x80200000), "ps2": (0x00080000, 0x02000000)}
 
 
 def _swap(data: bytes) -> bytes:
-    """Little-endian words as big-endian ones, for n64code's search (offsets and addresses stay the same)."""
+    """Little-endian words as big-endian ones, for the shared MIPS search (offsets and addresses stay the same)."""
     n = len(data) // 4
     return struct.pack(f">{n}I", *struct.unpack(f"<{n}I", data[:n * 4]))
 
@@ -42,7 +42,7 @@ def _code_like(data: bytes, least: int = 16) -> bool:
 def _walk(disc, lba: int, length: int, path: str = "", seen=None):
     seen = set() if seen is None else seen
     if lba in seen or len(seen) >= 4096 or path.count("/") >= 64:
-        from .n64 import RomError
+        from .errors import RomError
         raise RomError("the disc directory tree contains a cycle or exceeds supported limits")
     seen.add(lba)
     for name, l, size, is_dir in disc.entries(lba, length):
@@ -111,7 +111,7 @@ def find(disc, boot: str, platform: str, main: tuple[int, int], *, sources=None)
             name += "_"
         if platform == "psx" and data.startswith(b"PS-X EXE"):
             from .psx import read_exe
-            from .n64 import RomError
+            from .errors import RomError
             try:
                 _, info = read_exe(data, base_name)
             except RomError:

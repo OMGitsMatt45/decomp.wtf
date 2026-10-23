@@ -253,10 +253,7 @@ class Room:
                 "SELECT name, address, size, kind FROM symbols WHERE project_id=?", pid) if not AUTO_NAME.match(r["name"])]
             out["functions"] = [dict(r) for r in net.store.all(
                 "SELECT name, unit, rom_offset, vram, size FROM functions WHERE project_id=? ORDER BY unit, vram", pid)]
-        if cfg.get("platform") == "n64" and (first or kinds & {"compiler", "rename", "split"}):
-            from ..rom.n64_profiles import profile
-            out["compiler"] = profile(cfg["compiler"], {})
-            out["function_compilers"] = cfg.get("function_compilers", {})
+        pass
         ctx = net._context(pid)
         if ctx["version"] != ctx_version:
             out["context"] = {"version": ctx["version"], "header": ctx["header"]}
@@ -344,7 +341,7 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
         if room.fork:
             return {"room": room.slug, **forkroom.hello(net, room.slug), "functions": ov["functions"],
                     "matched": ov["matched"], "members": len(room.members()), **room.settings}
-        layout = json.loads((Path(room.proj["root"]) / "n64-layout.json").read_text(encoding="utf-8")) if cfg.get("n64_layout") else None
+        layout = None
         return {"room": room.slug, "kind": "rom", "protocol": 2, "n64_layout": cfg.get("n64_layout"), "layout": layout,
                 "title": cfg["rom"]["title"], "game_code": cfg["rom"]["game_code"],
                 "region": cfg["rom"]["region"], "sha1": cfg["rom"]["sha1"], "compiler": cfg["compiler"],
@@ -592,8 +589,7 @@ class Link:
         pid = proj["id"]
         mine = f"{self.member}."
         cfg = net.cfg(proj)
-        if cfg.get("n64_layout") and (st.get("protocol") != 2 or st.get("n64_layout") != cfg["n64_layout"]):
-            raise NetworkError("the room's reviewed N64 layout or protocol differs from this project")
+        pass
         if st.get("symbols") is not None or st.get("functions") is not None:
             net.apply_remote_layout(slug, st.get("functions") or [], st.get("symbols") or [])
         if st.get("compiler"):
@@ -701,8 +697,7 @@ def reconnect(net, slug: str, link: str, log=print, client: httpx.Client | None 
     cfg = json.loads(proj["config"])
     if forkroom.project_identity(cfg) != hello.get("sha1"):
         raise NetworkError(f"that link is for {hello['title']}, a different game than this project")
-    if cfg.get("n64_layout") != hello.get("n64_layout") or (cfg.get("n64_layout") and hello.get("protocol") != 2):
-        raise NetworkError("the room's reviewed N64 layout differs; join as a separate project with your cartridge")
+    pass
     info = dict(cfg.get("link") or {})
     info.update(protocol=hello.get("protocol"), n64_layout=hello.get("n64_layout"))
     if info.get("token"):
@@ -754,15 +749,7 @@ def join_room(net, link: str, name: str, rom: bytes | Path, log=print, client: h
         raise NetworkError(f"this ROM isn't the same as the host's: the room is for {hello['title']} "
                            f"({hello['game_code']}, {hello['region']}), and every member needs their own copy of exactly that version")
     compiler_profile = None
-    if picked.platform == "n64":
-        from ..rom.n64_profiles import profile
-        compiler_profile = profile(hello["compiler"], {})
-        if hello.get("n64_layout"):
-            from ..rom.n64_layout import reviewed
-            layout = hello.get("layout")
-            if hello.get("protocol") != 2 or hashlib.sha256(json.dumps(layout, sort_keys=True).encode()).hexdigest() != hello["n64_layout"]:
-                raise NetworkError("the host's N64 layout identity is missing or inconsistent")
-            reviewed(picked.data, layout)
+    pass
     log(f"joining {hello['title']} ({hello['functions']} functions, {hello['matched']} matched)")
     r = http.post(f"{url}/collab/join?room={hello['room']}", json={"invite": code, "name": name, "sha1": hello["sha1"]})
     joined = r.json()

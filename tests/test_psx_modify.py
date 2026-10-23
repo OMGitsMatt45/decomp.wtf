@@ -13,7 +13,7 @@ import pytest
 from decompnet.app.engine import RomNetwork
 from decompnet.cli import main
 from decompnet.rom import psx_sector, psx_modify, detect, psx_disc
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .test_psx_disc import fixture, joined
 from .test_psx_set import fixtures, imported
 

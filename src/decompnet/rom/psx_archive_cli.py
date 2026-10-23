@@ -6,7 +6,7 @@ import tempfile
 
 from . import psx_hbd, psx_assets, psx_media
 from .detect import identify
-from .n64 import RomError
+from .errors import RomError
 
 
 def run(args):

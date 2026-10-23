@@ -31,33 +31,6 @@ sha256 = "d3b984867db9cac65d89b75c75f64347964e2837eb53e7782b4349a6c2a5eaaa"
 subdir = "usr/lib32"
 platforms = ["wsl-x86_64"]
 
-["gcc-2.7.2-kmc"]
-name = "GCC 2.7.2 (KMC-compatible) + binutils 2.6"
-platform = "N64"
-arch = "mips"
-license = "GPL-2.0"
-source = "decompals/mips-gcc-2.7.2 v0.1, decompals/mips-binutils-2.6 v0.3"
-description = "GCC 2.7.2 built to reproduce the KMC compiler used by many N64 games, with the matching assembler."
-cc = ["{tc}/gcc", "-B{tc}/", "-c"]
-windows_cc = ["{tc}/gcc.exe", "-B{tc}/", "-c"]
-flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
-[["gcc-2.7.2-kmc".parts]]
-url = "https://github.com/decompals/mips-gcc-2.7.2/releases/download/v0.1/gcc-2.7.2-linux.tar.gz"
-sha256 = "e09e7b53d4e47d1b7bab1f854c4498c0bffbea2553b1d7201dc3e0e983923874"
-platforms = ["linux-x86_64"]
-[["gcc-2.7.2-kmc".parts]]
-url = "https://github.com/decompals/mips-binutils-2.6/releases/download/v0.3/binutils-2.6-linux.tar.gz"
-sha256 = "5a612cd28344e5b410c3344ec5dcfb92d9d03947756f190cd12404055b4a624d"
-platforms = ["linux-x86_64"]
-[["gcc-2.7.2-kmc".parts]]
-url = "https://github.com/decompals/mips-gcc-2.7.2/releases/download/v0.1/gcc-2.7.2-mac.tar.gz"
-sha256 = "5923ea59b97d39d65d684a3ef2f25cd1cbcaf2fd0b5cf6a7f1a4804500a770e0"
-platforms = ["macos-x86_64", "macos-arm64"]
-[["gcc-2.7.2-kmc".parts]]
-url = "https://github.com/decompals/mips-binutils-2.6/releases/download/v0.3/binutils-2.6-mac.tar.gz"
-sha256 = "ab21ad5908fb7776a4b0c596cc82f216876e3b5d108c7c7c1f33543b3f3fce4c"
-platforms = ["macos-x86_64", "macos-arm64"]
-
 ["gcc-2.7.2-psx"]
 name = "GCC 2.7.2 for PlayStation + binutils 2.6"
 platform = "PS1"
@@ -146,73 +119,6 @@ url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/193e0f9bbf07594
 sha256 = "866489de5ec2c640d2fbf147f222bf439a0b9fd377d9a83c8e504357a44c8428"
 platforms = ["windows-x86_64"]
 
-["ido-7.1"]
-name = "IDO 7.1 (static recompilation)"
-platform = "N64"
-arch = "mips"
-license = "proprietary"
-source = "decompals/ido-static-recomp v1.2 (SGI IRIX Development Option; Windows host memory fix and bundled MSYS runtime)"
-description = "SGI's compiler used by most first-party N64 games. Proprietary: install only if you accept the licensing risk."
-cc = ["{tc}/cc", "-c"]
-flags = ["-O2", "-mips2", "-G", "0", "-non_shared", "-Xcpluscomm", "-Wab,-r4300_mul", "-woff", "649,838,712"]
-[["ido-7.1".parts]]
-url = "https://github.com/decompals/ido-static-recomp/releases/download/v1.2/ido-7.1-recomp-linux.tar.gz"
-sha256 = "0d411696e178fcca34c31c3bf02011b928d7fd9c1fa7f8bf45070e0781b58e15"
-platforms = ["linux-x86_64"]
-[["ido-7.1".parts]]
-url = "https://github.com/decompals/ido-static-recomp/releases/download/v1.2/ido-7.1-recomp-macos.tar.gz"
-sha256 = "7f75570ed1ca14e6161b84b10743d440c685f27291bfbfaf87c6a82236553bc6"
-platforms = ["macos-x86_64", "macos-arm64"]
-[["ido-7.1".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/1d7f59df57cd61805ae9f18cad33ae8d65845623/toolchains/windows/ido/ido-7.1-windows-v1.tar.gz"
-sha256 = "cf4efe3cac85e966cd23590832ee3eeb35a9b5cda8b4cffcc5f035d7e8057bbb"
-platforms = ["windows-x86_64"]
-
-["ido-5.3"]
-name = "IDO 5.3 (static recompilation)"
-platform = "N64"
-arch = "mips"
-license = "proprietary"
-requires = ["binutils-mips"]
-source = "decompals/ido-static-recomp v1.2 C suite; original 5.3 SGI/EDG and classic cfront/ptlink recompiled at d5aec599 (Windows/Linux x86-64)"
-description = "The earlier SGI compiler used by early N64 titles, with original SGI/EDG and classic cfront C++ choices, native template prelinking and the original 5.3 backend. Proprietary: install only if you accept the licensing risk."
-cc = ["{tc}/cc", "-c"]
-flags = ["-O2", "-mips2", "-G", "0", "-non_shared", "-Xcpluscomm", "-Wab,-r4300_mul"]
-[["ido-5.3".parts]]
-url = "https://github.com/decompals/ido-static-recomp/releases/download/v1.2/ido-5.3-recomp-linux.tar.gz"
-sha256 = "ab5c741561f80913d58c8b074771f23941a3edd312505a8ebed6d1dfeb65e506"
-platforms = ["linux-x86_64"]
-[["ido-5.3".parts]]
-url = "https://github.com/decompals/ido-static-recomp/releases/download/v1.2/ido-5.3-recomp-macos.tar.gz"
-sha256 = "5b1ca006ee4b158ffba0422fc3f00b9b330f9036f279bae2ea1b4703317ad9c0"
-platforms = ["macos-x86_64", "macos-arm64"]
-[["ido-5.3".parts]]
-url = "https://github.com/decompals/ido-static-recomp/releases/download/v1.2/ido-5.3-recomp-windows.tar.gz"
-sha256 = "2268f64cab973750e78bdf7aa2ff3cccf78ad1d181507da6faeb61f3d22c2e1e"
-platforms = ["windows-x86_64"]
-[["ido-5.3".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/1d7f59df57cd61805ae9f18cad33ae8d65845623/toolchains/windows/ido/ido-windows-runtime-v1.tar.gz"
-sha256 = "b3c27ccd1cfb40971f4a5396bd327f8f235557b47379a5b702243659ea36b169"
-platforms = ["windows-x86_64"]
-[["ido-5.3".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/c69498c622bfa77fe36fe2a0bb2ce258c7263608/toolchains/ido53-cpp/ido53-cpp-linux-x86_64-v1.tar.gz"
-sha256 = "6f8e985fda4c3087698ae06c66125fa1a4480529820b63014363f5044e8d7547"
-platforms = ["linux-x86_64"]
-[["ido-5.3".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/c69498c622bfa77fe36fe2a0bb2ce258c7263608/toolchains/ido53-cpp/ido53-cpp-windows-x86_64-v1.tar.gz"
-sha256 = "cc331829361dbd008767763e0940fe98e9f38952aa29f0f7fabb52b420e2fef8"
-platforms = ["windows-x86_64"]
-
-[["ido-5.3".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7/toolchains/ido53-cfront/ido53-cfront-linux-x86_64-v1.tar.gz"
-sha256 = "87a73f625ff66f798fc4881307743eb8ecb9e63382b7cbf69da6ee0e11c8f69e"
-platforms = ["linux-x86_64"]
-
-[["ido-5.3".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/5e4d52c7a28e3f25ce62c6ae5065839f0c3b96e7/toolchains/ido53-cfront/ido53-cfront-windows-x86_64-v1.tar.gz"
-sha256 = "ac6bf7e2b90f066211735968ba7f25d02999af57a9e7d13fc83c32abc885f5ad"
-platforms = ["windows-x86_64"]
-
 [m2c]
 name = "m2c decompiler"
 kind = "tool"
@@ -289,39 +195,6 @@ sha256 = "36d229ac6ce74a26b47f42cf86ea8e808d8cd834a54aa62d7ed3f47b765d971b"
 binary = "objdiff-cli.exe"
 platforms = ["windows-x86_64"]
 
-[dtk]
-name = "decomp-toolkit"
-kind = "tool"
-license = "MIT OR Apache-2.0"
-source = "encounter/decomp-toolkit v1.8.4"
-description = "GameCube and Wii toolkit: reads discs, analyses and splits DOL/REL files, generates linker scripts."
-binary_name = "dtk"
-[[dtk.parts]]
-url = "https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-linux-x86_64"
-sha256 = "7c86b1994401bde0cad1d308e6c04cccb65e85453ccc5062ac12baab3b03d320"
-binary = "dtk"
-platforms = ["linux-x86_64"]
-[[dtk.parts]]
-url = "https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-linux-aarch64"
-sha256 = "889a551d57916772f21a29c997579e0508f268c96bcbc946a0a66bff029cf97c"
-binary = "dtk"
-platforms = ["linux-aarch64"]
-[[dtk.parts]]
-url = "https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-macos-arm64"
-sha256 = "5ba1fd76adf937847277a1ebe2238b698df0020c3dbbde23ecb126f00fb10353"
-binary = "dtk"
-platforms = ["macos-arm64"]
-[[dtk.parts]]
-url = "https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-macos-x86_64"
-sha256 = "84bcab745a070bb970cf4bc0d69ddce9f6a58d5de257999ccc8adfa1567d17c9"
-binary = "dtk"
-platforms = ["macos-x86_64"]
-[[dtk.parts]]
-url = "https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-windows-x86_64.exe"
-sha256 = "6a693e95aa4d30acccc673343302a4abdfa3146bd0fb15cb1a2bce924cbc782a"
-binary = "dtk.exe"
-platforms = ["windows-x86_64"]
-
 [wibo]
 name = "wibo"
 kind = "tool"
@@ -365,27 +238,6 @@ platforms = ["macos-x86_64"]
 [[coddog.parts]]
 url = "https://github.com/ethteck/coddog/releases/download/0.6.3/coddog-cli-x86_64-pc-windows-msvc.zip"
 sha256 = "ce49cda2f01acbfcb1fea165ef3cbe4db06d7b5ea3738676069149a74d8e9ea3"
-platforms = ["windows-x86_64"]
-
-[gc-wii-binutils]
-name = "GNU binutils for GameCube and Wii"
-kind = "tool"
-license = "GPL-3.0"
-source = "encounter/gc-wii-binutils 2.42-2"
-description = "powerpc-eabi assembler, linker and objdump, as used by GameCube and Wii decomps."
-[["gc-wii-binutils".parts]]
-url = "https://github.com/encounter/gc-wii-binutils/releases/download/2.42-2/linux-x86_64.zip"
-sha256 = "64e4bf7aee5c06075d8fa818ebd2a0a3a72e0eeef3896bdec2f198b0e950fe63"
-executable = true
-platforms = ["linux-x86_64"]
-[["gc-wii-binutils".parts]]
-url = "https://github.com/encounter/gc-wii-binutils/releases/download/2.42-2/macos-universal.zip"
-sha256 = "c40bad23fd7d9eb22d4533875922fc19785ed067978b605804e345bc6e62449d"
-executable = true
-platforms = ["macos-x86_64", "macos-arm64"]
-[["gc-wii-binutils".parts]]
-url = "https://github.com/encounter/gc-wii-binutils/releases/download/2.42-2/windows-x86_64.zip"
-sha256 = "bd95bd57607efb45c437e97b77ec199073e242869027eb72196b0720611bb1c1"
 platforms = ["windows-x86_64"]
 
 [agbcc]
@@ -478,17 +330,6 @@ url = "https://github.com/decompals/binutils-mips-ps2-decompals/releases/downloa
 sha256 = "2bb5904ee174e04f1600cc70ffdb3dc36b0efa4d1892ea446be588ba8dc6198c"
 platforms = ["windows-x86_64"]
 
-[mwcc]
-name = "Metrowerks CodeWarrior (GameCube, Wii) + ProDG + Xbox 360 MSVC"
-kind = "compiler-pack"
-platform = "GameCube/Wii"
-license = "proprietary"
-source = "files.decomp.dev compilers_20251118.zip (the decomp community's archive)"
-description = "Every CodeWarrior version GameCube and Wii games were built with (GC 1.0-3.0a5, Wii 0x4201-1.7), SN ProDG and the Xbox 360 compilers. Windows programs, run through wibo on Linux and macOS."
-[[mwcc.parts]]
-url = "https://files.decomp.dev/compilers_20251118.zip"
-sha256 = "69b0d4980a2eccea4ae6e70b486714b5190cb6c75e3bc7b8fb5878a8854d0d1c"
-
 [mwccarm]
 name = "Metrowerks CodeWarrior for Nintendo DS (mwccarm)"
 kind = "compiler-pack"
@@ -527,29 +368,6 @@ url = "https://github.com/AetiasHax/ds-decomp/releases/download/v0.12.1/dsd-wind
 sha256 = "5917df26bffc05d4752276a2e0b1edd21bd6e920aabe1992be8a50efc9d10932"
 binary = "dsd.exe"
 platforms = ["windows-x86_64"]
-
-[sjiswrap]
-name = "sjiswrap"
-kind = "tool"
-license = "Apache-2.0"
-source = "encounter/sjiswrap v1.2.2"
-description = "Lets CodeWarrior compile Shift-JIS (Japanese) source files; used by dtk-template projects."
-binary_name = "sjiswrap"
-[[sjiswrap.parts]]
-url = "https://github.com/encounter/sjiswrap/releases/download/v1.2.2/sjiswrap-windows-x86.exe"
-sha256 = "01d50fa1148cfc3c3b16658c6c9b1c0d9f5324cde79ed6c09ef8353af9d63adf"
-binary = "sjiswrap.exe"
-
-[dtk-template]
-name = "dtk-template"
-kind = "template"
-license = "CC0-1.0"
-source = "encounter/dtk-template @ 95a941f"
-description = "The community's project template for GameCube and Wii decomps, used to start a new one from scratch."
-[[dtk-template.parts]]
-url = "https://github.com/encounter/dtk-template/archive/95a941f755919ebe50c1725a4ce73524470e7a02.tar.gz"
-sha256 = "c49f889a4e092388beef4867340887ec6f0410bd1055d79a8f8850bea89ada61"
-subdir = "dtk-template-95a941f755919ebe50c1725a4ce73524470e7a02"
 
 [binutils-arm]
 name = "GNU binutils for ARM and Thumb"
@@ -607,11 +425,6 @@ pip_extra = ["setuptools<70"]
 
 # Native Windows host ports of the original target compilers. Corresponding source and build recipes accompany
 # the archives at the same immutable commit (see tools/windows and the archive's SOURCE.txt).
-[["gcc-2.7.2-kmc".parts]]
-url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/65637ac93b99329e8532bce73ef94734d4eee392/toolchains/windows/v1/gcc-2.7.2-kmc-windows-cpp-i686-v4.zip"
-sha256 = "8439de1986876fa63cf169d669510e3090c9b58844a9518bce9c5a0e19b4e8ed"
-platforms = ["windows-x86_64"]
-
 [[agbcc.parts]]
 url = "https://raw.githubusercontent.com/OMGitsMatt45/decomp.wtf/0bc677de652e56dbf4e1679f2c2a3a65a13fd51c/toolchains/windows/v1/agbcc-windows-i686.zip"
 sha256 = "13785cc9419a086c51fac7da6e21fbe1cc0b7d6fe837ddf39bf2c18484395bff"

@@ -11,7 +11,7 @@ import time
 import tomllib
 from pathlib import Path
 
-from . import cpp, ido_cfront, psx_compiler, scoring, seeds, toolchains, wsl
+from . import cpp, psx_compiler, scoring, seeds, toolchains, wsl
 from .compiler import CompilerConfig, compile_source
 from .elfobj import extract_function, list_functions
 from .store import Store
@@ -49,7 +49,10 @@ def check_legal(cfg: dict) -> dict:
 
 def load_config(root: Path) -> dict:
     with open(root / "project.toml", "rb") as f:
-        return tomllib.load(f)
+        cfg = tomllib.load(f)
+    from . import platforms
+    platforms.require(cfg.get('platform', ''), ProjectRejected)
+    return cfg
 
 
 def function_config(cfg: dict, function: str | None = None) -> dict:
@@ -144,30 +147,6 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                        "--cc", f"{tc_dir}/{frontend}{suffix}", "--as", f"{{tc:arm-gnu}}/bin/arm-none-eabi-as{suffix}",
                        "--language", "c++", "--builtin-include", f"{tc_dir}/include", "--src", "{src}",
                        "--obj", "{obj}", "--include", "{include}", "--", "-fno-exceptions", "-fno-rtti", *flags]
-            elif tc.id in ("ido-5.3", "ido-7.1"):
-                # Both suites shipped an SGI/EDG frontend. Keep their distinct
-                # IRIX binaries and backend versions; classic 5.3 cfront is a
-                # separate compiler pipeline and must never fall through here.
-                frontend = cpp.ido_frontend(cfg)
-                if frontend == "cfront" and tc.id == "ido-5.3":
-                    required = ("classic-CC", "cfront", "ptcomp", "markc++")
-                    if not all((dirs[0] / f"{name}{suffix}").is_file() for name in required):
-                        raise toolchains.ToolchainError("The IDO 5.3 classic cfront overlay is missing: reinstall with `decompnet toolchain install ido-5.3 --force --accept-license`; EDG is not substituted.")
-                    if why := ido_cfront.manifest_error(dirs[0]):
-                        raise toolchains.ToolchainError(why)
-                    pipeline = Path(__file__).with_name("ido_cfront.py").resolve()
-                    ro_paths += [str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
-                    cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline),
-                           "--driver", f"{tc_dir}/classic-CC{suffix}", "--src", "{src}",
-                           "--obj", "{obj}", "--include", "{include}", "--", *flags]
-                elif frontend != "edg":
-                    raise toolchains.ToolchainError(f"{tc.name} has no verified setup for cpp_frontend = {frontend!r}; EDG is not substituted.")
-                elif not all((dirs[0] / f"{name}{suffix}").is_file() for name in ("NCC", "edgcpfe")):
-                    if tc.id == "ido-5.3" and toolchains.current_platform() not in ("linux-x86_64", "windows-x86_64"):
-                        raise toolchains.ToolchainError("IDO 5.3 SGI/EDG C++ is packaged for Windows and Linux x86-64. Use compiler.language = 'c' on this platform; the compiler version is not changed automatically.")
-                    raise toolchains.ToolchainError(f"The {tc.id} SGI/EDG C++ frontend is missing: reinstall with `decompnet toolchain install {tc.id} --force --accept-license`")
-                else:
-                    cmd[0] = f"{tc_dir}/NCC"
             else:
                 raise toolchains.ToolchainError(f"{tc.name} has no verified C++ setup")
         if assembler:

@@ -1,4 +1,4 @@
-"""The local engine on Demo Quest 64: import, claim, split, match, rename, read data, export."""
+"""The local engine on the original PS1 fixture: import, claim, split, match, rename, read data, export."""
 
 from pathlib import Path
 import shutil
@@ -9,12 +9,12 @@ from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
 from decompnet.network import NetworkError
 
-from .test_rom import built  # noqa: F401  (fixture that builds the demo ROM)
+from .psx_fixture import built, fixture_compiler_runtime  # noqa: F401  (fixture that builds the demo ROM)
 
-pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
-                                reason="needs gcc-2.7.2-kmc and ld.lld to build the demo ROM")
+pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-psx") is None or toolchains.installed("binutils-mips") is None,
+                                reason="needs gcc-2.7.2-psx and binutils to build the PS1 fixture")
 
-CLAMP = """s32 func_800007D0(s32 v, s32 lo, s32 hi) {
+CLAMP = """s32 func_80010410(s32 v, s32 lo, s32 hi) {
     if (v < lo) {
         return lo;
     }
@@ -31,18 +31,18 @@ DAMAGE = """typedef struct {
     s16 state;
     s32 combo;
 } Player;
-extern Player D_8004AE34;
+extern Player D_8001B240;
 
-void func_80000808(s32 amount) {
-    if (D_8004AE34.invuln_timer > 0) {
+void func_80010450(s32 amount) {
+    if (D_8001B240.invuln_timer > 0) {
         return;
     }
-    D_8004AE34.hp -= amount;
-    if (D_8004AE34.hp <= 0) {
-        D_8004AE34.hp = 0;
-        D_8004AE34.state = 3;
+    D_8001B240.hp -= amount;
+    if (D_8001B240.hp <= 0) {
+        D_8001B240.hp = 0;
+        D_8001B240.state = 3;
     }
-    D_8004AE34.invuln_timer = 60;
+    D_8001B240.invuln_timer = 60;
 }"""
 
 
@@ -51,7 +51,7 @@ def net(built, tmp_path_factory):  # noqa: F811
     ws = tmp_path_factory.mktemp("ws")
     net = RomNetwork(ws / "decomp.db", ws)
     slug = net.import_rom(built, confirmed=True, log=lambda *_: None)
-    assert slug == "demo-quest-64"
+    assert slug == "playstation-game"
     return net
 
 
@@ -61,76 +61,76 @@ def test_import_needs_the_ownership_confirmation(built, tmp_path):  # noqa: F811
 
 
 def test_import_is_idempotent_and_described(net, built):  # noqa: F811
-    assert net.import_rom(built, confirmed=True, log=lambda *_: None) == "demo-quest-64"
-    ov = net.overview("demo-quest-64")
-    assert ov["functions"] >= 95 and ov["matched"] == 0 and ov["compiler"]["toolchain"] == "gcc-2.7.2-kmc"
-    assert ov["rom"]["game_code"] == "NDQE"
+    assert net.import_rom(built, confirmed=True, log=lambda *_: None) == "playstation-game"
+    ov = net.overview("playstation-game")
+    assert ov["functions"] >= 95 and ov["matched"] == 0 and ov["compiler"]["toolchain"] == "gcc-2.7.2-psx"
+    assert ov["platform"] == "psx"
 
 
 def test_split_match_and_rename(net):
     agent, _ = net.local_agent("tester")
     # exit() never returns, so the disassembler ran it into clamp_s32: split them, then match clamp_s32
-    assert "split" in net.split_function(agent, "demo-quest-64", "func_800007C4", "0x800007D0")
-    brief = net.claim(agent, "demo-quest-64", "func_800007D0")
-    assert "0x800007D0" in brief and "slt " in brief and "m2c" in brief
-    out = net.compile_and_diff(agent, "func_800007D0", CLAMP, "demo-quest-64")
+    assert "split" in net.split_function(agent, "playstation-game", "func_800103CC", "0x800103D0")
+    brief = net.claim(agent, "playstation-game", "func_80010410")
+    assert "0x80010410" in brief and "slt " in brief and "m2c" in brief
+    out = net.compile_and_diff(agent, "func_80010410", CLAMP, "playstation-game")
     assert out.startswith("✅ MATCH"), out
-    out = net.rename_symbol(agent, "demo-quest-64", "func_800007D0", "clamp_s32")
+    out = net.rename_symbol(agent, "playstation-game", "func_80010410", "clamp_s32")
     assert out.startswith("✅"), out
-    assert net._function("clamp_s32", "demo-quest-64")["status"] == "matched"
-    assert "clamp_s32" in net._function("clamp_s32", "demo-quest-64")["matched_source"]
+    assert net._function("clamp_s32", "playstation-game")["status"] == "matched"
+    assert "clamp_s32" in net._function("clamp_s32", "playstation-game")["matched_source"]
 
 
 def test_struct_access_through_an_automatic_name(net):
     agent, _ = net.local_agent("tester2")
-    brief = net.get_function("func_80000808", "demo-quest-64")
-    assert "D_8004AE50" in brief  # g_player.hp, as the assembly names it
-    out = net.compile_and_diff(agent, "func_80000808", DAMAGE, "demo-quest-64")
+    brief = net.get_function("func_80010450", "playstation-game")
+    assert "D_8001B25C" in brief  # g_player.hp, as the assembly names it
+    out = net.compile_and_diff(agent, "func_80010450", DAMAGE, "playstation-game")
     assert out.startswith("✅ MATCH"), out
     # renaming the struct's address keeps the match (the source is updated with it)
-    assert net.rename_symbol(agent, "demo-quest-64", "D_8004AE34", "g_player").startswith("✅")
-    assert "g_player.hp" in net._function("func_80000808", "demo-quest-64")["matched_source"]
+    assert net.rename_symbol(agent, "playstation-game", "D_8001B240", "g_player").startswith("✅")
+    assert "g_player.hp" in net._function("func_80010450", "playstation-game")["matched_source"]
 
 
 def test_wrong_code_gets_a_diff_and_link_notes(net):
     agent, _ = net.local_agent("tester3")
-    out = net.compile_and_diff(agent, "func_80000A0C", "void func_80000A0C(s32 p) { mystery(p); }", "demo-quest-64")
+    out = net.compile_and_diff(agent, "func_80010518", "void func_80010518(s32 p) { mystery(p); }", "playstation-game")
     assert "score" in out and "mystery" in out
     # the GUI's diff: the same judge, row by row, with the link problems
-    d = net.function_diff("demo-quest-64", "func_80000A0C")
+    d = net.function_diff("playstation-game", "func_80010518")
     assert d["kind"] == "latest" and d["score"] > 0 and any(r[0] != " " for r in d["rows"])
     assert any("mystery" in p for p in d["problems"])
-    assert net.function_diff("demo-quest-64", "func_80000A0C") == d  # cached
-    net.compile_and_diff(agent, "func_80000A0C", "void func_80000A0C(s32 p) { p = }", "demo-quest-64")
-    broken = net.function_diff("demo-quest-64", "func_80000A0C")
+    assert net.function_diff("playstation-game", "func_80010518") == d  # cached
+    net.compile_and_diff(agent, "func_80010518", "void func_80010518(s32 p) { p = }", "playstation-game")
+    broken = net.function_diff("playstation-game", "func_80010518")
     assert broken["rows"] is None and broken["error"]
-    assert net.function_diff("demo-quest-64", "func_80000A0C", "best")["score"] == d["score"]
-    assert net.function_diff("demo-quest-64", "func_80000B3C")["rows"] is None  # nothing tried yet
-    net.release(agent, "func_80000A0C", "not this", "demo-quest-64")
+    assert net.function_diff("playstation-game", "func_80010518", "best")["score"] == d["score"]
+    assert net.function_diff("playstation-game", "func_800105E8")["rows"] is None  # nothing tried yet
+    net.release(agent, "func_80010518", "not this", "playstation-game")
 
 
 def test_read_data_and_lists(net):
-    text = net.read_data("demo-quest-64", "0x800082C0", 16)
+    text = net.read_data("playstation-game", "0x800186A0", 16)
     assert "DEMOQUEST-SAVE" in text
-    assert "bss" in net.read_data("demo-quest-64", "g_player", 16)
-    assert "clamp_s32" in net.list_functions("demo-quest-64", "matched")
+    assert "bss" in net.read_data("playstation-game", "g_player", 16)
+    assert "clamp_s32" in net.list_functions("playstation-game", "matched")
 
 
 def test_export_and_live(net):
-    out = net.export_rom("demo-quest-64", log=lambda *_: None)
+    out = net.export_rom("playstation-game", log=lambda *_: None)
     assert out["identical"], out["log"]
     assert out["language"] == "c++"
     assert "clamp_s32" in (Path(out["path"]) / "src" / "main" / "clamp_s32.cpp").read_text()
-    live = net.live("demo-quest-64")
+    live = net.live("playstation-game")
     assert live["overview"]["matched"] >= 2 and any(e["kind"] == "match" for e in live["events"])
-    fmap = net.function_map("demo-quest-64")
+    fmap = net.function_map("playstation-game")
     assert sum(f["status"] == "matched" for f in fmap) >= 2
-    detail = net.function_detail("demo-quest-64", "clamp_s32")
+    detail = net.function_detail("playstation-game", "clamp_s32")
     assert detail["status"] == "matched" and detail["scores"]
-    d = net.function_diff("demo-quest-64", "clamp_s32")
+    d = net.function_diff("playstation-game", "clamp_s32")
     assert d["kind"] == "matched" and d["score"] == 0 and all(r[0] == " " for r in d["rows"])
     assert any(f["matched_at"] for f in fmap) and all("unit" in f for f in fmap)
-    assert net.overview("demo-quest-64")["last_activity"]
+    assert net.overview("playstation-game")["last_activity"]
 
 
 def test_find_similar_on_the_rom(net):
@@ -138,7 +138,7 @@ def test_find_similar_on_the_rom(net):
 
     t = time.time()
     names = [r["name"] for r in net.store.all("SELECT name FROM functions WHERE n_insns > 12 LIMIT 40")]
-    outs = [net.find_similar("demo-quest-64", n) for n in names]
+    outs = [net.find_similar("playstation-game", n) for n in names]
     assert time.time() - t < 20
     assert all(o.startswith(("Functions that look like", "No look-alikes")) for o in outs)
 
@@ -146,15 +146,15 @@ def test_find_similar_on_the_rom(net):
 def test_autopilot_matches_machine_drafts_for_free(net):
     import time
 
-    before = net.overview("demo-quest-64")["matched"]
-    net.start_autopilot("demo-quest-64")
+    before = net.overview("playstation-game")["matched"]
+    net.start_autopilot("playstation-game")
     for _ in range(600):
-        if net.autopilot_status("demo-quest-64")["state"] != "running":
+        if net.autopilot_status("playstation-game")["state"] != "running":
             break
         time.sleep(0.1)
-    st = net.autopilot_status("demo-quest-64")
+    st = net.autopilot_status("playstation-game")
     assert st["state"] == "done" and st["tried"] == st["total"] and st["matched"] > 0
-    ov = net.overview("demo-quest-64")
+    ov = net.overview("playstation-game")
     assert ov["matched"] == before + st["matched"] and ov["autopilot"]["matched"] == st["matched"]
     by = net.store.one("SELECT COUNT(*) AS n FROM functions f JOIN agents a ON a.id=f.matched_agent_id "
                        "WHERE a.name='autopilot'")["n"]
@@ -163,7 +163,7 @@ def test_autopilot_matches_machine_drafts_for_free(net):
 
 
 def test_steering_priority_instructions_spend(net):
-    slug = "demo-quest-64"
+    slug = "playstation-game"
     open_fn = net.store.one("SELECT name FROM functions WHERE status='open' ORDER BY n_insns DESC LIMIT 1")["name"]
     assert net.set_priority(slug, open_fn) == [open_fn]
     agent, _ = net.local_agent("steered")
@@ -180,11 +180,11 @@ def test_steering_priority_instructions_spend(net):
 
 
 def test_stats_say_who_matched_what_and_how_fast(net):
-    st = net.stats("demo-quest-64")
+    st = net.stats("playstation-game")
     assert len(st["matches_per_hour"]) == 24
     agent, _ = net.local_agent("statsy")
-    net.compile_and_diff(agent, "func_80000A0C", "void func_80000A0C(s32 p) { }", "demo-quest-64")
-    st = net.stats("demo-quest-64")
+    net.compile_and_diff(agent, "func_80010518", "void func_80010518(s32 p) { }", "playstation-game")
+    st = net.stats("playstation-game")
     me = next(r for r in st["agents"] if r["agent"] == "statsy")
     assert me["compiles"] == 1 and st["compiles_last_hour"] >= 1
-    assert all("matched_by" in r for r in net.function_map("demo-quest-64"))
+    assert all("matched_by" in r for r in net.function_map("playstation-game"))

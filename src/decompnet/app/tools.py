@@ -18,17 +18,14 @@ from .engine import RomNetwork
 GUIDES = {
     "workflow": "the matching loop, reading diffs, priorities",
     "mips": "MIPS registers, calling convention, delay slots, types from instructions",
-    "gcc-kmc": "matching KMC GCC 2.7.2 code",
-    "ido": "matching IDO 5.3/7.1 code",
     "m2c": "reading the machine-generated draft",
     "data": "globals, strings, tables, floats, data you define",
     "structs": "working out struct layouts from offsets",
-    "n64": "N64 memory map, OS library, graphics/audio data",
     "naming": "naming functions and data",
     "fork": "working in a fork of a public decomp: the loop, conventions, what's allowed",
     "objdiff": "reading objdiff's diffs and match percentages",
-    "ppc": "PowerPC (GameCube, Wii): registers, calling convention, common patterns",
-    "mwcc": "matching Metrowerks CodeWarrior code (GameCube, Wii, DS)",
+    "ppc": "PowerPC registers and calling conventions for external projects",
+    "mwcc": "matching Metrowerks CodeWarrior for DS",
     "cpp": "decompiling C++: classes, vtables, constructors, inlines, name mangling",
     "psx": "matching PlayStation (PSY-Q GCC + maspsx) code",
     "ps2": "matching PlayStation 2 (EE-GCC, MWCC PS2) code",
@@ -42,8 +39,8 @@ GUIDES = {
 
 # Guides worth reading first on each platform.
 PLATFORM_GUIDES = {
-    "n64": ["mips"], "ps": ["mips", "psx"], "ps2": ["mips", "ps2"], "psp": ["mips"],
-    "gc": ["ppc", "mwcc", "cpp"], "wii": ["ppc", "mwcc", "cpp"], "nds": ["arm", "mwcc"], "3ds": ["arm", "cpp"],
+    "ps": ["mips", "psx"], "psx": ["mips", "psx"], "ps2": ["mips", "ps2"], "psp": ["mips"],
+    "nds": ["arm", "mwcc"], "3ds": ["arm", "cpp"],
     "gba": ["arm", "agbcc"], "gb": ["sm83"], "gbc": ["sm83"], "switch": ["aarch64", "cpp"], "win32": ["x86", "cpp"], "xbox": ["x86", "cpp"],
     "xbox360": ["ppc", "cpp"],
 }

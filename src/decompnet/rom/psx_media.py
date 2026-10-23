@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 
-from .n64 import RomError
+from .errors import RomError
 
 
 def relative(name):

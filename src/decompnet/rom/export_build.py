@@ -27,7 +27,6 @@ LANGUAGE = "C/C++" if len(_LANGUAGES) > 1 else "C++" if "c++" in _LANGUAGES else
 ASSEMBLY_ONLY = False
 EXPORTED_LABELS = {name for symbols in B.get("module_symbols", {}).values() for name in symbols}
 PREAMBLE = {
-    "n64": '.include "macro.inc"\n.set noat\n.set noreorder\n.set gp=64\n.section .text, "ax"\n',
     "psx": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
     "ps2": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
 }
@@ -80,16 +79,7 @@ def setup() -> None:
         except (OSError, ValueError, RuntimeError) as error:
             fail(str(error))
         (ROOT / B["image"]).write_bytes(decoded)
-    if container := B.get("container"):
-        from decompnet.rom.n64_layout import working_image
-        original = ROOT / container["image"]
-        if not original.is_file():
-            fail(f"put your own original cartridge here as {container['image']}")
-        try:
-            decoded = working_image(original.read_bytes(), container["layout"])
-        except (ValueError, RuntimeError) as error:
-            fail(str(error))
-        (ROOT / B["image"]).write_bytes(decoded)
+    pass
     base = ROOT / B["image"]
     if not base.exists():
         fail(f"put your own copy of the game here as {B['image']} (see README.md)")
@@ -442,11 +432,7 @@ def build() -> bool:
     setup()
     todo, provides = objects()
     build_objects(todo)
-    if B["platform"] == "n64":
-        for fn in B["functions"]:
-            if c_source(fn) and (why := validate(fn, (ROOT / provides[fn["name"]]).read_bytes())):
-                print(f"differs: {fn['name']}: {why}")
-                return False
+    pass
     gaps = fill_gaps(provides)
     code = [s for s in B["segments"] if s["kind"] == "code"]
     size = (ROOT / B["image"]).stat().st_size

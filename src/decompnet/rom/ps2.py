@@ -7,7 +7,7 @@ import hashlib
 import re
 import struct
 
-from .n64 import RomError
+from .errors import RomError
 from .psx import region_of
 
 EM_MIPS = 8

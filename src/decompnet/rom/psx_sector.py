@@ -1,6 +1,6 @@
 """CD-ROM Mode 1 and Mode 2 Form 1 EDC and Reed-Solomon P/Q parity."""
 
-from .n64 import RomError
+from .errors import RomError
 
 FORWARD, BACKWARD, EDC = [0] * 256, [0] * 256, [0] * 256
 for _i in range(256):

@@ -5,7 +5,7 @@ import hashlib
 import pytest
 
 from decompnet.rom import psx_data
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 
 
 def test_main_data_facts_extend_original_gp_and_bss():

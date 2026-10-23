@@ -7,7 +7,7 @@ member is addressed by its archive sector and table index, never a guessed name.
 import hashlib
 import struct
 
-from .n64 import RomError
+from .errors import RomError
 from . import psx_lzss
 
 

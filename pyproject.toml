@@ -1,7 +1,7 @@
 [project]
 name = "decompnet"
 version = "0.19.0"
-description = "decomp.wtf (What The Function): your AI agent decompiles games you own into C/C++ that compiles to the exact same bytes, with a live view. Runs locally."
+description = "decomp.wtf: local game source recovery and DS-first native PC-project development."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -14,13 +14,12 @@ dependencies = [
     "mcp>=2.3.0",
     "pyelftools>=0.33",
     "PyYAML>=6.0",  # generated DS ROM configuration reads and writes toolkit YAML
-    "pycryptodomex>=3.23",  # bounded, hash-verified reads of Wii boot utility partitions
     "splat64[mips]>=0.50.1",
     "spimdisasm>=1.42.4",
     "rabbitizer>=1.16.2",
     "httpx>=0.28",
     "uvicorn>=0.30",
-    "ninja>=1.11",  # builds GameCube/Wii (dtk) and other ninja-based decomp projects
+    "ninja>=1.11",  # builds DS and other ninja-based decomp projects
     "truststore>=0.10; sys_platform == 'win32'",  # HTTPS verified by Windows itself (see decompnet/__init__.py)
     "zstandard>=0.23; sys_platform == 'linux'",  # the .zst runtime old compilers need, without the zstd command
 ]

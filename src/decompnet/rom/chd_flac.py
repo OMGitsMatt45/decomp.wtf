@@ -7,7 +7,7 @@ No audio device, native library or external tool is needed.
 
 import struct
 
-from .n64 import RomError
+from .errors import RomError
 
 
 class Bits:

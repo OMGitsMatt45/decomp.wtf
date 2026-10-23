@@ -754,13 +754,13 @@ class Manager:
         # the know-how every session reads first, given up front (saves each session its first tool calls)
         ov = self.net.overview(s.slug)
         if ov.get("kind") == "fork":
-            # CodeWarrior's register and stack rules decide most of what's left on GameCube, Wii and DS
-            topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") in ("gc", "wii", "nds") else [])]
+            # CodeWarrior's register and stack rules decide most of what's left on DS
+            topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") == "nds" else [])]
         elif ov.get("compiler", {}).get("language") == "asm":
-            topics = ["ppc" if ov["platform"] in ("gc", "wii") else "arm"] if ov.get("assembly_dialect") == "gnu" else ["sm83"]
+            topics = ["arm"] if ov.get("assembly_dialect") == "gnu" else ["sm83"]
         else:
             topics = ["workflow", {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
-                "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")]
+                "mips")]
         text += "\nKnow-how you'd otherwise read with guide() (more topics: guide()):\n\n" + "\n\n".join(
             tools._guide(t) for t in topics)
         if (learned := self.net.learnings(s.slug)):
@@ -778,7 +778,7 @@ class Manager:
                                             count=s.options.get("per_session", PER_SESSION),
                                             guides=", ".join(f'guide("{g}")' for g in guides))
         guide = {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
-            "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")
+            "mips")
         if ov.get("compiler", {}).get("language") == "asm":
             prompt = tools.BOOT_ASSEMBLY_PROMPT if ov.get("assembly_dialect") == "gnu" else tools.ASSEMBLY_PROMPT
             return prompt.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))

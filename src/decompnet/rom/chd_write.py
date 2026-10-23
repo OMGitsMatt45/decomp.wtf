@@ -12,7 +12,7 @@ import struct
 import zlib
 
 from .chd import Chd, MAGIC, overall_sha1
-from .n64 import RomError
+from .errors import RomError
 
 
 def rewrite(original, output, patches, *, image=None):

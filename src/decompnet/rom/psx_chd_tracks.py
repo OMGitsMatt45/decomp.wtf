@@ -4,7 +4,7 @@ from bisect import bisect_right
 import hashlib
 import re
 
-from .n64 import RomError
+from .errors import RomError
 
 
 def tracks(source):

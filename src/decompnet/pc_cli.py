@@ -1,0 +1,25 @@
+"""Inspect native PC backend availability and verify generated source projects."""
+import json
+from pathlib import Path
+import sys
+
+from . import pc
+
+
+def add_parser(sub):
+    parser = sub.add_parser('pc', help='native PC project capabilities and integrity checks')
+    actions = parser.add_subparsers(dest='pc_action', required=True)
+    status = actions.add_parser('status', help='show installed backends; DS is first')
+    status.add_argument('--platform', default='')
+    verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
+    verify.add_argument('path', type=Path)
+
+
+def run(args):
+    try:
+        result = pc.status(args.platform) if args.pc_action == 'status' else pc.verify(args.path)
+        print(json.dumps(result, indent=2))
+        return 0
+    except (pc.PCError, OSError, ValueError) as error:
+        print('error: '+str(error), file=sys.stderr)
+        return 1

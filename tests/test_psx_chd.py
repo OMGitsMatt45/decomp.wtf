@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from decompnet.rom import chd, chd_write, detect, psx_disc, psx_modify, psx_sector
-from decompnet.rom.n64 import RomError
+from decompnet.rom.errors import RomError
 from .psx_chd_fixture import decoded, METADATA
 from .test_psx_disc import joined
 
