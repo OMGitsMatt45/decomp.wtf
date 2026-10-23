@@ -62,7 +62,9 @@ Keep PC-project export separate from matching-console export. Byte-identical
 matching measures source recovery; PC qualification measures a host build and
 working runtime. Static recompilation can translate unresolved machine code
 without first recovering every function into readable, byte-matching C/C++.
-Pause exhaustive DQVII source-matching passes at a private checkpoint. Resume
+Exhaustive DQVII source-matching passes are paused at a verified private checkpoint,
+recorded alongside Syphon Filter in [PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26).
+Resume
 targeted source recovery when it enables hooks, fixes or understanding
 of a runtime failure, rather than making 100% matching a prerequisite for a port.
 

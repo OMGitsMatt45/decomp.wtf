@@ -12,8 +12,13 @@ candidates; 100% byte-matching source recovery is not a prerequisite for static
 recompilation. Syphon Filter 1/2/3 recovery is checkpointed separately. Exhaustive
 DQVII matching is also paused at a private checkpoint; the next milestone is a
 PC-backend proof, retaining targeted source recovery for specific porting needs.
+[PR #26: Game Specific Source Recovery](https://github.com/OMGitsMatt45/decomp.wtf/pull/26)
+records all six paused disc checkpoints separately from PR #4. Its public files
+contain reviewed layouts and hashes; actual source/attempt history stays in the
+verified private ZIPs accompanying the task.
 
-**18 PRs remain open: 16 plan-only PRs and two implementation PRs.** PS1
+**19 PRs remain open: 16 plan-only PRs, two platform implementation PRs and one
+game-specific recovery checkpoint PR.** PS1
 disc/overlay reconstruction is implemented in PR #4; the separate DSi
 container foundation remains in PR #24. The other drafts cover four
 implemented platform families, eleven missing console workflows and shared
