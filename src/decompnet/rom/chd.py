@@ -6,12 +6,15 @@ of four codecs, stored as is, or a copy of another hunk), itself Huffman-coded. 
 uncompressed disc, decompressing only the hunks that are read: the app never needs the whole disc in memory.
 
 Written from the format as libchdr (BSD-3-Clause) implements it. Only what the app needs: version 5, the CD codecs
-(cdlz, cdzl; cdfl = audio, read as silence), and lzma, zlib for DVD images.
+(cdlz, cdzl, cdfl), and lzma, zlib for DVD images. All decoded bytes, including
+audio, subcode and restored sector parity, are checked against hunk CRCs.
 """
 
 from __future__ import annotations
 
 import lzma
+import binascii
+import hashlib
 import struct
 import zlib
 from pathlib import Path
@@ -32,17 +35,20 @@ def is_chd(head: bytes) -> bool:
 class _Bits:
     """MSB-first bit reader; past the end it reads zeros."""
 
-    def __init__(self, data: bytes):
-        self.data, self.pos = data, 0  # pos in bits
+    def __init__(self, data: bytes, strict=False):
+        self.data, self.pos, self.strict = data, 0, strict  # pos in bits
 
     def peek(self, n: int) -> int:
         if n == 0:
             return 0
         byte, bit = divmod(self.pos, 8)
-        chunk = int.from_bytes(self.data[byte:byte + 5].ljust(5, b"\0"), "big")
-        return (chunk >> (40 - bit - n)) & ((1 << n) - 1)
+        width = (bit + n + 7) // 8
+        chunk = int.from_bytes(self.data[byte:byte + width].ljust(width, b"\0"), "big")
+        return (chunk >> (width * 8 - bit - n)) & ((1 << n) - 1)
 
     def read(self, n: int) -> int:
+        if n < 0 or self.strict and self.pos + n > len(self.data) * 8:
+            raise RomError("this CHD's map is truncated")
         v = self.peek(n)
         self.pos += n
         return v
@@ -57,16 +63,23 @@ class _Huffman:
         lengths: list[int] = []
         while len(lengths) < numcodes:
             n = bits.read(width)
+            if n > maxbits:
+                raise RomError("this CHD's Huffman tree is damaged")
             if n != 1:
                 lengths.append(n)
                 continue
             n = bits.read(width)
+            if n > maxbits:
+                raise RomError("this CHD's Huffman tree is damaged")
             if n == 1:
                 lengths.append(1)
             else:
                 lengths += [n] * (bits.read(width) + 3)
         if len(lengths) != numcodes:
             raise RomError("this CHD's map is damaged")
+        single = lengths.count(1) == 1 and sum(bool(n) for n in lengths) == 1
+        if not single and sum(1 << (maxbits - n) for n in lengths if n) != 1 << maxbits:
+            raise RomError("this CHD's Huffman tree is incomplete or oversubscribed")
         histo = [0] * 33
         for n in lengths:
             histo[n] += 1
@@ -85,7 +98,9 @@ class _Huffman:
 
     def decode(self, bits: _Bits) -> int:
         entry = self.lookup[bits.peek(self.maxbits)]
-        bits.pos += entry & 0x1F
+        if not entry & 0x1F:
+            raise RomError("this CHD's Huffman code is invalid")
+        bits.read(entry & 0x1F)
         return entry >> 5
 
 
@@ -94,8 +109,19 @@ class Chd:
 
     def __init__(self, path: Path | str):
         self.f = open(path, "rb")
-        head = self.f.read(124)
-        if len(head) != 124 or not is_chd(head):
+        try:
+            self._open()
+        except BaseException:
+            self.f.close()
+            raise
+
+    def _open(self):
+        self.f.seek(0, 2)
+        self.physical_size = self.f.tell()
+        self.f.seek(0)
+        head = self._read(124)
+        self.header = head
+        if not is_chd(head) or int.from_bytes(head[8:12], "big") != 124:
             raise RomError("this isn't a CHD image")
         version = struct.unpack(">I", head[12:16])[0]
         if version != 5:
@@ -109,27 +135,61 @@ class Chd:
         if any(head[84 + 20:84 + 40]):  # parent SHA-1: it only holds what differs from another image
             raise RomError("this CHD needs its parent image (a delta of another CHD): use a standalone one")
         self.hunks = -(-self.logical // self.hunkbytes)
+        if self.hunks > 1 << 20:
+            raise RomError("CHD map exceeds the supported hunk count")
+        self.crcs = []
         self.map = self._read_map(map_offset) if any(any(codec) for codec in self.codecs) else None
         self.raw_map = None
         if self.map is None:
             # v5 uncompressed maps contain one big-endian hunk block number
             # per logical hunk. Block zero represents a zero-filled hunk.
             self.f.seek(map_offset)
-            raw_map = self.f.read(self.hunks * 4)
+            raw_map = self._read(self.hunks * 4)
             if len(raw_map) != self.hunks * 4:
                 raise RomError("this CHD's uncompressed map is truncated")
             self.raw_map = struct.unpack(f">{self.hunks}I", raw_map)
+            if any(block and block * self.hunkbytes + self.hunkbytes > self.physical_size for block in self.raw_map):
+                raise RomError("this CHD's uncompressed hunk is truncated")
+        self.metadata = self._metadata(int.from_bytes(head[48:56], "big"))
+        if any(head[84:104]) and overall_sha1(head[64:84], self.metadata) != head[84:104]:
+            raise RomError("this CHD's metadata SHA-1 differs")
         self.pos = 0
         self._cache: dict[int, bytes] = {}
+
+    def _read(self, length):
+        if not 0 <= length <= self.physical_size - self.f.tell():
+            raise RomError("this CHD is truncated")
+        data = self.f.read(length)
+        if len(data) != length:
+            raise RomError("this CHD is truncated")
+        return data
+
+    def _metadata(self, offset):
+        entries, seen, total = [], set(), 0
+        while offset:
+            if offset in seen or len(seen) >= 10000:
+                raise RomError("this CHD's metadata chain is damaged")
+            seen.add(offset)
+            self.f.seek(offset)
+            head = self._read(16)
+            length = int.from_bytes(head[5:8], "big")
+            total += length
+            if total > 16 << 20:
+                raise RomError("this CHD's metadata exceeds 16 MiB")
+            entries.append((head[:4], head[4], self._read(length)))
+            offset = int.from_bytes(head[8:16], "big")
+        return entries
 
     def _read_map(self, offset: int) -> list[tuple[int, int, int]]:
         """(type, length, offset) per hunk."""
         self.f.seek(offset)
-        hdr = self.f.read(16)
+        hdr = self._read(16)
         mapbytes = struct.unpack(">I", hdr[0:4])[0]
         first = int.from_bytes(hdr[4:10], "big")
         lengthbits, selfbits, parentbits = hdr[12], hdr[13], hdr[14]
-        bits = _Bits(self.f.read(mapbytes))
+        if lengthbits > 24 or selfbits > 32 or parentbits > 48 or mapbytes > self.hunks * 16 + 256:
+            raise RomError("this CHD's map dimensions are invalid")
+        bits = _Bits(self._read(mapbytes), strict=True)
         huff = _Huffman(bits)
         types, last, rep = [], 0, 0
         for _ in range(self.hunks):
@@ -148,17 +208,19 @@ class Chd:
             else:
                 last = v
                 types.append(v)
-        out, cur, last_self, last_parent = [], first, 0, 0
+        if rep:
+            raise RomError("this CHD's map run exceeds its hunk count")
+        out, cur, last_self, last_parent, rawmap = [], first, 0, 0, bytearray()
         for n, t in enumerate(types):
-            length, off = 0, cur
+            length, off, crc = 0, cur, 0
             if t <= TYPE_3:
                 length = bits.read(lengthbits)
                 cur += length
-                bits.read(16)  # crc
+                crc = bits.read(16)
             elif t == NONE:
                 length = self.hunkbytes
                 cur += length
-                bits.read(16)
+                crc = bits.read(16)
             elif t == SELF:
                 last_self = off = bits.read(selfbits)
             elif t == PARENT:
@@ -173,7 +235,17 @@ class Chd:
                 if t == PARENT_1:
                     last_parent += self.hunkbytes // self.unitbytes
                 t, off = PARENT, last_parent
+            else:
+                raise RomError("this CHD's map has an invalid compression type")
+            if t <= NONE and (not length or off + length > self.physical_size):
+                raise RomError("this CHD's compressed hunk is truncated")
+            if t == SELF and off >= self.hunks:
+                raise RomError("this CHD's self-reference is outside its map")
             out.append((t, length, off))
+            self.crcs.append(crc)
+            rawmap += bytes([t]) + length.to_bytes(3, "big") + off.to_bytes(6, "big") + crc.to_bytes(2, "big")
+        if binascii.crc_hqx(rawmap, 0xFFFF) != int.from_bytes(hdr[10:12], "big"):
+            raise RomError("this CHD's map checksum differs")
         return out
 
     # ------------------------------------------------------------------ hunks
@@ -207,36 +279,50 @@ class Chd:
         if t == PARENT:
             raise RomError("this CHD needs its parent image")
         self.f.seek(off)
-        raw = self.f.read(length)
+        raw = self._read(length)
         if t == NONE:
-            return raw
-        return self._decode(self.codecs[t], raw)
+            data = raw
+        else:
+            try:
+                data = self._decode(self.codecs[t], raw)
+            except RomError:
+                raise
+            except (zlib.error, lzma.LZMAError, IndexError, ValueError) as exc:
+                raise RomError("this CHD's compressed hunk is damaged") from exc
+        if len(data) != self.hunkbytes or binascii.crc_hqx(data, 0xFFFF) != self.crcs[n]:
+            raise RomError("this CHD's hunk checksum differs")
+        return data
 
     def _decode(self, codec: bytes, src: bytes) -> bytes:
         size = self.hunkbytes
         if codec == b"zlib":
-            return zlib.decompress(src, -15).ljust(size, b"\0")
+            return _inflate(src, size)
         if codec == b"lzma":
             return _lzma(src, size)
         if codec in (b"cdlz", b"cdzl", b"cdfl"):
+            if size % CD_FRAME:
+                raise RomError("a CD CHD hunk must contain whole frames")
             frames = size // CD_FRAME
             n_len = 2 if size < 65536 else 3
             ecc = (frames + 7) // 8
-            base_len = int.from_bytes(src[ecc:ecc + n_len], "big")
-            start = ecc + n_len
-            if codec == b"cdlz":
-                data = _lzma(src[start:start + base_len], frames * CD_DATA)
-            elif codec == b"cdzl":
-                data = zlib.decompress(src[start:start + base_len], -15).ljust(frames * CD_DATA, b"\0")
-            else:  # FLAC: CD audio, which nothing here reads
-                data = bytes(frames * CD_DATA)
-            try:
-                sub = zlib.decompress(src[start + base_len:], -15).ljust(frames * CD_SUB, b"\0")
-            except zlib.error:
-                sub = bytes(frames * CD_SUB)
+            if codec == b"cdfl":
+                from .chd_flac import decode
+                data, end = decode(src, frames * CD_DATA // 4)
+            else:
+                base_len = int.from_bytes(src[ecc:ecc + n_len], "big")
+                start = ecc + n_len
+                if not 0 < base_len < len(src) - start:
+                    raise RomError("invalid CHD CD codec lengths")
+                end = start + base_len
+                data = _lzma(src[start:end], frames * CD_DATA) if codec == b"cdlz" else _inflate(src[start:end], frames * CD_DATA)
+            sub = _inflate(src[end:], frames * CD_SUB)
             out = bytearray()
             for i in range(frames):
-                out += data[i * CD_DATA:(i + 1) * CD_DATA] + sub[i * CD_SUB:(i + 1) * CD_SUB]
+                sector = data[i * CD_DATA:(i + 1) * CD_DATA]
+                if codec != b"cdfl" and src[i // 8] & (1 << (i % 8)):
+                    from .psx_sector import restore_parity
+                    sector = restore_parity(b"\0" + b"\xff" * 10 + b"\0" + sector[12:])
+                out += sector + sub[i * CD_SUB:(i + 1) * CD_SUB]
             return bytes(out)
         raise RomError(f"this CHD uses the {codec.decode('ascii', 'replace')} codec, which decomp.wtf can't read "
                        "yet: convert it with `chdman extractcd` to .bin/.cue")
@@ -244,7 +330,11 @@ class Chd:
     # ------------------------------------------------------------------ file-like
 
     def seek(self, pos: int, whence: int = 0) -> int:
+        if whence not in (0, 1, 2):
+            raise RomError("invalid CHD seek mode")
         self.pos = pos if whence == 0 else self.pos + pos if whence == 1 else self.logical + pos
+        if self.pos < 0:
+            raise RomError("negative CHD seek")
         return self.pos
 
     def tell(self) -> int:
@@ -253,6 +343,7 @@ class Chd:
     def read(self, n: int = -1) -> bytes:
         if n < 0:
             n = self.logical - self.pos
+        n = min(n, max(0, self.logical - self.pos))
         out = bytearray()
         while n > 0 and self.pos < self.logical:
             h, at = divmod(self.pos, self.hunkbytes)
@@ -276,4 +367,20 @@ def _lzma(src: bytes, size: int) -> bytes:
     """CHD's LZMA: raw LZMA1 (lc 3, lp 0, pb 2), no end marker, decoded to the hunk's size."""
     dec = lzma.LZMADecompressor(lzma.FORMAT_RAW, filters=[{"id": lzma.FILTER_LZMA1, "lc": 3, "lp": 0, "pb": 2,
                                                             "dict_size": 1 << 24}])
-    return dec.decompress(src, max_length=size).ljust(size, b"\0")
+    result = dec.decompress(src, max_length=size)
+    if len(result) != size:
+        raise RomError("this CHD's LZMA hunk has the wrong decoded size")
+    return result
+
+
+def _inflate(src, size):
+    decoder = zlib.decompressobj(-15)
+    result = decoder.decompress(src, size + 1)
+    if len(result) != size or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+        raise RomError("this CHD's deflate hunk has the wrong decoded size")
+    return result
+
+
+def overall_sha1(raw_sha1, metadata):
+    hashed = sorted(tag + hashlib.sha1(data).digest() for tag, flags, data in metadata if flags & 1)
+    return hashlib.sha1(raw_sha1 + b"".join(hashed)).digest()

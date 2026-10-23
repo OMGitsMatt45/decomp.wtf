@@ -30,6 +30,9 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
   MIPS fixtures execute the generated bodies and pointer-return helpers.
 - Reviewed zlib/gzip module recompression, explicit archive stored-length fields,
   bounded encoded capacity and preservation of original loader fixup words.
+- Lossless CHD v5 mod builds, including FLAC stereo audio, raw subcode, omitted
+  parity restoration, retained metadata and independently checked CRC/SHA-1.
+  Combined builds allow changed compression sizes with fixed logical tracks.
 
 ## Validation boundaries
 
@@ -38,7 +41,7 @@ Private retail inputs broaden coverage; they do not qualify every game's loader.
 Raw overlay placement still needs review. Proprietary archives/codecs and
 unknown relocation tables need specific loader facts/adapters; interleaved or
 multi-extent ISO layouts, missing tracks, changed-size files/tracks, new loader
-relocation tables and CHD recompression remain outside this workflow. Growth
+relocation tables remain outside this workflow. Growth
 requires explicit loaded-space review; zero bytes alone do not establish nonuse.
 DQVII's HBD archives remain
 opaque, and most recognized executable functions remain assembly.

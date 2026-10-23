@@ -6,8 +6,9 @@ drafts, compilation, matching and `.cpp` exports. Explicit
 field continue to compile as C.
 
 Eligible disc imports also [reconstruct the complete original image](psx-disc.md)
-from the independently rebuilt boot program and discovered overlays. CHD and
-unsupported filesystem layouts explicitly retain program-only exports.
+from the independently rebuilt boot program and discovered overlays. Supported
+CHDs retain their original container after matching and support lossless mod
+recompression. Unsupported filesystem layouts retain program-only exports.
 
 ## Compiler identity
 

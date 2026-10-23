@@ -4,6 +4,7 @@ from contextlib import ExitStack
 import hashlib
 from pathlib import Path
 import shutil
+import tempfile
 
 from .n64 import RomError
 from . import psx_disc, psx_media, psx_sector, psx_layout
@@ -14,16 +15,16 @@ def rebuild(original, rebuilt, layout, output):
     if original.resolve() == output.resolve():
         raise RomError("a modified disc must have a separate output path")
     output.unlink(missing_ok=True)
-    temporary = output.with_name(output.name + ".tmp")
-    temporary.unlink(missing_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=output.parent, prefix=".psx-mod-", suffix=".tmp", delete=False) as handle:
+        temporary = Path(handle.name)
     try:
         baseline = psx_disc.analysis(original, layout)
         if len(rebuilt) != len(baseline):
             raise RomError("a PS1 mod cannot change analysis-image or file sizes")
         media = layout.get("media")
-        if media and media["kind"] == "chd":
-            if rebuilt != baseline:
-                raise RomError("changed CHD output requires a lossless track/audio recompression adapter; import BIN/CUE instead")
+        is_chd = media and media["kind"] == "chd"
+        if is_chd and rebuilt == baseline:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(original, temporary)
             temporary.replace(output)
@@ -82,21 +83,36 @@ def rebuild(original, rebuilt, layout, output):
             if rebuilt[cursor:] != baseline[cursor:]:
                 raise RomError("a PS1 mod changed unmapped analysis bytes")
             output.parent.mkdir(parents=True, exist_ok=True)
-            with temporary.open("w+b") as destination:
-                physical.seek(0)
-                shutil.copyfileobj(physical, destination, 1 << 20)
+            chd_result = None
+            if is_chd:
+                from .chd_write import rewrite
+                patches = {}
                 for lba, data in sorted(sectors.items()):
-                    position = (media.get("offset", 0) if media else 0) + lba * disc.size
-                    physical.seek(position)
-                    original_sector = physical.read(disc.size)
-                    sector = bytes(data) if disc.size == 2048 else psx_sector.replace(original_sector, data)
-                    destination.seek(position)
-                    destination.write(sector)
-                destination.flush()
-                if destination.seek(0, 2) != layout["original_size"]:
-                    raise RomError("a PS1 mod changed its pinned disc size")
+                    position = lba * disc.size
+                    view.seek(position)
+                    patches[position] = psx_sector.replace(view.read(disc.size), data)
+                chd_result = rewrite(original, temporary, patches)
+            else:
+                _write_raw(physical, temporary, sectors, media, disc, layout)
         temporary.replace(output)
         return {"changed_sectors": len(sectors), "files": files,
-                "analysis_sha256": hashlib.sha256(rebuilt).hexdigest(), "module_storage": modules}
+                "analysis_sha256": hashlib.sha256(rebuilt).hexdigest(), "module_storage": modules,
+                **({"chd": chd_result} if chd_result else {})}
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _write_raw(physical, temporary, sectors, media, disc, layout):
+    with temporary.open("w+b") as destination:
+        physical.seek(0)
+        shutil.copyfileobj(physical, destination, 1 << 20)
+        for lba, data in sorted(sectors.items()):
+            position = (media.get("offset", 0) if media else 0) + lba * disc.size
+            physical.seek(position)
+            original_sector = physical.read(disc.size)
+            sector = bytes(data) if disc.size == 2048 else psx_sector.replace(original_sector, data)
+            destination.seek(position)
+            destination.write(sector)
+        destination.flush()
+        if destination.seek(0, 2) != layout["original_size"]:
+            raise RomError("a PS1 mod changed its pinned disc size")

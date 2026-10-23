@@ -80,7 +80,12 @@ def build(mod=False):
                         name = ("disc/" + original.relative_to(folder / "build/disc-media").as_posix()) if media.get("kind") == "cue" else "disc" + original.suffix
                         original = folder / "build/psx-mod" / name
                         entry = next((a for a in modified["artifacts"] if a["output"] == original.relative_to(folder).as_posix()), None)
-                        if entry is None or entry["size"] != item["size"]:
+                        if entry is None:
+                            raise ValueError("a modified child lost its disc/track output")
+                        if media.get("kind") == "chd" and modified.get("disc", {}).get("chd"):
+                            from decompnet.rom.chd_write import verify_geometry
+                            verify_geometry(folder / child["disc"]["image"], original, modified["disc"]["chd"])
+                        elif entry["size"] != item["size"]:
                             raise ValueError("a modified child changed its pinned disc/track sizes")
                         expected = (entry["size"], entry["sha256"])
                     if folder.resolve() not in original.resolve().parents:
@@ -93,7 +98,8 @@ def build(mod=False):
                     shutil.copyfile(original, staged)
                 if mod:
                     disc["modified"] = {"artifacts": published, "changed_functions": modified["changed_functions"],
-                                        "mode": modified["mode"], "spaces": modified.get("spaces", [])}
+                                        "mode": modified["mode"], "spaces": modified.get("spaces", []),
+                                        "disc": modified.get("disc")}
             for output in outputs:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 (Path(temporary) / output.relative_to(ROOT / "build")).replace(output)

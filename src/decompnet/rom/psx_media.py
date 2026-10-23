@@ -1,7 +1,7 @@
 """Pinned CUE track sets and CHD containers for exact PS1 matching builds.
 
-The original container is retained only after every imported program has been
-rebuilt exactly. This does not author changed discs or re-encode audio.
+Matching retains the original container after every imported program rebuilds
+exactly. Separate mod builds use psx_modify and lossless CHD frame rewriting.
 """
 
 from contextlib import contextmanager

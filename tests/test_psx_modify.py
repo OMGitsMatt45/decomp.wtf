@@ -179,7 +179,7 @@ def test_cpp_changes_build_without_weakening_matching_and_fail_cleanly(tmp_path,
 
 
 @pytest.mark.parametrize("kind", ["cue-gap-audio", "cue-shared-audio", "chd"])
-def test_modified_media_preserves_audio_pregap_paths_and_refuses_changed_chd(tmp_path, kind):
+def test_modified_media_preserves_audio_pregap_paths_and_lossless_chd(tmp_path, kind):
     from .test_psx_media import original_chd
     if kind == "chd":
         original = original_chd(valid_raw(fixture(), 2448, 24), compressed=True)
@@ -212,9 +212,14 @@ def test_modified_media_preserves_audio_pregap_paths_and_refuses_changed_chd(tmp
     if kind == "chd":
         assert psx_modify.rebuild(primary, image, layout, output)["changed_sectors"] == 0
         assert output.read_bytes() == original
-        with pytest.raises(RomError, match="lossless track/audio recompression"):
-            psx_modify.rebuild(primary, changed, layout, output)
-        assert not output.exists()
+        report = psx_modify.rebuild(primary, changed, layout, output)
+        assert report["changed_sectors"] == 1 and report["chd"]["lossless_verified"]
+        from decompnet.rom.chd import Chd
+        with Chd(output) as disc:
+            decoded = disc.read()
+        raw = valid_raw(fixture(), 2448, 24)
+        assert len(decoded) == len(raw) and decoded != raw
+        assert decoded[2352::2448] == raw[2352::2448]
     else:
         assert psx_modify.rebuild(primary, changed, layout, output)["changed_sectors"] == 1
         result = output.read_bytes()
@@ -227,7 +232,7 @@ def test_modified_media_preserves_audio_pregap_paths_and_refuses_changed_chd(tmp
 
 
 @pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")
-@pytest.mark.parametrize("media", ["iso", "cue"])
+@pytest.mark.parametrize("media", ["iso", "cue", "chd"])
 def test_cli_combined_mod_uses_shared_source_and_disc_two_failure_removes_all_outputs(tmp_path, capsys, media):
     if media == "iso":
         net, slugs, originals = imported(tmp_path, recover=True)
@@ -237,11 +242,17 @@ def test_cli_combined_mod_uses_shared_source_and_disc_two_failure_removes_all_ou
         for number, image in enumerate(fixtures(tmp_path)):
             folder = tmp_path / f"input-{number}"
             (folder / "tracks").mkdir(parents=True)
-            original = valid_raw(image, 2352, 24)
+            original = valid_raw(image, 2448 if media == "chd" else 2352, 24)
+            if media == "chd":
+                from .test_psx_media import original_chd
+                original = original_chd(original, compressed=True)
             originals.append(original)
             (folder / "tracks/data.bin").write_bytes(original)
             cue = folder / "disc.cue"
             cue.write_text('FILE "tracks/data.bin" BINARY\n TRACK 01 MODE2/2352\n INDEX 01 00:00:00\n')
+            if media == "chd":
+                cue = folder / "disc.chd"
+                cue.write_bytes(original)
             slug = net.import_rom(cue, confirmed=True, log=lambda *_: None)
             slugs.append(slug)
             net._update_cfg(slug, lambda c: c["compiler"].update(sandbox="none"))
@@ -260,7 +271,11 @@ def test_cli_combined_mod_uses_shared_source_and_disc_two_failure_removes_all_ou
     for disc, original in zip(report["discs"], originals):
         assert len(disc["changed_functions"]) == 1
         output = tree / disc["artifacts"][0]["output"]
-        assert output.read_bytes() != original and output.stat().st_size == len(original)
+        assert output.read_bytes() != original
+        if media == "chd":
+            assert disc["disc"]["chd"]["lossless_verified"]
+        else:
+            assert output.stat().st_size == len(original)
         if media == "cue":
             cue = tree / disc["artifacts"][1]["output"]
             assert (cue.parent / "tracks/data.bin") == output

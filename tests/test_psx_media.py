@@ -1,6 +1,7 @@
 """Original CUE/CHD fixtures, including audio, pregaps and private ZIP exports."""
 
 import json
+import binascii
 import os
 from pathlib import Path
 import shutil
@@ -35,12 +36,20 @@ def original_chd(image, compressed=False):
             chunks.append(compressor.compress(image[i * hunk:(i + 1) * hunk].ljust(hunk, b"\0")) + compressor.flush())
         # A complete canonical 4-bit Huffman tree for the map's 16 codes,
         # followed by codec-0 entries and their lengths/CRC fields.
+        first = 124 + 16 + (64 + 44 * count + 7) // 8
+        offsets, cursor = [], first
+        for chunk in chunks:
+            offsets.append(cursor)
+            cursor += len(chunk)
+        crcs = [binascii.crc_hqx(image[i * hunk:(i + 1) * hunk].ljust(hunk, b"\0"), 0xFFFF) for i in range(count)]
+        raw_map = b"".join(bytes(1) + len(chunk).to_bytes(3, "big") + offset.to_bytes(6, "big") + crc.to_bytes(2, "big")
+                           for chunk, offset, crc in zip(chunks, offsets, crcs))
         bits = "0100" * 16 + "0000" * count
-        bits += "".join(f"{len(chunk):024b}" + "0" * 16 for chunk in chunks)
+        bits += "".join(f"{len(chunk):024b}{crc:016b}" for chunk, crc in zip(chunks, crcs))
         bits += "0" * (-len(bits) % 8)
         encoded_map = int(bits, 2).to_bytes(len(bits) // 8, "big")
         first = 124 + 16 + len(encoded_map)
-        map_header = struct.pack(">I", len(encoded_map)) + first.to_bytes(6, "big") + bytes(2) + bytes([24, 0, 0, 0])
+        map_header = struct.pack(">I", len(encoded_map)) + first.to_bytes(6, "big") + binascii.crc_hqx(raw_map, 0xFFFF).to_bytes(2, "big") + bytes([24, 0, 0, 0])
         return bytes(head) + map_header + encoded_map + b"".join(chunks)
     blocks = list(range(count + 1, 1, -1))
     result = bytearray((count + 2) * hunk)

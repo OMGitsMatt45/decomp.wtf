@@ -106,8 +106,19 @@ change within their original storage. Reviewed zlib/gzip modules can recompress
 within declared archive capacity and update a declared stored-length field.
 Existing loader fixup words are restored to their original unrelocated storage
 and must remain unchanged in the decoded module. Rewriting relocation tables
-and CHD recompression require separate adapters. This workflow does not resize
+requires a separate adapter. This workflow does not resize
 files or recover unknown loaders and archives.
+
+CHD v5 mod builds use the same commands. The writer preserves every decoded
+2448-byte frame outside changed data sectors, including stereo audio, subcode,
+track padding and all track/pregap metadata. It restores omitted sector parity,
+decodes CD FLAC without replacing samples, recompresses with standard zlib and
+updates map CRCs, hunk CRCs and raw/metadata SHA-1 hashes. Every output frame is
+read back and compared before publication. Combined builds verify logical
+geometry and decoded hashes while allowing the compressed container size to
+change. Compression can produce a larger CHD than the original. No additional
+tool or download is required. Existing matching builds retain the exact original
+compressed container.
 
 ## Supported media
 
@@ -124,10 +135,11 @@ files or recover unknown loaders and archives.
 CUE matching supports data pregaps and audio in the same or separate files.
 Missing tracks, escaping paths, inconsistent modes/indices and unsupported
 statements fail explicitly. CHD matching checks both the original compressed
-hash and decoded program bytes; audio remains opaque. It does not re-encode
-CHD, synthesize missing tracks, or author changed media. Existing CD FLAC
-analysis does not decode audio samples. All original audio bytes remain in the
-retained container.
+hash and decoded program bytes. Supported v5 codecs are `cdlz`, `cdzl`, `cdfl`,
+`lzma` and `zlib`, plus uncompressed maps and self references. FLAC samples and
+subcode decode losslessly; hunk/map CRCs and checksummed metadata are validated.
+Parent/delta images and unknown codecs require conversion to a supported
+standalone image. Missing tracks are not synthesized.
 
 Unrelated files, sector envelopes, XA metadata, padding, trailers, subcode and
 audio stay verbatim. Ordinary mapped programs require Mode 1/Mode 2 Form 1 data
@@ -213,7 +225,8 @@ module and verifies every analysis byte. Ordinary raw images receive the rebuilt
 program bytes at their original extents. CUE/CHD and reviewed encoded modules
 retain original containers only after decoded-program matching succeeds.
 The separate `mod` command supports the bounded source changes described above.
-Changed-size media authoring remains outside this workflow.
+Changed-size disc files/tracks remain outside this workflow; recompressed CHD
+container size can change without changing logical geometry.
 
 All **125 required checks passed with zero skips on native Windows and Linux**
 at source/test commit `eaf93c02c3d23c8e291a7382331a6c251cebb409` in the
@@ -233,7 +246,7 @@ suite. Retail bytes and derived sources never enter that workflow or Git.
 ```sh
 uv sync --locked --group dev
 uv run --no-sync python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 
@@ -244,3 +257,10 @@ The dev dependency group installs Unicorn automatically for original-fixture
 MIPS execution checks. Those checks exercise larger bodies, helper calls,
 initialized globals, new zero storage and function pointers; they do not
 establish whole-game execution or playthrough correctness.
+
+The original CHD fixtures were generated and independently verified/extracted
+with MAME chdman 0.276. Their [provenance](../tests/fixtures/psx-chd/provenance.json)
+pins every input hash; the generator uses original code, PCM and subcode only.
+Local `chdman verify` and `extractraw` also verified modified output from all
+five codecs, including both SHA-1 hashes and every decoded frame. Native tests
+use these fixtures directly and require no external CHD executable.

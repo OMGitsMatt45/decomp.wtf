@@ -39,15 +39,22 @@ def corrected(sector):
     if len(sector) not in (2352, 2448) or sector[:12] != b"\0" + b"\xff" * 10 + b"\0":
         raise RomError("modified PS1 sectors require ordinary raw CD-ROM frames")
     result = bytearray(sector)
-    address = result[12:16]
     if result[15] == 1:
         result[2064:2068] = edc(result[:2064])
         result[2068:2076] = bytes(8)
     elif result[15] == 2 and result[16:20] == result[20:24] and not result[18] & 0x20:
         result[2072:2076] = edc(result[16:2072])
-        result[12:16] = bytes(4)
     else:
         raise RomError("modified PS1 programs require Mode 1 or Mode 2 Form 1 sectors")
+    return restore_parity(result)
+
+
+def restore_parity(sector):
+    """Restore only P/Q bytes removed by CHD; preserve the original EDC."""
+    result = bytearray(sector)
+    address = result[12:16]
+    if result[15] == 2:
+        result[12:16] = bytes(4)
     result[2076:2248] = _parity(result[12:2076], 86, 24, 2, 86)
     result[2248:2352] = _parity(result[12:2248], 52, 43, 86, 88)
     result[12:16] = address
