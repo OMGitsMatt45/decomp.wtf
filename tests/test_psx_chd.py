@@ -71,7 +71,7 @@ def test_mod_recompression_changes_only_one_program_sector_and_preserves_tracks(
         chd_write.verify_geometry(original, output, bad_report)
 
 
-@pytest.mark.parametrize("damage", ["map", "hunk", "truncated", "metadata", "raw-sha"])
+@pytest.mark.parametrize("damage", ["map", "hunk", "truncated", "metadata", "raw-sha", "map-offset", "metadata-offset"])
 def test_damaged_chd_cannot_publish_a_modified_container(tmp_path, damage):
     source = FIXTURES / "cdfl.chd"
     data = bytearray(source.read_bytes())
@@ -85,6 +85,9 @@ def test_damaged_chd_cannot_publish_a_modified_container(tmp_path, damage):
             data = data[:-1]
         elif damage == "metadata":
             data[data.index(b"TRACK:2") + len("TRACK:")] ^= 1
+        elif damage.endswith("-offset"):
+            at = 40 if damage == "map-offset" else 48
+            data[at:at + 8] = b"\xff" * 8
         else:
             data[64] ^= 1
             # A consistent metadata hash still cannot hide a bad raw data hash.
@@ -95,6 +98,16 @@ def test_damaged_chd_cannot_publish_a_modified_container(tmp_path, damage):
     with pytest.raises(RomError):
         chd_write.rewrite(original, output, {})
     assert not output.exists()
+
+
+def test_rewrite_cannot_truncate_a_hardlinked_original(tmp_path):
+    original, output = tmp_path / "original.chd", tmp_path / "alias.chd"
+    raw = (FIXTURES / "cdfl.chd").read_bytes()
+    original.write_bytes(raw)
+    output.hardlink_to(original)
+    with pytest.raises(RomError, match="separate"):
+        chd_write.rewrite(original, output, {})
+    assert original.read_bytes() == output.read_bytes() == raw
 
 
 def test_overlapping_patch_rejection_and_raw_copy_mode(tmp_path):

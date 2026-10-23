@@ -129,6 +129,8 @@ class Chd:
         self.codecs = [head[16 + 4 * i:20 + 4 * i] for i in range(4)]
         self.logical = struct.unpack(">Q", head[32:40])[0]
         map_offset = struct.unpack(">Q", head[40:48])[0]
+        if not 124 <= map_offset <= self.physical_size:
+            raise RomError("this CHD's map offset is outside the image")
         self.hunkbytes, self.unitbytes = struct.unpack(">II", head[56:64])
         if not 0 < self.hunkbytes <= 16 << 20 or not 0 < self.unitbytes <= self.hunkbytes or not 0 < self.logical <= 16 << 30:
             raise RomError("invalid CHD logical, hunk or unit size")
@@ -167,6 +169,8 @@ class Chd:
     def _metadata(self, offset):
         entries, seen, total = [], set(), 0
         while offset:
+            if not 124 <= offset <= self.physical_size - 16:
+                raise RomError("this CHD's metadata offset is outside the image")
             if offset in seen or len(seen) >= 10000:
                 raise RomError("this CHD's metadata chain is damaged")
             seen.add(offset)

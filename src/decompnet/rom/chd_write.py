@@ -18,7 +18,7 @@ from .n64 import RomError
 def rewrite(original, output, patches):
     """Write and independently reread output; patches address decoded bytes."""
     original, output = Path(original), Path(output)
-    if original.resolve() == output.resolve():
+    if original.resolve() == output.resolve() or output.exists() and output.samefile(original):
         raise RomError("a changed CHD must use a separate output path")
     try:
         return _rewrite(original, output, patches)

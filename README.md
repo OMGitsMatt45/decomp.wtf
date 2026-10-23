@@ -73,6 +73,7 @@ Install the following only for the features you choose:
 | [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
 | [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
 | [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+| [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
 
