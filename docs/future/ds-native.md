@@ -5,6 +5,10 @@ Depends on the shared application/output contract in PR #28. Merged PRs #1, #7
 and #25 remain console reconstruction and source-recovery history; a successful
 `.nds` rebuild or emulator execution is not this milestone.
 
+The [DQIV 1.5 runtime assessment](ds-runtime-assessment.md) records the first
+source/interface review and the boundary between a known source-port adapter and
+a general DS binary translator. No upstream runtime has been adopted yet.
+
 ## Product
 
 Given a supported owner-supplied DS game, generate one source project with a
