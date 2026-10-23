@@ -1,7 +1,7 @@
 # decomp.wtf
 
-A local game source-recovery workbench being refactored to generate native PC
-projects for Dragon Quest and Pokémon. **DS is first. No retail PC-output backend
+A local game source-recovery workbench being refactored to generate buildable
+PC source repositories for Dragon Quest and Pokémon. **DS is first. No retail PC-output backend
 is qualified yet.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
@@ -34,6 +34,10 @@ ordered input identities, source-file hashes, host build targets and fallback
 behavior explicit. The application will not relabel a console export as a PC
 port. DQIV Recompiled is the reference for the desired product, not an existing
 generic DS backend in this application.
+
+The target repository includes host-buildable game C/C++, a native runtime layer,
+asset-extraction tools, pinned dependencies and build/run instructions. A clean
+checkout with the documented original input should build the working PC game.
 
 ## Install and run
 

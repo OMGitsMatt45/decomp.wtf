@@ -244,7 +244,7 @@ def setup(args) -> int:
     if missing:
         print("Setup finished with tools unavailable: " + ", ".join(missing)
               + ". You can open the app; install missing supported tools from Setup to retry.")
-    print("  IDO (most first-party games) is proprietary: install it from the app if you accept its license.")
+    print("  Select platform compilers in the app; DS CodeWarrior requires accepting its license.")
     found = [a["name"] for a in agents.detect() if a["installed"] and a["id"] != "api"]
     print("AI agents found: " + (", ".join(found) if found else "none yet (the app helps you add one)"))
     return 0

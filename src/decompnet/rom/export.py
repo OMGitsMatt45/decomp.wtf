@@ -120,9 +120,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             raise ExportError("PS1 original disc path is outside the project")
         if analysis(disc_path, disc) != image:
             raise ExportError("PS1 analysis image differs from the original disc programs")
-    container = None
-    pass
-
     if out.exists():
         keep = {".git"}
         for child in out.iterdir():
@@ -139,8 +136,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         from . import ps2
         bss_changed = ps2.bss_layout(config, (work / program).read_bytes())
-    pass
-    pass
     shutil.copyfile(work / image_name, out / image_name)
     for extra in ("reloc_addrs.txt",):
         if (work / extra).exists():
@@ -363,12 +358,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         "module_symbols": module_symbols,
         "symbols": {k: v for k, v in sorted(absolute.items(), key=lambda kv: kv[1])},
     }
-    if container:
-        (out / base).rename(out / "analysis.z64")
-        shutil.copyfile(original_path, out / "baserom.z64")
-        build.update(image="analysis.z64", output="build/analysis.z64", container=container)
-        yml.write_text(re.sub(r"(^\s*target_path:\s*).*$", r"\g<1>analysis.z64", yml.read_text(encoding="utf-8"),
-                             count=1, flags=re.M), encoding="utf-8")
     if disc and disc.get("supported"):
         disc = json.loads(json.dumps(disc))
         media = disc.get("media")
@@ -388,7 +377,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             build["disc"]["artifacts"] = [{"output": build["disc"]["output"],
                 "size": disc["original_size"], "sha256": disc["sha256"]}, *[
                 {**item, "output": "build/disc-media/" + item["name"]} for item in media.get("companions", [])]]
-    pass
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         original = (work / program).read_bytes()
         if original.startswith(b"\x7fELF"):
@@ -399,7 +387,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
     if platform == "psx":
         shutil.copyfile(Path(__file__).with_name("psx_mod_build.py"), out / "psx_mod.py")
-    pass
     units_json = []
     for f in functions:
         unit = {"name": f"{f['seg']}/{f['name']}", "target_path": f["obj_asm"],
@@ -450,16 +437,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "Resources and loader references are recorded in `psx-assets.json`. "
                        "See the repository's `docs/psx-resources.md` for commands and authoring limits. "
                        "Normal `python build.py` remains a strict matching check.\n")
-    pass
-    if container:
-        with (out / "README.md").open("a", encoding="utf-8") as docs:
-            docs.write("\n## Compressed cartridge modules\n\nKeep the original cartridge as `baserom.z64`. "
-                       "The build regenerates private decoded views, checks every source-built decoded byte, "
-                       "then emits the original cartridge container as `build/game.z64`. Original compressed "
-                       "streams are retained only after their decoded views match exactly. A changed decoded "
-                       "module fails matching verification. In the shiftable format, reviewed module codecs "
-                       "can re-encode changed code within the original storage allocation. Automatic joined-page "
-                       "detections require an explicit reviewed layout before recompression.\n")
     if "program" in build:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## PS2 executable\n\nAlso keep your original main ELF as `baserom.elf` (ignored by Git). "
@@ -467,7 +444,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "sections and the original ELF headers and metadata. Both must match byte for byte. "
                        "Separate overlays and disc images are not repacked.\n")
     # everything made from the game itself stays local: build.py regenerates it from your copy
-    (out / ".gitignore").write_text("build/\nbaserom*\nanalysis.z64\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
+    (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")
     # Period frontends reject CR characters. Preserve LF when Git for Windows
     # checks out this project with core.autocrlf enabled.
@@ -488,7 +465,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         result.update(scope="disc" if "disc" in build else "program", disc={
             "supported": disc["supported"], "reason": disc.get("reason"),
             "output": build.get("disc", {}).get("output"), "programs": len(disc.get("maps", []))})
-    pass
     return result
 
 

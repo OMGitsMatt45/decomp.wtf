@@ -849,47 +849,6 @@ class ForkEngine:
 
         threading.Thread(target=run, daemon=True, name=f"link-{slug}").start()
 
-    # ------------------------------------------------------------------ source files for all the code
-    # Code no source file covers (dtk's auto_..._text units) can't be decompiled: there's nowhere to write it. Real
-    # projects split it into files by hand. decomp.wtf gives each such stretch of code a file of its own, the way
-    # contributors start (split_file divides one further), and keeps the change only if the game still builds byte
-    # for byte. A file listed in configure.py that doesn't exist yet gets created too.
-
-    def _modules(self, fp: ForkProject, cfg: dict) -> dict:
-        raise NetworkError("GameCube/Wii source-layout backend was removed")
-
-    @staticmethod
-    def _text_extent(unit, syms: dict) -> tuple[int, int] | None:
-        """(start, end) in .text of an auto unit's code: its first symbol's address, its object's .text size."""
-        from io import BytesIO
-
-        from elftools.elf.elffile import ELFFile
-
-        try:
-            elf = ELFFile(BytesIO(unit.target.read_bytes()))
-        except (OSError, AttributeError):
-            return None
-        sec = elf.get_section_by_name(".text")
-        tab = elf.get_section_by_name(".symtab")
-        if sec is None or tab is None or not sec["sh_size"]:
-            return None
-        idx = next(i for i, x in enumerate(elf.iter_sections()) if x.name == ".text")
-        first = min(((x["st_value"], x.name) for x in tab.iter_symbols()
-                     if x["st_shndx"] == idx and x.name and x["st_info"]["type"] == "STT_FUNC"), default=None)
-        if first is None or first[1] not in syms or syms[first[1]][0] != ".text":
-            return None
-        start = syms[first[1]][1] - first[0]
-        return start, start + sec["sh_size"]
-
-    def code_without_files(self, slug: str, rep: dict | None = None) -> dict:
-        raise NetworkError("GameCube/Wii source-layout backend was removed")
-
-    def start_files(self, slug: str, log=print, agent: Agent | None = None) -> dict:
-        raise NetworkError("GameCube/Wii source-layout backend was removed")
-
-    def split_file(self, agent: Agent | None, slug: str, path: str, at: str, new_name: str = "", data: str = "") -> str:
-        raise NetworkError("GameCube/Wii source-layout backend was removed")
-
     def configure_arm7_unit(self, agent: Agent, slug: str, path: str, data: str = "", language: str = "") -> str:
         """Change ARM7 data ownership/language with a verified, reversible project edit."""
         from ..forks import arm7_project

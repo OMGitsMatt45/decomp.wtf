@@ -408,13 +408,6 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
         return {"text": net.forks.edit_file(agent, room.slug, str(d.get("path", "")), str(d.get("old", "")),
                                             str(d.get("new", "")), str(d.get("message", "")))}
 
-    def split_file(room, member, d):
-        if not room.fork:
-            raise NetworkError("this room's project has no files to split")
-        agent = room.agent_for(member, d.get("agent"))
-        return {"text": net.forks.split_file(agent, room.slug, str(d.get("path", "")), str(d.get("at", "")),
-                                             str(d.get("new_name", "")), str(d.get("data", "")))}
-
     async def get_bundle(request: Request):
         """The host's commits a member doesn't have yet (a git bundle: tracked files only, never the game)."""
         import anyio
@@ -460,7 +453,6 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
         Route("/collab/note", endpoint(note), methods=["POST"]),
         Route("/collab/leave", endpoint(leave), methods=["POST"]),
         Route("/collab/edit", endpoint(edit), methods=["POST"]),
-        Route("/collab/split_file", endpoint(split_file), methods=["POST"]),
         Route("/collab/bundle", get_bundle),
     ]
     return Starlette(routes=routes)

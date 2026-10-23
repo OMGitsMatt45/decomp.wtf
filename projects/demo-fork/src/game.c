@@ -1,4 +1,4 @@
-/* Demo Quest 64: decompiled so far. */
+/* Original PS1 source fixture: decompiled so far. */
 #include "game.h"
 
 Player g_player;
