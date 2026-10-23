@@ -28,6 +28,9 @@ def validate(meta, image, declaration, root=None):
                 not segment["start"] <= at < at + size <= (segment["end"] or len(image)):
             raise ValueError("PS1 reserve must be 16-byte aligned inside its loaded module")
         mapping = next((m for m in meta.get("disc", {}).get("layout", {}).get("maps", []) if m["segment"] == name), None)
+        if mapping and any(at < mapping["analysis_offset"] + item["offset"] + item["size"] and
+                           mapping["analysis_offset"] + item["offset"] < at + size for item in mapping.get("data_ranges", [])):
+            raise ValueError("PS1 reserve overlaps reviewed loaded resource data")
         base = mapping["analysis_offset"] if mapping else 0
         if image[base:base + 8] == b"PS-X EXE":
             loaded = int.from_bytes(image[base + 0x1C:base + 0x20], "little")

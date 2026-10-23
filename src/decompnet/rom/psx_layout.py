@@ -174,23 +174,36 @@ def source(src, layout):
             with path.open("rb") as stream:
                 yield stream
     else:
-        yield io.BytesIO(src)
+        if hasattr(src, "read") and hasattr(src, "seek"):
+            position = src.tell()
+            try:
+                yield src
+            finally:
+                src.seek(position)
+        else:
+            yield io.BytesIO(src)
 
 
 def apply(picked, src, reviewed):
     layout = picked.disc
     if not layout or not layout.get("supported"):
         raise RomError("reviewed PS1 modules require a supported full disc image")
-    if not isinstance(reviewed, dict) or set(reviewed) - {"format", "sha256", "modules"} or reviewed.get("format") != 1 or reviewed.get("sha256") != layout["sha256"]:
+    if not isinstance(reviewed, dict) or set(reviewed) - {"format", "sha256", "modules", "main_data"} or reviewed.get("format") != 1 or reviewed.get("sha256") != layout["sha256"]:
         raise RomError("the reviewed PS1 layout must use format 1 and the original disc SHA-256")
     definitions = reviewed.get("modules")
     if not isinstance(definitions, list) or not 1 <= len(definitions) <= 128:
         raise RomError("declare 1 to 128 reviewed PS1 modules")
     files = {f["path"]: f for f in layout["files"] if not f["directory"]}
-    maps, overlays, modules, occupied, copy_count = [layout["maps"][0]], [], {}, [], 0
+    maps, overlays, modules, occupied, copy_count = [dict(layout["maps"][0])], [], {}, [], 0
+    maps[0].pop("data_ranges", None)
     allowed = {"name", "path", "offset", "stored_size", "size", "codec", "load", "code_start", "code_end", "gp", "bss", "bss_size", "relocations", "storage", "copies"}
     with source(src, layout) as stream:
         disc = _Disc(stream)
+        from . import psx_data
+        main_data = psx_data.reviewed(disc, maps[0], reviewed.get("main_data", []))
+        if main_data:
+            maps[0]["data_ranges"] = main_data
+            modules["main"] = {"data_ranges": main_data}
         for item in definitions:
             if not isinstance(item, dict) or set(item) - allowed or not re.fullmatch(r"[a-z][a-z0-9_]{0,47}", str(item.get("name", ""))):
                 raise RomError("reviewed PS1 modules need distinct simple names and supported fields")
@@ -274,17 +287,23 @@ def apply(picked, src, reviewed):
                 copy_path = str(copy["path"]).upper()
                 copy_file = files.get(copy_path)
                 copy_offset = number(copy["offset"], "copy offset")
-                if not copy_file or copy_path == maps[0]["path"] or not 0 <= copy_offset < copy_offset + stored_size <= copy_file["size"]:
+                boot_copy = copy_path == maps[0]["path"]
+                if not copy_file or not 0 <= copy_offset < copy_offset + stored_size <= copy_file["size"]:
                     raise RomError("reviewed PS1 module copy storage is outside a non-boot ISO file")
+                if boot_copy and (relocations or not psx_data.contains(main_data, copy_offset, stored_size)):
+                    raise RomError("boot copies require unrelocated raw bytes wholly inside reviewed main data")
                 if any(p == copy_path and a < copy_offset + stored_size and copy_offset < b for p, a, b in occupied):
                     raise RomError("reviewed PS1 module copy storage extents overlap")
                 copy_stored = disc.read(copy_file["lba"] + copy_offset // 2048,
                                         copy_offset % 2048 + stored_size)[copy_offset % 2048:]
                 if copy_stored != stored:
                     raise RomError("reviewed PS1 module copy differs from its canonical raw storage")
-                mapping.setdefault("copies", []).append({"path": copy_path, "lba": copy_file["lba"],
+                parsed_copy = {"path": copy_path, "lba": copy_file["lba"],
                     "file_size": copy_file["size"], "file_offset": copy_offset, "stored_size": stored_size,
-                    "stored_sha256": mapping["stored_sha256"]})
+                    "stored_sha256": mapping["stored_sha256"]}
+                if boot_copy:
+                    parsed_copy["main_data"] = True
+                mapping.setdefault("copies", []).append(parsed_copy)
                 occupied.append((copy_path, copy_offset, copy_offset + stored_size))
                 copy_count += 1
             maps.append(mapping)

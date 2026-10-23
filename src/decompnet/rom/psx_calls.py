@@ -124,6 +124,30 @@ def _word_type(text, *, returns=False):
     return None
 
 
+def _matched_signature(callee, name, slots):
+    """An explicit exact callee definition can establish differing call slots.
+
+    An empty C parameter list leaves firmware arguments unspecified. Only
+    named inferred parameters of ordinary, already matched game functions
+    qualify; this is still a temporary candidate hint, never reviewed context.
+    """
+    if not all(key in callee.keys() for key in ("status", "matched_source")) or callee["status"] != "matched":
+        return None
+    source = callee["matched_source"] or ""
+    signature = re.search(r"(?m)^([^\n;{}]+?)\b" + re.escape(name) + r"\(([^()]*)\)\s*\{", source)
+    if not signature or signature[2].strip() in ("", "void"):
+        return None
+    result = _word_type(signature[1], returns=True)
+    parameters = []
+    for index, declaration in enumerate(signature[2].split(",")):
+        if not re.search(r"\barg" + str(index) + r"\s*$", declaration):
+            return None
+        parameters.append(_word_type(re.sub(r"\barg\d+\s*$", "", declaration)))
+    if result is None or any(parameter is None for parameter in parameters) or not 1 <= len(parameters) <= 4 or len(parameters) != slots:
+        return None
+    return f"{result} {name}({', '.join(parameters)});"
+
+
 def call_context(net, proj, fn, draft, context_header):
     """Extra temporary declarations for inferred direct calls, or an empty string.
 
@@ -156,20 +180,30 @@ def call_context(net, proj, fn, draft, context_header):
         parameters = [] if raw.strip() in ("", "void") else [_word_type(p) for p in raw.split(",")]
         address = symbols.resolve(name)
         masks = sites.get(address, [])
-        if result is None or any(p is None for p in parameters) or len(parameters) > 4 or not masks or len(set(masks)) != 1:
+        if result is None or any(p is None for p in parameters) or len(parameters) > 4 or not masks:
             continue
         callees = net.store.all("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], address)
         own = [callee for callee in callees if callee["unit"] == fn["unit"]]
         callee = own[0] if len(own) == 1 else callees[0] if len(callees) == 1 else None
         if callee is None:
             continue
+        from ..psx_bios import candidates as bios_candidates
+        if bios_candidates(callee["target"], name):
+            continue  # firmware wrappers intentionally have unspecified inputs
         from .psx_abi import argument_packet
         if argument_packet(callee["target"]):
             continue
         incoming = summaries.get((callee["vram"], callee["unit"]), entry_arguments(callee["target"]))
-        writes = masks[0]
         if incoming is None:
             continue
+        if len(set(masks)) != 1:
+            written_slots = incoming
+            for writes in masks:
+                written_slots |= writes
+            if incoming and (hint := _matched_signature(callee, name, written_slots.bit_length())):
+                hints.append(hint)
+            continue
+        writes = masks[0]
         slots = (incoming | writes).bit_length()
         if slots <= len(parameters):
             continue

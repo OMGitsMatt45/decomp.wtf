@@ -17,6 +17,7 @@ PSX_REQUIRED = {"test_psx", "test_psx_cpp", "test_psx_disc", "test_psx_workflows
 PSX_REQUIRED |= {"test_psx_candidates", "test_psx_profile_concurrency", "test_psx_pointer_candidates"}
 PSX_REQUIRED |= {"test_psx_module_copies", "test_psx_registers", "test_psx_boundaries", "test_psx_failures"}
 PSX_REQUIRED |= {"test_psx_abi", "test_psx_config", "test_psx_bios"}
+PSX_REQUIRED |= {"test_psx_main_data", "test_psx_data_review"}
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
             "test_gc", "test_export", "test_rom", "test_app_engine", "test_optional_tools",

@@ -223,8 +223,13 @@ contain the same original raw bytes, fit its non-boot ISO file and avoid other
 module allocations. One canonical module supplies the source targets; strict
 builds verify each copy and mod builds update every declared copy together.
 Archive padding outside those ranges stays intact. Compressed/storage-adapter
-copies and copies embedded in the boot program require additional loader and
-data-range support.
+copies require a storage adapter. Boot-file copies must lie wholly inside an
+explicit top-level `main_data` envelope: an original file `offset`, `size` and
+`sha256`. These aligned ranges must be loaded EXE data and exclude the boot
+entry. They stay data during discovery and cannot become mod reserves.
+An unrelocated raw module can declare such a boot copy using the same `copies`
+syntax. Mod builds synchronize its boot mirror with the canonical source and
+reject conflicting independent edits.
 
 `storage` is optional and enables modified compressed output. `capacity` covers
 the encoded stream and explicitly reviewed unused bytes immediately after it;

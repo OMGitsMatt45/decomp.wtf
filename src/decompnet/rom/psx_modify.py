@@ -20,6 +20,8 @@ def rebuild(original, rebuilt, layout, output):
         temporary = Path(handle.name)
     try:
         baseline = psx_disc.analysis(original, layout)
+        from .psx_data import verify_mirrors
+        verify_mirrors(rebuilt, layout)
         if len(rebuilt) != len(baseline):
             raise RomError("a PS1 mod cannot change analysis-image or file sizes")
         media = layout.get("media")

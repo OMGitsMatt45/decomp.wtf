@@ -110,7 +110,7 @@ def describe(src, boot: str, program: bytes, found: list, sources: dict) -> dict
 
 def bind(layout: dict, segments: list[dict], image: bytes) -> dict:
     """Record where splat's analysis image stores each original disc program."""
-    layout = {**layout, "maps": [dict(m) for m in layout["maps"]]}
+    layout = {**layout, "maps": [dict(m, copies=[dict(c) for c in m["copies"]]) if "copies" in m else dict(m) for m in layout["maps"]]}
     for m in layout["maps"]:
         if m["segment"] == "main":
             offset = 0
@@ -122,7 +122,12 @@ def bind(layout: dict, segments: list[dict], image: bytes) -> dict:
         if hashlib.sha256(image[offset:offset + m["size"]]).hexdigest() != m["sha256"]:
             raise RomError(f"{m['path']}: analysis bytes disagree with the original disc")
         m["analysis_offset"] = offset
+        for copy in m.get("copies", []):
+            if copy.get("main_data"):
+                copy["analysis_offset"] = layout["maps"][0]["analysis_offset"] + copy["file_offset"]
     layout.update(analysis_size=len(image), analysis_sha256=hashlib.sha256(image).hexdigest())
+    from .psx_data import verify_mirrors
+    verify_mirrors(image, layout)
     return layout
 
 
@@ -138,9 +143,14 @@ def verify(src, layout: dict) -> _Disc:
     if (disc.size, disc.skip) != (layout["sector_size"], layout["skip"]) or inventory(disc, size) != layout["files"]:
         raise RomError("the PS1 disc filesystem differs from the reconstruction manifest")
     by_path = {f["path"]: f for f in layout["files"] if not f["directory"]}
+    from . import psx_data
+    main = layout["maps"][0]
+    main_data = psx_data.reviewed(disc, main, main.get("data_ranges", []))
     ranges, storage_ranges, fields, copy_count = [], [], [], 0
     for m in layout["maps"]:
         rec = by_path.get(m["path"])
+        if m is not main and m["path"] == main["path"]:
+            raise RomError("a canonical PS1 overlay cannot overlap boot program storage")
         offset, stored = m.get("file_offset", 0), m.get("stored_size", m["size"])
         if not rec or (rec["lba"], rec["size"]) != (m["lba"], m["file_size"]) or not 0 <= offset < offset + stored <= rec["size"]:
             raise RomError("a PS1 program's disc extent differs from the manifest")
@@ -151,7 +161,8 @@ def verify(src, layout: dict) -> _Disc:
         capacity = m.get("storage", {}).get("capacity", stored)
         if not stored <= capacity <= rec["size"] - offset:
             raise RomError("a PS1 program's storage capacity exceeds its file bounds")
-        storage_ranges.append((m["path"], offset, offset + capacity))
+        if m is not main:
+            storage_ranges.append((m["path"], offset, offset + capacity))
         copies = m.get("copies", [])
         from .psx_layout import MAX_COPIES, read_map, storage_maps, storage_layout
         if m.get("storage"):
@@ -164,14 +175,23 @@ def verify(src, layout: dict) -> _Disc:
         if copies:
             canonical = read_map(disc, m)
         for copy in copies:
-            if not isinstance(copy, dict) or set(copy) != {"path", "lba", "file_size", "file_offset", "stored_size", "stored_sha256"}:
+            if not isinstance(copy, dict):
+                raise RomError("a PS1 module copy has unsupported storage fields")
+            boot_copy = copy.get("path") == main["path"]
+            fields_allowed = {"path", "lba", "file_size", "file_offset", "stored_size", "stored_sha256"}
+            if boot_copy:
+                fields_allowed |= {"main_data", "analysis_offset"}
+            if set(copy) != fields_allowed:
                 raise RomError("a PS1 module copy has unsupported storage fields")
             copy_file, at = by_path.get(copy["path"]), copy["file_offset"]
-            if not copy_file or copy["path"] == layout["maps"][0]["path"] or \
+            if not copy_file or \
                     (copy_file["lba"], copy_file["size"]) != (copy["lba"], copy["file_size"]) or \
                     copy["stored_size"] != stored or copy["stored_sha256"] != m.get("stored_sha256") or \
                     not 0 <= at < at + stored <= copy_file["size"]:
                 raise RomError("a PS1 module copy's disc extent differs from the manifest")
+            if boot_copy and (copy["main_data"] is not True or m.get("relocations") or
+                    not psx_data.contains(main_data, at, stored) or copy["analysis_offset"] != main["analysis_offset"] + at):
+                raise RomError("a PS1 boot copy is outside its reviewed main-data mirror")
             storage_ranges.append((copy["path"], at, at + stored))
             copy_count += 1
         for copy_map in list(storage_maps(m))[1:]:
@@ -184,7 +204,8 @@ def verify(src, layout: dict) -> _Disc:
     if any(a[0] == b[0] and a[2] > b[1] for a, b in zip(storage_ranges, storage_ranges[1:])):
         raise RomError("PS1 program storage or module copy extents overlap")
     for index, (path, start, end) in enumerate(fields):
-        if any(p == path and a < end and start < b for p, a, b in storage_ranges + fields[:index]):
+        if any(p == path and a < end and start < b for p, a, b in storage_ranges +
+               [(main["path"], 0, main.get("stored_size", main["size"]))] + fields[:index]):
             raise RomError("PS1 archive length fields overlap program storage or module copies")
     return disc
 
@@ -211,6 +232,8 @@ def _analysis(src, layout):
         out[m["analysis_offset"]:m["analysis_offset"] + m["size"]] = data
     if hashlib.sha256(out).hexdigest() != layout["analysis_sha256"]:
         raise RomError("the regenerated PS1 analysis image differs")
+    from .psx_data import verify_mirrors
+    verify_mirrors(out, layout)
     return bytes(out)
 
 

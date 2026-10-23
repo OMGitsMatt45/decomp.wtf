@@ -164,6 +164,9 @@ def build(builder):
                 modified[fn["rom"]:fn["rom"] + size] = grown[fn["rom"]:fn["rom"] + size]
             changed.extend(moved)
         _interior_references(builder, changed, original)
+        if meta.get("disc"):
+            from decompnet.rom.psx_data import synchronize
+            modified = bytearray(synchronize(original, modified, meta["disc"]["layout"]))
         image = destination / "program.exe"
         image.write_bytes(modified)
         outputs, media_result = [image], None

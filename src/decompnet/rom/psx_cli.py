@@ -43,6 +43,11 @@ def add_parser(subparsers):
     merge.add_argument("head")
     merge.add_argument("tail")
     merge.add_argument("--reason", required=True, help="reviewed control-flow evidence that these ranges form one function")
+    data_review = sub.add_parser("data-review", help="classify reviewed boot resources as data, archiving every affected source and target")
+    data_review.add_argument("project")
+    data_review.add_argument("--layout", required=True, type=Path, help="hash-bound original module and main_data layout JSON")
+    data_review.add_argument("--reason", required=True, help="reviewed loader and original-byte evidence")
+    data_review.add_argument("--no-transfer", action="store_true", help="archive source without trying exact canonical-module transfers")
     split = sub.add_parser("split", help="split a reviewed open range at an original instruction boundary")
     split.add_argument("project")
     split.add_argument("function")
@@ -84,7 +89,7 @@ def add_parser(subparsers):
     load.add_argument("--toolchain", choices=("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
     load.add_argument("--layout", type=Path, help="reviewed hash-bound archive/compressed module layout JSON")
     export.add_argument("project")
-    for command in (load, export, combine, ungroup, profile, merge, split):
+    for command in (load, export, combine, ungroup, profile, merge, split, data_review):
         command.add_argument("--workspace", required=True, type=Path)
 
 
@@ -148,6 +153,11 @@ def run(args):
                                       reviewed_layout=json.loads(args.layout.read_text(encoding="utf-8")) if args.layout else None,
                                       log=lambda message: print(message, file=sys.stderr))
                 result = {"project": slug, "root": net.project_row(slug)["root"], "disc": net.overview(slug)["disc"]}
+            elif args.psx_cmd == "data-review":
+                from .psx_data_review import migrate
+                agent, _ = net.local_agent("console-data-review")
+                result = migrate(net, args.project, json.loads(args.layout.read_text(encoding="utf-8")),
+                                 agent=agent, reason=args.reason, transfer=not args.no_transfer)
             elif args.psx_cmd in ("merge", "split"):
                 if net.cfg(net.project_row(args.project)).get("platform") != "psx" or args.project in net.links:
                     raise ValueError("choose a local PlayStation 1 project")

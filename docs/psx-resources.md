@@ -193,6 +193,24 @@ ranges, sources, attempts and profiles before replacing the active boundary.
 It grants no recovered credit. New source must pass the ordinary full judge;
 stale work against earlier boundaries is rejected.
 
+## Review embedded boot resources
+
+When loader evidence proves an inferred boot-code range is resource data,
+declare its original hash-bound `main_data` envelope in the reviewed layout:
+
+```sh
+decompnet --db "work/app.db" psx data-review PROJECT --layout reviewed-layout.json --reason "Reviewed resource loader and original storage identity" --workspace "work/projects"
+```
+
+The operation archives affected targets, source, attempts, notes, profiles,
+contexts and prior layout before classifying the range as data. Canonical
+modules, existing copies and unrelated recovered work are retained. Claims,
+crossing boundaries, stale bytes or direct executable entries prevent the
+review. Genuine archived source may transfer to a canonical module only after
+its own complete compiler/link check; `--no-transfer` disables that attempt.
+The JSON report links the retained evidence. Classification grants no source
+recovery credit.
+
 ## Format references and validation
 
 Primary Heartbeat format research:

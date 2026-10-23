@@ -495,7 +495,8 @@ class RomNetwork(Network):
         module_facts, effective_gp = {}, res.gp
         if picked.platform == "psx":
             from ..rom.psx_modules import facts
-            module_facts = facts(picked.data, picked.overlays, res.gp) | (psx_modules or {})
+            from ..rom.psx_data import merge_facts
+            module_facts = merge_facts(facts(picked.data, picked.overlays, res.gp), psx_modules)
             effective_gp = module_facts.get("main", {}).get("gp", res.gp)
         default_flags = tc.flags
         if picked.platform in ("psx", "ps2"):

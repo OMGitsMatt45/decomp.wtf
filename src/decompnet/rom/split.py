@@ -572,6 +572,7 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         image = _add_overlays(config, workdir, image, overlays, log)
     if platform == "psx":
         from .psx_modules import bss_layout, facts
+        from .psx_data import classify, merge_facts
         cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
         for seg in cfg["segments"]:
             meta = (psx_modules or {}).get(seg.get("name")) if isinstance(seg, dict) else None
@@ -583,7 +584,8 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
                 if end < size:
                     subs.append([seg["start"] + end, "data", seg["name"] + "_suffix"])
                 seg["subsegments"] = subs
-        bss_layout(cfg, facts((workdir / rom_name).read_bytes(), overlays, gp) | (psx_modules or {}))
+        classify(cfg, (psx_modules or {}).get("main", {}).get("data_ranges", []))
+        bss_layout(cfg, merge_facts(facts((workdir / rom_name).read_bytes(), overlays, gp), psx_modules))
         config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     log("disassembling every function")
     out += "\n" + _splat(["split", config.name], workdir)
@@ -649,6 +651,14 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
     data = []
     for path in sorted((workdir / "asm" / "data").glob("**/*.s")) + other_assembly:
         data += parse_data(path)
+    if platform == "psx":
+        from .psx_data import contains, reject_control_entries
+        definitions = (psx_modules or {}).get("main", {}).get("data_ranges", [])
+        unique = [fn for fn in unique if fn.segment != "main" or not contains(definitions, fn.rom, 4)]
+        for fn in unique:
+            if fn.segment == "main" and any(fn.rom < item["offset"] + item["size"] and item["offset"] < fn.rom + fn.size for item in definitions):
+                raise RomError("a PS1 function overlaps reviewed main data; review its boundary")
+        reject_control_entries(unique, definitions, int.from_bytes((workdir / rom_name).read_bytes()[0x18:0x1C], "little"))
     if not unique:
         raise RomError("splat found no functions; the code may be compressed or use an unusual boot layout")
     segments = segments_from_config(config)
