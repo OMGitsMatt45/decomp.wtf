@@ -77,6 +77,34 @@ def _context_for_m2c(header: str) -> str:
     return "\n".join(line for line in header.splitlines() if not line.lstrip().startswith("#"))
 
 
+def _mips_parameter_slots(source: str, name: str, context_header: str = "") -> str:
+    """Keep unused o32 argument words that m2c omits from inferred signatures.
+
+    m2c's argN names describe byte offsets divided by four, not the remaining
+    parameter's position. Only repair inferred, single-word integer/pointer
+    parameters; wider values and user-provided signatures need ABI type facts.
+    """
+    if re.search(r"\b" + re.escape(name) + r"\s*\(", context_header):
+        return source
+    signature = re.search(r"\b" + re.escape(name) + r"\(([^()]*)\)\s*\{", source)
+    if not signature:
+        return source
+    parameters, slot = [], 0
+    word_type = re.compile(r"(?:M2C_UNK(?:8|16|32)?|[su](?:8|16|32)|s32_bool|"
+                           r"(?:(?:signed|unsigned)\s+)?(?:char|short(?: int)?|int|long(?: int)?)|unsigned|signed)")
+    for declaration in signature[1].split(","):
+        parameter = re.fullmatch(r"\s*(.+?)\s*\barg(\d+)\s*", declaration)
+        if not parameter:
+            return source
+        kind, index = parameter[1].strip(), int(parameter[2])
+        if index < slot or index > 32 or not (word_type.fullmatch(kind) or "*" in kind):
+            return source
+        parameters.extend(f"int arg{missing}" for missing in range(slot, index))
+        parameters.append(declaration.strip())
+        slot = index + 1
+    return source[:signature.start(1)] + ", ".join(parameters) + source[signature.end(1):]
+
+
 def generate(fn: FunctionObj, toolchain_id: str | None, context_header: str = "", timeout: float = 20) -> str | None:
     """C draft for one function, or None when m2c or the target is unavailable or m2c fails."""
     return generate_from_asm(gnu_asm(fn), fn.name, toolchain_id, context_header, timeout=timeout)
@@ -126,4 +154,6 @@ def run_m2c(asm_text: str, name: str, target: str, context_header: str = "", dat
             res = subprocess.run(argv[:i] + argv[i + 2:], capture_output=True, text=True, timeout=timeout,
                                  encoding="utf-8", errors="replace")
         out = res.stdout.strip()
-        return out if res.returncode == 0 and out else None
+        if res.returncode != 0 or not out:
+            return None
+        return _mips_parameter_slots(out, name, context_header) if target.startswith("mipsel-gcc-") else out

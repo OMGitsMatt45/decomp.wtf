@@ -156,7 +156,10 @@ The templates model aligned loads, stores and preserved load-before-store
 values. Zero-filled entries are reported as `assembly_fragments` and retained
 as assembly; they do not consume the attempt limit or become invented C stubs.
 Console recovery generates one m2c draft per attempt rather than a second
-browser preview draft. A full pass is a set of verified candidates, not a claim
+browser preview draft. Inferred integer/pointer signatures retain unused MIPS
+argument words, so a third argument stays in its original register even when
+earlier arguments are unused. Wider or reviewed signatures are left intact.
+A full pass is a set of verified candidates, not a claim
 that every binary function has been recovered.
 
 Progress goes to stderr and the final JSON reports accepted functions, failed
