@@ -102,6 +102,12 @@ Clean rebuilds need no generated assembly, assets, objects or analysis image.
 
 ## Qualification
 
+All **60 required checks passed with zero skips on both native hosts** in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013797),
+at source/test commit `6beb4240b30039d372bf2e0008251d71bb57b41f`.
+The [validation record](psx-validation.json) pins each job, case counts,
+covered workflows and remaining limits.
+
 The [PS1 native workflow](../.github/workflows/psx.yml) requires both original
 GCC 2.7.2/2.8.1 C/C++ paths on Windows Server 2022 and Ubuntu 24.04. Missing
 required tools, failed tests and skipped required suites fail qualification.

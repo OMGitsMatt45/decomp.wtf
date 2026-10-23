@@ -1,5 +1,9 @@
 # PlayStation disc and overlay reconstruction
 
+Status: **implemented and qualified on native Windows and Linux**: 60 required
+checks per host, zero skips. The [validation record](../psx-validation.json)
+pins the tested source revision and native jobs.
+
 PR #4 implements complete-image matching for eligible ISO 9660 PS1 discs,
 including independently rebuilt boot programs and discovered raw/PS-X EXE
 overlays. See the [disc guide](../psx-disc.md) for supported sector layouts,

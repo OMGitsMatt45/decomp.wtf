@@ -1,0 +1,84 @@
+{
+  "format": 1,
+  "platform": "psx",
+  "implementation_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
+  "native_qualification": {
+    "status": "passed",
+    "tested_commit": "6beb4240b30039d372bf2e0008251d71bb57b41f",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013797",
+    "native_hosts": {
+      "windows-2022": {
+        "job_id": 120239190774,
+        "passed": 60,
+        "failed": 0,
+        "skipped": 0
+      },
+      "ubuntu-24.04": {
+        "job_id": 120239191245,
+        "passed": 60,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+    "required_module_counts_per_host": {
+      "test_psx": 16,
+      "test_psx_cpp": 10,
+      "test_psx_disc": 19,
+      "test_psx_workflows": 10,
+      "test_overlays": 4,
+      "test_export": 1
+    },
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2 and 2.8.1 C/C++ host packages; no WSL, wibo or QEMU in native qualification.",
+    "additional_checks": {
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013686",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013726",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013773",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013690"
+    },
+    "additional_checks_status": "All passed at the tested source commit."
+  },
+  "local_qualification": {
+    "baseline_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
+    "baseline_passed": 55,
+    "baseline_failed": 0,
+    "baseline_skipped": 0,
+    "additional_layout_cases_passed": 3,
+    "shared_overlay_regression_cases_passed": 21,
+    "final_disc_and_overlay_cases_passed": 23,
+    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers; these local counts do not establish native Windows/Linux compiler qualification."
+  },
+  "coverage": [
+    "Original compiler-version code, relocation, constant-data and genuine C++ parity",
+    "C/C++ boot program source recovery, strict matching and clean standalone exports",
+    "Complete ISO 2048, raw 2352 Mode 1/Mode 2 Form 1 and 2448-byte-frame matching reconstruction",
+    "Raw overlays with prefixes, PS-X EXE overlay headers, shared overlay addresses and partial replacement of resident RAM",
+    "Module-specific targets, claims and independent C++ recovery in two mutually exclusive overlays",
+    "Nested boot paths and same-basename programs in different directories",
+    "Different discs with identical boot code and different resources retain separate projects and independently rebuild",
+    "Clean exports in paths with spaces; original disc hashes, file extents, executable trailers, opaque sector metadata, audio and subcode preserved",
+    "Wrong source, targets, addresses and corrupted original discs rejected; stale standalone disc outputs removed",
+    "Cyclic, truncated, malformed, duplicate, unsupported and oversized filesystem extents fail or report program-only coverage",
+    "Browser security/import/export/errors and CLI inventory/import/deduplication/export"
+  ],
+  "multi_disc": {
+    "scope": "Import and reconstruct each disc as a separate project in the same workspace.",
+    "shared_source": "Manual reuse only where each project independently verifies it.",
+    "automatic_source_synchronization": false,
+    "disc_swap_gameplay_qualified": false
+  },
+  "retail_validation": {
+    "status": "not run",
+    "inputs": "Original fixtures only; no PS1 retail images supplied."
+  },
+  "not_qualified": [
+    "Runtime correctness of inferred raw-overlay addresses without loader review",
+    "Per-overlay GP/BSS recovery; compiler/GP assumptions remain project-wide",
+    "Runtime relocation tables, custom/compressed/archive overlay adapters and complete code discovery",
+    "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
+    "CUE/M3U authoring, absent-track reconstruction and CHD recompression",
+    "Additional PSY-Q compiler or Sony ASPSX versions",
+    "Changed-size file/sector authoring or modified-payload EDC/ECC regeneration",
+    "Retail playthroughs and disc-swap gameplay"
+  ]
+}
