@@ -422,11 +422,23 @@ def overlay_contexts(cfg: dict) -> bool:
         seg["symbol_name_format"] = "$SEG_$VRAM"
         seg["symbol_name_format_no_rom"] = "$SEG_$VRAM"
     # Some boot discs contain several alternative resident executables.
+    raw = cfg["segments"]
+
+    def ram_range(seg):
+        index = next(i for i, s in enumerate(raw) if s is seg)
+        end = next((s[0] if isinstance(s, list) else s["start"] for s in raw[index + 1:]
+                    if isinstance(s, list) or s.get("start") is not None), seg["start"])
+        return int(seg["vram"]), int(seg["vram"]) + int(end) - int(seg["start"])
+
     for seg in segments:
         if seg in overlays:
             continue
-        if any(int(other["vram"]) == int(seg["vram"]) for other in overlays):
-            seg["exclusive_ram_id"] = "playstation_overlays"
+        lo, hi = ram_range(seg)
+        for other in overlays:
+            other_lo, other_hi = ram_range(other)
+            if lo < other_hi and other_lo < hi:
+                seg["exclusive_ram_id"] = other["exclusive_ram_id"]
+                break
     return True
 
 

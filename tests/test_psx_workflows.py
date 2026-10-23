@@ -106,6 +106,22 @@ def test_raw_disc_exports_rebuild_the_complete_image(tmp_path, size, skip):
     assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
 
 
+@pytest.mark.parametrize("mode", ["boot-only", "separate-raw", "exe-over-resident"])
+def test_disc_exports_with_different_resident_overlay_layouts(tmp_path, mode):
+    files = {"SYSTEM.CNF": b"BOOT = cdrom:\\DEMOQ_PS1.EXE;1\n", "DEMOQ_PS1.EXE": _resident_exe()}
+    if mode == "separate-raw":
+        files["BATTLE.BIN"] = _overlay(0x80180000, 40)
+    elif mode == "exe-over-resident":
+        files["FIELD.EXE"] = _resident_exe()
+    original = _iso(files)
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
+    assert net.overview(slug)["disc"]["programs"] == (1 if mode == "boot-only" else 2)
+    result = net.export_rom(slug, log=lambda *_: None)
+    assert result["identical"] and result["scope"] == "disc", result
+    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+
+
 def test_cli_inventory_import_dedup_and_export(tmp_path, capsys):
     original = fixture()
     path = tmp_path / "my disc.iso"
