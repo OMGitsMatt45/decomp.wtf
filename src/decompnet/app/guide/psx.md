@@ -39,3 +39,10 @@ don't write raw assembly.
 
 Typical patterns: `jtbl_` jump tables in .rodata for dense switches; overlays loaded at the same address
 (separate units); `D_800xxxxx` data and `func_800xxxxx` names for things nobody named yet.
+
+Disc imports retain eligible ISO/raw-sector images for exact full-disc exports. The source view states
+whether the complete disc or only program payloads can be rebuilt. Raw-overlay addresses are inferred
+from absolute calls; review them against the game's loader. PS-X EXE overlays use their explicit load
+headers. Shared RAM does not mean shared claims or targets: select the module-qualified function name.
+Matching builds keep file sizes, sectors and addresses fixed. CHD recompression, CUE authoring,
+runtime relocation and custom/compressed overlay containers need separate support.

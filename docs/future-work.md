@@ -5,10 +5,11 @@ PlayStation consoles**, plus shared decompiler tooling for those consoles.
 Closely related or speculative platforms share a qualification plan; each needs
 its own implementation evidence before support can be claimed.
 
-**18 PRs remain open: 17 draft work plans and one DSi foundation implementation
-(PR #24).** The draft plans cover five implemented platform families, eleven
-missing console workflows and shared decompiler engines. Each draft currently
-adds a plan document without new platform implementation.
+**18 PRs remain open: 16 plan-only PRs and two implementation PRs.** PS1
+disc/overlay reconstruction is implemented in PR #4; the separate DSi
+container foundation remains in PR #24. The other drafts cover four
+implemented platform families, eleven missing console workflows and shared
+decompiler engines without adding new platform implementation.
 
 N64 PR #3 and DS PRs #1, #7 and #25 are merged into `main`. Their qualification
 records describe the completed scope and remaining game-specific coverage.
@@ -22,7 +23,7 @@ compiler behavior. GB/GBC is an experimental assembly workflow.
 | Family | Current workflow / remaining focus | Guide or work plan | PR status |
 | --- | --- | --- | --- |
 | Nintendo 64 | Reviewed layouts, mixed compiler profiles, module builds and rooms implemented; further game-specific coverage | [Guide](n64.md) | [#3](https://github.com/OMGitsMatt45/decomp.wtf/pull/3) merged |
-| PlayStation | Disc and overlay reconstruction, compiler-specific parity | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps1/docs/future/ps1.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) draft |
+| PlayStation | Exact disc/overlay reconstruction and separate multi-disc projects; retail loader coverage remains | [Guide](psx-disc.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) implementation |
 | PlayStation 2 | Whole-disc/overlay exports, exact source provenance, tool evaluation | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps2/docs/future/ps2.md) | [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5) draft |
 | Game Boy Advance | Distinct ARM compiler path and ARM/Thumb interworking | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gba/docs/future/gba.md) | [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6) draft |
 | Nintendo DS | ARM9/ARM7 source links, protected modules and exact reconstruction; further game-specific coverage | [Qualification](future/nds.md), [ARM7 recovery](ds-arm7.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) and [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) merged |
@@ -31,8 +32,8 @@ compiler behavior. GB/GBC is an experimental assembly workflow.
 
 ## DSi container foundation
 
-[PR #24](https://github.com/OMGitsMatt45/decomp.wtf/pull/24) is the only open
-non-draft implementation PR. Its separate [container inspector and stored-range
+[PR #24](https://github.com/OMGitsMatt45/decomp.wtf/pull/24) is a separate open
+implementation PR. Its [container inspector and stored-range
 extractor](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/dsi-container/docs/dsi.md)
 validates structural metadata and preserves stored program bytes and opaque TWL
 authentication fields. Original-container tests passed on native Windows and Linux.

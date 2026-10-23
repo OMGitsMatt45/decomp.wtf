@@ -73,6 +73,13 @@ def sha1(path: Path) -> str:
 
 
 def setup() -> None:
+    if disc := B.get("disc"):
+        from decompnet.rom.psx_disc import analysis
+        try:
+            decoded = analysis(ROOT / disc["image"], disc["layout"])
+        except (OSError, ValueError, RuntimeError) as error:
+            fail(str(error))
+        (ROOT / B["image"]).write_bytes(decoded)
     if container := B.get("container"):
         from decompnet.rom.n64_layout import working_image
         original = ROOT / container["image"]
@@ -400,7 +407,10 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *,
         script = f"build/modules/{name}.ld"
         elf, binary = f"build/modules/{name}.elf", f"build/modules/{name}.bin"
         (ROOT / script).write_text(scripts[name] if scripts is not None else linker_script(provides, gaps, name), encoding="utf-8")
-        run([binutils("ld"), *B["ld_flags"], "-T", script, "-o", elf, *sorted(objects)])
+        # A PS-X EXE payload starts at file offset 0x800, independently of
+        # its RAM address. Page-aligned ELF program headers need not fit there.
+        flags = [*B["ld_flags"], *(["-N"] if B["platform"] == "psx" else [])]
+        run([binutils("ld"), *flags, "-T", script, "-o", elf, *sorted(objects)])
         run([binutils("objcopy"), "-O", "binary", elf, binary])
         data = (ROOT / binary).read_bytes()
         if len(data) > end - start:
@@ -410,10 +420,14 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *,
 
 
 def build() -> bool:
-    setup()
     (ROOT / B["output"]).unlink(missing_ok=True)
     if container := B.get("container"):
         (ROOT / container["output"]).unlink(missing_ok=True)
+    if program := B.get("program"):
+        (ROOT / program["output"]).unlink(missing_ok=True)
+    if disc := B.get("disc"):
+        (ROOT / disc["output"]).unlink(missing_ok=True)
+    setup()
     todo, provides = objects()
     build_objects(todo)
     if B["platform"] == "n64":
@@ -437,6 +451,13 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
+        if disc := B.get("disc"):
+            from decompnet.rom.psx_disc import rebuild
+            try:
+                rebuild(ROOT / disc["image"], out, disc["layout"], ROOT / disc["output"])
+            except (OSError, ValueError, RuntimeError) as error:
+                fail(str(error))
+            print(f"identical: {disc['output']} matches the complete original PS1 disc byte for byte")
         if container := B.get("container"):
             size = container["layout"]["original_size"]
             rebuilt = out[:size]

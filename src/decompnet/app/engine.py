@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import secrets
+import shutil
 import struct
 import threading
 import time
@@ -436,6 +437,7 @@ class RomNetwork(Network):
             previous = json.loads(p["config"])
             previous_compiler = previous.get("compiler", {})
             if previous.get("rom", {}).get("sha1") == info["sha1"] and previous.get("n64_layout") == layout_id and \
+                    previous.get("psx_disc", {}).get("sha256") == (picked.disc or {}).get("sha256") and \
                     (toolchain is None or previous_compiler.get("toolchain") == toolchain) and \
                     (not flags or previous_compiler.get("flags") == flags) and \
                     (compiler_profile is None or profile(previous_compiler, {}) == compiler_profile):
@@ -466,6 +468,22 @@ class RomNetwork(Network):
         if res.image and res.image != picked.filename:  # splat works on a flat image made from the program
             rom = (workdir / res.image).read_bytes()
 
+        disc_layout = picked.disc
+        if disc_layout and disc_layout.get("supported"):
+            from ..rom import psx_disc
+            disc_layout = psx_disc.bind(disc_layout, [vars(s) for s in res.segments], rom)
+            disc_file = workdir / "original-disc.bin"
+            if isinstance(data, (str, Path)):
+                shutil.copyfile(data, disc_file)
+            else:
+                disc_file.write_bytes(data)
+            with disc_file.open("rb") as source:
+                psx_disc.verify(source, disc_layout)
+            disc_layout["file"] = disc_file.name
+            log(f"full PS1 disc retained: {len(disc_layout['files'])} filesystem entries, {len(disc_layout['maps'])} program files")
+        elif disc_layout:
+            log("program-only import: " + disc_layout["reason"])
+
         toolchain = toolchain or DEFAULT_TOOLCHAIN.get(res.compiler, DEFAULT_TOOLCHAIN[info["compiler_guess"]])
         tc = toolchains.get(toolchain)
         default_flags = tc.flags
@@ -483,6 +501,8 @@ class RomNetwork(Network):
         }
         if layout_id:
             cfg["n64_layout"] = layout_id
+        if disc_layout:
+            cfg["psx_disc"] = disc_layout
         if compiler_profile is not None:
             cfg["compiler"].update(compiler_profile)
         symbols = SymbolTable()
@@ -1592,6 +1612,9 @@ class RomNetwork(Network):
             "context_version": self._context(proj["id"])["version"],
             "folder": proj["root"],
             "export": cfg.get("export"),
+            "disc": ({"supported": cfg["psx_disc"]["supported"],
+                      "files": len(cfg["psx_disc"].get("files", [])), "programs": len(cfg["psx_disc"].get("maps", [])),
+                      "reason": cfg["psx_disc"].get("reason")} if cfg.get("psx_disc") else None),
             "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "n64") in ("n64", "psx", "ps2", "gba", "gb", "gbc"),
             "room": self._room_info(proj["slug"]),
         }

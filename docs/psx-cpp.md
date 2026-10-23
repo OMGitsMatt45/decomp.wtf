@@ -5,6 +5,10 @@ drafts, compilation, matching and `.cpp` exports. Explicit
 `compiler.language = "c"` retains C. Older exported projects without a language
 field continue to compile as C.
 
+Eligible disc imports also [reconstruct the complete original image](psx-disc.md)
+from the independently rebuilt boot program and discovered overlays. CHD and
+unsupported filesystem layouts explicitly retain program-only exports.
+
 ## Compiler identity
 
 These are the **original GNU C++ frontends for each PS1-patched GCC version**,

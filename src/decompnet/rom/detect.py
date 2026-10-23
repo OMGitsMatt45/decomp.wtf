@@ -23,6 +23,7 @@ class Picked:
     info: dict
     big_endian: bool
     overlays: list = field(default_factory=list)  # (name, bytes, load address): code in other files on the disc
+    disc: dict | None = None  # PS1 full-disc reconstruction provenance, or an explicit unsupported reason
 
 
 def _program(data: bytes, name: str = "") -> Picked | None:
@@ -54,15 +55,22 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
     if isinstance(src, (str, Path)):
         path = Path(src)
         name = name or path.name
-        if path.stat().st_size <= SMALL:
-            return identify(path.read_bytes(), name)
         with open(path, "rb") as f:
             head = f.read(8)
         if chd.is_chd(head):  # a compressed disc image: read in place, a hunk at a time
             with chd.Chd(path) as disc:
                 if psx.is_disc(disc):
-                    return _from_disc(disc)
+                    picked = _from_disc(disc)
+                    if picked.platform == "psx":
+                        from .psx_disc import digest
+                        with path.open("rb") as compressed:
+                            size, sha = digest(compressed)
+                        picked.disc = {"supported": False, "sha256": sha, "original_size": size,
+                                       "reason": "CHD import supports program recovery; full CHD reconstruction is unavailable"}
+                    return picked
             raise RomError("this CHD doesn't hold a PlayStation disc this app can read")
+        if path.stat().st_size <= SMALL:
+            return identify(path.read_bytes(), name)
         with open(path, "rb") as f:
             if psx.is_disc(f):
                 return _from_disc(f)
@@ -80,7 +88,7 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
 
 def _from_disc(src) -> Picked:
     raw, boot, platform = psx.from_disc(src)
-    picked = _program(raw, boot)
+    picked = _program(raw, boot.rsplit("/", 1)[-1])
     if picked is None:
         raise RomError(f"the disc's program {boot} isn't a PlayStation executable this app can read")
     if picked.platform == "psx":
@@ -88,8 +96,15 @@ def _from_disc(src) -> Picked:
     else:
         segs = overlays._elf_segments(raw) or []
         main = (min((a for a, _ in segs), default=0), max((a + len(d) for a, d in segs), default=0))
+    sources, warning = {}, None
     try:
-        picked.overlays = overlays.find(psx._Disc(src), boot, picked.platform, main)
+        picked.overlays = overlays.find(psx._Disc(src), boot, picked.platform, main, sources=sources)
     except (RomError, struct.error, IndexError):  # an odd disc: the program alone still works
         picked.overlays = []
+        warning = "the disc filesystem could not be fully inventoried; only the boot program was imported"
+    if picked.platform == "psx" and not isinstance(src, chd.Chd):
+        from .psx_disc import describe
+        picked.disc = describe(src, boot, picked.data, picked.overlays, sources)
+        if warning:
+            picked.disc.update(supported=False, reason=warning)
     return picked

@@ -2408,6 +2408,9 @@ function renderSource(ov) {
     return;
   }
   $("srcText").innerHTML = `decomp.wtf writes a complete decompilation project: the matched functions as ${ov.compiler?.language === "c++" ? "C++" : "C"}, everything else as assembly, a linker script and <code>build.py</code>. Then it builds it to prove it rebuilds your game <b>byte for byte</b>. It's the base for ports and mods; game code and data stay out of git, so the tree is safe to put in a repository.`;
+  if (ov.disc) $("srcText").innerHTML += ov.disc.supported
+    ? ` The complete PlayStation disc is checked too, including ${ov.disc.programs} rebuilt program files. Disc layout, other files and audio are preserved from your copy.`
+    : ` Program payload export only: ${esc(ov.disc.reason)}.`;
   if (isAssembly(ov)) $("srcText").textContent = `Export editable ${isBankedAssembly(ov) ? "RGBDS" : "GNU"} assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base image. Every saved match is checked again, then the ${ov.scope === "apploader" ? "executable apploader" : "complete ROM"} must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.${ov.scope === "apploader" ? " The disc container is not rebuilt." : ""}`;
   const stale = ex && ex.matched != null && ex.matched < ov.matched;
   $("srcState").innerHTML = !ex ? `<span class="muted small">Not exported yet.</span>`
@@ -2427,7 +2430,7 @@ $("srcExport").onclick = async () => {
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
-      : `<div class="notice room"><span><b>${r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+      : `<div class="notice room"><span><b>${r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
     if (r.shiftable) {
       $("expResult").innerHTML += r.shiftable.ready
         ? `<div class="notice room"><span>Shiftable code window verified. Use <code>python build.py mod</code> for source changes.</span></div>`

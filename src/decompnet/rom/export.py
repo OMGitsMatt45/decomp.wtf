@@ -111,6 +111,14 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         raise ExportError("this project has no splat configuration to export from")
     image_name = cfg["rom"]["file"]
     image = (work / image_name).read_bytes()
+    disc = cfg.get("psx_disc") if platform == "psx" else None
+    if disc and disc.get("supported"):
+        from .psx_disc import analysis
+        disc_path = (work / disc["file"]).resolve()
+        if work.resolve() not in disc_path.parents:
+            raise ExportError("PS1 original disc path is outside the project")
+        if analysis(disc_path, disc) != image:
+            raise ExportError("PS1 analysis image differs from the original disc programs")
     container = None
     provenance_path = work / "n64-provenance.json"
     if platform == "n64" and provenance_path.is_file():
@@ -363,6 +371,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         build.update(image="analysis.z64", output="build/analysis.z64", container=container)
         yml.write_text(re.sub(r"(^\s*target_path:\s*).*$", r"\g<1>analysis.z64", yml.read_text(encoding="utf-8"),
                              count=1, flags=re.M), encoding="utf-8")
+    if disc and disc.get("supported"):
+        disc_ext = ".iso" if disc["sector_size"] == 2048 else ".bin"
+        shutil.copyfile(disc_path, out / ("baserom-disc" + disc_ext))
+        build["disc"] = {"image": "baserom-disc" + disc_ext, "output": "build/disc" + disc_ext, "layout": disc}
     if platform == "n64" and (work / "n64-layout.json").is_file():
         from .n64_layout import number
         reviewed = json.loads((work / "n64-layout.json").read_text(encoding="utf-8"))
@@ -391,6 +403,19 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     source_languages = sorted({cpp.language(function_config(cfg, f["name"])) for f in functions if f["kind"] == "c"} or {language})
     _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback,
                 "mixed" if len(source_languages) > 1 else source_languages[0])
+    if "disc" in build:
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write(f"\n## Complete PlayStation disc\n\nKeep your original disc as `{build['disc']['image']}` (ignored by Git). "
+                       f"The build regenerates `{base}` from its program files, independently rebuilds the boot program "
+                       "and discovered overlays, then writes those rebuilt bytes into their original disc extents. "
+                       f"`{build['disc']['output']}` must match the entire input disc's SHA-256. All sector metadata, "
+                       "filesystem records, unrelated files, padding and audio stay verbatim. File sizes and addresses "
+                       "cannot change in this matching workflow. This does not qualify runtime-relocated overlays, "
+                       "unknown code files, new PSY-Q assembler versions, CUE authoring or CHD compression. "
+                       "Keep any external CUE sheet separately; its track layout is not generated or validated.\n")
+    elif disc:
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write("\n## Disc coverage\n\nProgram payload export only: " + disc["reason"] + ".\n")
     if format == "shiftable":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
@@ -438,6 +463,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     result = {"path": str(out), "format": format, "language": language, "identical": identical, "matched": matched,
               "source_languages": source_languages,
               "functions": len(functions), "fallback": as_fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
+    if disc:
+        result.update(scope="disc" if "disc" in build else "program", disc={
+            "supported": disc["supported"], "reason": disc.get("reason"),
+            "output": build.get("disc", {}).get("output"), "programs": len(disc.get("maps", []))})
     if format == "shiftable" and identical:
         audit = subprocess.run(capped([sys.executable, "build.py", "inventory"]), cwd=out, capture_output=True,
                                text=True, timeout=3600, encoding="utf-8", errors="replace")

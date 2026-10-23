@@ -19,8 +19,10 @@ REGIONS = {"North America": "North America", "Japan": "Japan", "Europe": "Europe
 def read_exe(data: bytes, boot_name: str = "") -> tuple[bytes, dict]:
     if data[:8] != b"PS-X EXE":
         raise RomError("this isn't a PlayStation executable")
+    if len(data) < 0x800:
+        raise RomError("the PlayStation executable's header is truncated")
     pc, gp, load, size = struct.unpack_from("<IIII", data, 0x10)
-    if not (0x80000000 <= load < 0x80200000) or size == 0 or 0x800 + size > len(data):
+    if not (0x80000000 <= load < load + size <= 0x80200000) or 0x800 + size > len(data):
         raise RomError("the executable's header doesn't make sense (load address or size)")
     marker = data[0x4C:0x800].split(b"\0", 1)[0].decode("ascii", "replace")
     region = next((v for k, v in REGIONS.items() if k in marker), "Unknown region")
@@ -72,18 +74,30 @@ class _Disc:
         raise RomError("not a disc image this app can read (expected an ISO 9660 .bin, .iso or .chd)")
 
     def sector(self, lba: int) -> bytes:
-        return self._get(lba * self.size + self.skip, 2048)
+        if lba < 0:
+            raise RomError("negative disc sector")
+        data = self._get(lba * self.size + self.skip, 2048)
+        if len(data) != 2048:
+            raise RomError(f"the disc is truncated at sector {lba}")
+        return data
 
     def read(self, lba: int, length: int) -> bytes:
+        if lba < 0 or length < 0:
+            raise RomError("negative disc extent")
         if self.size == 2048:
-            return self._get(lba * 2048, length)
+            data = self._get(lba * 2048, length)
+            if len(data) != length:
+                raise RomError(f"the disc is truncated at sector {lba}")
+            return data
         out = bytearray()
         while len(out) < length:
             out += self.sector(lba)
             lba += 1
         return bytes(out[:length])
 
-    def entries(self, lba: int, length: int):
+    def records(self, lba: int, length: int):
+        if length > 16 << 20:
+            raise RomError("the disc directory exceeds the supported 16 MiB limit")
         raw = self.read(lba, length)
         i = 0
         while i < len(raw):
@@ -92,15 +106,28 @@ class _Disc:
                 i = (i // 2048 + 1) * 2048
                 continue
             rec = raw[i:i + n]
+            if n < 34 or len(rec) != n or (i % 2048) + n > 2048 or 33 + rec[32] > n:
+                raise RomError("the disc contains a damaged ISO 9660 directory record")
+            if rec[2:6] != rec[6:10][::-1] or rec[10:14] != rec[14:18][::-1]:
+                raise RomError("the disc directory's little- and big-endian extents disagree")
             name = rec[33:33 + rec[32]].decode("ascii", "replace").split(";", 1)[0]
             if name not in ("\x00", "\x01"):
-                yield name.upper(), struct.unpack_from("<I", rec, 2)[0], struct.unpack_from("<I", rec, 10)[0], bool(rec[25] & 2)
+                yield {"path": name.upper(), "lba": struct.unpack_from("<I", rec, 2)[0],
+                       "size": struct.unpack_from("<I", rec, 10)[0], "directory": bool(rec[25] & 2),
+                       "flags": rec[25], "extended_attributes": rec[1], "unit": rec[26], "gap": rec[27],
+                       "volume": struct.unpack_from("<H", rec, 28)[0]}
             i += n
+
+    def entries(self, lba: int, length: int):
+        for rec in self.records(lba, length):
+            if rec["extended_attributes"] or rec["unit"] or rec["gap"] or rec["flags"] & 0x80:
+                raise RomError("extended-attribute, interleaved or multi-extent ISO files are unsupported")
+            yield rec["path"], rec["lba"], rec["size"], rec["directory"]
 
     def find(self, path: str) -> bytes | None:
         pvd = self.sector(16)
         lba, length = struct.unpack_from("<I", pvd, 156 + 2)[0], struct.unpack_from("<I", pvd, 156 + 10)[0]
-        parts = [p for p in re.split(r"[\\/]", path.upper()) if p]
+        parts = [p.split(";", 1)[0] for p in re.split(r"[\\/]", path.upper()) if p]
         for k, part in enumerate(parts):
             hit = next(((l, s, d) for name, l, s, d in self.entries(lba, length) if name == part), None)
             if hit is None:
@@ -128,7 +155,7 @@ def from_disc(src) -> tuple[bytes, str, str]:
     exe = disc.find(boot)
     if exe is None:
         raise RomError(f"the disc names {boot} as its program, but it isn't on the disc")
-    return exe, boot.replace("\\", "/").rsplit("/", 1)[-1], platform
+    return exe, boot.replace("\\", "/").strip("/"), platform
 
 
 def is_disc(data) -> bool:

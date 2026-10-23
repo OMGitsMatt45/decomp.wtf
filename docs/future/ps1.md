@@ -1,46 +1,37 @@
-# Future work: PlayStation: broaden disc and overlay reconstruction
+# PlayStation disc and overlay reconstruction
 
-Status: **draft work plan; implementation is not complete**. Baseline: v0.19.0.
+PR #4 implements complete-image matching for eligible ISO 9660 PS1 discs,
+including independently rebuilt boot programs and discovered raw/PS-X EXE
+overlays. See the [disc guide](../psx-disc.md) for supported sector layouts,
+console commands, reconstruction boundaries and the native qualification.
 
-This PR adds a reviewable work plan. It does not add platform or compiler support.
-Keep it in draft while implementation and the checks below remain unfinished.
+## Implemented
 
-## Current coverage
+- Filesystem inventory and pinned program extents, with explicit header versus
+  inferred absolute-call address evidence.
+- Complete ISO, 2352-byte Mode 1/Mode 2 Form 1 and 2448-byte-frame matching
+  exports preserving opaque metadata, unrelated files, trailers and audio.
+- Independent linking and strict C++ recovery for mutually exclusive overlays;
+  original fixtures exercise separate targets and claims at shared addresses.
+- Regeneration from the owner's original disc in clean exported trees, paths
+  containing spaces, corrupted-target/source rejection and stale-output removal.
+- Browser/CLI coverage and required native Windows/Linux qualification for the
+  existing original PS1 GCC 2.7.2 and 2.8.1 C/C++ compiler paths.
 
-Implemented C/C++ matching and exports using original PS1 GCC 2.7.2 and 2.8.1 on both hosts. Native GCC 2.8.1 and constant-data parity work supersedes old PR #2.
+## Remaining scope
 
-## Existing programs to reuse or qualify
+Retail disc coverage and loader review remain separate validation work. Raw
+overlay placement is heuristic; a matching disc hash does not prove every
+code file or runtime address was discovered. Runtime-relocated overlays,
+compressed/archive code, multi-extent/interleaved ISO files, CUE authoring,
+absent tracks and CHD recompression need additional adapters and fixtures.
 
-Reuse both pinned PS1 compiler ports, compatible MIPS binutils, maspsx, splat and m2c. Current compiler hosts need no replacement.
+No additional PSY-Q compiler or ASPSX version is registered. Compatible GNU
+assembly is not proof of equivalence to every original Sony assembler.
+Additional versions require source/license/checksum provenance and native
+Windows/Linux instruction, constant-data and relocation parity separately.
+The pinned compiler ports, compatible binutils, maspsx, splat and m2c remain
+the tools to reuse; current compiler hosts need no replacement.
 
-## Work that remains
-
-- [ ] Inventory disc filesystem, overlay load addresses and relocation conventions across reviewed fixtures.
-- [ ] Design an explicit full-disc rebuild path beyond the existing program payload export.
-- [ ] Qualify additional PSY-Q compiler/assembler versions separately; never label compatible assembly as proven equivalence to every original assembler.
-
-## Acceptance checks
-
-- [ ] Keep compiler-version-specific code, constant-data and relocation parity on native Windows and Linux.
-- [ ] Round-trip a multi-overlay original fixture and preserve disc metadata or report unsupported fields.
-- [ ] Reject wrong addresses, changed globals and corrupted targets; rebuild exported projects in paths containing spaces.
-- [ ] Add browser/CLI, claim, failure-reporting and standalone export coverage for any newly enabled workflow.
-- [ ] Keep current required operational suites passing; new platform checks must fail rather than silently skip missing required tools.
-
-## Starting points
-
-- `src/decompnet/rom/psx.py`
-- `src/decompnet/rom/overlays.py`
-- `docs/psx-cpp.md`
-
-## References
-
-- [maspsx](https://github.com/mkst/maspsx)
-- [old-gcc](https://github.com/decompals/old-gcc)
-
-Upstream links are research and reuse candidates, not a claim that current release
-binaries support both hosts or reproduce a game's original compiler. Verify version,
-license, checksums and actual native execution before registering a tool.
-
-No commercial ROMs, SDK payloads, BIOS files or keys belong in the work-plan branch.
-See the [main roadmap](https://github.com/OMGitsMatt45/decomp.wtf/blob/main/docs/future-work.md).
+No commercial ROMs, SDK payloads, BIOS files or keys belong in this branch.
+See the [main roadmap](../future-work.md).

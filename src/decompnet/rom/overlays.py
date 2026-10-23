@@ -39,11 +39,16 @@ def _code_like(data: bytes, least: int = 16) -> bool:
     return sum(w == JR_RA for w in words) >= least and sum(_frame(w) for w in words) >= least
 
 
-def _walk(disc, lba: int, length: int, path: str = ""):
+def _walk(disc, lba: int, length: int, path: str = "", seen=None):
+    seen = set() if seen is None else seen
+    if lba in seen or len(seen) >= 4096 or path.count("/") >= 64:
+        from .n64 import RomError
+        raise RomError("the disc directory tree contains a cycle or exceeds supported limits")
+    seen.add(lba)
     for name, l, size, is_dir in disc.entries(lba, length):
         if is_dir:
             if name not in (".", ".."):
-                yield from _walk(disc, l, size, f"{path}{name}/")
+                yield from _walk(disc, l, size, f"{path}{name}/", seen)
         else:
             yield f"{path}{name}", l, size
 
@@ -88,15 +93,15 @@ def place(data: bytes, platform: str, known: list[tuple[int, int]]) -> tuple[int
     return base, start
 
 
-def find(disc, boot: str, platform: str, main: tuple[int, int]) -> list[tuple[str, bytes, int, int]]:
+def find(disc, boot: str, platform: str, main: tuple[int, int], *, sources=None) -> list[tuple[str, bytes, int, int]]:
     """(name, bytes, load address, where its code starts) of the overlays on a PlayStation 1 or 2 disc. `main` is
     the resident program's address range."""
     out = []
     names: set[str] = set()
-    boot_name = boot.upper().replace("\\", "/").rsplit("/", 1)[-1]
+    boot_name = boot.upper().replace("\\", "/").strip("/").split(";", 1)[0]
     for path, lba, size in disc_files(disc):
         base_name = path.rsplit("/", 1)[-1]
-        if base_name == boot_name or base_name == "SYSTEM.CNF" or not 0x400 <= size <= MAX_FILE:
+        if path == boot_name or base_name == "SYSTEM.CNF" or not 0x400 <= size <= MAX_FILE:
             continue
         if size > PEEK and not _code_like(disc.read(lba, PEEK), 4):  # a big file with no code where it starts
             continue
@@ -104,6 +109,19 @@ def find(disc, boot: str, platform: str, main: tuple[int, int]) -> list[tuple[st
         name = re.sub(r"[^A-Za-z0-9_]", "_", Path(base_name).stem).strip("_").lower() or "overlay"
         while name in names:
             name += "_"
+        if platform == "psx" and data.startswith(b"PS-X EXE"):
+            from .psx import read_exe
+            from .n64 import RomError
+            try:
+                _, info = read_exe(data, base_name)
+            except RomError:
+                continue
+            if _code_like(data[0x800:]):
+                out.append((name, data, info["load"] - 0x800, 0x800))
+                names.add(name)
+                if sources is not None:
+                    sources[name] = path
+            continue
         if platform == "ps2" and (segs := _elf_segments(data)) is not None:
             for k, (vaddr, code) in enumerate(segs):
                 if _code_like(code):
@@ -116,4 +134,6 @@ def find(disc, boot: str, platform: str, main: tuple[int, int]) -> list[tuple[st
         if placed is not None:
             out.append((name, data, *placed))
             names.add(name)
+            if sources is not None:
+                sources[name] = path
     return out
