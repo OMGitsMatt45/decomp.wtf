@@ -1,6 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4; expanded native qualification in progress**.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 88 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 

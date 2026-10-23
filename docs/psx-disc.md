@@ -144,8 +144,13 @@ program bytes at their original extents. CUE/CHD and reviewed encoded modules
 retain original containers only after decoded-program matching succeeds.
 Changed-size media and modified-sector EDC/ECC authoring remain separate work.
 
-The [validation record](psx-validation.json) records the native Windows/Linux
-qualification revision, required counts and private retail results. The
+All **88 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `59af9043fc4f3147c7ec40750d81ff8b9df3db6c` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734).
+The [validation record](psx-validation.json) records per-suite counts and private
+retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
+and 92 shared source files. Most functions remain assembly and HBD archives stay
+opaque. The two-disc ZIP also passed CRC checks for every member. The
 [required workflow](../.github/workflows/psx.yml) fails on any skipped required
 suite. Retail bytes and derived sources never enter that workflow or Git.
 

@@ -1,16 +1,13 @@
 {
   "format": 1,
   "platform": "psx",
-  "implementation_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
+  "implementation_commit": "59af9043fc4f3147c7ec40750d81ff8b9df3db6c",
   "local_qualification": {
-    "baseline_commit": "d2e6d4dada46c06375cd4caae1d5de298b2866a3",
-    "baseline_passed": 55,
-    "baseline_failed": 0,
-    "baseline_skipped": 0,
-    "additional_layout_cases_passed": 3,
-    "shared_overlay_regression_cases_passed": 21,
-    "final_disc_and_overlay_cases_passed": 23,
-    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers; these local counts do not establish native Windows/Linux compiler qualification."
+    "expanded_suite_passed": 86,
+    "additional_combined_media_and_browser_cases_passed": 2,
+    "final_clean_GP_and_shared_source_regression_cases_passed": 4,
+    "shared_server_and_N64_workflow_checks_passed": 22,
+    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification."
   },
   "coverage": [
     "Original compiler-version code, relocation, constant-data and genuine C++ parity",
@@ -40,7 +37,7 @@
     "status": "passed complete two-disc source build and private ZIP export",
     "title": "Dragon Warrior VII (USA), discs 1 and 2",
     "archive_parts": 71,
-    "archive_crc": "passed for both BIN/CUE pairs",
+    "archive_crc": "all ZIP members passed",
     "functions_per_disc": 2565,
     "matching_cpp_per_disc": [
       96,
@@ -69,7 +66,10 @@
     "shared_source_files": 92,
     "assembly_fallbacks": 0,
     "combined_disc_outputs_identical": true,
-    "cue_files_preserved": true
+    "cue_files_preserved": true,
+    "clean_rebuild": true,
+    "archive_bytes": 2217420775,
+    "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150"
   },
   "not_qualified": [
     "Runtime correctness of inferred overlay addresses without loader review",
@@ -117,7 +117,42 @@
     "additional_checks_status": "All passed at the tested source commit."
   },
   "native_qualification": {
-    "status": "pending expanded suite",
-    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml"
+    "status": "passed",
+    "tested_commit": "59af9043fc4f3147c7ec40750d81ff8b9df3db6c",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734",
+    "native_hosts": {
+      "ubuntu-24.04": {
+        "job_id": 120259948975,
+        "passed": 88,
+        "failed": 0,
+        "skipped": 0
+      },
+      "windows-2022": {
+        "job_id": 120259949295,
+        "passed": 88,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+    "required_module_counts_per_host": {
+      "test_psx": 16,
+      "test_psx_cpp": 10,
+      "test_psx_disc": 22,
+      "test_psx_workflows": 12,
+      "test_psx_set": 4,
+      "test_psx_media": 11,
+      "test_psx_layout": 8,
+      "test_overlays": 4,
+      "test_export": 1
+    },
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+    "additional_checks": {
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619746",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619807",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619808",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
+    },
+    "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
   }
 }
