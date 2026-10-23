@@ -1,7 +1,7 @@
 # Dragon Warrior VII recovery checkpoint
 
-Exhaustive original-compiler matching is **paused**. DQVII remains the first
-target for a PC-project backend; targeted source recovery can resume when a
+Exhaustive original-compiler matching is **paused**. DS is first; DQVII is retained for a later PS1
+PC-project backend; targeted source recovery can resume when a
 specific loader/runtime failure needs it. Achieving 100% byte-matching C/C++ is
 not a prerequisite for static recompilation.
 
@@ -42,7 +42,7 @@ roots/configuration retain original workspace paths and require review before
 relocation. Use the exact original disc hashes, compiler profiles, contexts and
 the full compile/link judge before accepting further source matches.
 
-The next milestone is a pinned backend proof with an original fixture, followed
+After DS, the PS1 milestone is a pinned backend proof with an original fixture, followed
 by a single Windows-buildable DQVII project using both ordered discs. See the
 [PC-output scope](../../docs/pc-output.md) for acceptance criteria and the
 unqualified PSXRecomp candidate.

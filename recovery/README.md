@@ -8,7 +8,7 @@ is the [DQ/Pokémon PC-output backend proof](../docs/pc-output.md).
   2,162 individually exact matches and all earlier drafts/checkpoints retained.
 - [Dragon Warrior VII](dqvii/README.md): exhaustive matching paused; two discs,
   2,636 individually exact matches and reviewed engine/module facts retained.
-  DQVII remains the first PC-backend integration target.
+  DS is the first PC-backend integration target; DQVII is retained for later PS1 work.
 
 Only layouts, target identities, compiler profiles and checkpoint hashes are
 committed here. Private ZIPs preserve recovered game source and complete attempt
