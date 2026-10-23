@@ -59,8 +59,14 @@ class _Disc:
 
     def __init__(self, src):
         if isinstance(src, (bytes, bytearray, memoryview)):
+            self.length = len(src)
             self._get = lambda at, n: bytes(src[at:at + n])
         else:
+            position = src.tell()
+            src.seek(0, 2)
+            self.length = src.tell()
+            src.seek(position)
+
             def get(at: int, n: int) -> bytes:
                 src.seek(at)
                 return src.read(n)
@@ -84,6 +90,11 @@ class _Disc:
     def read(self, lba: int, length: int) -> bytes:
         if lba < 0 or length < 0:
             raise RomError("negative disc extent")
+        if not length:
+            return b""
+        last, tail = divmod(length - 1, 2048)
+        if (lba + last) * self.size + self.skip + tail + 1 > self.length:
+            raise RomError(f"the disc is truncated at sector {lba} (file extent exceeds the image)")
         if self.size == 2048:
             data = self._get(lba * 2048, length)
             if len(data) != length:

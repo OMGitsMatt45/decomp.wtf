@@ -57,6 +57,8 @@ files, overlapping filesystem allocations, duplicate names/versions, damaged
 records, truncated sectors and cyclic directories fail validation or explicitly
 limit recovery to the boot program. Keep an external CUE sheet separately;
 the app does not validate that sheet or reconstruct absent tracks.
+When using an existing CUE, keep the rebuilt BIN's filename consistent with
+its `FILE` entry.
 
 ## Programs, overlays and address evidence
 
@@ -66,6 +68,9 @@ load address explicitly. Raw overlays retain the existing absolute-JAL
 placement heuristic and any prefix before code; `inspect` labels those
 addresses as inferred. Two overlays may share RAM while retaining separate
 function names, targets, claims and links.
+Headered overlays that partly replace resident RAM are also linked separately.
+Compiler flags and GP assumptions remain project-wide; per-overlay GP/BSS
+recovery needs loader review.
 
 Inferred placement is evidence to review against the game's loader, not proof
 of its runtime address. Relocatable overlays, compressed files, custom archive

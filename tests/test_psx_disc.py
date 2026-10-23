@@ -101,6 +101,18 @@ def test_truncated_raw_disc_fails_without_looping():
         disc.read(500, 20)
 
 
+@pytest.mark.parametrize("size,skip", [(2048, 0), (2352, 24)])
+def test_huge_corrupt_file_extents_fail_before_reading_or_allocating(size, skip):
+    class BoundedReads(io.BytesIO):
+        def read(self, count=-1):
+            assert 0 <= count <= 1 << 20, "corrupt metadata requested an unbounded read"
+            return super().read(count)
+
+    disc = psx._Disc(BoundedReads(fixture(size, skip)))
+    with pytest.raises(RomError, match="file extent exceeds"):
+        disc.read(19, 0xFFFFFFFF)
+
+
 @pytest.mark.parametrize("kind", ["short", "endian", "cycle", "interleave", "multi_extent", "duplicate"])
 def test_bad_iso_directories_fail_or_report_program_only(kind):
     image = bytearray(fixture())
