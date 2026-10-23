@@ -121,10 +121,12 @@ def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
     out, provides = [], {}
     for a in B["assembly"]:
         source = a["src"]
-        if declarations := local_exports(source):
+        declarations = local_exports(source)
+        if declarations or a.get("preamble"):
             wrap = ROOT / "build/wrap" / ("data_" + hashlib.sha1(source.encode()).hexdigest() + ".s")
             wrap.parent.mkdir(parents=True, exist_ok=True)
-            wrap.write_text(declarations + f'.include "{source}"\n', encoding="utf-8")
+            prefix = PREAMBLE[B["platform"]] if a.get("preamble") else ""
+            wrap.write_text(prefix + declarations + f'.include "{source}"\n', encoding="utf-8")
             source = wrap.relative_to(ROOT).as_posix()
         out.append(("asm", source, a["obj"]))
     for fn in B["functions"]:

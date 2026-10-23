@@ -396,6 +396,12 @@ def test_data_emitted_beside_nonmatching_code_is_placed_as_data(tmp_path, monkey
             data = next((tree / 'asm/data').glob('**/*.data.s'))
             attached = tree / 'asm/nonmatchings/main/opaque.s'
             shutil.move(data, attached)
+            text = attached.read_text()
+            # Nonmatching fragments rely on their containing unit for Splat's
+            # macros and assembler mode; ordinary data files supply their own.
+            text = '\n'.join(line for line in text.splitlines()
+                             if not line.lstrip().startswith(('.include', '.set')))
+            attached.write_text(text + '\n')
         return result
 
     monkeypatch.setattr(export.subprocess, 'run', split_with_attached_data)

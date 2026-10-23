@@ -237,7 +237,8 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     for path in sorted((out / "asm").glob("*.s")) + sorted((out / "asm" / "data").glob("**/*.s")) + other_assembly:
         rom_off, vram = _first_address(path)
         obj = f"build/{path.relative_to(out).with_suffix('.o').as_posix()}"
-        objects.append({"kind": "asm", "src": path.relative_to(out).as_posix(), "obj": obj})
+        objects.append({"kind": "asm", "src": path.relative_to(out).as_posix(), "obj": obj,
+                        "preamble": path in other_assembly})
         pieces.append((path, vram, rom_off, obj))
     blobs = []
     for seg in segments:
