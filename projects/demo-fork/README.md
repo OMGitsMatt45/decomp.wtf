@@ -1,12 +1,14 @@
-# Demo Quest 64 decomp (test project)
+# Original PlayStation source-project fixture
 
-A tiny matching-decompilation project in the shape community projects use, for decomp.wtf's fork mode and its tests.
-It decompiles Demo Quest 64, the CC0 demo ROM that ships with decomp.wtf.
+A tiny matching project for decomp.wtf's source-project and collaboration tests.
+It uses the original CC0 game sources with the pinned PS1 GCC compiler.
 
-1. Put the ROM at `baserom.z64`.
-2. `python configure.py` checks it, extracts the target objects into `build/expected/` and writes `build.ninja` and
-   `objdiff.json`.
-3. `ninja` builds `src/` into `build/src/`; `objdiff-cli report generate` measures progress.
+1. Build `projects/demo-psx/build.py` and provide its `DEMOQ_PS1.EXE` as `baserom.exe`.
+2. `python configure.py` checks its identity, creates `build/expected/` objects and
+   writes `build.ninja` and `objdiff.json`.
+3. `ninja` builds the partial source in `src/`; objdiff measures function matches.
 
-Some functions in `src/game.c` are matched, one is wrong and the rest are still to do.
-(Unlike a real project, the targets are "extracted" by building the reference source in `tools/reference/`.)
+The tests set the expected input hash for their freshly built fixture. Reference
+objects are compiled from `tools/reference/` rather than extracted from retail
+media. Some functions match, one is wrong and the rest await source.
+This fixture qualifies source-project tools; it is not a native PC game backend.
