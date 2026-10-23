@@ -178,13 +178,18 @@ retain original containers only after decoded-program matching succeeds.
 The separate `mod` command supports the bounded source changes described above.
 Changed-size media authoring remains outside this workflow.
 
-All **88 required checks passed with zero skips on native Windows and Linux**
-at source/test commit `59af9043fc4f3147c7ec40750d81ff8b9df3db6c` in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734).
+All **107 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `88bd9f3bf30f24bc6b5026cce6021951e8b924da` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576185).
 The [validation record](psx-validation.json) records per-suite counts and private
 retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
 and 92 shared source files. Most functions remain assembly and HBD archives stay
-opaque. The two-disc ZIP also passed CRC checks for every member. The
+opaque. Syphon Filter 1/2/3 adds four exact complete-disc and clean rebuilds,
+41 matching C++ functions and a combined SF2 project with eight shared sources.
+The public console inspection command verifies each of these inputs. Both
+combined retail ZIPs passed every member's CRC check and full-disc hashes.
+A real Syphon Filter source edit changed one sector with valid EDC/ECC and all
+other sectors identical; gameplay was not tested. The
 [required workflow](../.github/workflows/psx.yml) fails on any skipped required
 suite. Retail bytes and derived sources never enter that workflow or Git.
 
