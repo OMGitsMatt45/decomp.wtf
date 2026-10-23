@@ -1,6 +1,7 @@
 """PS1 disc inventory, local import and exact reconstructable exports."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +14,9 @@ def add_parser(subparsers):
     inspect = sub.add_parser("inspect", help="inventory disc files, discovered overlays and rebuild coverage")
     load = sub.add_parser("import", help="import your PS1 executable or disc")
     export = sub.add_parser("export", help="export and verify a matching PS1 project")
+    build = sub.add_parser("build", help="rebuild an exported PS1 source project")
+    build.add_argument("directory", type=Path)
+    build.add_argument("--mod", action="store_true", help="build changed C/C++ within original function/file limits")
     combine = sub.add_parser("combine", help="combine disc projects into one game source project and build")
     combine.add_argument("projects", nargs="+", help="existing project slugs in disc order")
     combine.add_argument("--title", required=True)
@@ -37,6 +41,20 @@ def add_parser(subparsers):
 
 def run(args):
     try:
+        if args.psx_cmd == "build":
+            root = args.directory.resolve()
+            combined = (root / "disc-set.json").is_file()
+            if not combined and json.loads((root / "build.json").read_text(encoding="utf-8")).get("platform") != "psx":
+                raise ValueError("choose an exported PS1 source project")
+            process = subprocess.run([sys.executable, "build.py", *(["mod"] if args.mod else [])],
+                                     cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            print(process.stdout + process.stderr, end="", file=sys.stderr)
+            if process.returncode:
+                return 1
+            report = "build/mod/disc-set-result.json" if combined else "build/psx-mod-result.json"
+            result = json.loads((root / report).read_text(encoding="utf-8")) if args.mod else {"identical": True}
+            print(json.dumps(dict(result, path=str(root)), indent=2))
+            return 0
         from .detect import identify
         if args.psx_cmd in ("inspect", "import"):
             picked = identify(args.rom)

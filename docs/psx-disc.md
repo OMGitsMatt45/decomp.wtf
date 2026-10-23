@@ -11,6 +11,7 @@ runtime behavior. See [C/C++ matching](psx-cpp.md).
 decompnet psx inspect "my disc.cue"
 decompnet --db "work/app.db" psx import "my disc.cue" --workspace "work/projects" --own-copy --toolchain gcc-2.7.2-psx
 decompnet --db "work/app.db" psx export PROJECT_SLUG --workspace "work/projects"
+decompnet psx build "work/projects/PROJECT_SLUG/source"
 ```
 
 Create the database's parent directory first. `inspect` needs no compiler and
@@ -51,6 +52,38 @@ hash, and a failed build clears all combined outputs. CUE references and track
 filenames remain together. These are the separate discs used for normal emulator
 disc swapping. Disc-change gameplay still needs playthrough validation.
 `psx ungroup PROJECT --workspace PATH` restores independent exports.
+
+## Modified C/C++ builds
+
+Edit sources in an exported project, then run:
+
+```sh
+python build.py mod
+# Or from another directory:
+decompnet psx build "/path/to/exported/project" --mod
+```
+
+The build first reconstructs the original assembly baseline exactly, then links
+changed C/C++ at each original function address. Changed code must fit its
+original function size; file extents, headers, data and BSS stay fixed. Existing
+functions and globals can be referenced by their pinned symbols. Changes cannot
+add owned data, BSS or helper functions. References into a changed function's
+interior require review. Normal `python build.py` continues to require exact
+matching of the recovered sources.
+
+Single-disc results are under `build/psx-mod/`, with hashes and changed-function
+records in `build/psx-mod-result.json`. At a combined root, one command builds
+every disc under `build/mod/`; `build/mod/disc-set-result.json` records each
+output. Shared source changes compile independently for every disc. Any failed
+disc removes the combined mod outputs.
+
+ISO, raw BIN and CUE builds preserve file sizes, track names, pregaps, audio and
+subcode. Changed Mode 1 or Mode 2 Form 1 raw sectors receive regenerated EDC and
+P/Q error correction. A changed sector with nonstandard original EDC/ECC is
+refused for mastering/protection review. Raw unrelocated archive fragments can
+change within their original storage. Changed compressed/runtime-relocated
+modules and CHD recompression require separate authoring adapters. This workflow
+does not resize files or recover unknown loaders and archives.
 
 ## Supported media
 
@@ -142,7 +175,8 @@ the owner's retained original, compiles recovered C/C++, links each exclusive
 module and verifies every analysis byte. Ordinary raw images receive the rebuilt
 program bytes at their original extents. CUE/CHD and reviewed encoded modules
 retain original containers only after decoded-program matching succeeds.
-Changed-size media and modified-sector EDC/ECC authoring remain separate work.
+The separate `mod` command supports the bounded source changes described above.
+Changed-size media authoring remains outside this workflow.
 
 All **88 required checks passed with zero skips on native Windows and Linux**
 at source/test commit `59af9043fc4f3147c7ec40750d81ff8b9df3db6c` in the
@@ -156,7 +190,7 @@ suite. Retail bytes and derived sources never enter that workflow or Git.
 
 ```sh
 python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 

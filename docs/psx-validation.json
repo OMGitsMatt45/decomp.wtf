@@ -7,7 +7,8 @@
     "additional_combined_media_and_browser_cases_passed": 2,
     "final_clean_GP_and_shared_source_regression_cases_passed": 4,
     "shared_server_and_N64_workflow_checks_passed": 22,
-    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification."
+    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification.",
+    "expanded_modified_suite_passed": 107
   },
   "coverage": [
     "Original compiler-version code, relocation, constant-data and genuine C++ parity",
@@ -25,7 +26,13 @@
     "CUE pregaps and separate audio, compressed/uncompressed CHD v5 matching retention",
     "Per-module EXE GP/BSS and mixed per-function GCC profiles",
     "Hash-bound reviewed raw/zlib/gzip archive fragments and explicit MIPS relocations",
-    "Binary EXE header mastering data and stable import/export function discovery"
+    "Binary EXE header mastering data and stable import/export function discovery",
+    "Separate fixed-slot C/C++ mod builds, strict matching preserved, and clean regeneration from original assembly",
+    "Both compiler versions at 4-byte and 16-byte function alignment; interior aliases, excess code and owned-data additions refused",
+    "Modified ISO/raw 2352/2448 sectors with independently checked EDC and both Reed-Solomon parity roots",
+    "Modified combined discs, independently compiled shared source, nested CUE paths, pregaps and opaque audio/subcode preservation",
+    "Module-specific GP-relative modified links and raw archive fragment updates; changed encoded/relocated modules and CHD refused",
+    "Embedded later-MIPS/GTE instruction/data words retained literally without enabling another CPU ISA"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -75,10 +82,10 @@
     "Runtime correctness of inferred overlay addresses without loader review",
     "Automatic proprietary archive/codec/relocation-table discovery and complete code recovery",
     "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
-    "Absent-track reconstruction, changed-media CUE authoring and CHD recompression",
     "Additional PSY-Q compiler or Sony ASPSX versions",
-    "Changed-size file/sector authoring and modified-payload EDC/ECC generation",
-    "Retail playthroughs and disc-swap gameplay"
+    "Retail playthroughs and disc-swap gameplay",
+    "Changed-size file/sector authoring, changed track layouts and absent-track reconstruction",
+    "Changed encoded/runtime-relocated modules and CHD recompression"
   ],
   "previous_native_qualification": {
     "status": "passed",
@@ -154,5 +161,105 @@
       "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
     },
     "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+  },
+  "additional_retail_validation": [
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2101,
+      "matching_cpp": 18,
+      "shared_sources": 0,
+      "title": "Syphon Filter (USA) (v1.1)",
+      "archive_parts": 36,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 733506480,
+          "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+          "serial": "SCUS-94240",
+          "filesystem_entries": 109,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 5156,
+      "matching_cpp": 16,
+      "shared_sources": 8,
+      "title": "Syphon Filter 2 (USA), discs 1 and 2",
+      "archive_parts": 86,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 732723264,
+          "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+          "serial": "SCUS-94451",
+          "filesystem_entries": 73,
+          "mapped_programs": 1
+        },
+        {
+          "size": 737784768,
+          "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+          "serial": "SCUS-94492",
+          "filesystem_entries": 29,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "combined_zip": {
+        "size": 2067860236,
+        "sha256": "f0b9ed6fd97f3f4c7903f78ff39142079c3f741ba72d0d6cf15b8453d0586088",
+        "crc_verified": true
+      }
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2560,
+      "matching_cpp": 7,
+      "shared_sources": 0,
+      "title": "Syphon Filter 3 (USA)",
+      "archive_parts": 35,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 691530336,
+          "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+          "serial": "SCUS-94640",
+          "filesystem_entries": 101,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false
+    }
+  ],
+  "modified_builds": {
+    "scope": "Fixed original function slots and file extents; a separate exact assembly baseline precedes every build.",
+    "single_and_combined_disc": true,
+    "raw_sector_edc_ecc": true,
+    "owned_data_bss_or_helpers_added": false,
+    "retail_validation": {
+      "retail_title": "Syphon Filter (USA) (v1.1)",
+      "changed_lbas": [
+        51
+      ],
+      "unchanged_sectors_identical": true,
+      "original_and_modified_edc_ecc_verified": true,
+      "runtime_tested": false
+    },
+    "retail_changed_functions": 1,
+    "retail_modified_image_sha256": "e1d811ae21db5ab5f6a69f7a31b8c3554f0fd8452fad94a12005f52b275dd19f"
   }
 }

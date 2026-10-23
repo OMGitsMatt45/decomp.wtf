@@ -19,6 +19,12 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
   discovery. Private DQVII two-disc testing exercises these retail fixes.
 - Browser/CLI workflows, clean standalone builds, changed-source/original
   rejection and removal of stale combined outputs.
+- Separate fixed-slot C/C++ mod builds for standalone and combined projects,
+  module-specific linking and regenerated raw-sector EDC/ECC. Original function
+  addresses, file sizes and data stay fixed; strict matching builds remain available.
+- Syphon Filter 1/2/3 private retail testing: all four discs rebuild exactly and
+  from clean sources, including one combined SF2 project/ZIP. Embedded non-R3000
+  words and four-byte function alignment have regression coverage.
 
 ## Validation boundaries
 

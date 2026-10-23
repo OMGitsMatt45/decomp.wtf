@@ -55,13 +55,28 @@ def bss_layout(cfg, modules):
 
 
 def literal_gp(workdir):
-    """Splat has one global GP; keep module-relative assembly immediates literal."""
+    """Keep module GP operands and special instruction/data words literal.
+
+    Broad text envelopes can contain embedded data that spimdisasm prints as
+    later MIPS instructions. PS1 GTE words also need no assembler reinterpretation.
+    Preserve their exact encoding instead of enabling a different CPU ISA.
+    """
+    ordinary = set(("add addu addi addiu sub subu and andi or ori xor xori nor slt sltu slti sltiu "
+                    "sll sllv srl srlv sra srav lui mult multu div divu mfhi mflo mthi mtlo "
+                    "j jal jr jalr beq bne blez bgtz bltz bgez bltzal bgezal "
+                    "lb lbu lh lhu lw lwl lwr sb sh sw swl swr syscall break "
+                    "nop move neg negu not b bal beqz bnez li la .word").split())
     for path in (workdir / "asm/nonmatchings").glob("**/*.s"):
         text = path.read_text(encoding="utf-8")
         lines = []
         for line in text.splitlines():
-            if "%gp_rel(" in line and (m := re.search(r"/\* [0-9A-F]+ [0-9A-F]{8} ([0-9A-F]{8}) \*/", line)):
-                word = int.from_bytes(bytes.fromhex(m[1]), "little")
+            m = re.match(r"(\s*/\* [0-9A-F]+ [0-9A-F]{8} ([0-9A-F]{8}) \*/\s+)(\S+)(.*)", line)
+            if m and m[3] not in ordinary:
+                word = int.from_bytes(bytes.fromhex(m[2]), "little")
+                note = (m[3] + m[4]).replace("/*", "").replace("*/", "")
+                line = f"{m[1]}.word 0x{word:08X} /* literal encoding: {note.strip()} */"
+            elif "%gp_rel(" in line and m:
+                word = int.from_bytes(bytes.fromhex(m[2]), "little")
                 immediate = (word & 0xFFFF) - (0x10000 if word & 0x8000 else 0)
                 line = re.sub(r"%gp_rel\([^)]*\)", str(immediate), line)
             lines.append(line)

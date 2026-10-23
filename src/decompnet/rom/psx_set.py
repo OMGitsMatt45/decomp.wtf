@@ -195,6 +195,11 @@ def export_set(net, slug, out=None, log=print):
         "Disc-specific code and assets remain under `discs/disc-N/`. Keep each original disc at the private "
         "baserom path described in its directory's README. Generated assembly, assets and objects can be deleted "
         "before a clean build. Any failure removes all previous combined disc outputs.\n\n"
+        "Run `python build.py mod` after editing C/C++ to build all discs together under `build/mod/`. "
+        "Each disc first verifies its original assembly baseline. Changed functions must fit their original "
+        "slots and cannot add owned data, BSS or helpers. The child READMEs describe these limits. "
+        "`build/mod/disc-set-result.json` records the changed functions and output hashes; a failed disc "
+        "removes all combined mod outputs.\n\n"
         "This builds the original separate disc images for normal emulator disc swapping. "
         "It does not merge filesystems or remove game disc-change behavior.\n", encoding="utf-8")
     proc = subprocess.run(capped([sys.executable, "build.py"]), cwd=out, capture_output=True, text=True,

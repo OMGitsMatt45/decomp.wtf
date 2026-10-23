@@ -94,6 +94,28 @@ def test_overlay_gp_bss_and_mixed_period_profiles(tmp_path):
     assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
     assert (tree / manifest["disc"]["output"]).read_bytes() == original
 
+    # Changed code uses each exclusive module's own GP with a reviewed pinned
+    # global. The original static storage remains in the baseline assembly.
+    for fn in (f for f in manifest["functions"] if f["vram"] == address):
+        manifest["module_symbols"][fn["seg"]]["pinned_state"] = data_at + 4
+        # GCC 2.8.1 honors an external small-data section declaration; 2.7.2
+        # emits a larger absolute-address sequence for this declaration.
+        fn["compiler"]["toolchain"] = "gcc-2.8.1-psx"
+        (tree / fn["source"]).write_text(
+            f'extern "C" {{ extern volatile int pinned_state __attribute__((section(".sdata"))); '
+            f'int {fn["name"]}(void) {{ return pinned_state; }} }}\n')
+    (tree / "build.json").write_text(json.dumps(manifest))
+    modified = subprocess.run([sys.executable, "build.py", "mod"], cwd=tree, capture_output=True, text=True, timeout=120)
+    assert modified.returncode == 0, modified.stdout + modified.stderr
+    report = json.loads((tree / "build/psx-mod-result.json").read_text())
+    assert len(report["changed_functions"]) == 2 and len(report["disc"]["files"]) == 2
+    program = (tree / "build/psx-mod/program.exe").read_bytes()
+    for fn in (f for f in manifest["functions"] if f["vram"] == address):
+        gp = manifest["psx_modules"][fn["seg"]]["gp"]
+        instruction = int.from_bytes(program[fn["rom"]:fn["rom"] + 4], "little")
+        assert instruction >> 21 & 31 == 28
+        assert instruction & 65535 == (data_at + 4 - gp) & 65535
+
 
 @pytest.mark.parametrize("tcid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
 def test_two_overlays_match_their_own_cpp_and_rebuild_from_clean_sources(tmp_path, tcid):

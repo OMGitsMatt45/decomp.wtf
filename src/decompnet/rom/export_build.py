@@ -530,6 +530,12 @@ def status() -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args == ["mod"] and B["platform"] == "psx":
+        import psx_mod
+        try:
+            sys.exit(0 if psx_mod.build(sys.modules[__name__]) else 1)
+        except (ValueError, OSError, RuntimeError) as error:
+            fail(str(error))
     if args[:1] in (["mod"], ["inventory"]):
         import argparse
         parser = argparse.ArgumentParser(description="Build bounded N64 source changes or review their relocations")

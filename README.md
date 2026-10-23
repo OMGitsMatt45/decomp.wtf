@@ -92,7 +92,7 @@ separate requirements and do not imply a raw-game importer for that platform.
 | --- | --- | --- | --- |
 | Nintendo 64 | [Reviewed layouts, C/C++ matching, exact cartridge exports and bounded shiftable builds](docs/n64.md) | KMC GCC 2.7.2; IDO 5.3 / 7.1 | Recommended |
 | GameCube / Wii | Disc or DOL import, matching in a generated dtk-template project | CodeWarrior; decomp-toolkit; objdiff | Recommended |
-| PlayStation | Disc/EXE import, C/C++ matching, [multi-disc projects and exact reconstruction](docs/psx-disc.md) | PS1 GCC 2.7.2 / 2.8.1 | Beta |
+| PlayStation | Disc/EXE import, C/C++ matching, [multi-disc projects, exact reconstruction and bounded source changes](docs/psx-disc.md) | PS1 GCC 2.7.2 / 2.8.1 | Beta |
 | PlayStation 2 | Disc or ELF import, C/C++ matching and exact payload / ELF export | Original EE-GCC 2.96 | Beta |
 | Game Boy Advance | ROM import, C/C++ matching and exact ROM export | Normal / old agbcc Thumb backends | Beta |
 | Nintendo DS | ROM import and matching in a generated ds-decomp project | CodeWarrior for DS; dsd; objdiff | Beta |

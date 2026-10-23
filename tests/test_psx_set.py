@@ -23,7 +23,7 @@ from .test_overlays import _iso, _resident_exe
 pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 compilers and binutils")
 
 
-def fixtures(root, toolchain="gcc-2.7.2-psx"):
+def fixtures(root, toolchain="gcc-2.7.2-psx", function_offset=0):
     cfg = project.compiler_config(root, {"kind": "rom", "platform": "psx", "compiler": {
         "toolchain": toolchain, "language": "c", "sandbox": "none"}})
     compiled = compiler.compile_source(cfg, "", "int disc_value(int x) { return x + 7; }")
@@ -31,9 +31,9 @@ def fixtures(root, toolchain="gcc-2.7.2-psx"):
     fn = elfobj.extract_function(compiled.obj, "disc_value")
     assert fn and not fn.relocs
     exe = bytearray(_resident_exe())
-    address = 0x80010500
+    address = 0x80010500 + function_offset
     struct.pack_into("<I", exe, 0x808, 0x0C000000 | ((address >> 2) & 0x03FFFFFF))
-    exe[0xD00:0xD00 + len(fn.code)] = fn.code
+    exe[0xD00 + function_offset:0xD00 + function_offset + len(fn.code)] = fn.code
     return [_iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": bytes(exe),
                   "DISC.ID": bytes([number]), "DATA.BIN": bytes([number]) * 2000}) for number in (1, 2)]
 

@@ -407,6 +407,8 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                                 "sha1": hashlib.sha1(original).hexdigest()}
     (out / "build.json").write_text(json.dumps(build, indent=1), encoding="utf-8")
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
+    if platform == "psx":
+        shutil.copyfile(Path(__file__).with_name("psx_mod_build.py"), out / "psx_mod.py")
     if format == "shiftable":
         shutil.copyfile(Path(__file__).with_name("export_shift.py"), out / "shiftable.py")
     units_json = []
@@ -432,11 +434,21 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "cannot change in this matching workflow. This does not qualify runtime-relocated overlays, "
                        "unknown code files or new PSY-Q assembler versions. CUE imports retain their validated "
                        "track references and every original track; CHD imports retain the original compressed "
-                       "container after verifying its decoded programs. Changed-disc authoring and CHD "
-                       "recompression are separate workflows. Audio stays opaque.\n")
+                       "container after verifying its decoded programs. CHD recompression requires a separate "
+                       "adapter. Audio stays opaque.\n")
     elif disc:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Disc coverage\n\nProgram payload export only: " + disc["reason"] + ".\n")
+    if platform == "psx":
+        with (out / "README.md").open("a", encoding="utf-8") as docs:
+            docs.write("\n## Modified source builds\n\nRun `python build.py mod` to compile source changes into fixed function slots. "
+                       "An exact original-assembly baseline is required first. Function entry addresses, file extents "
+                       "and headers stay fixed. Changed functions may call pinned functions/globals but cannot grow "
+                       "past their original code size or introduce owned data/BSS/helpers. Interior references need "
+                       "layout review. Outputs and hashes are in `build/psx-mod-result.json`. ISO/BIN and CUE track "
+                       "sets support modified programs; changed raw sectors receive new EDC/ECC. Nonstandard "
+                       "mastering/protection, changed compressed/relocated modules and CHD recompression require "
+                       "dedicated authoring adapters. Normal `python build.py` remains a strict matching check.\n")
     if format == "shiftable":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
