@@ -5,6 +5,14 @@ PlayStation consoles**, plus shared decompiler tooling for those consoles.
 Closely related or speculative platforms share a qualification plan; each needs
 its own implementation evidence before support can be claimed.
 
+The active product priority is **Dragon Quest and Pokémon PC output**, beginning
+with DQVII. Existing matching/reconstruction workflows do not generate PC ports.
+The [PC-output scope](pc-output.md) records the platform gaps and backend
+candidates; 100% byte-matching source recovery is not a prerequisite for static
+recompilation. Syphon Filter 1/2/3 recovery is checkpointed separately. Exhaustive
+DQVII matching is also paused at a private checkpoint; the next milestone is a
+PC-backend proof, retaining targeted source recovery for specific porting needs.
+
 **18 PRs remain open: 16 plan-only PRs and two implementation PRs.** PS1
 disc/overlay reconstruction is implemented in PR #4; the separate DSi
 container foundation remains in PR #24. The other drafts cover four

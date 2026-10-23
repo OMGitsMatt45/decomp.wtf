@@ -1,6 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4 and qualified on native Windows/Linux: 450 required checks per host, zero skips**.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 498 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
@@ -96,4 +96,6 @@ disc-swap validation remain with the user.
 No commercial ROMs, game-derived source/assembly, SDK payloads, BIOS files or
 keys belong in this branch. See the [main roadmap](../future-work.md).
 
-Reviewed boot-data envelopes and differing-call-site signature repairs are implemented with local compiler-backed tests; their next native qualification is pending.
+Reviewed boot-data envelopes and differing-call-site signature repairs passed native qualification at a5b1297.
+
+PC game output remains unimplemented. See the [DQ/Pokémon PC-output scope](../pc-output.md); exhaustive retail source matching is checkpointed while the next milestone evaluates a PC runtime/backend.

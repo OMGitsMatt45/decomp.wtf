@@ -162,6 +162,11 @@ NES, SNES, 3DS, Wii U, Switch, PSP, Vita and additional Xbox/PlayStation targets
 are [future work](docs/future-work.md). The roadmap focuses on Nintendo, Xbox
 and PlayStation consoles.
 
+**PC game output:** no from-scratch workflow currently generates a native PC
+port. Console matching/reconstruction and native Windows host tools are separate
+from that goal. See the [Dragon Quest and Pokémon PC-output scope](docs/pc-output.md)
+for the missing backends, reusable projects and first target, DQVII.
+
 ## How it works
 
 1. **Import your game.** The app identifies supported inputs and discovers code
