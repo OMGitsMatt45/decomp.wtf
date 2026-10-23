@@ -59,6 +59,12 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
 - Automatic address aliases referenced by verified C/C++ survive standalone
   export even when the original assembly did not name them. Refreshed source
   projects pass clean complete-disc rebuilding; both combined ZIPs pass CRCs.
+- Period maspsx 2.56/2.86 profiles, G0/G8 searches and standalone profile
+  retention; module GP-aware drafts, inferred call-slot and narrow-argument
+  alternatives pass the same strict compiler/link judge. Improved saved source
+  candidates remain eligible for profile searches.
+- Scoped local overlay jump labels survive import and draft generation.
+  Concurrent per-function compiler updates preserve other workers' profiles.
 
 ## Validation boundaries
 

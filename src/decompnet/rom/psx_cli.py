@@ -35,6 +35,8 @@ def add_parser(subparsers):
     profile.add_argument("--toolchain", choices=("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
     profile.add_argument("--language", choices=("c", "c++"))
     profile.add_argument("--optimization", choices=("O0", "O1", "O2"))
+    profile.add_argument("--small-data", type=int, choices=(0, 8), help="select the original compiler's -G limit")
+    profile.add_argument("--assembler", choices=("gnu", "maspsx-2.56", "maspsx-2.86"))
     profile.add_argument("--reset", action="store_true")
     recover = sub.add_parser("recover", help="recover and verify C/C++ locally without an AI agent")
     recover.add_argument("project")
@@ -42,7 +44,7 @@ def add_parser(subparsers):
     recover.add_argument("--limit", type=int, default=0, help="maximum attempted functions; 0 means all")
     recover.add_argument("--max-insns", type=int, default=0)
     recover.add_argument("--leaves-only", action="store_true", help="try deterministic integer/memory leaves without m2c")
-    recover.add_argument("--search-profiles", action="store_true", help="try installed PS1 GCC versions at O0/O1/O2; save only exact matching profiles")
+    recover.add_argument("--search-profiles", action="store_true", help="try installed period compiler/assembler profiles at O0/O1/O2 and G0/G8; save only exact matches")
     extract = sub.add_parser("extract", help="extract a resource from an exported disc project")
     replace = sub.add_parser("replace", help="stage an edited resource for the next mod build")
     for command in (extract, replace):
@@ -142,6 +144,18 @@ def run(args):
                 selected = {k: getattr(args, k) for k in ("toolchain", "language") if getattr(args, k)}
                 if args.optimization:
                     selected["flags"] = ["-" + args.optimization, *[f for f in current["flags"] if not f.startswith("-O")]]
+                if args.small_data is not None:
+                    flags, skip = [], False
+                    for flag in selected.get("flags", current["flags"]):
+                        if skip:
+                            skip = False
+                        elif flag == "-G":
+                            skip = True
+                        elif not flag.startswith("-G"):
+                            flags.append(flag)
+                    selected["flags"] = [*flags, f"-G{args.small_data}"]
+                if args.assembler:
+                    selected["assembler"] = None if args.assembler == "gnu" else {"tool": "maspsx", "version": args.assembler.removeprefix("maspsx-")}
                 result = net.set_function_compiler(args.project, args.function, None if args.reset else selected)
             elif args.psx_cmd in ("combine", "ungroup"):
                 slug = args.projects[0] if args.psx_cmd == "combine" else args.project

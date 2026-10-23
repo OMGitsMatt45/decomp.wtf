@@ -214,6 +214,8 @@ def build_config(fn=None):
     # A missing language in an older export always means C, even after a
     # platform starts defaulting to C++. Preserve the game's external ABI.
     selected = {**B["compiler"], **(fn.get("compiler", {}) if fn else {})}
+    if B["platform"] == "psx" and selected.get("assembler"):
+        toolchains.ensure("maspsx", log=lambda *_: None)
     return compiler_config(ROOT, {"kind": "rom", "platform": B["platform"], "compiler": {
         **selected, "language": selected.get("language", "c"), "include_dirs": ["include"]}})
 

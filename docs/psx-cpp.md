@@ -18,7 +18,8 @@ decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --l
 
 It tries integer/memory-leaf candidates and m2c drafts, saving only exact compiler and
 full-link matches. `--search-profiles` also probes installed original GCC
-versions at O0/O1/O2 and persists a profile only after a match. Reruns skip
+versions at O0/O1/O2, G0/G8 and installed assembler profiles, retaining improved
+saved source candidates. It persists a profile only after a match. Reruns skip
 matched functions; unresolved functions remain assembly. See the
 [console recovery guide](psx-resources.md#recover-cc-without-an-ai-agent).
 
@@ -43,6 +44,12 @@ compatibility. Target instruction selection, optimization and register allocatio
 are unchanged. Binutils 2.6 misparses GCC 2.8.1's `%hi($LC0)` literal labels;
 the compatible assembler is selected explicitly rather than changing compilers.
 GNU assembly is not a claim of exact ASPSX/PSY-Q assembler compatibility.
+Per-function `--assembler maspsx-2.56` or `maspsx-2.86` selects the pinned maspsx
+translator between the original compiler and GNU assembler. Selecting either
+profile automatically installs its dependencies and preserves the selection in
+standalone builds. These profiles reproduce supported period scheduling and
+instruction expansion; they do not establish compatibility with every ASPSX
+release or handwritten assembly extension.
 The pinned Linux binutils-mips binaries require glibc 2.38 or newer (for example,
 Ubuntu 24.04); this also applies to PS1 exported-project linking.
 

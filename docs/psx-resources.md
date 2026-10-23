@@ -147,7 +147,9 @@ decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --l
 Recovery tries deterministic integer/memory-leaf source candidates and m2c drafts,
 then accepts only exact compiler and full-link matches. It uses the project's
 C/C++ language and original PS1 compiler settings. `--leaves-only` omits m2c;
-`--search-profiles` also probes installed GCC 2.7.2/2.8.1 at O0/O1/O2 and saves
+`--search-profiles` also probes installed GCC 2.7.2/2.8.1 at O0/O1/O2, G0/G8,
+and installed GNU/maspsx 2.56/2.86 assembler profiles. It retains saved improved
+sources while trying these alternatives and saves
 compiler settings only after an exact match. Failed probes keep existing
 settings. No inline-assembly replacement is saved as recovered C/C++.
 Standalone exports retain automatic address aliases referenced by verified

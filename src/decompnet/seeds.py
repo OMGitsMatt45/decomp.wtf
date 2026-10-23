@@ -112,7 +112,7 @@ def generate(fn: FunctionObj, toolchain_id: str | None, context_header: str = ""
 
 def generate_from_asm(asm_text: str, name: str, toolchain_id: str | None, context_header: str = "",
                       data_asm: str | None = None, timeout: float = 20, valid: bool = False,
-                      language: str = "c") -> str | None:
+                      language: str = "c", gp: int = 0) -> str | None:
     """C draft from GNU/splat-style assembly text (plus optional data, for jump tables and strings). `valid`:
     m2c's compilable form (unknown types and expressions as M2C_ macros, see M2C_MACROS), for trying drafts as is."""
     target = M2C_TARGETS.get(toolchain_id or "")
@@ -120,7 +120,15 @@ def generate_from_asm(asm_text: str, name: str, toolchain_id: str | None, contex
         return None
     if language == "c++":
         target = target.removesuffix("-c") + "-c++"
-    return run_m2c(asm_text, name, target, context_header, data_asm, timeout, valid)
+    symbols = set()
+    if toolchain_id in ("gcc-2.7.2-psx", "gcc-2.8.1-psx"):
+        from .rom.psx_drafts import global_pointer_asm
+        asm_text, symbols = global_pointer_asm(asm_text, gp)
+    source = run_m2c(asm_text, name, target, context_header, data_asm, timeout, valid)
+    if source and symbols:
+        from .rom.psx_drafts import global_pointer_source
+        source = global_pointer_source(source, symbols, context_header)
+    return source
 
 
 def run_m2c(asm_text: str, name: str, target: str, context_header: str = "", data_asm: str | None = None,

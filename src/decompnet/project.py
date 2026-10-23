@@ -11,7 +11,7 @@ import time
 import tomllib
 from pathlib import Path
 
-from . import cpp, ido_cfront, scoring, seeds, toolchains, wsl
+from . import cpp, ido_cfront, psx_compiler, scoring, seeds, toolchains, wsl
 from .compiler import CompilerConfig, compile_source
 from .elfobj import extract_function, list_functions
 from .store import Store
@@ -66,6 +66,9 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     which is mounted read-only into the sandbox together with any runtime it requires."""
     c = cfg["compiler"]
     language = cpp.language(cfg)
+    assembler = psx_compiler.assembler_profile(c.get("assembler"))
+    if assembler and (cfg.get("platform") != "psx" or c.get("toolchain") not in ("gcc-2.7.2-psx", "gcc-2.8.1-psx") or c.get("cmd")):
+        raise toolchains.ToolchainError("maspsx profiles require the registered original PS1 GCC command")
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
@@ -167,6 +170,21 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
                     cmd[0] = f"{tc_dir}/NCC"
             else:
                 raise toolchains.ToolchainError(f"{tc.name} has no verified C++ setup")
+        if assembler:
+            suffix = ".exe" if windows else ""
+            maspsx = toolchains.require("maspsx")
+            binutils = toolchains.require("binutils-mips")
+            if not (maspsx / "maspsx.py").is_file():
+                raise toolchains.ToolchainError("The pinned maspsx script is missing: reinstall with `decompnet toolchain install maspsx --force`")
+            dirs = tuple(dict.fromkeys([*dirs, maspsx, binutils]))
+            pipeline = Path(__file__).with_name("psx_compiler.py").resolve()
+            ro_paths += [str(maspsx), str(binutils), str(Path(sys.base_prefix).resolve()), str(pipeline.parent)]
+            gcc = ["-S" if a == "-c" else a.replace("{obj}", "{obj}.s") for a in cmd]
+            cmd = [str(Path(sys.executable).resolve()), "-I", str(pipeline),
+                   "--gcc-command", json.dumps(gcc), "--maspsx", str(maspsx / "maspsx.py"),
+                   "--assembler", str(binutils / ("mips-ps2-decompals-as" + suffix)),
+                   "--version", assembler["version"], "--small-data", str(psx_compiler.small_data_limit(flags)),
+                   "--obj", "{obj}"]
         for dep in tc.dependencies(linux):  # {tc:<id>} is another toolchain this one needs
             where = toolchains.path(dep, linux)
             cmd = [a.replace(f"{{tc:{dep}}}", wsl.path(where) if linux else where.as_posix()) for a in cmd]

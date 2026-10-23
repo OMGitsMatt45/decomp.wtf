@@ -19,7 +19,7 @@ import rabbitizer
 from .n64 import RomError
 
 _INSN = re.compile(r"^\s*/\* ([0-9A-F]+) ([0-9A-F]{8}) ([0-9A-F]{8}) \*/\s+(\S+)\s*(.*?)\s*$")
-_LABEL = re.compile(r"^\s*(?:jlabel\s+)?(\.?L[0-9A-F]{8}):?\s*$")
+_LABEL = re.compile(r"^\s*(?:jlabel\s+)?(\.?L(?:\w+_)?[0-9A-F]{8}):?\s*$")
 _DATA = re.compile(r"^\s*/\* ([0-9A-F]+ )?([0-9A-F]{8})(?: [0-9A-F]+)? \*/\s+\.(\w+)\s*(.*?)\s*$")
 _DLABEL = re.compile(r"^\s*dlabel\s+(\S+)")
 _GLABEL = re.compile(r"^\s*glabel\s+(\S+)")
@@ -194,7 +194,7 @@ def _patch_config(path: Path) -> tuple[str, str, int]:
 def parse_function(path: Path, segment: str, big_endian: bool = True) -> RomFunction | None:
     """One function from a spimdisasm .s file. The 8-digit field is the instruction's bytes in file order."""
     order = "big" if big_endian else "little"
-    name, lines, labels = None, [], set()
+    name, lines, labels, local_names = None, [], set(), {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         if name is None:
             m = _GLABEL.match(raw)
@@ -208,9 +208,15 @@ def parse_function(path: Path, segment: str, big_endian: bool = True) -> RomFunc
             continue
         m = _LABEL.match(raw)
         if m:
-            labels.add(int(m.group(1).lstrip(".L"), 16))
+            address = int(m.group(1)[-8:], 16)
+            labels.add(address)
+            local_names[m.group(1)] = f".L{address:08X}"
     if name is None or not lines:
         return None
+    if local_names:
+        pattern = re.compile(r"(?<![\w.])(?:" + "|".join(map(re.escape, local_names)) + r")(?!\w)")
+        for line in lines:
+            line.operands = pattern.sub(lambda match: local_names[match[0]], line.operands)
     _trim_padding(lines)
     return RomFunction(name, lines[0].vram, lines[0].rom, segment, lines, path, labels)
 

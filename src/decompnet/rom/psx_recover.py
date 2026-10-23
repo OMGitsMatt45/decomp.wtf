@@ -89,22 +89,60 @@ def leaf_candidates(code, name):
     return [f"{returns} {name}({parameters}) {{ {body} }}"]
 
 
+def installed_profiles(selected):
+    """Period compiler, optimization, small-data and installed assembler choices."""
+    from .. import toolchains
+    from .psx_modules import profile
+    flags, skip = [], False
+    for flag in selected["flags"]:
+        if skip:
+            skip = False
+        elif flag == "-G":
+            skip = True
+        elif not flag.startswith(("-O", "-G")):
+            flags.append(flag)
+    maspsx_available = toolchains.installed("maspsx") is not None
+    assemblers = [selected.get("assembler"), None]
+    if maspsx_available:
+        assemblers += [{"tool": "maspsx", "version": version} for version in ("2.56", "2.86")]
+    seen = set()
+    languages = list(dict.fromkeys([selected.get("language", "c++"), "c++", "c"]))
+    for assembler in assemblers:
+        if assembler and not maspsx_available:
+            continue
+        for name in dict.fromkeys([selected["toolchain"], "gcc-2.7.2-psx", "gcc-2.8.1-psx"]):
+            if toolchains.installed(name) is None:
+                continue
+            for level in ("-O2", "-O1", "-O0"):
+                for small_data in ("-G8", "-G0"):
+                    for language in languages:
+                        override = profile(selected, {"toolchain": name, "flags": [level, small_data, *flags],
+                                                      "assembler": assembler, "language": language})
+                        key = json.dumps(override, sort_keys=True)
+                        if key not in seen:
+                            seen.add(key)
+                            yield override
+
+
 def _profile_search(net, slug, agent, fn, machine_drafts):
     """Probe installed period compilers; persist a profile only after exact linking."""
-    from .. import cpp, seeds, toolchains
+    from .. import seeds
     from ..project import function_config
-    from .psx_modules import profile
     project = net.project_row(slug)
     selected_config = function_config(net.cfg(project), fn["name"])
     selected = selected_config["compiler"]
     context = net._context(project["id"], fn["unit"])
     sources = leaf_candidates(fn["target"], fn["name"])
+    if fn["best_source"] and fn["best_source"] not in sources:
+        sources.append(fn["best_source"])
     if machine_drafts and seeds.available():
         data = "\n".join(net._jtbl_asm(project, fn)) if "jtbl_" in (fn["asm"] or "") else None
-        draft = seeds.generate_from_asm(net._asm_text(fn, project), fn["name"], selected["toolchain"],
-                                        context["header"], data, valid=True, language=cpp.language(selected_config))
+        draft = net._machine_draft(fn, project, context["header"], data, valid=True)
         if draft:
             sources.append(seeds.M2C_MACROS + "\n" + draft)
+    from .psx_candidates import recovery_candidates
+    sources = list(dict.fromkeys(candidate for source in sources
+                                for candidate in recovery_candidates(source, fn["name"], context["header"])))
     if not sources:
         return None
     now = time.time()
@@ -115,30 +153,25 @@ def _profile_search(net, slug, agent, fn, machine_drafts):
             return None
         db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
     try:
-        flags = [flag for flag in selected["flags"] if not flag.startswith("-O")]
-        for name in dict.fromkeys([selected["toolchain"], "gcc-2.7.2-psx", "gcc-2.8.1-psx"]):
-            if toolchains.installed(name) is None:
-                continue
-            for optimization in ("-O2", "-O1", "-O0"):
-                override = profile(selected, {"toolchain": name, "flags": [optimization, *flags]})
-                cfg = net.cfg(net.project_row(slug))
-                cfg["function_compilers"] = dict(cfg.get("function_compilers", {}), **{fn["name"]: override})
-                candidate_project = dict(project) | {"config": json.dumps(cfg)}
-                for source in sources:
-                    with net.store.tx() as db:
-                        held = db.execute("SELECT agent_id FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
-                        if held is None or held["agent_id"] != agent.id:
-                            return None
-                        db.execute("UPDATE claims SET expires_at=? WHERE function_id=?", (time.time() + 300, fn["id"]))
-                    compiled = net._compile(candidate_project, context["header"], source, fn)
-                    if not compiled.ok:
-                        continue
-                    candidate, exact, _ = net._evaluate(fn, candidate_project, compiled.obj)
-                    if candidate is None or exact is not True:
-                        continue
-                    net.set_function_compiler(slug, fn["name"], override)
-                    net._record(fn, agent, 0, source, context["version"], matched=True)
-                    return override
+        for override in installed_profiles(selected):
+            cfg = net.cfg(net.project_row(slug))
+            cfg["function_compilers"] = dict(cfg.get("function_compilers", {}), **{fn["name"]: override})
+            candidate_project = dict(project) | {"config": json.dumps(cfg)}
+            for source in sources:
+                with net.store.tx() as db:
+                    held = db.execute("SELECT agent_id FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
+                    if held is None or held["agent_id"] != agent.id:
+                        return None
+                    db.execute("UPDATE claims SET expires_at=? WHERE function_id=?", (time.time() + 300, fn["id"]))
+                compiled = net._compile(candidate_project, context["header"], source, fn)
+                if not compiled.ok:
+                    continue
+                candidate, exact, _ = net._evaluate(fn, candidate_project, compiled.obj)
+                if candidate is None or exact is not True:
+                    continue
+                net.set_function_compiler(slug, fn["name"], override)
+                net._record(fn, agent, 0, source, context["version"], matched=True)
+                return override
     finally:
         with net.store.tx() as db:
             db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))

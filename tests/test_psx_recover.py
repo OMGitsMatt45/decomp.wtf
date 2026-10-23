@@ -216,3 +216,34 @@ def test_profile_search_commits_only_a_verified_function_profile_and_export_rebu
     assert "-O0" not in selected["flags"]
     result = net.export_rom(slug, log=lambda *_: None)
     assert result["identical"], result
+
+
+@pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")
+def test_profile_search_retains_saved_source_without_machine_drafts_or_leaf_templates(tmp_path):
+    from decompnet.rom.psx_recover import _profile_search
+    cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+        "toolchain": "gcc-2.8.1-psx", "language": "c++", "sandbox": "none"}})
+    body = "int original(int *p) { if (p) return p[2]; return 0; }"
+    compiled = compiler.compile_source(cfg, "", body)
+    assert compiled.ok, compiled.log
+    target = elfobj.extract_function(compiled.obj, "original")
+    assert not target.relocs and not leaf_candidates(target.code, "original")
+    exe = bytearray(_resident_exe())
+    struct.pack_into("<I", exe, 0x808, 0x0C000000 | (0x80010500 >> 2 & 0x3FFFFFF))
+    exe[0xD00:0xD00 + len(target.code)] = target.code
+    original = _iso({"SYSTEM.CNF": b"BOOT=cdrom:\\GAME.EXE;1\n", "GAME.EXE": exe})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, flags=["-O0", "-G0"], confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda c: c["compiler"].update(sandbox="none"))
+    proj = net.project_row(slug)
+    fn = net.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], 0x80010500)
+    agent, _ = net.local_agent("saved-source-profile-test")
+    source = body.replace("original(", fn["name"] + "(")
+    assert not net.try_quietly(agent, proj, fn, source)["matched"]
+    fn = net.store.one("SELECT * FROM functions WHERE id=?", fn["id"])
+    assert fn["best_source"] == source
+    selected = _profile_search(net, slug, agent, fn, machine_drafts=False)
+    assert selected and "-O0" not in selected["flags"]
+    saved = net._function(fn["name"], slug)
+    assert saved["status"] == "matched" and saved["matched_source"] == source
+    assert net.export_rom(slug, log=lambda *_: None)["identical"]

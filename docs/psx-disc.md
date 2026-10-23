@@ -173,12 +173,15 @@ Individual functions can use different qualified compiler profiles:
 
 ```sh
 decompnet --db "work/app.db" psx profile PROJECT FUNCTION --toolchain gcc-2.8.1-psx --language c++ --optimization O2 --workspace "work/projects"
+decompnet --db "work/app.db" psx profile PROJECT FUNCTION --small-data 0 --assembler maspsx-2.56 --workspace "work/projects"
 ```
 
 `--reset` restores the project default. Compiler changes that invalidate saved
 matches fail. The API also accepts a bounded flags list. The export records and
 reuses each function's settings. A raw module with unknown GP/BSS needs a
 reviewed layout; the app cannot infer arbitrary runtime loader state.
+`--assembler gnu` selects the compiler's ordinary GNU assembler path. A selected
+maspsx profile installs the pinned translator and binutils automatically.
 
 ## Reviewed archive, compression and relocation layouts
 

@@ -3,12 +3,13 @@
 import re
 
 from .. import cpp, toolchains
+from ..psx_compiler import assembler_profile, small_data_limit
 from .psx import read_exe
 
 
 def profile(default, override):
-    if not isinstance(override, dict) or set(override) - {"toolchain", "flags", "language"}:
-        raise ValueError("PS1 function profiles accept toolchain, flags and language only")
+    if not isinstance(override, dict) or set(override) - {"toolchain", "flags", "language", "assembler"}:
+        raise ValueError("PS1 function profiles accept toolchain, flags, language and assembler only")
     name = override.get("toolchain", default.get("toolchain"))
     if name not in ("gcc-2.7.2-psx", "gcc-2.8.1-psx"):
         raise ValueError("choose PS1 GCC 2.7.2 or 2.8.1")
@@ -17,6 +18,10 @@ def profile(default, override):
             not isinstance(f, str) or len(f) > 2048 or any(c in f for c in "\0\r\n") for f in flags):
         raise ValueError("compiler flags must be a bounded list of single-line strings")
     result = {"toolchain": name, "flags": list(flags), "language": override.get("language", default.get("language", "c++"))}
+    if "assembler" in override or "assembler" in default:
+        result["assembler"] = assembler_profile(override.get("assembler", default.get("assembler")))
+        if result["assembler"]:
+            small_data_limit(flags)
     cpp.language({"kind": "rom", "platform": "psx", "compiler": result})
     return result
 
