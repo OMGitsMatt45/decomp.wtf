@@ -30,12 +30,13 @@ def archive(tag=0):
     (b"\x07ABC\0\0\0\0", 3, b"ABC"),
     (b"\0\0\0", 3, bytes(3)),
     (b"\x03AB\xee\xf3\0\0\0", 7, b"ABABABA"),
-])
+], ids=["literals", "zero-terminator", "zero-ring", "overlapping-token"])
 def test_lzss_wire_vectors_include_zero_ring_and_overlapping_final_token(wire, size, expected):
     assert psx_lzss.decode(wire, size) == expected
 
 
-@pytest.mark.parametrize("data", [b"", bytes(10000), random.Random(7).randbytes(9000), bytes(range(256)) * 40])
+@pytest.mark.parametrize("data", [b"", bytes(10000), random.Random(7).randbytes(9000), bytes(range(256)) * 40],
+                         ids=["empty", "zero-window", "random-window", "repeated-window"])
 def test_lzss_window_wrap_literals_alignment_and_bounds(data):
     encoded = psx_lzss.encode(data)
     assert len(encoded) % 4 == 0
