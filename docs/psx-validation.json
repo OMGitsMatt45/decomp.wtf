@@ -1,10 +1,10 @@
 {
   "format": 1,
   "platform": "psx",
-  "implementation_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
+  "implementation_commit": "73d338ebce43cb9124fafd65c1847691aabf5ec7",
   "local_qualification": {
-    "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
-    "passed": 125,
+    "tested_commit": "73d338ebce43cb9124fafd65c1847691aabf5ec7",
+    "passed": 149,
     "failed": 0,
     "skipped": 0,
     "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification."
@@ -30,13 +30,17 @@
     "Both compiler versions at 4-byte and 16-byte function alignment; interior aliases, unreviewed excess code and owned-data additions refused",
     "Modified ISO/raw 2352/2448 sectors with independently checked EDC and both Reed-Solomon parity roots",
     "Modified combined discs, independently compiled shared source, nested CUE paths, pregaps and opaque audio/subcode preservation",
-    "Module-specific GP-relative modified links and raw archive fragment updates; encoded changes require reviewed capacity/length fields and unchanged loader fixups; changed CHD refused",
+    "Module-specific GP-relative modified links and raw archive fragment updates; encoded changes require reviewed capacity/length fields and unchanged loader fixups",
     "Embedded later-MIPS/GTE instruction/data words retained literally without enabling another CPU ISA",
     "Larger C/C++ bodies and helpers with initialized/zero data in reviewed loaded reserves; function pointers retain original entries",
     "Actual execution of original MIPS growth fixtures, including helper calls, new globals and pointer-return helpers",
     "Reserve hash, alignment, loaded EXE extent, original function, BSS initializer and loader-fixup exclusions",
     "Shared source growth across combined discs and removal of all aggregate mod outputs on second-disc exhaustion",
-    "Reviewed zlib/gzip recompression with 2-/4-byte loader lengths in either byte order, bounded capacity and unchanged runtime fixup words"
+    "Reviewed zlib/gzip recompression with 2-/4-byte loader lengths in either byte order, bounded capacity and unchanged runtime fixup words",
+    "Lossless decoded CD FLAC stereo audio and subcode; CD LZMA/zlib parity restoration; bounded final-hunk reads",
+    "CHD v5 mod recompression with retained track/pregap metadata, hunk/map CRC16 and raw/overall SHA-1",
+    "Combined console CHD mod builds with fixed logical geometry, independently verified decoded hashes and variable compressed sizes",
+    "MAME-generated original fixtures for all five supported codecs; corrupt maps, hunks, metadata and hashes rejected; hardlinked originals protected"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -89,7 +93,7 @@
     "Additional PSY-Q compiler or Sony ASPSX versions",
     "Retail playthroughs and disc-swap gameplay",
     "Changed-size file/sector authoring, changed track layouts and absent-track reconstruction",
-    "Changing loader relocation sites/tables, unknown archive metadata and CHD recompression",
+    "Changing loader relocation sites/tables and unknown archive metadata",
     "Runtime correctness of newly declared retail mod reserves without loader review; whole-game mod playthroughs"
   ],
   "previous_native_qualification": {
@@ -134,44 +138,45 @@
   },
   "native_qualification": {
     "status": "passed",
-    "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
-    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672",
+    "tested_commit": "73d338ebce43cb9124fafd65c1847691aabf5ec7",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362340",
     "native_hosts": {
       "ubuntu-24.04": {
-        "job_id": 120292927140,
-        "passed": 125,
+        "job_id": 120307108336,
+        "passed": 149,
         "failed": 0,
         "skipped": 0
       },
       "windows-2022": {
-        "job_id": 120292926755,
-        "passed": 125,
+        "job_id": 120307110040,
+        "passed": 149,
         "failed": 0,
         "skipped": 0
       }
     },
     "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
     "required_module_counts_per_host": {
+      "test_export": 1,
+      "test_overlays": 4,
       "test_psx": 16,
+      "test_psx_chd": 23,
       "test_psx_cpp": 10,
       "test_psx_disc": 22,
-      "test_psx_workflows": 12,
-      "test_psx_set": 4,
-      "test_psx_media": 11,
-      "test_psx_layout": 8,
-      "test_overlays": 4,
-      "test_export": 1,
-      "test_psx_modify": 19,
       "test_psx_growth": 10,
-      "test_psx_storage": 8
+      "test_psx_layout": 8,
+      "test_psx_media": 11,
+      "test_psx_modify": 20,
+      "test_psx_set": 4,
+      "test_psx_storage": 8,
+      "test_psx_workflows": 12
     },
     "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
     "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
     "additional_checks": {
-      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105704",
-      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105674",
-      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105680",
-      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105731"
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362178",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362211",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362053",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362250"
     },
     "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
   },
@@ -293,6 +298,15 @@
       "loader_length_fields": "2 or 4 bytes, little or big endian",
       "loader_fixups": "Original relocation words must remain unchanged and are restored to unrelocated storage before encoding.",
       "qualification": "Original ISO and Mode 2 raw fixtures; two exclusive compressed overlays with C++ growth."
+    },
+    "chd": {
+      "scope": "Standalone and combined CHD v5 CD projects with fixed decoded geometry and variable compressed container sizes.",
+      "audio_and_subcode": "Lossless 16-bit stereo CD FLAC and all 96 raw subcode bytes; omitted sector parity restored without changing original EDC.",
+      "metadata": "All original tags, payloads, flags and ordering retained, including virtual pregaps and track padding.",
+      "output_codec": "Standard raw-deflate zlib, with raw hunks for incompressible content; may be larger than the original.",
+      "verification": "Every output decoded hunk compared to patched original frames before publication; hunk/map CRC16, raw/metadata SHA-1 and aggregate decoded SHA-256 verified.",
+      "required_external_tools": [],
+      "retail_chd_or_playthrough_qualified": false
     }
   },
   "earlier_native_qualifications": [
@@ -370,6 +384,104 @@
         "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
       },
       "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120292927140,
+          "passed": 125,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120292926755,
+          "passed": 125,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_psx": 16,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 22,
+        "test_psx_workflows": 12,
+        "test_psx_set": 4,
+        "test_psx_media": 11,
+        "test_psx_layout": 8,
+        "test_overlays": 4,
+        "test_export": 1,
+        "test_psx_modify": 19,
+        "test_psx_growth": 10,
+        "test_psx_storage": 8
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105704",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105674",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105680",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105731"
+      },
+      "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
     }
-  ]
+  ],
+  "independent_chd_qualification": {
+    "inputs": "Entirely original fixtures from tests/psx_chd_fixture.py; no retail ROM/BIOS content.",
+    "input_provenance": "tests/fixtures/psx-chd/provenance.json",
+    "tool": "MAME chdman 0.276",
+    "tool_package": "https://deb.debian.org/debian/pool/main/m/mame/mame-tools_0.276+dfsg.1-1+deb13u1_amd64.deb",
+    "package_sha256": "94df5413aaa598c973b914ef07541104006d14002d153ab8d3a3c18c70e9ac02",
+    "executable_sha256": "85f0dbb1d75ab10c64291c2481e7370103b956a9e795f4278e47421e306a6c18",
+    "output_checks": [
+      "chdman verify: raw and overall SHA-1",
+      "extractraw: every logical frame equal",
+      "extractcd BIN/TOC: both tracks, raw subcode and virtual audio pregap retained"
+    ],
+    "results": [
+      {
+        "codec": "cdfl",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "cdlz",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "cdzl",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "lzma",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "zlib",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      }
+    ]
+  }
 }

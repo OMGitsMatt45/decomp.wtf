@@ -228,9 +228,9 @@ The separate `mod` command supports the bounded source changes described above.
 Changed-size disc files/tracks remain outside this workflow; recompressed CHD
 container size can change without changing logical geometry.
 
-All **125 required checks passed with zero skips on native Windows and Linux**
-at source/test commit `eaf93c02c3d23c8e291a7382331a6c251cebb409` in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672).
+All **149 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `73d338ebce43cb9124fafd65c1847691aabf5ec7` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362340).
 The [validation record](psx-validation.json) records per-suite counts and private
 retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
 and 92 shared source files. Most functions remain assembly and HBD archives stay
