@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 
 from .n64 import RomError
-from . import psx_disc, psx_media, psx_sector
+from . import psx_disc, psx_media, psx_sector, psx_layout
 
 
 def rebuild(original, rebuilt, layout, output):
@@ -28,12 +28,26 @@ def rebuild(original, rebuilt, layout, output):
             shutil.copyfile(original, temporary)
             temporary.replace(output)
             return {"changed_sectors": 0, "files": []}
-        sectors, files, cursor = {}, [], 0
+        sectors, files, cursor, modules = {}, [], 0, []
         raw_layout = psx_media.unpack(layout) if media else layout
         with ExitStack() as stack:
             physical = stack.enter_context(original.open("rb"))
             view = stack.enter_context(psx_media.decoded(original, media)) if media else physical
             disc = psx_disc.verify(view, raw_layout)
+            def patch(mapping, offset, data):
+                at = 0
+                while at < len(data):
+                    lba, inside = divmod(offset + at, 2048)
+                    lba += mapping["lba"]
+                    count = min(2048 - inside, len(data) - at)
+                    old_sector = disc.sector(lba)
+                    payload = sectors.get(lba, bytearray(old_sector))
+                    payload[inside:inside + count] = data[at:at + count]
+                    if payload == old_sector:
+                        sectors.pop(lba, None)
+                    else:
+                        sectors[lba] = payload
+                    at += count
             for mapping in sorted(layout["maps"], key=lambda m: m["analysis_offset"]):
                 start, stop = mapping["analysis_offset"], mapping["analysis_offset"] + mapping["size"]
                 if rebuilt[cursor:start] != baseline[cursor:start]:
@@ -42,13 +56,20 @@ def rebuild(original, rebuilt, layout, output):
                 data, old = rebuilt[start:stop], baseline[start:stop]
                 if data == old:
                     continue
-                if mapping.get("codec", "raw") != "raw" or mapping.get("relocations"):
-                    raise RomError("changed encoded or runtime-relocated modules require a storage/loader authoring adapter")
                 prefix = max(mapping.get("code_at", 0), 0x800 if old.startswith(b"PS-X EXE") else 0)
                 if data[:prefix] != old[:prefix]:
                     raise RomError("a PS1 mod cannot change executable headers or module prefixes")
                 files.append(mapping["path"])
                 offset = mapping.get("file_offset", 0)
+                if mapping.get("codec", "raw") != "raw" or mapping.get("relocations") or mapping.get("storage"):
+                    encoded, storage = psx_layout.encode_mod(disc, mapping, data, old)
+                    capacity = storage["capacity"] if storage else len(encoded)
+                    patch(mapping, offset, encoded + bytes(capacity - len(encoded)))
+                    if storage:
+                        patch(mapping, storage["length_offset"], len(encoded).to_bytes(storage["length_width"], storage["endian"]))
+                    modules.append({"module": mapping["segment"], "path": mapping["path"], "codec": mapping.get("codec", "raw"),
+                                    "stored_size": len(encoded), "capacity": capacity})
+                    continue
                 for at in range(0, len(data)):
                     if data[at] == old[at]:
                         continue
@@ -76,6 +97,6 @@ def rebuild(original, rebuilt, layout, output):
                     raise RomError("a PS1 mod changed its pinned disc size")
         temporary.replace(output)
         return {"changed_sectors": len(sectors), "files": files,
-                "analysis_sha256": hashlib.sha256(rebuilt).hexdigest()}
+                "analysis_sha256": hashlib.sha256(rebuilt).hexdigest(), "module_storage": modules}
     finally:
         temporary.unlink(missing_ok=True)

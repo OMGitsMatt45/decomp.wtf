@@ -17,6 +17,11 @@ def add_parser(subparsers):
     build = sub.add_parser("build", help="rebuild an exported PS1 source project")
     build.add_argument("directory", type=Path)
     build.add_argument("--mod", action="store_true", help="build changed C/C++ within original function/file limits")
+    reserve = sub.add_parser("reserve", help="record reviewed unused loaded space for larger source changes")
+    reserve.add_argument("directory", type=Path, help="exported disc project; use discs/disc-N for a combined game")
+    reserve.add_argument("--module", required=True)
+    reserve.add_argument("--start", required=True, type=lambda v: int(v, 0), help="loaded RAM address, for example 0x80010600")
+    reserve.add_argument("--size", required=True, type=lambda v: int(v, 0))
     combine = sub.add_parser("combine", help="combine disc projects into one game source project and build")
     combine.add_argument("projects", nargs="+", help="existing project slugs in disc order")
     combine.add_argument("--title", required=True)
@@ -41,6 +46,10 @@ def add_parser(subparsers):
 
 def run(args):
     try:
+        if args.psx_cmd == "reserve":
+            from .psx_space import configure
+            print(json.dumps(configure(args.directory, args.module, args.start, args.size), indent=2))
+            return 0
         if args.psx_cmd == "build":
             root = args.directory.resolve()
             combined = (root / "disc-set.json").is_file()

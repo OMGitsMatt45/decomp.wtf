@@ -1,7 +1,7 @@
-"""Build changed PS1 C/C++ in fixed function slots after an exact baseline.
+"""Build PS1 source changes after an exact baseline, optionally in reviewed space.
 
-Copied into standalone projects. Function/data addresses and disc file sizes
-stay fixed. Changed objects cannot introduce owned data, BSS or helper functions.
+Copied into standalone projects. Original entries and disc file sizes stay fixed;
+larger bodies, helpers and owned data require a hash-bound loaded reserve.
 """
 
 import hashlib
@@ -128,7 +128,9 @@ def build(builder):
         finally:
             builder.ASSEMBLY_ONLY = False
         original = (root / meta["image"]).read_bytes()
-        modified, changed = bytearray(original), []
+        from decompnet.rom.psx_space import read
+        reserves = read(root, meta, original)
+        modified, changed, expanded = bytearray(original), [], []
         for fn in meta["functions"]:
             source = builder.c_source(fn)
             if not source:
@@ -142,11 +144,25 @@ def build(builder):
             obj.parent.mkdir(exist_ok=True)
             obj.write_bytes(compiled.obj)
             builder.trim(obj)
+            if fn["seg"] in reserves:
+                expanded.append((fn, obj))
+                continue
             size = _slot(builder, fn, original)
             data = _link(builder, fn, obj, size)
             if data != original[fn["rom"]:fn["rom"] + size]:
                 changed.append((fn, size))
                 modified[fn["rom"]:fn["rom"] + size] = data
+        arenas = []
+        if expanded:
+            from decompnet.rom.psx_expand import link
+            grown, moved, arenas = link(builder, expanded, reserves, original, _slot)
+            for item in arenas:
+                reserve = reserves[item["module"]]
+                at, size = reserve["offset"], item["used"]
+                modified[at:at + size] = grown[at:at + size]
+            for fn, size in moved:
+                modified[fn["rom"]:fn["rom"] + size] = grown[fn["rom"]:fn["rom"] + size]
+            changed.extend(moved)
         _interior_references(builder, changed, original)
         image = destination / "program.exe"
         image.write_bytes(modified)
@@ -171,7 +187,7 @@ def build(builder):
             with path.open("rb") as stream:
                 size, sha = digest(stream)
             artifacts.append({"output": path.relative_to(root).as_posix(), "size": size, "sha256": sha})
-        report.write_text(json.dumps({"format": 1, "baseline_identical": True, "mode": "fixed-slots",
+        report.write_text(json.dumps({"format": 1, "baseline_identical": True, "mode": "reviewed-space" if arenas else "fixed-slots", "spaces": arenas,
             "changed_functions": [fn["name"] for fn, _ in changed], "disc": media_result, "artifacts": artifacts}, indent=2), encoding="utf-8")
         print(f"modified: {len(changed)} changed PS1 functions; original baseline verified; outputs in build/psx-mod-result.json")
         return True

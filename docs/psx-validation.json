@@ -26,12 +26,17 @@
     "Per-module EXE GP/BSS and mixed per-function GCC profiles",
     "Hash-bound reviewed raw/zlib/gzip archive fragments and explicit MIPS relocations",
     "Binary EXE header mastering data and stable import/export function discovery",
-    "Separate fixed-slot C/C++ mod builds, strict matching preserved, and clean regeneration from original assembly",
-    "Both compiler versions at 4-byte and 16-byte function alignment; interior aliases, excess code and owned-data additions refused",
+    "Separate fixed-slot and reviewed-space C/C++ mod builds, strict matching preserved, and clean regeneration from original assembly",
+    "Both compiler versions at 4-byte and 16-byte function alignment; interior aliases, unreviewed excess code and owned-data additions refused",
     "Modified ISO/raw 2352/2448 sectors with independently checked EDC and both Reed-Solomon parity roots",
     "Modified combined discs, independently compiled shared source, nested CUE paths, pregaps and opaque audio/subcode preservation",
-    "Module-specific GP-relative modified links and raw archive fragment updates; changed encoded/relocated modules and CHD refused",
-    "Embedded later-MIPS/GTE instruction/data words retained literally without enabling another CPU ISA"
+    "Module-specific GP-relative modified links and raw archive fragment updates; encoded changes require reviewed capacity/length fields and unchanged loader fixups; changed CHD refused",
+    "Embedded later-MIPS/GTE instruction/data words retained literally without enabling another CPU ISA",
+    "Larger C/C++ bodies and helpers with initialized/zero data in reviewed loaded reserves; function pointers retain original entries",
+    "Actual execution of original MIPS growth fixtures, including helper calls, new globals and pointer-return helpers",
+    "Reserve hash, alignment, loaded EXE extent, original function, BSS initializer and loader-fixup exclusions",
+    "Shared source growth across combined discs and removal of all aggregate mod outputs on second-disc exhaustion",
+    "Reviewed zlib/gzip recompression with 2-/4-byte loader lengths in either byte order, bounded capacity and unchanged runtime fixup words"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -84,7 +89,8 @@
     "Additional PSY-Q compiler or Sony ASPSX versions",
     "Retail playthroughs and disc-swap gameplay",
     "Changed-size file/sector authoring, changed track layouts and absent-track reconstruction",
-    "Changed encoded/runtime-relocated modules and CHD recompression"
+    "Changing loader relocation sites/tables, unknown archive metadata and CHD recompression",
+    "Runtime correctness of newly declared retail mod reserves without loader review; whole-game mod playthroughs"
   ],
   "previous_native_qualification": {
     "status": "passed",
@@ -252,10 +258,9 @@
     }
   ],
   "modified_builds": {
-    "scope": "Fixed original function slots and file extents; a separate exact assembly baseline precedes every build.",
+    "scope": "Fixed original entries and file extents; larger bodies, helpers and new data require reviewed loaded zero reserves. An exact assembly baseline precedes every build.",
     "single_and_combined_disc": true,
     "raw_sector_edc_ecc": true,
-    "owned_data_bss_or_helpers_added": false,
     "retail_validation": {
       "retail_title": "Syphon Filter (USA) (v1.1)",
       "changed_lbas": [
@@ -266,7 +271,25 @@
       "runtime_tested": false
     },
     "retail_changed_functions": 1,
-    "retail_modified_image_sha256": "e1d811ae21db5ab5f6a69f7a31b8c3554f0fd8452fad94a12005f52b275dd19f"
+    "retail_modified_image_sha256": "e1d811ae21db5ab5f6a69f7a31b8c3554f0fd8452fad94a12005f52b275dd19f",
+    "owned_data_bss_or_helpers": "Supported only within reviewed loaded reserves, preserving original function entries and function-pointer identity.",
+    "growth_validation": {
+      "inputs": "Original fixtures compiled with both pinned GCC versions",
+      "execution": "Linked MIPS code executes in Unicorn, including larger bodies, helper calls, initialized globals, zero storage and returned function pointers across different high-half addresses.",
+      "whole_game_runtime_tested": false,
+      "combined_disc_growth": true
+    },
+    "archive_storage": {
+      "codecs": [
+        "raw",
+        "zlib",
+        "gzip"
+      ],
+      "reviewed_capacity": true,
+      "loader_length_fields": "2 or 4 bytes, little or big endian",
+      "loader_fixups": "Original relocation words must remain unchanged and are restored to unrelocated storage before encoding.",
+      "qualification": "Original ISO and Mode 2 raw fixtures; two exclusive compressed overlays with C++ growth."
+    }
   },
   "earlier_native_qualifications": [
     {
@@ -305,5 +328,14 @@
       },
       "additional_checks_status": "All passed at the tested source commit."
     }
-  ]
+  ],
+  "pending_qualification": {
+    "required_cases": 125,
+    "new_growth_cases": 10,
+    "new_storage_cases": 8,
+    "native_status": "pending",
+    "local_passed": 125,
+    "local_failed": 0,
+    "local_skipped": 0
+  }
 }

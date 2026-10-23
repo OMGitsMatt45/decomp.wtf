@@ -63,13 +63,34 @@ python build.py mod
 decompnet psx build "/path/to/exported/project" --mod
 ```
 
-The build first reconstructs the original assembly baseline exactly, then links
-changed C/C++ at each original function address. Changed code must fit its
-original function size; file extents, headers, data and BSS stay fixed. Existing
-functions and globals can be referenced by their pinned symbols. Changes cannot
-add owned data, BSS or helper functions. References into a changed function's
-interior require review. Normal `python build.py` continues to require exact
+The build first reconstructs the original assembly baseline exactly. Without a
+reserve declaration, changed C/C++ must fit its original function size and cannot
+add owned data, BSS or helpers. Existing functions and globals remain available
+at their pinned addresses. Normal `python build.py` continues to require exact
 matching of the recovered sources.
+
+For larger functions, review a range that is unused and loaded by the original
+module, then record it with the console. These addresses are examples:
+
+```sh
+decompnet psx reserve "/path/to/exported/project" --module main --start 0x80010600 --size 0x200
+decompnet psx build "/path/to/exported/project" --mod
+```
+
+`psx-mod-space.json` binds the declaration to the original analysis hash. The
+range must contain only original zeros, be aligned and inside the loaded file,
+and avoid original functions, loader fixups and BSS initialization. A zero range
+alone is not proof that the game leaves it unused; that is a loader-review fact.
+Larger bodies, helpers, constants, initialized globals and new zero-initialized
+storage link into the reserve. Entry jumps retain the original function
+addresses, including function-pointer identity. Existing callers and other
+original data stay fixed. Exhausting the reserve fails and clears mod outputs.
+Interior references and ambiguous section-relative addresses require review;
+new runtime constructors and unsupported relocations are refused.
+
+For a combined game, run `reserve` in each `discs/disc-N` directory before the
+root mod build. Each disc retains its own hash-bound declaration and compiler
+context, including when the source is shared.
 
 Single-disc results are under `build/psx-mod/`, with hashes and changed-function
 records in `build/psx-mod-result.json`. At a combined root, one command builds
@@ -81,9 +102,12 @@ ISO, raw BIN and CUE builds preserve file sizes, track names, pregaps, audio and
 subcode. Changed Mode 1 or Mode 2 Form 1 raw sectors receive regenerated EDC and
 P/Q error correction. A changed sector with nonstandard original EDC/ECC is
 refused for mastering/protection review. Raw unrelocated archive fragments can
-change within their original storage. Changed compressed/runtime-relocated
-modules and CHD recompression require separate authoring adapters. This workflow
-does not resize files or recover unknown loaders and archives.
+change within their original storage. Reviewed zlib/gzip modules can recompress
+within declared archive capacity and update a declared stored-length field.
+Existing loader fixup words are restored to their original unrelocated storage
+and must remain unchanged in the decoded module. Rewriting relocation tables
+and CHD recompression require separate adapters. This workflow does not resize
+files or recover unknown loaders and archives.
 
 ## Supported media
 
@@ -151,6 +175,8 @@ original disc SHA-256 reported by `inspect`:
     "stored_size": "0x800", "size": "0x2000", "codec": "zlib",
     "load": "0x80180000", "code_start": 0, "code_end": "0x1800",
     "gp": "0x80188000", "bss": "0x80182000", "bss_size": "0x100",
+    "storage": {"capacity": "0x1000", "length_offset": "0x20",
+                "length_width": 4, "endian": "little"},
     "relocations": [{"offset": 8, "type": "R_MIPS_26", "value": "0x80180500"}]
   }]
 }
@@ -166,6 +192,17 @@ The tool applies these reviewed records to the analysis targets and retains
 encoded storage only after independently rebuilt targets match exactly.
 It does not discover proprietary archives, infer relocation tables or support
 unspecified codecs. Loader review remains necessary for those formats.
+
+`storage` is optional and enables modified compressed output. `capacity` covers
+the encoded stream and explicitly reviewed unused bytes immediately after it;
+extra capacity must originally be zero. `length_offset` is relative to the same
+archive file and must point to its actual stored-size field. Two- and four-byte
+fields in either byte order are supported. Its original value must equal
+`stored_size`; it cannot overlap a module allocation or another length field.
+Mod builds recompress, update this field, zero the unused allocation and decode
+the result again to verify it. If capacity is exhausted or a loader relocation
+word changes, no output is published. Matching builds retain original encoded
+storage exactly, regardless of the reserve or storage declaration.
 
 ## Standalone builds and qualification
 
@@ -194,10 +231,16 @@ other sectors identical; gameplay was not tested. The
 suite. Retail bytes and derived sources never enter that workflow or Git.
 
 ```sh
+uv sync --locked --group dev
 python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 
 In PowerShell set `$env:DECOMP_TEST_PSX_CPP = '1'` first and omit the shell
 prefix. No additional PSY-Q or Sony ASPSX version is qualified by this work.
+
+The dev dependency group installs Unicorn automatically for original-fixture
+MIPS execution checks. Those checks exercise larger bodies, helper calls,
+initialized globals, new zero storage and function pointers; they do not
+establish whole-game execution or playthrough correctness.

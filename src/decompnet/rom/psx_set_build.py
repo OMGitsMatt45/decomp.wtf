@@ -67,7 +67,7 @@ def build(mod=False):
                 modified = None
                 if mod:
                     modified = json.loads((folder / "build/psx-mod-result.json").read_text(encoding="utf-8"))
-                    if modified.get("format") != 1 or modified.get("mode") != "fixed-slots" or modified.get("baseline_identical") is not True:
+                    if modified.get("format") != 1 or modified.get("mode") not in ("fixed-slots", "reviewed-space") or modified.get("baseline_identical") is not True:
                         raise ValueError("a modified child must verify its original assembly baseline")
                     if len(modified["artifacts"]) != len(artifacts):
                         raise ValueError("a modified child lost a retained disc track or CUE")
@@ -92,11 +92,14 @@ def build(mod=False):
                     staged.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(original, staged)
                 if mod:
-                    disc["modified"] = {"artifacts": published, "changed_functions": modified["changed_functions"]}
+                    disc["modified"] = {"artifacts": published, "changed_functions": modified["changed_functions"],
+                                        "mode": modified["mode"], "spaces": modified.get("spaces", [])}
             for output in outputs:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 (Path(temporary) / output.relative_to(ROOT / "build")).replace(output)
-        result = ({"format": 1, "baseline_identical": True, "mode": "fixed-slots", "discs": [d["modified"] for d in meta["discs"]]}
+        result = ({"format": 1, "baseline_identical": True,
+                   "mode": "reviewed-space" if any(d["modified"]["mode"] == "reviewed-space" for d in meta["discs"]) else "fixed-slots",
+                   "discs": [d["modified"] for d in meta["discs"]]}
                   if mod else {"identical": True, "discs": [d["output"] for d in meta["discs"]]})
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(json.dumps(result, indent=2), encoding="utf-8")

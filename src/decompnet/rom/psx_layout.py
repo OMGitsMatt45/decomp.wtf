@@ -72,6 +72,55 @@ def read_map(disc, mapping):
     return transform(data, mapping) if "codec" in mapping else data
 
 
+def storage_layout(disc, mapping, storage):
+    """An archive's loader length field and unused encoded capacity are explicit facts."""
+    if not isinstance(storage, dict) or set(storage) != {"capacity", "length_offset", "length_width", "endian"}:
+        raise RomError("PS1 storage needs capacity, length_offset, length_width and endian")
+    capacity = number(storage["capacity"], "storage capacity")
+    at, width = number(storage["length_offset"], "length_offset"), number(storage["length_width"], "length_width")
+    endian = storage["endian"]
+    offset, size = mapping["file_offset"], mapping["stored_size"]
+    if width not in (2, 4) or endian not in ("little", "big") or not size <= capacity <= min(8 << 20, (1 << (8 * width)) - 1) or \
+            not 0 <= at < at + width <= mapping["file_size"] or offset + capacity > mapping["file_size"]:
+        raise RomError("PS1 archive storage or length field is outside its file bounds")
+    def fragment(at, count):
+        return disc.read(mapping["lba"] + at // 2048, at % 2048 + count)[at % 2048:] if count else b""
+    if int.from_bytes(fragment(at, width), endian) != size:
+        raise RomError("PS1 archive length field differs from its reviewed stored size")
+    if fragment(offset + size, capacity - size).strip(b"\0"):
+        raise RomError("additional PS1 archive storage must contain only original zero bytes")
+    return {"capacity": capacity, "length_offset": at, "length_width": width, "endian": endian}
+
+
+def encode_mod(disc, mapping, data, baseline):
+    """Preserve original loader fixups; recompress into a reviewed archive allocation."""
+    offset, size = mapping.get("file_offset", 0), mapping.get("stored_size", mapping["size"])
+    stored = disc.read(mapping["lba"] + offset // 2048, offset % 2048 + size)[offset % 2048:]
+    unrelocated = transform(stored, dict(mapping, relocations=[]))
+    decoded = bytearray(data)
+    for relocation in mapping.get("relocations", []):
+        at = relocation["offset"]
+        if data[at:at + 4] != baseline[at:at + 4]:
+            raise RomError("changed loader relocation sites require a revised relocation-table authoring adapter")
+        decoded[at:at + 4] = unrelocated[at:at + 4]
+    codec = mapping.get("codec", "raw")
+    if codec == "raw":
+        encoded = bytes(decoded)
+    else:
+        if not mapping.get("storage"):
+            raise RomError("changed encoded modules require a reviewed storage/loader authoring adapter")
+        encoder = zlib.compressobj(9, zlib.DEFLATED, 31 if codec == "gzip" else 15)
+        encoded = encoder.compress(decoded) + encoder.flush()
+        if codec == "gzip":
+            encoded = encoded[:9] + b"\xff" + encoded[10:]  # neutral OS byte; gzip mtime is already zero
+    storage = storage_layout(disc, mapping, mapping["storage"]) if mapping.get("storage") else None
+    if len(encoded) > (storage["capacity"] if storage else size):
+        raise RomError("changed PS1 module exceeds its reviewed encoded storage")
+    if transform(encoded, mapping) != data:
+        raise RomError("encoded PS1 mod does not recover its source-built analysis bytes")
+    return encoded, storage
+
+
 @contextmanager
 def source(src, layout):
     from .psx_media import decoded, inside
@@ -101,7 +150,7 @@ def apply(picked, src, reviewed):
         raise RomError("declare 1 to 128 reviewed PS1 modules")
     files = {f["path"]: f for f in layout["files"] if not f["directory"]}
     maps, overlays, modules, occupied = [layout["maps"][0]], [], {}, []
-    allowed = {"name", "path", "offset", "stored_size", "size", "codec", "load", "code_start", "code_end", "gp", "bss", "bss_size", "relocations"}
+    allowed = {"name", "path", "offset", "stored_size", "size", "codec", "load", "code_start", "code_end", "gp", "bss", "bss_size", "relocations", "storage"}
     with source(src, layout) as stream:
         disc = _Disc(stream)
         for item in definitions:
@@ -132,9 +181,6 @@ def apply(picked, src, reviewed):
                 raise RomError("PS1 module GP must be aligned in RAM")
             if bss_size < 0 or bss_size and not load + size <= bss < bss + bss_size <= 0x80200000:
                 raise RomError("PS1 module BSS overlaps loaded bytes or exceeds RAM")
-            if any(p == path and a < offset + stored_size and offset < b for p, a, b in occupied):
-                raise RomError("reviewed PS1 module storage extents overlap")
-            occupied.append((path, offset, offset + stored_size))
             relocations, positions = [], set()
             raw_relocations = item.get("relocations", [])
             if not isinstance(raw_relocations, list) or len(raw_relocations) > 100000:
@@ -154,6 +200,12 @@ def apply(picked, src, reviewed):
                 "file_offset": offset, "stored_size": stored_size, "size": size, "load": load, "code_at": start,
                 "codec": item.get("codec", "raw"), "relocations": relocations,
                 "address_basis": "reviewed loader layout"}
+            if "storage" in item:
+                mapping["storage"] = storage_layout(disc, mapping, item["storage"])
+            capacity = mapping.get("storage", {}).get("capacity", stored_size)
+            if any(p == path and a < offset + capacity and offset < b for p, a, b in occupied):
+                raise RomError("reviewed PS1 module storage extents overlap")
+            occupied.append((path, offset, offset + capacity))
             stored = disc.read(rec["lba"] + offset // 2048, offset % 2048 + stored_size)[offset % 2048:]
             mapping["stored_sha256"] = hashlib.sha256(stored).hexdigest()
             data = transform(stored, mapping)
@@ -162,6 +214,13 @@ def apply(picked, src, reviewed):
             overlays.append((name, data, load, start))
             modules["ovl_" + name] = {"gp": gp, "bss": bss, "bss_size": bss_size,
                 "code_start": start, "code_end": end, "basis": "reviewed loader layout"}
+    fields = []
+    for mapping in maps:
+        if storage := mapping.get("storage"):
+            at, width, path = storage["length_offset"], storage["length_width"], mapping["path"]
+            if any(p == path and a < at + width and at < b for p, a, b in occupied + fields):
+                raise RomError("PS1 archive length fields overlap module storage or another length field")
+            fields.append((path, at, at + width))
     if sum(m["size"] for m in maps) > 16 << 20:
         raise RomError("reviewed PS1 programs exceed the supported 16 MiB analysis limit")
     picked.overlays = overlays

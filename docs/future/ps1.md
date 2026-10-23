@@ -1,6 +1,8 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4 and qualified on native Windows/Linux: 107 required checks per host, zero skips**.
+Status: **implemented in PR #4; the last completed native Windows/Linux baseline has 107 required checks per host, zero skips**.
+The expanded growth/storage suite adds 18 required checks; native qualification
+of those additions is pending.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
@@ -25,6 +27,11 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
 - Syphon Filter 1/2/3 private retail testing: all four discs rebuild exactly and
   from clean sources, including one combined SF2 project/ZIP. Embedded non-R3000
   words and four-byte function alignment have regression coverage.
+- Larger C/C++ bodies, helpers and owned data in reviewed loaded zero reserves,
+  retaining original entry addresses and function-pointer identity. Original
+  MIPS fixtures execute the generated bodies and pointer-return helpers.
+- Reviewed zlib/gzip module recompression, explicit archive stored-length fields,
+  bounded encoded capacity and preservation of original loader fixup words.
 
 ## Validation boundaries
 
@@ -32,8 +39,10 @@ A disc round-trip does not prove full source recovery or runtime correctness.
 Private retail inputs broaden coverage; they do not qualify every game's loader.
 Raw overlay placement still needs review. Proprietary archives/codecs and
 unknown relocation tables need specific loader facts/adapters; interleaved or
-multi-extent ISO layouts, missing tracks, changed-size disc authoring and CHD
-recompression remain outside the matching workflow. DQVII's HBD archives remain
+multi-extent ISO layouts, missing tracks, changed-size files/tracks, new loader
+relocation tables and CHD recompression remain outside this workflow. Growth
+requires explicit loaded-space review; zero bytes alone do not establish nonuse.
+DQVII's HBD archives remain
 opaque, and most recognized executable functions remain assembly.
 
 No additional PSY-Q compiler or ASPSX version is registered. The pinned compiler

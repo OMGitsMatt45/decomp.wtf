@@ -444,11 +444,17 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             docs.write("\n## Modified source builds\n\nRun `python build.py mod` to compile source changes into fixed function slots. "
                        "An exact original-assembly baseline is required first. Function entry addresses, file extents "
                        "and headers stay fixed. Changed functions may call pinned functions/globals but cannot grow "
-                       "past their original code size or introduce owned data/BSS/helpers. Interior references need "
-                       "layout review. Outputs and hashes are in `build/psx-mod-result.json`. ISO/BIN and CUE track "
+                       "past their original code size or introduce owned data/BSS/helpers without reviewed mod space. "
+                       "Use `decompnet psx reserve PATH --module MODULE --start ADDRESS --size BYTES` to record "
+                       "unused loaded zero bytes in `psx-mod-space.json`. Larger bodies, helpers and new data then "
+                       "link there; entry jumps keep callers and function pointers at their original addresses. "
+                       "The range must be reviewed as unused; zero padding alone does not establish that. "
+                       "Interior references need layout review. Outputs and hashes are in `build/psx-mod-result.json`. ISO/BIN and CUE track "
                        "sets support modified programs; changed raw sectors receive new EDC/ECC. Nonstandard "
-                       "mastering/protection, changed compressed/relocated modules and CHD recompression require "
-                       "dedicated authoring adapters. Normal `python build.py` remains a strict matching check.\n")
+                       "mastering/protection and CHD recompression require dedicated authoring adapters. Reviewed "
+                       "zlib/gzip modules can recompress within declared capacity and update a declared archive "
+                       "length field; original loader fixup words must remain unchanged. Normal `python build.py` "
+                       "remains a strict matching check.\n")
     if format == "shiftable":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
