@@ -148,6 +148,9 @@ def _profile_search(net, slug, agent, fn, machine_drafts):
     from .psx_candidates import recovery_candidates
     sources = list(dict.fromkeys(candidate for source in sources
                                 for candidate in recovery_candidates(source, fn["name"], context["header"])))
+    from ..psx_bios import candidates as bios_candidates
+    sources.extend(source for source in bios_candidates(fn["target"], fn["name"], context["header"])
+                   if source not in sources)
     if not sources:
         return None
     now = time.time()

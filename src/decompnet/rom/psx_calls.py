@@ -134,6 +134,19 @@ def call_context(net, proj, fn, draft, context_header):
     if net.cfg(proj).get("platform") != "psx":
         return ""
     sites, hints = call_sites(fn["target"], fn["vram"]), []
+    if not sites:
+        return ""
+    rows = net.store.all("SELECT id,vram,unit,target FROM functions WHERE project_id=? ORDER BY id", proj["id"])
+    fingerprint = tuple((row["id"], row["vram"], row["unit"], hash(row["target"])) for row in rows)
+    cache = getattr(net, "_psx_abi_summaries", None)
+    if cache is None:
+        cache = net._psx_abi_summaries = {}
+    previous = cache.get(proj["id"])
+    if previous is None or previous[0] != fingerprint:
+        from .psx_abi import argument_summaries
+        previous = (fingerprint, argument_summaries(rows))
+        cache[proj["id"]] = previous
+    summaries = previous[1]
     symbols = net.symbols(proj["id"])
     for prototype in re.finditer(r"(?m)^([^\n;{}]+?)\b([A-Za-z_]\w*)\(([^()]*)\)\s*;", draft):
         result, name, raw = prototype.groups()
@@ -150,7 +163,11 @@ def call_context(net, proj, fn, draft, context_header):
         callee = own[0] if len(own) == 1 else callees[0] if len(callees) == 1 else None
         if callee is None:
             continue
-        incoming, writes = entry_arguments(callee["target"]), masks[0]
+        from .psx_abi import argument_packet
+        if argument_packet(callee["target"]):
+            continue
+        incoming = summaries.get((callee["vram"], callee["unit"]), entry_arguments(callee["target"]))
+        writes = masks[0]
         if incoming is None:
             continue
         slots = (incoming | writes).bit_length()

@@ -52,6 +52,7 @@ jobs:
           tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py
           tests/test_psx_assets.py tests/test_psx_hbd.py tests/test_psx_subcode.py tests/test_psx_recover.py
           tests/test_psx_calls.py tests/test_psx_drafts.py tests/test_psx_assembler.py
+          tests/test_psx_abi.py tests/test_psx_config.py tests/test_psx_bios.py
           tests/test_psx_candidates.py tests/test_psx_profile_concurrency.py
           tests/test_psx_pointer_candidates.py
           tests/test_psx_module_copies.py tests/test_psx_registers.py tests/test_psx_boundaries.py tests/test_psx_failures.py

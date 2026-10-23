@@ -62,7 +62,10 @@ def repair_config(cfg, program):
         return False
     subs = code.get("subsegments", [])
     end = next((s[0] for s in segments if isinstance(s, list) and s), len(program))
-    if any(s[1] in ("c", "asm") and s[0] <= entry_offset < (subs[i + 1][0] if i + 1 < len(subs) else end)
+    valid = all(isinstance(s, list) and len(s) >= 2 and isinstance(s[0], int) and
+                code["start"] <= s[0] <= end for s in subs)
+    valid = valid and all(a[0] <= b[0] for a, b in zip(subs, subs[1:]))
+    if valid and any(s[1] in ("c", "asm") and s[0] <= entry_offset < (subs[i + 1][0] if i + 1 < len(subs) else end)
            for i, s in enumerate(subs) if isinstance(s, list)):
         return False
     bounds = text_bounds(program)

@@ -1,6 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4 and qualified on native Windows/Linux: 292 required checks per host, zero skips**.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 376 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
@@ -70,6 +70,10 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
 - Architectural GP state wrappers support explicit original-GCC register
   bindings. Reviewed console split/merge operations preserve evidence and
   reject stale compilation results. Failed drafts remain available for repair.
+- Bounded MIPS control-flow summaries preserve forwarded argument registers
+  through known call chains. Literal BIOS tail-dispatch candidates are labeled
+  architectural GNU C, require an explicit C compiler profile and pass the full
+  judge; an equivalent zero-selector encoding still fails exact matching.
 
 ## Validation boundaries
 

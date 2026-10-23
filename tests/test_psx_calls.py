@@ -33,6 +33,7 @@ def test_direct_calls_count_delay_slot_arguments_and_reset_at_control_flow():
 def model(callees=None):
     caller = {"target": words(0x0C004180, 0x24050000, 0x03E00008, 0), "vram": 0x80010500, "unit": "main"}
     callees = callees if callees is not None else [{"target": words(0xAC850000, 0x03E00008, 0), "unit": "main"}]
+    callees = [{"id": index + 1, "vram": 0x80010600, **callee} for index, callee in enumerate(callees)]
     net = SimpleNamespace(cfg=lambda proj: {"platform": "psx"},
                           symbols=lambda pid: SymbolTable([Symbol("callback", 0x80010600, kind="func")]),
                           store=SimpleNamespace(all=lambda *args: callees))

@@ -1,5 +1,6 @@
 """Byte offsets in inferred C must not acquire an extra pointer-size factor."""
 
+import hashlib
 import os
 import struct
 
@@ -8,7 +9,7 @@ import pytest
 from decompnet import compiler, elfobj, project, seeds
 from decompnet.app.engine import RomNetwork
 from decompnet.rom.psx_pointer_candidates import inferred_pointer_candidates
-from .test_overlays import _iso, _resident_exe
+from .test_overlays import _iso, _overlay, _resident_exe
 
 
 def test_opaque_automatic_global_has_byte_address_alternative():
@@ -16,6 +17,17 @@ def test_opaque_automatic_global_has_byte_address_alternative():
     assert inferred_pointer_candidates(source, "target") == [
         "extern M2C_UNK D_80011800;\nvoid target(s32 arg0, s32 arg1) { *((M2C_UNK *)((unsigned int)&D_80011800 + (arg0 * 4))) = arg1; }"
     ]
+
+
+def test_automatic_overlay_global_and_reviewed_type_are_distinguished():
+    source = ("extern M2C_UNK D_ovl_battle_room_80180800;\n"
+              "void target(s32 arg0) { *(&D_ovl_battle_room_80180800 + arg0) = 1; }")
+    candidates = inferred_pointer_candidates(source, "target")
+    assert candidates == [source.replace(
+        "*(&D_ovl_battle_room_80180800 + arg0)",
+        "*((M2C_UNK *)((unsigned int)&D_ovl_battle_room_80180800 + arg0))")]
+    assert not inferred_pointer_candidates(source, "target", "extern int D_ovl_battle_room_80180800[];")
+    assert not inferred_pointer_candidates(source.replace("D_ovl_battle_room_", "D_reviewed_"), "target")
 
 
 def test_reversed_address_and_inferred_argument_steps_are_bounded_candidates():
@@ -110,5 +122,44 @@ def test_original_byte_offsets_recover_through_exact_judge(tmp_path, toolchain, 
     agent, _ = net.local_agent("byte-offset-test")
     assert net._autopilot_one(agent, proj, fn["id"], prepare_seed=False) == "match"
     assert net._function(fn["name"], slug)["status"] == "matched"
+    exported = net.export_rom(slug, log=lambda *_: None)
+    assert exported["identical"] and not exported["fallback"], exported
+
+
+@pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 compilers and m2c")
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+def test_original_overlay_byte_offset_recovers_and_exports(tmp_path, toolchain):
+    cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+        "toolchain": toolchain, "language": "c++", "flags": ["-O2", "-G0"], "sandbox": "none"}})
+    original = compiler.compile_source(cfg, "", "extern int table[]; void original(int index, int value) { table[index] = value; }")
+    assert original.ok, original.log
+    target = elfobj.extract_function(original.obj, "original")
+    address = 0x80180800
+    code = bytearray(target.code)
+    assert len(code) <= 32 and target.relocs
+    for relocation in target.relocs:
+        assert relocation.symbol == "table" and relocation.type in (5, 6)
+        value = ((address + 0x8000) >> 16) & 0xFFFF if relocation.type == 5 else address & 0xFFFF
+        word = struct.unpack_from("<I", code, relocation.offset)[0]
+        struct.pack_into("<I", code, relocation.offset, word & 0xFFFF0000 | value)
+    overlay = bytearray(_overlay(0x80180000, 40)).ljust(0x1000, b"\0")
+    overlay[:32] = code.ljust(32, b"\0")
+    image = _iso({"SYSTEM.CNF": b"BOOT=cdrom:\\GAME.EXE;1\n", "GAME.EXE": _resident_exe(), "BATTLE.BIN": overlay})
+    review = {"format": 1, "sha256": hashlib.sha256(image).hexdigest(), "modules": [{
+        "name": "battle", "path": "BATTLE.BIN", "stored_size": len(overlay), "size": len(overlay),
+        "load": 0x80180000, "code_end": 0x500}]}
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(image, reviewed_layout=review, toolchain=toolchain, flags=["-O2", "-G0"], confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda c: c["compiler"].update(sandbox="none"))
+    proj = net.project_row(slug)
+    fn = net.store.one("SELECT * FROM functions WHERE project_id=? AND unit='ovl_battle' AND vram=?", proj["id"], 0x80180000)
+    assert fn is not None
+    header = net._context(proj["id"], fn["unit"])["header"]
+    draft = net._machine_draft(fn, proj, header, valid=True)
+    assert draft and "&D_ovl_battle_80180800" in draft
+    assert inferred_pointer_candidates(draft, fn["name"], header)
+    assert not inferred_pointer_candidates(draft, fn["name"], header + "\nextern int D_ovl_battle_80180800[];")
+    agent, _ = net.local_agent("overlay-byte-offset-test")
+    assert net._autopilot_one(agent, proj, fn["id"], prepare_seed=False) == "match"
     exported = net.export_rom(slug, log=lambda *_: None)
     assert exported["identical"] and not exported["fallback"], exported

@@ -215,6 +215,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         toolchain_dirs=tuple(str(d) for d in dirs if str(d) != runtime32),
         psx_gp_registers=cfg.get("platform") == "psx" and c.get("toolchain") in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")
             and not c.get("cmd") and language in ("c", "c++"),
+        psx_bios_dispatch=cfg.get("platform") == "psx" and c.get("toolchain") in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")
+            and not c.get("cmd") and language == "c",
     )
 
 

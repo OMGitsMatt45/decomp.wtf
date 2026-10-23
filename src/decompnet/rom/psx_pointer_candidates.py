@@ -4,6 +4,7 @@ import re
 
 
 _SCALAR = r"(?:M2C_UNK(?:8|16|32)?|[su](?:8|16|32))"
+_AUTO_GLOBAL = r"D_(?:ovl_[A-Za-z_]\w*_)?[0-9A-Fa-f]{8}"
 _WIDTHS = {"M2C_UNK": 4, "M2C_UNK32": 4, "s32": 4, "u32": 4,
            "M2C_UNK16": 2, "s16": 2, "u16": 2,
            "M2C_UNK8": 1, "s8": 1, "u8": 1,
@@ -39,7 +40,8 @@ def _simple_address(expression):
 def inferred_pointer_candidates(source, name, context_header=""):
     """Try byte offsets where m2c inferred a word/halfword pointer.
 
-    An unknown automatic ``D_ADDRESS`` object is represented by a scalar. Its
+    An unknown automatic ``D_ADDRESS`` or ``D_ovl_UNIT_ADDRESS`` object is
+    represented by a scalar. Its
     address arithmetic can retain byte offsets even though C scales offsets by
     that scalar's size. Likewise, inferred ``argN`` pointers can retain byte
     increments. These alternatives change the inferred C only. Reviewed symbols
@@ -63,7 +65,7 @@ def inferred_pointer_candidates(source, name, context_header=""):
                 break
     body = code[body_start:body_end]
     objects = {}
-    for declaration in re.finditer(r"(?m)^\s*(?:extern\s+)?(" + _SCALAR + r")\s+(D_[0-9A-Fa-f]{8})\s*;", code[:signature.start()]):
+    for declaration in re.finditer(r"(?m)^\s*(?:extern\s+)?(" + _SCALAR + r")\s+(" + _AUTO_GLOBAL + r")\s*;", code[:signature.start()]):
         kind, symbol = declaration.groups()
         if _WIDTHS[kind] > 1 and not re.search(r"\b" + re.escape(symbol) + r"\b", context):
             objects[symbol] = kind
@@ -75,7 +77,7 @@ def inferred_pointer_candidates(source, name, context_header=""):
         if closing is None or closing >= body_end:
             continue
         expression = code[opening + 1:closing]
-        references = re.findall(r"&\s*(D_[0-9A-Fa-f]{8})\b", expression)
+        references = re.findall(r"&\s*(" + _AUTO_GLOBAL + r")\b", expression)
         if len(references) != 1 or references[0] not in objects:
             continue
         # Only an opaque object's address plus/minus an integer expression.
@@ -104,7 +106,7 @@ def inferred_pointer_candidates(source, name, context_header=""):
                 break
         if depth:
             continue
-        references = list(re.finditer(r"&\s*(D_[0-9A-Fa-f]{8})\b", expression))
+        references = list(re.finditer(r"&\s*(" + _AUTO_GLOBAL + r")\b", expression))
         if len(references) != 1 or references[0][1] not in objects:
             continue
         reference = references[0]
