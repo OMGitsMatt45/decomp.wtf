@@ -434,27 +434,33 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "cannot change in this matching workflow. This does not qualify runtime-relocated overlays, "
                        "unknown code files or new PSY-Q assembler versions. CUE imports retain their validated "
                        "track references and every original track; CHD imports retain the original compressed "
-                       "container after verifying its decoded programs. CHD recompression requires a separate "
-                       "adapter. Audio stays opaque.\n")
+                       "container after verifying its decoded programs. Use the separate mod build for source "
+                       "or resource changes. Audio is retained.\n")
     elif disc:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Disc coverage\n\nProgram payload export only: " + disc["reason"] + ".\n")
     if platform == "psx":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Modified source builds\n\nRun `python build.py mod` to compile source changes into fixed function slots. "
-                       "An exact original-assembly baseline is required first. Function entry addresses, file extents "
-                       "and headers stay fixed. Changed functions may call pinned functions/globals but cannot grow "
+                       "An exact original-assembly baseline is required first. Function entry addresses "
+                       "and program headers stay fixed. Changed functions may call pinned functions/globals but cannot grow "
                        "past their original code size or introduce owned data/BSS/helpers without reviewed mod space. "
                        "Use `decompnet psx reserve PATH --module MODULE --start ADDRESS --size BYTES` to record "
                        "unused loaded zero bytes in `psx-mod-space.json`. Larger bodies, helpers and new data then "
                        "link there; entry jumps keep callers and function pointers at their original addresses. "
                        "The range must be reviewed as unused; zero padding alone does not establish that. "
                        "Interior references need layout review. Outputs and hashes are in `build/psx-mod-result.json`. ISO/BIN and CUE track "
-                       "sets support modified programs; changed raw sectors receive new EDC/ECC. Nonstandard "
-                       "mastering/protection and CHD recompression require dedicated authoring adapters. Reviewed "
-                       "zlib/gzip modules can recompress within declared capacity and update a declared archive "
-                       "length field; original loader fixup words must remain unchanged. Normal `python build.py` "
-                       "remains a strict matching check.\n")
+                       "sets and supported CHD v5 images accept modified programs; changed raw sectors receive new EDC/ECC. "
+                       "Use `decompnet psx replace PATH --file ISO/PATH --input EDITED_FILE` for resources, "
+                       "adding `--relocate` after reviewing file addressing if growth exceeds the original allocation. "
+                       "The build updates ISO extents, volume bounds, CUE audio indices and supported CHD track metadata. "
+                       "Moved audio with opaque nonzero subcode requires mastering review. "
+                       "`decompnet psx archive` inspects/extracts Heartbeat HBD members and stages bounded edits. "
+                       "Reviewed zlib/gzip/HBD-LZSS modules recompress within declared capacity; additive "
+                       "R_MIPS_32/R_MIPS_26 loader fixups can change only with an explicit reviewed base. "
+                       "Resources and loader references are recorded in `psx-assets.json`. "
+                       "See the repository's `docs/psx-resources.md` for commands and authoring limits. "
+                       "Normal `python build.py` remains a strict matching check.\n")
     if format == "shiftable":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "

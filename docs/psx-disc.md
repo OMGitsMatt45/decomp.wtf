@@ -10,6 +10,7 @@ runtime behavior. See [C/C++ matching](psx-cpp.md).
 ```sh
 decompnet psx inspect "my disc.cue"
 decompnet --db "work/app.db" psx import "my disc.cue" --workspace "work/projects" --own-copy --toolchain gcc-2.7.2-psx
+decompnet --db "work/app.db" psx recover PROJECT_SLUG --workspace "work/projects" --limit 200
 decompnet --db "work/app.db" psx export PROJECT_SLUG --workspace "work/projects"
 decompnet psx build "work/projects/PROJECT_SLUG/source"
 ```
@@ -98,16 +99,21 @@ every disc under `build/mod/`; `build/mod/disc-set-result.json` records each
 output. Shared source changes compile independently for every disc. Any failed
 disc removes the combined mod outputs.
 
-ISO, raw BIN and CUE builds preserve file sizes, track names, pregaps, audio and
-subcode. Changed Mode 1 or Mode 2 Form 1 raw sectors receive regenerated EDC and
+Source edits preserve program file sizes. ISO, raw BIN and CUE builds retain
+track names, pregaps, audio and subcode. Changed Mode 1 or Mode 2 Form 1 raw sectors receive regenerated EDC and
 P/Q error correction. A changed sector with nonstandard original EDC/ECC is
 refused for mastering/protection review. Raw unrelocated archive fragments can
-change within their original storage. Reviewed zlib/gzip modules can recompress
+change within their original storage. Reviewed zlib/gzip/HBD-LZSS modules can recompress
 within declared archive capacity and update a declared stored-length field.
-Existing loader fixup words are restored to their original unrelocated storage
-and must remain unchanged in the decoded module. Rewriting relocation tables
-requires a separate adapter. This workflow does not resize
-files or recover unknown loaders and archives.
+Existing loader fixup words are restored to their original unrelocated storage.
+Reviewed additive R_MIPS_32/R_MIPS_26 bases also permit changed values at those
+existing sites. New relocation tables still need a loader adapter.
+
+The [resource and recovery guide](psx-resources.md) covers file replacement,
+reviewed file/track growth, Heartbeat HBD members, loader scalar fields and bulk
+C/C++ recovery. Use `psx upgrade PATH` to refresh copied helpers in older exports
+while retaining edited sources and helper backups. Configure each child of a
+combined project, then build all discs with the root command.
 
 CHD v5 mod builds use the same commands. The writer preserves every decoded
 2448-byte frame outside changed data sectors, including stereo audio, subcode,
@@ -116,7 +122,9 @@ decodes CD FLAC without replacing samples, recompresses with standard zlib and
 updates map CRCs, hunk CRCs and raw/metadata SHA-1 hashes. Every output frame is
 read back and compared before publication. Combined builds verify logical
 geometry and decoded hashes while allowing the compressed container size to
-change. Compression can produce a larger CHD than the original. No additional
+change. Explicit resource growth can also extend a supported first data track,
+update its metadata and shift audio with zero subcode; opaque nonzero subcode
+requires mastering review. Compression can produce a larger CHD than the original. No additional
 tool or download is required. Existing matching builds retain the exact original
 compressed container.
 
@@ -195,7 +203,7 @@ original disc SHA-256 reported by `inspect`:
 ```
 
 `offset`/`stored_size` select a bounded fragment of an ISO file; `size` is the
-exact decoded byte count. `raw`, `zlib` and `gzip` codecs are supported.
+exact decoded byte count. `raw`, `zlib`, `gzip` and `hbd-lzss` codecs are supported.
 `load` addresses the first decoded byte; text offsets select the code inside it.
 GP/BSS and relocations default to zero/empty. Relocation records give explicit
 resolved values for `R_MIPS_32`, `R_MIPS_26`, `R_MIPS_HI16` and `R_MIPS_LO16`.
@@ -212,8 +220,11 @@ archive file and must point to its actual stored-size field. Two- and four-byte
 fields in either byte order are supported. Its original value must equal
 `stored_size`; it cannot overlap a module allocation or another length field.
 Mod builds recompress, update this field, zero the unused allocation and decode
-the result again to verify it. If capacity is exhausted or a loader relocation
-word changes, no output is published. Matching builds retain original encoded
+the result again to verify it. If capacity is exhausted or an unreviewed loader
+relocation word changes, no output is published. Optional additive bases for
+R_MIPS_32/R_MIPS_26 allow reviewed inverse authoring at existing sites; see the
+[resource guide](psx-resources.md#reviewed-additive-loader-fixups).
+Matching builds retain original encoded
 storage exactly, regardless of the reserve or storage declaration.
 
 ## Standalone builds and qualification
@@ -224,17 +235,17 @@ the owner's retained original, compiles recovered C/C++, links each exclusive
 module and verifies every analysis byte. Ordinary raw images receive the rebuilt
 program bytes at their original extents. CUE/CHD and reviewed encoded modules
 retain original containers only after decoded-program matching succeeds.
-The separate `mod` command supports the bounded source changes described above.
-Changed-size disc files/tracks remain outside this workflow; recompressed CHD
-container size can change without changing logical geometry.
+The separate `mod` command supports bounded source and resource changes,
+including reviewed file relocation and first-data-track growth. ISO directory
+records, raw parity, CUE indices and supported CHD metadata are verified before
+outputs are published. Unknown mastering and loader formats require adapters.
 
 All **149 required checks passed with zero skips on native Windows and Linux**
 at source/test commit `73d338ebce43cb9124fafd65c1847691aabf5ec7` in the
 [qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362340).
 The [validation record](psx-validation.json) records per-suite counts and private
 retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
-and 92 shared source files. Most functions remain assembly and HBD archives stay
-opaque. Syphon Filter 1/2/3 adds four exact complete-disc and clean rebuilds,
+and 92 shared source files in the prior complete-build qualification. Syphon Filter 1/2/3 adds four exact complete-disc and clean rebuilds,
 41 matching C++ functions and a combined SF2 project with eight shared sources.
 The public console inspection command verifies each of these inputs. Both
 combined retail ZIPs passed every member's CRC check and full-disc hashes.
@@ -243,17 +254,26 @@ other sectors identical; gameplay was not tested. The
 [required workflow](../.github/workflows/psx.yml) fails on any skipped required
 suite. Retail bytes and derived sources never enter that workflow or Git.
 
+Subsequent console recovery accepted 165 candidates directly and 21 identical
+function reuses, increasing private matched totals by 186. These are exact
+function-level compiler/link checks; the earlier retail ZIPs were not replaced.
+Both DQVII HBD archives now parse 3,729 blocks and 24,716 members each, with all
+5,342 standard compressed members independently decoded. Member edits on both
+discs changed only the intended two sectors and passed independent parity
+checks. Six members per disc retain unknown flags and stay guarded. Most
+executable functions still require further source recovery.
+
 ```sh
 uv sync --locked --group dev
 uv run --no-sync python -m tools.operational --psx-only
-DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
+DECOMP_TEST_PSX_CPP=1 uv run --no-sync python tools/run_operational.py tests/test_psx.py tests/test_psx_cpp.py tests/test_psx_disc.py tests/test_psx_workflows.py tests/test_psx_set.py tests/test_psx_media.py tests/test_psx_layout.py tests/test_psx_modify.py tests/test_psx_growth.py tests/test_psx_storage.py tests/test_psx_chd.py tests/test_psx_assets.py tests/test_psx_hbd.py tests/test_psx_recover.py tests/test_psx_relocation_authoring.py tests/test_overlays.py "tests/test_export.py::test_export_rebuilds_the_game[psx]"
 uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
 ```
 
 In PowerShell set `$env:DECOMP_TEST_PSX_CPP = '1'` first and omit the shell
 prefix. No additional PSY-Q or Sony ASPSX version is qualified by this work.
 
-The dev dependency group installs Unicorn automatically for original-fixture
+The dev dependency group installs pycdlib for independent ISO reads and Unicorn for original-fixture
 MIPS execution checks. Those checks exercise larger bodies, helper calls,
 initialized globals, new zero storage and function pointers; they do not
 establish whole-game execution or playthrough correctness.
@@ -264,3 +284,6 @@ pins every input hash; the generator uses original code, PCM and subcode only.
 Local `chdman verify` and `extractraw` also verified modified output from all
 five codecs, including both SHA-1 hashes and every decoded frame. Native tests
 use these fixtures directly and require no external CHD executable.
+An additional grown CHD passed MAME verification and BIN/TOC extraction with
+retained audio, subcode and virtual pregap. Native resource tests cover that
+geometry change and combined C++/resource edits on ISO, CUE and CHD projects.

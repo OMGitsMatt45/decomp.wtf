@@ -47,6 +47,20 @@ def joined(picked):
     return bytes(data), segs
 
 
+def test_matching_rebuild_cannot_remove_original_or_collide_with_its_temporary_name(tmp_path):
+    raw = fixture()
+    picked = detect.identify(raw)
+    image, segments = joined(picked)
+    layout = psx_disc.bind(picked.disc, segments, image)
+    original, output = tmp_path / "output.bin.tmp", tmp_path / "output.bin"
+    original.write_bytes(raw)
+    with pytest.raises(RomError, match="separate"):
+        psx_disc.rebuild(original, image, layout, original)
+    assert original.read_bytes() == raw
+    psx_disc.rebuild(original, image, layout, output)
+    assert original.read_bytes() == output.read_bytes() == raw
+
+
 @pytest.mark.parametrize("sector_size,skip", [(2048, 0), (2352, 16), (2352, 24), (2448, 16), (2448, 24)])
 def test_full_disc_roundtrip_preserves_headers_trailers_audio_subcode(tmp_path, sector_size, skip):
     original = fixture(sector_size, skip)

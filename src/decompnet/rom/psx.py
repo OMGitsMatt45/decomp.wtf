@@ -110,7 +110,7 @@ class _Disc:
             lba += 1
         return bytes(out[:length])
 
-    def records(self, lba: int, length: int):
+    def records(self, lba: int, length: int, *, offsets=False):
         if length > 16 << 20:
             raise RomError("the disc directory exceeds the supported 16 MiB limit")
         raw = self.read(lba, length)
@@ -127,10 +127,13 @@ class _Disc:
                 raise RomError("the disc directory's little- and big-endian extents disagree")
             name = rec[33:33 + rec[32]].decode("ascii", "replace").split(";", 1)[0]
             if name not in ("\x00", "\x01"):
-                yield {"path": name.upper(), "lba": struct.unpack_from("<I", rec, 2)[0],
+                entry = {"path": name.upper(), "lba": struct.unpack_from("<I", rec, 2)[0],
                        "size": struct.unpack_from("<I", rec, 10)[0], "directory": bool(rec[25] & 2),
                        "flags": rec[25], "extended_attributes": rec[1], "unit": rec[26], "gap": rec[27],
                        "volume": struct.unpack_from("<H", rec, 28)[0]}
+                if offsets:
+                    entry["record_offset"] = lba * 2048 + i
+                yield entry
             i += n
 
     def entries(self, lba: int, length: int):

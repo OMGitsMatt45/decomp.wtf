@@ -10,6 +10,18 @@ from the independently rebuilt boot program and discovered overlays. Supported
 CHDs retain their original container after matching and support lossless mod
 recompression. Unsupported filesystem layouts retain program-only exports.
 
+For sequential recovery without an AI agent, use the console:
+
+```sh
+decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --limit 200 --max-insns 24
+```
+
+It tries integer-leaf candidates and m2c drafts, saving only exact compiler and
+full-link matches. `--search-profiles` also probes installed original GCC
+versions at O0/O1/O2 and persists a profile only after a match. Reruns skip
+matched functions; unresolved functions remain assembly. See the
+[console recovery guide](psx-resources.md#recover-cc-without-an-ai-agent).
+
 ## Compiler identity
 
 These are the **original GNU C++ frontends for each PS1-patched GCC version**,

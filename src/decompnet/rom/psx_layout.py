@@ -39,14 +39,24 @@ def transform(stored, mapping):
             raise RomError("invalid compressed PS1 module: " + str(error)) from error
         if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
             raise RomError("compressed PS1 module exceeds its decoded bound or has trailing data")
+    elif codec == "hbd-lzss":
+        from .psx_lzss import decode
+        data = decode(stored, mapping["size"])
     else:
-        raise RomError("PS1 module codec must be raw, zlib or gzip")
+        raise RomError("PS1 module codec must be raw, zlib, gzip or hbd-lzss")
     if len(data) != mapping["size"]:
         raise RomError("PS1 module decoded size differs from the reviewed layout")
     data = bytearray(data)
     for relocation in mapping.get("relocations", []):
         at, kind, value = relocation["offset"], relocation["type"], relocation["value"]
         word = int.from_bytes(data[at:at + 4], "little")
+        if "base" in relocation:
+            if kind not in ("R_MIPS_32", "R_MIPS_26"):
+                raise RomError("unsupported additive PS1 relocation type")
+            addend = word if kind == "R_MIPS_32" else (word & 0x3FFFFFF) << 2
+            value = (relocation["base"] + addend) & 0xFFFFFFFF
+            if kind == "R_MIPS_26" and value >> 28 != (mapping["load"] + at + 4) >> 28:
+                raise RomError("additive PS1 jump relocation exceeds its MIPS region")
         if kind == "R_MIPS_32":
             word = value
         elif kind == "R_MIPS_26":
@@ -100,6 +110,20 @@ def encode_mod(disc, mapping, data, baseline):
     decoded = bytearray(data)
     for relocation in mapping.get("relocations", []):
         at = relocation["offset"]
+        if "base" in relocation:
+            word = int.from_bytes(data[at:at + 4], "little")
+            if relocation["type"] == "R_MIPS_32":
+                word = (word - relocation["base"]) & 0xFFFFFFFF
+            else:
+                if word >> 26 not in (2, 3):
+                    raise RomError("changed loader jump relocation must remain J or JAL")
+                target = ((mapping["load"] + at + 4) & 0xF0000000) | ((word & 0x3FFFFFF) << 2)
+                offset = (target - relocation["base"]) & 0xFFFFFFFF
+                if offset >= 1 << 28 or offset % 4:
+                    raise RomError("changed loader jump cannot be encoded relative to its reviewed base")
+                word = (word & 0xFC000000) | (offset >> 2)
+            decoded[at:at + 4] = word.to_bytes(4, "little")
+            continue
         if data[at:at + 4] != baseline[at:at + 4]:
             raise RomError("changed loader relocation sites require a revised relocation-table authoring adapter")
         decoded[at:at + 4] = unrelocated[at:at + 4]
@@ -109,8 +133,12 @@ def encode_mod(disc, mapping, data, baseline):
     else:
         if not mapping.get("storage"):
             raise RomError("changed encoded modules require a reviewed storage/loader authoring adapter")
-        encoder = zlib.compressobj(9, zlib.DEFLATED, 31 if codec == "gzip" else 15)
-        encoded = encoder.compress(decoded) + encoder.flush()
+        if codec == "hbd-lzss":
+            from .psx_lzss import encode
+            encoded = encode(decoded)
+        else:
+            encoder = zlib.compressobj(9, zlib.DEFLATED, 31 if codec == "gzip" else 15)
+            encoded = encoder.compress(decoded) + encoder.flush()
         if codec == "gzip":
             encoded = encoded[:9] + b"\xff" + encoded[10:]  # neutral OS byte; gzip mtime is already zero
     storage = storage_layout(disc, mapping, mapping["storage"]) if mapping.get("storage") else None
@@ -186,7 +214,7 @@ def apply(picked, src, reviewed):
             if not isinstance(raw_relocations, list) or len(raw_relocations) > 100000:
                 raise RomError("PS1 relocations must be a bounded list")
             for relocation in raw_relocations:
-                if not isinstance(relocation, dict) or set(relocation) != {"offset", "type", "value"}:
+                if not isinstance(relocation, dict) or set(relocation) not in ({"offset", "type", "value"}, {"offset", "type", "value", "base"}):
                     raise RomError("PS1 relocations require offset, type and resolved value")
                 at, value = number(relocation["offset"], "relocation offset"), number(relocation["value"], "relocation value")
                 kind = relocation["type"]
@@ -195,7 +223,13 @@ def apply(picked, src, reviewed):
                 if kind == "R_MIPS_26" and (value % 4 or value >> 28 != (load + at + 4) >> 28):
                     raise RomError("PS1 jump relocation target is unaligned or outside its MIPS region")
                 positions.add(at)
-                relocations.append({"offset": at, "type": kind, "value": value})
+                parsed = {"offset": at, "type": kind, "value": value}
+                if "base" in relocation:
+                    base = number(relocation["base"], "relocation base")
+                    if kind not in ("R_MIPS_32", "R_MIPS_26") or not 0 <= base <= 0xFFFFFFFF or kind == "R_MIPS_26" and base % 4:
+                        raise RomError("reviewed additive relocation bases require R_MIPS_32 or aligned R_MIPS_26")
+                    parsed["base"] = base
+                relocations.append(parsed)
             mapping = {"segment": "ovl_" + name, "path": path, "lba": rec["lba"], "file_size": rec["size"],
                 "file_offset": offset, "stored_size": stored_size, "size": size, "load": load, "code_at": start,
                 "codec": item.get("codec", "raw"), "relocations": relocations,
@@ -208,6 +242,15 @@ def apply(picked, src, reviewed):
             occupied.append((path, offset, offset + capacity))
             stored = disc.read(rec["lba"] + offset // 2048, offset % 2048 + stored_size)[offset % 2048:]
             mapping["stored_sha256"] = hashlib.sha256(stored).hexdigest()
+            if any("base" in r for r in relocations):
+                unrelocated = transform(stored, dict(mapping, relocations=[]))
+                for relocation in relocations:
+                    if "base" not in relocation:
+                        continue
+                    word = int.from_bytes(unrelocated[relocation["offset"]:relocation["offset"] + 4], "little")
+                    addend = word if relocation["type"] == "R_MIPS_32" else (word & 0x3FFFFFF) << 2
+                    if (relocation["base"] + addend) & 0xFFFFFFFF != relocation["value"]:
+                        raise RomError("reviewed relocation base disagrees with the original encoded addend")
             data = transform(stored, mapping)
             mapping["sha256"] = hashlib.sha256(data).hexdigest()
             maps.append(mapping)

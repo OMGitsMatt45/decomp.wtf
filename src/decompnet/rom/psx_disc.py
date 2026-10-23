@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import tempfile
 from pathlib import Path
 
 from .n64 import RomError
@@ -180,9 +181,13 @@ def _analysis(src, layout):
 
 def rebuild(original: Path, rebuilt: bytes, layout: dict, output: Path) -> None:
     """Patch source-built file extents into a streamed copy; publish only exact output."""
+    original, output = Path(original), Path(output)
+    if original.resolve() == output.resolve():
+        raise RomError("a rebuilt disc must use a separate output path")
     output.unlink(missing_ok=True)
-    temporary = output.with_name(output.name + ".tmp")
-    temporary.unlink(missing_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=output.parent, prefix=".psx-match-", delete=False) as handle:
+        temporary = Path(handle.name)
     try:
         if len(rebuilt) != layout["analysis_size"] or hashlib.sha256(rebuilt).hexdigest() != layout["analysis_sha256"]:
             raise RomError("the source-built PS1 analysis image differs")

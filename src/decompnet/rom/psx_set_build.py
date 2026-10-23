@@ -72,6 +72,12 @@ def build(mod=False):
                     if len(modified["artifacts"]) != len(artifacts):
                         raise ValueError("a modified child lost a retained disc track or CUE")
                 published = []
+                asset_report = modified.get("disc", {}).get("assets") if mod else None
+                if asset_report:
+                    from decompnet.rom.psx_assets import verify
+                    media = child["disc"]["layout"].get("media", {})
+                    primary = folder / "build/psx-mod" / ("disc/" + media["primary"] if media.get("kind") == "cue" else "disc" + Path(child["disc"]["output"]).suffix)
+                    verify(folder, child, primary, asset_report)
                 for item in artifacts:
                     original = folder / item.get("child", child["disc"]["output"])
                     expected = (item["size"], item["sha256"])
@@ -82,7 +88,9 @@ def build(mod=False):
                         entry = next((a for a in modified["artifacts"] if a["output"] == original.relative_to(folder).as_posix()), None)
                         if entry is None:
                             raise ValueError("a modified child lost its disc/track output")
-                        if media.get("kind") == "chd" and modified.get("disc", {}).get("chd"):
+                        if asset_report:
+                            pass  # Complete resource/filesystem verification above permits reviewed size changes.
+                        elif media.get("kind") == "chd" and modified.get("disc", {}).get("chd"):
                             from decompnet.rom.chd_write import verify_geometry
                             verify_geometry(folder / child["disc"]["image"], original, modified["disc"]["chd"])
                         elif entry["size"] != item["size"]:

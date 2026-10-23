@@ -200,8 +200,11 @@ def export_set(net, slug, out=None, log=print):
         "must fit their original slots and cannot add owned data, BSS or helpers. Configure each disc's unused "
         "loaded reserve with `decompnet psx reserve discs/disc-N --module MODULE --start ADDRESS --size BYTES` "
         "to allow larger bodies and new data/helpers while keeping the original function entries. "
-        "The child READMEs describe the limits. "
-        "`build/mod/disc-set-result.json` records the changed functions and output hashes; a failed disc "
+        "Stage resources with `decompnet psx replace discs/disc-N --file ISO/PATH --input EDITED_FILE`; "
+        "review file addressing before adding `--relocate` for growth. Heartbeat member edits use "
+        "`decompnet psx archive replace discs/disc-N`. Each child keeps its own `psx-assets.json`. "
+        "The child READMEs and repository's `docs/psx-resources.md` describe the limits. "
+        "`build/mod/disc-set-result.json` records changed functions/resources and output hashes; a failed disc "
         "removes all combined mod outputs.\n\n"
         "This builds the original separate disc images for normal emulator disc swapping. "
         "It does not merge filesystems or remove game disc-change behavior.\n", encoding="utf-8")

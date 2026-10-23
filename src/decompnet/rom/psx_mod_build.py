@@ -181,6 +181,10 @@ def build(builder):
                 from decompnet.rom.psx_media import companions
                 companions(root / disc["image"], layout, destination / "disc")
                 outputs += [destination / "disc" / item["name"] for item in media["companions"]]
+            from decompnet.rom.psx_assets import apply, verify
+            if assets := apply(root, meta, primary):
+                verify(root, meta, primary, assets)
+                media_result["assets"] = assets
         from decompnet.rom.psx_disc import digest
         artifacts = []
         for path in outputs:
@@ -189,7 +193,9 @@ def build(builder):
             artifacts.append({"output": path.relative_to(root).as_posix(), "size": size, "sha256": sha})
         report.write_text(json.dumps({"format": 1, "baseline_identical": True, "mode": "reviewed-space" if arenas else "fixed-slots", "spaces": arenas,
             "changed_functions": [fn["name"] for fn, _ in changed], "disc": media_result, "artifacts": artifacts}, indent=2), encoding="utf-8")
-        print(f"modified: {len(changed)} changed PS1 functions; original baseline verified; outputs in build/psx-mod-result.json")
+        resources = media_result.get("assets", {}) if media_result else {}
+        print(f"modified: {len(changed)} PS1 functions, {len(resources.get('files', []))} resources, "
+              f"{len(resources.get('archives', []))} archive blocks; original baseline verified; outputs in build/psx-mod-result.json")
         return True
     except BaseException:
         shutil.rmtree(destination, ignore_errors=True)

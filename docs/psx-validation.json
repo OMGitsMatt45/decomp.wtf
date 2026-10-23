@@ -40,7 +40,16 @@
     "Lossless decoded CD FLAC stereo audio and subcode; CD LZMA/zlib parity restoration; bounded final-hunk reads",
     "CHD v5 mod recompression with retained track/pregap metadata, hunk/map CRC16 and raw/overall SHA-1",
     "Combined console CHD mod builds with fixed logical geometry, independently verified decoded hashes and variable compressed sizes",
-    "MAME-generated original fixtures for all five supported codecs; corrupt maps, hunks, metadata and hashes rejected; hardlinked originals protected"
+    "MAME-generated original fixtures for all five supported codecs; corrupt maps, hunks, metadata and hashes rejected; hardlinked originals protected",
+    "Reviewed resource shrink/growth, appended first-track allocation, ISO extent/length/volume updates in both byte orders and independent pycdlib reads",
+    "Raw Mode 1/Mode 2/2448 and CUE resource authoring, preserved audio/pregaps, shifted shared-BIN audio indices and aggregate rollback",
+    "Supported CHT2 first-data-track growth, four-frame alignment, updated metadata and retained audio; moved opaque nonzero subcode refused",
+    "Heartbeat HBD inventories, disc tags 0/1, raw allocation hints, bounded LZSS extraction/repacking, guarded unknown flags and retained block positions",
+    "Reviewed scalar loader LBA/size/sector fields with original-value, overlap, replacement-conflict and overflow checks",
+    "Explicit additive R_MIPS_32/R_MIPS_26 inverse authoring at existing sites in raw, zlib and HBD-LZSS modules",
+    "Agent-free console C/C++ recovery with full exact judge, claims, interruption/resumption and installed compiler-profile search; failed probes retain settings",
+    "Copied export-helper upgrades with backups, preserved source/assets and actionable rejection of outdated asset build helpers",
+    "Pinned original protection against equal output paths and predictable temporary-name collisions"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -61,10 +70,6 @@
     "m2c_examples": 3,
     "inputs_private": true,
     "bios_required": false,
-    "opaque_archives": [
-      "HBD1PS1D.W71",
-      "HBD1PS1D.W72"
-    ],
     "discs": [
       {
         "serial": "SLUS-01206",
@@ -84,17 +89,18 @@
     "cue_files_preserved": true,
     "clean_rebuild": true,
     "archive_bytes": 2217420775,
-    "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150"
+    "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150",
+    "archive_scope_at_original_export": "HBD resources retained verbatim; subsequent parsing and authoring checks are recorded separately in heartbeat_retail_validation."
   },
   "not_qualified": [
     "Runtime correctness of inferred overlay addresses without loader review",
-    "Automatic proprietary archive/codec/relocation-table discovery and complete code recovery",
+    "Automatic arbitrary proprietary archive/codec/relocation-table discovery and complete source recovery",
     "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
     "Additional PSY-Q compiler or Sony ASPSX versions",
     "Retail playthroughs and disc-swap gameplay",
-    "Changed-size file/sector authoring, changed track layouts and absent-track reconstruction",
-    "Changing loader relocation sites/tables and unknown archive metadata",
-    "Runtime correctness of newly declared retail mod reserves without loader review; whole-game mod playthroughs"
+    "Absent-track reconstruction, unknown mastering/protection, and moving opaque nonzero audio subcode without a retiming adapter",
+    "New loader relocation sites/tables, additive HI16/LO16 authoring, unknown HBD flags and block-allocation changes requiring external address-table updates",
+    "Runtime correctness of newly declared retail mod reserves or resource-loader facts; whole-game mod playthroughs"
   ],
   "previous_native_qualification": {
     "status": "passed",
@@ -307,6 +313,16 @@
       "verification": "Every output decoded hunk compared to patched original frames before publication; hunk/map CRC16, raw/metadata SHA-1 and aggregate decoded SHA-256 verified.",
       "required_external_tools": [],
       "retail_chd_or_playthrough_qualified": false
+    },
+    "resources": {
+      "guide": "docs/psx-resources.md",
+      "declaration": "psx-assets.json",
+      "whole_file_limit_bytes": 134217728,
+      "member_limit_bytes": 16777216,
+      "total_staged_limit_bytes": 268435456,
+      "scope": "Bounded resource replacement, reviewed first-track growth and HBD member edits for standalone/combined ISO/raw/CUE/supported CHD projects.",
+      "loader_fields": "Reviewed original LBA/size/sectors scalar fields; no inferred game tables.",
+      "copied_helper_upgrade": "decompnet psx upgrade PATH preserves sources/assets and backs up replaced helpers."
     }
   },
   "earlier_native_qualifications": [
@@ -482,6 +498,168 @@
         "chdman_extracted_frames_equal": true,
         "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
       }
+    ],
+    "data_track_growth": {
+      "scope": "Entirely original CD FLAC fixture, with zero audio subcode before relocation.",
+      "raw_and_overall_sha1_verified": true,
+      "bin_toc_audio_and_subcode_verified": true,
+      "audio_pregap_retained": true,
+      "data_frames_before": 30,
+      "data_frames_after": 38,
+      "logical_frames_before": 68,
+      "logical_frames_after": 76,
+      "sha256": "f7cef0c6c8c89c42a437517684e8c11752adea3e9e76fc187fd50509459e580f"
+    }
+  },
+  "heartbeat_retail_validation": {
+    "scope": "Private structural and resource-authoring checks on the supplied US DQVII discs; not a runtime or whole-game source qualification.",
+    "inputs_private": true,
+    "runtime_tested": false,
+    "independent_decoder": {
+      "repository": "https://github.com/RadMageIRL/DQIV_PSX_TOOLS",
+      "path": "dq4/lzs.py",
+      "git_blob_sha": "fc12f2aa5b013b987e03dc142f1f38f01d68dd9f",
+      "bundled": false
+    },
+    "discs": [
+      {
+        "archive": "HBD1PS1D.W71",
+        "disc_tag": 0,
+        "blocks": 3729,
+        "members": 24716,
+        "standard_lzss_members_independently_verified": 5342,
+        "raw_members_verified": 19368,
+        "raw_allocation_hints": 842,
+        "guarded_flags": {
+          "70": 3,
+          "32": 3
+        },
+        "errors": 0
+      },
+      {
+        "archive": "HBD1PS1D.W72",
+        "disc_tag": 1,
+        "blocks": 3729,
+        "members": 24716,
+        "standard_lzss_members_independently_verified": 5342,
+        "raw_members_verified": 19368,
+        "raw_allocation_hints": 842,
+        "guarded_flags": {
+          "70": 3,
+          "32": 3
+        },
+        "errors": 0
+      }
+    ],
+    "member_edits": [
+      {
+        "disc": 1,
+        "archive": "HBD1PS1D.W71",
+        "block": 1,
+        "member": 0,
+        "disc_tag_preserved": true,
+        "changed_lbas": [
+          355,
+          356
+        ],
+        "all_other_sectors_identical": true,
+        "independent_ecc_roots_verified": true,
+        "size_preserved": true,
+        "runtime_tested": false
+      },
+      {
+        "disc": 2,
+        "archive": "HBD1PS1D.W72",
+        "block": 1,
+        "member": 0,
+        "disc_tag_preserved": true,
+        "changed_lbas": [
+          355,
+          356
+        ],
+        "all_other_sectors_identical": true,
+        "independent_ecc_roots_verified": true,
+        "size_preserved": true,
+        "runtime_tested": false
+      }
     ]
+  },
+  "console_retail_recovery": {
+    "scope": "Function-level exact compiler/full-link verification in existing private databases; earlier complete retail ZIPs were not regenerated.",
+    "candidate_matches": 165,
+    "total_new_matches_including_identical_function_reuse": 186,
+    "discs": [
+      {
+        "project": "scus-94240",
+        "tried": 200,
+        "before_matched": 18,
+        "after_matched": 56,
+        "remaining": 2045,
+        "direct_matches": 38
+      },
+      {
+        "project": "scus-94451",
+        "tried": 200,
+        "before_matched": 8,
+        "after_matched": 8,
+        "remaining": 2570,
+        "direct_matches": 0
+      },
+      {
+        "project": "scus-94492",
+        "tried": 200,
+        "before_matched": 8,
+        "after_matched": 8,
+        "remaining": 2570,
+        "direct_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "tried": 200,
+        "before_matched": 7,
+        "after_matched": 7,
+        "remaining": 2553,
+        "direct_matches": 0
+      },
+      {
+        "project": "slus-01206",
+        "tried": 200,
+        "before_matched": 96,
+        "after_matched": 169,
+        "remaining": 2396,
+        "direct_matches": 63
+      },
+      {
+        "project": "slus-01346",
+        "tried": 200,
+        "before_matched": 94,
+        "after_matched": 169,
+        "remaining": 2396,
+        "direct_matches": 64
+      }
+    ],
+    "additional_profile_probes": [
+      {
+        "project": "scus-94451",
+        "tried": 120,
+        "new_matches": 0
+      },
+      {
+        "project": "scus-94492",
+        "tried": 120,
+        "new_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "tried": 120,
+        "new_matches": 0
+      }
+    ],
+    "inputs_and_sources_private": true,
+    "runtime_tested": false
+  },
+  "independent_iso_qualification": {
+    "tool": "pycdlib 1.22.0 (locked dev dependency, installed automatically by dev sync)",
+    "scope": "Original ISO and Mode 2 raw fixtures generated/read independently; nested grown-file bytes, directory extent and volume bounds verified."
   }
 }

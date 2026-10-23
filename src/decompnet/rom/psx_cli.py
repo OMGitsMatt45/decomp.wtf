@@ -16,7 +16,9 @@ def add_parser(subparsers):
     export = sub.add_parser("export", help="export and verify a matching PS1 project")
     build = sub.add_parser("build", help="rebuild an exported PS1 source project")
     build.add_argument("directory", type=Path)
-    build.add_argument("--mod", action="store_true", help="build changed C/C++ within original function/file limits")
+    build.add_argument("--mod", action="store_true", help="build changed C/C++ and reviewed resource replacements")
+    upgrade = sub.add_parser("upgrade", help="update exported build helpers, keeping sources and helper backups")
+    upgrade.add_argument("directory", type=Path)
     reserve = sub.add_parser("reserve", help="record reviewed unused loaded space for larger source changes")
     reserve.add_argument("directory", type=Path, help="exported disc project; use discs/disc-N for a combined game")
     reserve.add_argument("--module", required=True)
@@ -34,6 +36,36 @@ def add_parser(subparsers):
     profile.add_argument("--language", choices=("c", "c++"))
     profile.add_argument("--optimization", choices=("O0", "O1", "O2"))
     profile.add_argument("--reset", action="store_true")
+    recover = sub.add_parser("recover", help="recover and verify C/C++ locally without an AI agent")
+    recover.add_argument("project")
+    recover.add_argument("--workspace", required=True, type=Path)
+    recover.add_argument("--limit", type=int, default=0, help="maximum attempted functions; 0 means all")
+    recover.add_argument("--max-insns", type=int, default=0)
+    recover.add_argument("--leaves-only", action="store_true", help="try deterministic integer leaves without m2c")
+    recover.add_argument("--search-profiles", action="store_true", help="try installed PS1 GCC versions at O0/O1/O2; save only exact matching profiles")
+    extract = sub.add_parser("extract", help="extract a resource from an exported disc project")
+    replace = sub.add_parser("replace", help="stage an edited resource for the next mod build")
+    for command in (extract, replace):
+        command.add_argument("directory", type=Path)
+        command.add_argument("--file", required=True)
+    extract.add_argument("--output", required=True, type=Path)
+    replace.add_argument("--input", required=True, type=Path)
+    replace.add_argument("--relocate", action="store_true", help="reviewed ISO addressing: append larger files and update directory extents")
+    replace.add_argument("--references", type=Path, help="reviewed loader LBA/size/sector-count fields as JSON")
+    archive = sub.add_parser("archive", help="inspect and edit Heartbeat HBD resource archives")
+    operations = archive.add_subparsers(dest="archive_cmd", required=True)
+    for operation in ("inspect", "extract", "replace"):
+        command = operations.add_parser(operation)
+        command.add_argument("input_path", type=Path, help="original ROM for inspect/extract; exported disc directory for replace")
+        command.add_argument("--file", required=True)
+        if operation == "inspect":
+            command.add_argument("--full", action="store_true", help="include every block/member record")
+        else:
+            command.add_argument("--sector", required=True, type=lambda v: int(v, 0))
+            command.add_argument("--member", required=True, type=int)
+            command.add_argument("--output" if operation == "extract" else "--input", required=True, type=Path)
+            if operation == "extract":
+                command.add_argument("--stored", action="store_true")
     for command in (inspect, load):
         command.add_argument("rom", type=Path)
     load.add_argument("--own-copy", required=True, action="store_true")
@@ -46,6 +78,29 @@ def add_parser(subparsers):
 
 def run(args):
     try:
+        if args.psx_cmd == "upgrade":
+            from .psx_upgrade import upgrade
+            print(json.dumps(upgrade(args.directory), indent=2))
+            return 0
+        if args.psx_cmd == "recover":
+            from ..app.engine import RomNetwork
+            from .psx_recover import recover
+            result = recover(RomNetwork(args.db, args.workspace), args.project, limit=args.limit,
+                             max_insns=args.max_insns, machine_drafts=not args.leaves_only, search_profiles=args.search_profiles,
+                             log=lambda message: print(message, file=sys.stderr))
+            print(json.dumps(result, indent=2))
+            return 130 if result["interrupted"] else 0
+        if args.psx_cmd in ("extract", "replace"):
+            from .psx_assets import extract, stage
+            result = (extract(args.directory, args.file, args.output) if args.psx_cmd == "extract" else
+                      stage(args.directory, args.file, args.input, relocate=args.relocate,
+                            references=json.loads(args.references.read_text(encoding="utf-8")) if args.references else None))
+            print(json.dumps(result, indent=2))
+            return 0
+        if args.psx_cmd == "archive":
+            from .psx_archive_cli import run
+            print(json.dumps(run(args), indent=2))
+            return 0
         if args.psx_cmd == "reserve":
             from .psx_space import configure
             print(json.dumps(configure(args.directory, args.module, args.start, args.size), indent=2))
