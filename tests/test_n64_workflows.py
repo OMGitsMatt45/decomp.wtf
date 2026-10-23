@@ -19,12 +19,15 @@ from .test_n64_shiftable import fixture as shift_fixture
 def await_job(client, response):
     assert response.status_code == 200, response.text
     job_id = response.json()['job']
-    for _ in range(200):
+    # Exports now run real links for independently rebuilt modules. Native
+    # Windows process startup can exceed the former four-second polling cap.
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
         job = client.get('/api/job', params={'id': job_id}).json()
         if job['state'] != 'running':
             return job
         time.sleep(0.02)
-    pytest.fail('reviewed import/export did not finish')
+    pytest.fail(f'reviewed import/export did not finish within 60 seconds: {job}')
 
 
 def test_browser_layout_security_single_use_failures_and_exports(tmp_path):
