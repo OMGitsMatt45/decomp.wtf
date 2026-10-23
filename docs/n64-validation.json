@@ -2,8 +2,42 @@
   "format": 2,
   "implementation_commit": "4010936d5b42a047bc8dfd831809aacffcdc5ba3",
   "native_qualification": {
-    "status": "pending",
-    "reason": "Repository workflow dispatch returned HTTP 422: Actions has been disabled for this repository. No current-commit run was created."
+    "status": "passed",
+    "tested_commit": "c343197122de8191815deaf0e8786f3b85727061",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585345",
+    "native_hosts": {
+      "windows-2022": {
+        "job_id": 120205867761,
+        "passed": 167,
+        "failed": 0,
+        "skipped": 0
+      },
+      "ubuntu-24.04": {
+        "job_id": 120205867860,
+        "passed": 167,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "compiler_execution": "Native host packages for all four compiler paths, including KMC; no WSL/wibo/QEMU execution for N64 qualification.",
+    "required_suite_gate": "passed on both hosts",
+    "browser_workflow_fix": {
+      "previous_run": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39888564494",
+      "previous_windows_result": {
+        "passed": 166,
+        "failed": 1,
+        "skipped": 0
+      },
+      "cause": "The browser test stopped polling after four seconds while its real export was still running.",
+      "fix": "Use a 60-second monotonic deadline and include the last job state on timeout; completion and byte-equality assertions are unchanged."
+    },
+    "additional_checks": {
+      "windows_compatibility": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585496",
+      "classic_cfront_build": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585382",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585532",
+      "native_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585452",
+      "ds_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39889585420"
+    }
   },
   "local_qualification": {
     "host": "Linux x86_64",
