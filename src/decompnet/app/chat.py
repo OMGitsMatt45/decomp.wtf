@@ -101,8 +101,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
     @mcp.tool(meta=tools.ALWAYS_LOAD)
     async def import_game(ctx: Context, path: str, own_copy: bool = False, compiler: str = "") -> str:
         """Start decompiling a game from scratch: the user's own ROM, disc image or program file on this computer
-        (N64, PlayStation 1/2, GameCube, Wii, Game Boy Advance, DS). Finds every function and the compiler, then
-        tries every function's machine draft in the background (free matches).
+        (PlayStation 1/2, Game Boy Advance, DS, Game Boy/Color). Discovers supported code and selects the
+        configured console toolchain. Console reconstruction and native PC output have separate readiness.
 
         Args:
             path: the game file on this computer

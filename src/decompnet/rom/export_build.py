@@ -79,7 +79,6 @@ def setup() -> None:
         except (OSError, ValueError, RuntimeError) as error:
             fail(str(error))
         (ROOT / B["image"]).write_bytes(decoded)
-    pass
     base = ROOT / B["image"]
     if not base.exists():
         fail(f"put your own copy of the game here as {B['image']} (see README.md)")
@@ -421,8 +420,6 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *,
 
 def build() -> bool:
     (ROOT / B["output"]).unlink(missing_ok=True)
-    if container := B.get("container"):
-        (ROOT / container["output"]).unlink(missing_ok=True)
     if program := B.get("program"):
         (ROOT / program["output"]).unlink(missing_ok=True)
     if disc := B.get("disc"):
@@ -432,7 +429,6 @@ def build() -> bool:
     setup()
     todo, provides = objects()
     build_objects(todo)
-    pass
     gaps = fill_gaps(provides)
     code = [s for s in B["segments"] if s["kind"] == "code"]
     size = (ROOT / B["image"]).stat().st_size
@@ -459,13 +455,6 @@ def build() -> bool:
             except (OSError, ValueError, RuntimeError) as error:
                 fail(str(error))
             print(f"identical: {disc['output']} matches the complete original PS1 disc byte for byte")
-        if container := B.get("container"):
-            size = container["layout"]["original_size"]
-            rebuilt = out[:size]
-            if hashlib.sha256(rebuilt).hexdigest() != container["layout"]["sha256"]:
-                fail("the source-built original N64 container differs")
-            (ROOT / container["output"]).write_bytes(rebuilt)
-            print(f"identical: {container['output']} matches {container['image']} byte for byte")
         if program := B.get("program"):
             from decompnet.rom.ps2 import rebuild_elf
 
@@ -525,19 +514,7 @@ if __name__ == "__main__":
         except (ValueError, OSError, RuntimeError) as error:
             fail(str(error))
     if args[:1] in (["mod"], ["inventory"]):
-        import argparse
-        parser = argparse.ArgumentParser(description="Build bounded N64 source changes or review their relocations")
-        parser.add_argument("--module")
-        parser.add_argument("--cic", type=int, choices=(6101, 6102, 6103, 6105, 6106))
-        options = parser.parse_args(args[1:])
-        if B.get("format") != "shiftable":
-            fail("export a shiftable N64 project before requesting function reflow")
-        import shiftable
-        try:
-            success = shiftable.build(sys.modules[__name__], options.module, options.cic, audit_only=args[0] == "inventory")
-        except (ValueError, OSError) as error:
-            fail(str(error))
-        sys.exit(0 if success else 1)
+        fail("this project does not support that build command")
     if args[:1] == ["check"] and len(args) == 2:
         sys.exit(0 if check(args[1]) else 1)
     if args[:1] == ["status"]:

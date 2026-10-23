@@ -1,10 +1,11 @@
 """Fork mode: continue a public decomp inside its own source tree, judged by objdiff.
 
 projects/demo-fork is a small project in the shape community decomps use (objdiff.json, ninja build, partly
-decompiled src/), for Demo Quest 64. The test clones it like a repository from decomp.dev, adds the game,
+decompiled src/), for the original PS1 source fixture. The test clones it like a repository from decomp.dev, adds the game,
 builds it and has an agent work through the guarded tools.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -17,15 +18,16 @@ from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
 from decompnet.forks import catalog, csource
 from decompnet.network import NetworkError
+from .psx_fixture import built  # noqa: F401
 
 ROOT = Path(__file__).resolve().parent.parent
 FORK_SRC = ROOT / "projects" / "demo-fork"
-ROM = ROOT / "src" / "decompnet" / "app" / "static" / "demo" / "demo-quest-64.z64"
+ROM = ROOT / "projects" / "demo-psx" / "build" / "DEMOQ_PS1.EXE"
 REFERENCE = (FORK_SRC / "tools" / "reference" / "game.c").read_text()
 
 needs_tools = pytest.mark.skipif(
-    toolchains.installed("gcc-2.7.2-kmc") is None or toolchains.installed("objdiff-cli") is None
-    or not shutil.which("git"), reason="needs gcc-2.7.2-kmc, objdiff-cli and git")
+    toolchains.installed("gcc-2.7.2-psx") is None or toolchains.installed("objdiff-cli") is None
+    or not shutil.which("git"), reason="needs gcc-2.7.2-psx, objdiff-cli and git")
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -35,21 +37,24 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def fork(tmp_path_factory):
+def fork(tmp_path_factory, built):
     base = tmp_path_factory.mktemp("fork")
     upstream = base / "upstream"
     shutil.copytree(FORK_SRC, upstream)
+    manifest = json.loads((upstream / ".decomp.wtf.json").read_text())
+    manifest["game"]["sha1"] = hashlib.sha1(ROM.read_bytes()).hexdigest()
+    (upstream / ".decomp.wtf.json").write_text(json.dumps(manifest))
     _git(upstream, "init", "-q", "-b", "main")
     _git(upstream, "add", "-A")
     _git(upstream, "commit", "-q", "-m", "initial")
     net = RomNetwork(base / "app.db", base / "work")
     (base / "work").mkdir()
-    slug = net.forks.clone(str(upstream), name="Demo Quest decomp", platform="n64", log=lambda *_: None)
+    slug = net.forks.clone(str(upstream), name="Demo Quest decomp", platform="psx", log=lambda *_: None)
     need = net.forks.needs(slug)
-    assert need["kind"] == "manifest" and need["path"] == "baserom.z64"
+    assert need["kind"] == "manifest" and need["path"] == "baserom.exe"
     with pytest.raises(NetworkError, match="sha1"):
-        net.forks.setup(slug, b"\0" * 1024, "nope.z64", log=lambda *_: None)
-    m = net.forks.setup(slug, ROM.read_bytes(), "demo.z64", log=lambda *_: None)
+        net.forks.setup(slug, b"\0" * 1024, "nope.exe", log=lambda *_: None)
+    m = net.forks.setup(slug, ROM.read_bytes(), "demo.exe", log=lambda *_: None)
     assert m["total_functions"] == 13
     agent, _ = net.local_agent("claude-1")
     return net, slug, agent
@@ -159,7 +164,7 @@ def test_read_and_search(fork):
     with pytest.raises(NetworkError):
         net.forks.read_file(slug, ".git/config")
     with pytest.raises(NetworkError, match="source or text"):
-        net.forks.read_file(slug, "baserom.z64")
+        net.forks.read_file(slug, "baserom.exe")
     assert "../" not in net.forks.search(slug, "x", "../**/*.c")
 
 
@@ -182,11 +187,11 @@ def test_csource_finds_definitions_and_stubs():
 
 
 def test_catalog_normalizes_decomp_dev():
-    raw = {"projects": [{"owner": "o", "repo": "r", "name": "Game", "platform": "gc", "default_version": "GALE01",
+    raw = {"projects": [{"owner": "o", "repo": "r", "name": "Game", "platform": "nds", "default_version": "ABCE",
                          "commit": {"timestamp": "2026-10-01T00:00:00Z"},
                          "measures": {"matched_code_percent": 42.123, "total_functions": 10, "matched_functions": 4}}]}
     p = catalog.normalize(raw)[0]
-    assert p["id"] == "o/r" and p["platform_name"] == "GameCube" and p["matched"] == 42.12
+    assert p["id"] == "o/r" and p["platform_name"] == "Nintendo DS" and p["matched"] == 42.12
     assert p["repo_url"] == "https://github.com/o/r"
 
 
@@ -229,7 +234,7 @@ def test_drafts_from_project_assembly(tmp_path):
         "/* 124C 8000124C 27BD0018 */   addiu     $sp, $sp, 0x18\n")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "game.c").write_text('INCLUDE_ASM("asm/nonmatchings/game", func_80001234);\n')
-    out = drafts.draft(tmp_path, "n64", "game", "func_80001234", "src/game.c")
+    out = drafts.draft(tmp_path, "psx", "game", "func_80001234", "src/game.c")
     assert out and "func_80000000();" in out
     assert csource.is_stub('INCLUDE_ASM("asm/nonmatchings/game", func_80001234);')
     assert drafts.draft(tmp_path, "win32", "game", "func_80001234", "src/game.c") is None
@@ -265,54 +270,8 @@ def _dtk_project(root: Path, version: str, config: str) -> None:
     (root / "orig" / version).mkdir(parents=True)
 
 
-def test_a_project_that_reads_an_extracted_disc_gets_its_files_from_the_disc_image(tmp_path, monkeypatch):
-    """Older dtk projects read orig/<version>/sys/main.dol and files/... (the README says "extract the disc with
-    Dolphin"); decomp.wtf copies exactly those files out of the user's disc image, picking the disc of that version."""
-    from decompnet.forks import scratch_dtk
-    from decompnet.forks.project import ForkProject
-
-    _dtk_project(tmp_path, "GP6E01", "object: orig/GP6E01/sys/main.dol\nmodules:\n- object: orig/GP6E01/files/dll/a.rel\n"
-                                     "- object: 'orig/GP6E01/files/dll/b.rel'\n")
-    for name in ("eu.rvz", "us.rvz"):
-        (tmp_path / "orig" / "GP6E01" / name).write_bytes(b"RVZ\x01" + bytes(2 << 20))
-    monkeypatch.setattr(scratch_dtk, "disc_id", lambda p: {"eu.rvz": "GP6P01", "us.rvz": "GP6E01"}.get(p.name))
-    copied = []
-
-    def fake_copy(disc, inner, dest):
-        copied.append((disc.name, list(inner), dest.relative_to(tmp_path).as_posix()))
-        for x in inner:
-            (dest / Path(x).name).parent.mkdir(parents=True, exist_ok=True)
-            (dest / Path(x).name).write_bytes(b"x")
-    monkeypatch.setattr(scratch_dtk, "vfs_copy", fake_copy)
-    fp = ForkProject(tmp_path)
-    assert fp.unpack_disc("GP6E01", log=lambda *_: None) == 3
-    assert sorted(copied) == [("us.rvz", ["files/dll/a.rel", "files/dll/b.rel"], "orig/GP6E01/files/dll"),
-                              ("us.rvz", ["sys/main.dol"], "orig/GP6E01/sys")]
-    assert fp.unpack_disc("GP6E01", log=lambda *_: None) == 0  # everything is there now
-    # a project whose dtk reads the disc image itself is left alone
-    other = tmp_path / "new"
-    _dtk_project(other, "GALE01", "object_base: orig/GALE01\nobject: sys/main.dol\n")
-    assert ForkProject(other).unpack_disc("GALE01", log=lambda *_: None) == 0
 
 
-def test_a_disc_of_another_version_switches_the_project_or_is_refused(tmp_path, monkeypatch):
-    from decompnet.forks import scratch_dtk
-
-    net = RomNetwork(tmp_path / "decomp.db", tmp_path / "ws")
-    root = tmp_path / "ws" / "mp6"
-    _dtk_project(root, "GP6E01", "object: orig/GP6E01/sys/main.dol\n")
-    (root / "config" / "GP6P01").mkdir(parents=True)
-    (root / "config" / "GP6P01" / "config.yml").write_text("object: orig/GP6P01/sys/main.dol\n")
-    net.forks._register("mp6", "Mario Party 6", "fork", root, {"kind": "fork", "version": "GP6E01", "fork_kind": "dtk"}, "x")
-    proj, fp, cfg = net.forks.get("mp6")
-    disc = tmp_path / "game.rvz"
-    disc.write_bytes(b"RVZ\x01")
-    monkeypatch.setattr(scratch_dtk, "disc_id", lambda p: "GP6P01")
-    net.forks._match_version(proj, fp, cfg, disc, log=lambda *_: None)
-    assert net.forks.get("mp6")[2]["version"] == "GP6P01"
-    monkeypatch.setattr(scratch_dtk, "disc_id", lambda p: "GP6J01")
-    with pytest.raises(NetworkError, match="GP6J01.*GP6E01, GP6P01"):
-        net.forks._match_version(*net.forks.get("mp6"), disc, log=lambda *_: None)
 
 
 def test_a_project_made_from_scratch_builds_with_this_computers_tools(tmp_path, monkeypatch):
@@ -382,13 +341,16 @@ def test_a_public_decomp_together(tmp_path):
 
     upstream = tmp_path / "upstream"
     shutil.copytree(FORK_SRC, upstream)
+    manifest = json.loads((upstream / ".decomp.wtf.json").read_text())
+    manifest["game"]["sha1"] = hashlib.sha1(ROM.read_bytes()).hexdigest()
+    (upstream / ".decomp.wtf.json").write_text(json.dumps(manifest))
     _git(upstream, "init", "-q", "-b", "main")
     _git(upstream, "add", "-A")
     _git(upstream, "commit", "-q", "-m", "initial")
     (tmp_path / "host").mkdir()
     host = RomNetwork(tmp_path / "host.db", tmp_path / "host")
-    slug = host.forks.clone(str(upstream), name="Demo Quest decomp", platform="n64", log=lambda *_: None)
-    host.forks.setup(slug, ROM.read_bytes(), "demo.z64", log=lambda *_: None)
+    slug = host.forks.clone(str(upstream), name="Demo Quest decomp", platform="psx", log=lambda *_: None)
+    host.forks.setup(slug, ROM.read_bytes(), "demo.exe", log=lambda *_: None)
     hagent, _ = host.local_agent("claude-host")
     assert host.attempt(hagent, "count_alive_entities", _ref("count_alive_entities"), slug)["matched"]
     _git(upstream, "commit", "-q", "--allow-empty", "-m", "upstream moved on")  # members still start where the host did
@@ -424,7 +386,7 @@ def test_the_retired_decomp_dev_directory_is_never_asked_for(tmp_path, monkeypat
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("decomp.wtf asked the network"))
     cache = tmp_path / "catalog.json"
     assert catalog.catalog(cache) == [] and catalog.cached_at(cache) is None
-    cache.write_text(json.dumps({"projects": [{"owner": "o", "repo": "r", "platform": "gc"}]}))
+    cache.write_text(json.dumps({"projects": [{"owner": "o", "repo": "r", "platform": "nds"}]}))
     assert [p["id"] for p in catalog.catalog(cache)] == ["o/r"] and catalog.cached_at(cache)
 
 
@@ -473,3 +435,11 @@ def test_c_code_going_into_a_cpp_file_gets_c_linkage(tmp_path, monkeypatch):
     assert net.forks.c_linkage({"root": str(tmp_path)}, row("fn_1_1", "c"), row("fn_1_BB34", "b"), source) is None  # C++ to C++
     static = source.replace("int fn_1_BB34", "static int fn_1_BB34")
     assert net.forks.c_linkage({"root": str(tmp_path)}, row("fn_1_1EE74", "a"), row("fn_1_BB34", "b"), static) is None
+
+
+def test_retired_dtk_project_is_rejected_without_extracting_disc_files(tmp_path):
+    from decompnet.forks.project import ForkProject, ForkError
+    _dtk_project(tmp_path, 'GP6E01', 'object: orig/GP6E01/sys/main.dol\n')
+    with pytest.raises(ForkError, match='removed'):
+        ForkProject(tmp_path).needs('GP6E01')
+    assert ForkProject(tmp_path).unpack_disc('GP6E01', log=lambda *_: None) == 0

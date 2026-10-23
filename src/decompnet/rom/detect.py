@@ -1,4 +1,4 @@
-"""Work out what the user picked: an N64 ROM, a PlayStation executable, or a PlayStation disc image."""
+"""Identify supported cartridges, PlayStation executables and disc images."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ SMALL = 64 * 1024 * 1024  # ROMs and programs are read whole; disc images are re
 
 @dataclass
 class Picked:
-    platform: str  # n64 | psx | ps2
-    data: bytes  # what we split: a z64 ROM, a PS-X EXE or a PS2 ELF
+    platform: str
+    data: bytes  # the supported cartridge image, PS-X EXE or PS2 ELF to split
     filename: str  # name to store it under in the project folder
     info: dict
     big_endian: bool

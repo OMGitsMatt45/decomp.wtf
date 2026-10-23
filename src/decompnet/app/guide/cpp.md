@@ -2,7 +2,7 @@
 
 The symbol is the mangled name; it encodes the class, the parameter types and const-ness, so the
 definition must have exactly that signature or objdiff won't find it.
-- CodeWarrior (GameCube, Wii, DS): `update__7CPlayerFf` = `CPlayer::update(float)`;
+- CodeWarrior (DS): `update__7CPlayerFf` = `CPlayer::update(float)`;
   `__ct__7CPlayerFv` constructor, `__dt__7CPlayerFv` destructor, `__vt__7CPlayer` vtable,
   `__sinit_file_cpp` static initialisers.
 - Itanium (Switch Clang, many 3DS/PS2/PS3 compilers): `_ZN7CPlayer6updateEf`; `C1`/`C2` and `D0`/`D1`/`D2`
@@ -10,14 +10,14 @@ definition must have exactly that signature or objdiff won't find it.
 - MSVC (PC, Xbox): `?update@CPlayer@@QAEXM@Z`.
 The brief shows the demangled name when there is one.
 
-For C-origin N64 and GBA ROM projects, plain game functions retain their original C symbol names.
+For C-origin PS1 and GBA ROM projects, plain game functions retain their original C symbol names.
 Their `.cpp` drafts and exports are compiled as actual C++. C++ helper classes/templates retain
 their own linkage. GBA uses a restored GCC 2.95.3 C++ frontend with the agbcc Thumb backend; see
 the `agbcc` guide for language and matching constraints.
 
 Structure
 - `this` is the first argument (r3 on PPC, r0 on ARM, x0 on AArch64, ecx with MSVC thiscall).
-- Destructors take a hidden flag (CodeWarrior: in r4) and call `operator delete` when it's > 0.
+- Destructors take a hidden flag (DS CodeWarrior: in r1) and call `operator delete` when it's > 0.
 - Virtual calls load the vtable pointer, then the function at a fixed offset. CodeWarrior places the
   vtable pointer after the members of the class that first declares virtual functions, so it's often
   not at offset 0; Itanium and MSVC put it at offset 0.

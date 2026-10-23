@@ -1,4 +1,4 @@
-"""Split an N64 ROM into functions and data with splat (MIT) and read back what it found.
+"""Split a MIPS executable into functions and data with splat (MIT) and read back what it found.
 
 splat's own create_config finds the boot entry point, the main code segment, .bss and the compiler;
 `splat split` then disassembles every function (spimdisasm, MIT) with symbols for every address it

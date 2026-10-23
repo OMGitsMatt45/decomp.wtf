@@ -33,10 +33,7 @@ from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 
 DEFAULT_TOOLCHAIN = {"PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
                      "AGBCC": "agbcc"}
-# How ready each platform is for a full decomp you can port and mod; the GUI and the README show it.
-# recommended: the most tested path, from import to a project that builds the game (GameCube and Wii: the same kind
-# of project as decomp.dev's, linked file by file as it's finished; N64: tested on real games, rebuilt byte for byte).
-# beta: works and is tested on homemade games, less so on real ones yet.
+# Console reconstruction status. Native PC backend readiness is reported separately.
 PLATFORM_STATUS = {"psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "gb": "beta", "gbc": "beta"}
 COMPILERS = {
     "gcc-2.7.2-psx": "PlayStation games (PSY-Q era GCC)",
@@ -46,7 +43,7 @@ COMPILERS = {
 }
 SHORT_NAMES = {"gcc-2.7.2-psx": "GCC 2.7.2 (PS1)", "gcc-2.8.1-psx": "GCC 2.8.1 (PS1)", "ee-gcc-2.96": "EE-GCC 2.96",
                "agbcc": "agbcc"}
-# CodeWarrior versions in the `mwcc` pack (GameCube, Wii) and the `mwccarm` pack (DS), for games started from scratch.
+# CodeWarrior versions in the `mwccarm` pack for DS projects started from scratch.
 MW_VERSIONS = {
     "ds": ["DS/1.2/base", "DS/1.2/sp2", "DS/1.2/sp2p3", "DS/1.2/sp3", "DS/1.2/sp4", "DS/2.0/base", "DS/2.0/sp1",
            "DS/2.0/sp1p2", "DS/2.0/sp1p5", "DS/2.0/sp1p6", "DS/2.0/sp1p7", "DS/2.0/sp2", "DS/2.0/sp2p2", "DS/2.0/sp2p3",
@@ -409,7 +406,7 @@ class RomNetwork(Network):
         if project_file is not None and boot_picked is None:  # a community-layout project, worked on like a fork
             if reviewed_layout is not None:
                 raise NetworkError("reviewed layouts require a PS1 disc")
-            compiler = toolchain if toolchain and toolchain.startswith(("GC/", "Wii/", "DS/")) else None
+            compiler = toolchain if toolchain and toolchain.startswith("DS/") else None
             return self.forks.create_scratch(project_file, compiler=compiler, ds_input_format=ds_input_format, log=log)
         picked = boot_picked or detect.identify(data, name)
         if picked.platform in ("gb", "gbc") and (toolchain not in (None, "rgbds") or flags):

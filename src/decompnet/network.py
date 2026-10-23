@@ -525,8 +525,6 @@ class Network:
             fn = self._function(function, project)
             proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
             unit = self._effective_unit(fn, self._unit_contexts(proj["id"]))
-            if json.loads(proj["config"]).get("n64_layout"):
-                unit = fn["unit"]
         else:
             proj = self._project(project)
             if self._unit_contexts(proj["id"]):
