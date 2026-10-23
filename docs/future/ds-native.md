@@ -18,6 +18,12 @@ titles; title-specific configuration or fixes remain explicit. Original matching
 compiler success is useful evidence, not a requirement to recover 100% readable
 source before native translation can begin.
 
+The deliverable is the repository itself: host-buildable game C/C++ in `game/`,
+native platform/runtime integration in `native/`, CMake and pinned dependencies,
+asset-extraction tools, and a README explaining inputs, build/run and saves. A
+clean checkout with the documented original input must build the working PC game.
+Follow the shared [repository acceptance target](../pc-output.md#generated-repository-acceptance-target).
+
 ## Implementation order
 
 1. Inspect the DQIV source/runtime interface and identify which parts are reusable
