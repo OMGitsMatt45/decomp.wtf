@@ -1,14 +1,15 @@
 {
   "format": 1,
   "platform": "psx",
-  "implementation_commit": "72b27dc76e32f6b8d0a63a9bf56216853be89db4",
+  "implementation_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
   "local_qualification": {
     "tested_commit": "1600b3d3c131bdcea57c53de50de64babb86cb89",
     "passed": 196,
     "failed": 0,
     "skipped": 0,
     "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification.",
-    "followup": "All 12 HBD tests rerun after shortening parametrized test names in 72b27dc; application source unchanged from the full local run."
+    "followup": "All 12 HBD tests rerun after shortening parametrized test names in 72b27dc; application source unchanged from the full local run.",
+    "scope": "Historical local run; current required native results are recorded in native_qualification."
   },
   "coverage": [
     "Original compiler-version code, relocation, constant-data and genuine C++ parity",
@@ -56,7 +57,9 @@
     "Q CRC/BCD/control/track/index/relative/absolute-time checks, missing-Q preservation, stored/virtual pregaps and postgaps, CD time distinct from CHD alignment padding",
     "Independent MAME verify/extract of three grown Q-bearing CHDs and independent bitwise Q CRC validation",
     "Memory-leaf C/C++ recovery with load/store ordering, all-zero assembly entries retained without consuming attempt limits, and one m2c draft per console attempt",
-    "Combined exports honor a separate destination and reject project/input overlap, preserving previous edited source"
+    "Combined exports honor a separate destination and reject project/input overlap, preserving previous edited source",
+    "Inferred o32 single-word integer/pointer signatures preserve unused argument slots; wide and reviewed signatures remain unchanged",
+    "Verified object automatic address aliases survive standalone source exports and clean complete-disc builds"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -65,14 +68,14 @@
     "disc_swap_gameplay_qualified": false
   },
   "retail_validation": {
-    "status": "passed complete two-disc source build and private ZIP export",
+    "status": "passed refreshed complete two-disc source build and private ZIP export",
     "title": "Dragon Warrior VII (USA), discs 1 and 2",
     "archive_parts": 71,
     "archive_crc": "all ZIP members passed",
     "functions_per_disc": 2565,
     "matching_cpp_per_disc": [
-      96,
-      94
+      428,
+      428
     ],
     "m2c_examples": 3,
     "inputs_private": true,
@@ -89,15 +92,16 @@
         "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d"
       }
     ],
-    "matching_cpp_total": 190,
-    "shared_source_files": 92,
+    "matching_cpp_total": 856,
+    "shared_source_files": 425,
     "assembly_fallbacks": 0,
     "combined_disc_outputs_identical": true,
     "cue_files_preserved": true,
     "clean_rebuild": true,
-    "archive_bytes": 2217420775,
-    "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150",
-    "archive_scope_at_original_export": "HBD resources retained verbatim; subsequent parsing and authoring checks are recorded separately in heartbeat_retail_validation."
+    "archive_bytes": 2217851187,
+    "archive_sha256": "b6e3872d6cfe61bddabfce896e857b9636b9ed709c8353b0ecc92992241fbe4d",
+    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+    "archive_scope": "Refreshed combined source project includes recovered C/C++, remaining assembly, retained original resources and both verified complete discs."
   },
   "not_qualified": [
     "Runtime correctness of inferred overlay addresses without loader review",
@@ -151,18 +155,18 @@
   },
   "native_qualification": {
     "status": "passed",
-    "tested_commit": "72b27dc76e32f6b8d0a63a9bf56216853be89db4",
-    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469320",
+    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412",
     "native_hosts": {
       "ubuntu-24.04": {
-        "job_id": 120350501237,
-        "passed": 196,
+        "job_id": 120571133589,
+        "passed": 231,
         "failed": 0,
         "skipped": 0
       },
       "windows-2022": {
-        "job_id": 120350501564,
-        "passed": 196,
+        "job_id": 120571133975,
+        "passed": 231,
         "failed": 0,
         "skipped": 0
       }
@@ -177,23 +181,24 @@
       "test_psx_cpp": 10,
       "test_psx_disc": 23,
       "test_psx_growth": 10,
-      "test_psx_hbd": 12,
+      "test_psx_hbd": 15,
       "test_psx_layout": 8,
       "test_psx_media": 11,
       "test_psx_modify": 20,
-      "test_psx_recover": 5,
+      "test_psx_recover": 18,
       "test_psx_relocation_authoring": 6,
-      "test_psx_set": 4,
+      "test_psx_set": 5,
       "test_psx_storage": 8,
+      "test_psx_subcode": 18,
       "test_psx_workflows": 12
     },
     "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
     "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
     "additional_checks": {
-      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469306",
-      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469273",
-      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469196",
-      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469334"
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362789",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362456",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362442",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362541"
     },
     "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
     "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
@@ -203,7 +208,7 @@
       "identical": true,
       "clean_rebuild": true,
       "functions": 2101,
-      "matching_cpp": 18,
+      "matching_cpp": 189,
       "shared_sources": 0,
       "title": "Syphon Filter (USA) (v1.1)",
       "archive_parts": 36,
@@ -221,14 +226,15 @@
       "assembly_fallbacks": 0,
       "cue_files_preserved": true,
       "runtime_tested": false,
-      "console_inspect_passed": true
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
     },
     {
       "identical": true,
       "clean_rebuild": true,
       "functions": 5156,
-      "matching_cpp": 16,
-      "shared_sources": 8,
+      "matching_cpp": 394,
+      "shared_sources": 195,
       "title": "Syphon Filter 2 (USA), discs 1 and 2",
       "archive_parts": 86,
       "archive_crc_verified": true,
@@ -253,17 +259,19 @@
       "cue_files_preserved": true,
       "runtime_tested": false,
       "combined_zip": {
-        "size": 2067860236,
-        "sha256": "f0b9ed6fd97f3f4c7903f78ff39142079c3f741ba72d0d6cf15b8453d0586088",
+        "size": 2068078167,
+        "sha256": "c3c9b730ab26d1e56fe52bc47344d896ff65d147bc7c20ce9fbc7d44a09ecc8e",
+        "all_member_crcs_valid": true,
         "crc_verified": true
       },
-      "console_inspect_passed": true
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
     },
     {
       "identical": true,
       "clean_rebuild": true,
       "functions": 2560,
-      "matching_cpp": 7,
+      "matching_cpp": 193,
       "shared_sources": 0,
       "title": "Syphon Filter 3 (USA)",
       "archive_parts": 35,
@@ -281,7 +289,8 @@
       "assembly_fallbacks": 0,
       "cue_files_preserved": true,
       "runtime_tested": false,
-      "console_inspect_passed": true
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
     }
   ],
   "modified_builds": {
@@ -500,6 +509,133 @@
         "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362250"
       },
       "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "72b27dc76e32f6b8d0a63a9bf56216853be89db4",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469320",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120350501237,
+          "passed": 196,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120350501564,
+          "passed": 196,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 12,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 5,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 4,
+        "test_psx_storage": 8,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469306",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469273",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469196",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469334"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "0b702a394b2418f7b90918e43cc345af454645c6",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39994723087",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120555156002,
+          "passed": 224,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120555156338,
+          "passed": 224,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 11,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      }
+    },
+    {
+      "status": "passed",
+      "tested_commit": "3ea5c6de511d9cc5568d88de63ad13063341b6c5",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39997605944",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120565112564,
+          "passed": 229,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120565112151,
+          "passed": 229,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 16,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      }
     }
   ],
   "independent_chd_qualification": {
@@ -646,7 +782,7 @@
     ]
   },
   "console_retail_recovery": {
-    "scope": "Function-level exact compiler/full-link verification in existing private databases; earlier complete retail ZIPs were not regenerated.",
+    "scope": "Historical limited-pass function checks; the later full passes and regenerated retail projects are recorded in retail_source_recovery.",
     "candidate_matches": 165,
     "total_new_matches_including_identical_function_reuse": 186,
     "discs": [
@@ -803,13 +939,351 @@
         "output_sha256": "9f911f555c5e05245b3b75bdf3e0cca297bca189be9679488247093ca99b7ae8"
       }
     ],
-    "new_source_recovery": "Full private passes are running; exact matches remain in the private databases. Final totals and complete exports will be recorded separately.",
-    "pending_native_extension": {
-      "status": "awaiting native qualification",
-      "required_tests": 224,
-      "local_full_run_passed": 223,
-      "local_full_run_skipped": 0,
-      "followup": "Two export-destination cases and all 18 Q cases passed after final path/absent-Q checks; native runs cover the full final test set."
+    "new_source_recovery": "Full private passes, source refinements and complete clean exports are recorded in retail_source_recovery.",
+    "native_extension": {
+      "status": "passed",
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+      "required_tests_per_host": 231,
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412"
     }
+  },
+  "local_followup_checks": {
+    "original_compiler_execution": "Private i386 compatibility harness; native qualification is separate.",
+    "checks": [
+      {
+        "tested_commit": "3ea5c6de511d9cc5568d88de63ad13063341b6c5",
+        "recovery_suite": 16,
+        "shared_cpp_and_signature_guards": 20
+      },
+      {
+        "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+        "alias_clean_rebuild_cases": 2
+      }
+    ],
+    "failed": 0,
+    "skipped": 0
+  },
+  "earlier_retail_qualifications": [
+    {
+      "status": "passed complete two-disc source build and private ZIP export",
+      "title": "Dragon Warrior VII (USA), discs 1 and 2",
+      "archive_parts": 71,
+      "archive_crc": "all ZIP members passed",
+      "functions_per_disc": 2565,
+      "matching_cpp_per_disc": [
+        96,
+        94
+      ],
+      "m2c_examples": 3,
+      "inputs_private": true,
+      "bios_required": false,
+      "discs": [
+        {
+          "serial": "SLUS-01206",
+          "size": 711567024,
+          "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a"
+        },
+        {
+          "serial": "SLUS-01346",
+          "size": 676816224,
+          "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d"
+        }
+      ],
+      "matching_cpp_total": 190,
+      "shared_source_files": 92,
+      "assembly_fallbacks": 0,
+      "combined_disc_outputs_identical": true,
+      "cue_files_preserved": true,
+      "clean_rebuild": true,
+      "archive_bytes": 2217420775,
+      "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150",
+      "archive_scope_at_original_export": "HBD resources retained verbatim; subsequent parsing and authoring checks are recorded separately in heartbeat_retail_validation."
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2101,
+      "matching_cpp": 18,
+      "shared_sources": 0,
+      "title": "Syphon Filter (USA) (v1.1)",
+      "archive_parts": 36,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 733506480,
+          "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+          "serial": "SCUS-94240",
+          "filesystem_entries": 109,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 5156,
+      "matching_cpp": 16,
+      "shared_sources": 8,
+      "title": "Syphon Filter 2 (USA), discs 1 and 2",
+      "archive_parts": 86,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 732723264,
+          "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+          "serial": "SCUS-94451",
+          "filesystem_entries": 73,
+          "mapped_programs": 1
+        },
+        {
+          "size": 737784768,
+          "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+          "serial": "SCUS-94492",
+          "filesystem_entries": 29,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "combined_zip": {
+        "size": 2067860236,
+        "sha256": "f0b9ed6fd97f3f4c7903f78ff39142079c3f741ba72d0d6cf15b8453d0586088",
+        "crc_verified": true
+      },
+      "console_inspect_passed": true
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2560,
+      "matching_cpp": 7,
+      "shared_sources": 0,
+      "title": "Syphon Filter 3 (USA)",
+      "archive_parts": 35,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 691530336,
+          "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+          "serial": "SCUS-94640",
+          "filesystem_entries": 101,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true
+    }
+  ],
+  "retail_source_recovery": {
+    "scope": "Full passes through the existing imported program targets, exact compiler/link acceptance and refreshed complete-disc exports. This is not full retail source recovery or whole-game runtime qualification.",
+    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+    "before_matched": 417,
+    "matched": 1632,
+    "new_exact_matches": 1215,
+    "functions": 14947,
+    "remaining_assembly": 13315,
+    "discs": [
+      {
+        "project": "slus-01206",
+        "functions": 2565,
+        "before_matched": 169,
+        "matched": 428,
+        "remaining_assembly": 2137,
+        "full_pass_attempts": 2184,
+        "assembly_fragments": 0
+      },
+      {
+        "project": "slus-01346",
+        "functions": 2565,
+        "before_matched": 169,
+        "matched": 428,
+        "remaining_assembly": 2137,
+        "full_pass_attempts": 2152,
+        "assembly_fragments": 0
+      },
+      {
+        "project": "scus-94240",
+        "functions": 2101,
+        "before_matched": 56,
+        "matched": 189,
+        "remaining_assembly": 1912,
+        "full_pass_attempts": 1874,
+        "assembly_fragments": 46
+      },
+      {
+        "project": "scus-94451",
+        "functions": 2578,
+        "before_matched": 8,
+        "matched": 197,
+        "remaining_assembly": 2381,
+        "full_pass_attempts": 2189,
+        "assembly_fragments": 309
+      },
+      {
+        "project": "scus-94492",
+        "functions": 2578,
+        "before_matched": 8,
+        "matched": 197,
+        "remaining_assembly": 2381,
+        "full_pass_attempts": 2079,
+        "assembly_fragments": 309
+      },
+      {
+        "project": "scus-94640",
+        "functions": 2560,
+        "before_matched": 7,
+        "matched": 193,
+        "remaining_assembly": 2367,
+        "full_pass_attempts": 2187,
+        "assembly_fragments": 286
+      }
+    ],
+    "refinements": [
+      {
+        "project": "slus-01206",
+        "candidates": 221,
+        "tried": 221,
+        "profile_matches": [
+          "func_80050F2C",
+          "func_80029DD8"
+        ],
+        "variants": 2396,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94240",
+        "candidates": 95,
+        "tried": 95,
+        "profile_matches": [
+          "func_800DA52C"
+        ],
+        "variants": 592,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94451",
+        "candidates": 123,
+        "tried": 123,
+        "profile_matches": [
+          "func_80023508"
+        ],
+        "variants": 0,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "candidates": 124,
+        "tried": 124,
+        "profile_matches": [
+          "func_80023CAC"
+        ],
+        "variants": 0,
+        "improvements": 0,
+        "permutation_matches": 0
+      }
+    ],
+    "fresh_complete_exports": [
+      {
+        "project": "slus-01206",
+        "combined": true,
+        "matched": 856,
+        "functions": 5130,
+        "shared_sources": 425,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 711567024,
+            "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a",
+            "matching_sources": 428
+          },
+          {
+            "size": 676816224,
+            "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d",
+            "matching_sources": 428
+          }
+        ],
+        "archive": {
+          "size": 2217851187,
+          "sha256": "b6e3872d6cfe61bddabfce896e857b9636b9ed709c8353b0ecc92992241fbe4d",
+          "all_member_crcs_valid": true
+        }
+      },
+      {
+        "project": "scus-94240",
+        "combined": false,
+        "matched": 189,
+        "functions": 2101,
+        "shared_sources": 0,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 733506480,
+            "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+            "matching_sources": 189
+          }
+        ],
+        "archive": null
+      },
+      {
+        "project": "scus-94451",
+        "combined": true,
+        "matched": 394,
+        "functions": 5156,
+        "shared_sources": 195,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 732723264,
+            "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+            "matching_sources": 197
+          },
+          {
+            "size": 737784768,
+            "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+            "matching_sources": 197
+          }
+        ],
+        "archive": {
+          "size": 2068078167,
+          "sha256": "c3c9b730ab26d1e56fe52bc47344d896ff65d147bc7c20ce9fbc7d44a09ecc8e",
+          "all_member_crcs_valid": true
+        }
+      },
+      {
+        "project": "scus-94640",
+        "combined": false,
+        "matched": 193,
+        "functions": 2560,
+        "shared_sources": 0,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 691530336,
+            "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+            "matching_sources": 193
+          }
+        ],
+        "archive": null
+      }
+    ],
+    "all_inputs_and_derived_sources_private": true,
+    "whole_game_runtime_tested": false
   }
 }

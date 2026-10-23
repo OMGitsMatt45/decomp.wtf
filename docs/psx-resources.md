@@ -150,6 +150,8 @@ C/C++ language and original PS1 compiler settings. `--leaves-only` omits m2c;
 `--search-profiles` also probes installed GCC 2.7.2/2.8.1 at O0/O1/O2 and saves
 compiler settings only after an exact match. Failed probes keep existing
 settings. No inline-assembly replacement is saved as recovered C/C++.
+Standalone exports retain automatic address aliases referenced by verified
+C/C++ objects, including aliases absent from the disassembler's symbol list.
 
 Omit `--limit` and `--max-insns` for a full pass through remaining functions.
 The templates model aligned loads, stores and preserved load-before-store

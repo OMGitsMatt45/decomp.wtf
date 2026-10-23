@@ -23,7 +23,7 @@ compiler behavior. GB/GBC is an experimental assembly workflow.
 | Family | Current workflow / remaining focus | Guide or work plan | PR status |
 | --- | --- | --- | --- |
 | Nintendo 64 | Reviewed layouts, mixed compiler profiles, module builds and rooms implemented; further game-specific coverage | [Guide](n64.md) | [#3](https://github.com/OMGitsMatt45/decomp.wtf/pull/3) merged |
-| PlayStation | Combined multi-disc projects, console C/C++ recovery, reviewed code/resource growth, HBD/CHD authoring and private retail validation | [Guide](psx-disc.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) implementation |
+| PlayStation | Combined multi-disc projects, 1,632 exact retail C/C++ functions, reviewed code/resource growth and HBD/CHD authoring | [Guide](psx-disc.md) | [#4](https://github.com/OMGitsMatt45/decomp.wtf/pull/4) implementation |
 | PlayStation 2 | Whole-disc/overlay exports, exact source provenance, tool evaluation | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-ps2/docs/future/ps2.md) | [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5) draft |
 | Game Boy Advance | Distinct ARM compiler path and ARM/Thumb interworking | [Plan](https://github.com/OMGitsMatt45/decomp.wtf/blob/codex/future-gba/docs/future/gba.md) | [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6) draft |
 | Nintendo DS | ARM9/ARM7 source links, protected modules and exact reconstruction; further game-specific coverage | [Qualification](future/nds.md), [ARM7 recovery](ds-arm7.md) | [#7](https://github.com/OMGitsMatt45/decomp.wtf/pull/7) and [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) merged |

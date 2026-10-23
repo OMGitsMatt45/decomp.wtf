@@ -241,31 +241,35 @@ including reviewed file relocation and first-data-track growth. ISO directory
 records, raw parity, CUE indices and supported CHD metadata are verified before
 outputs are published. Unknown mastering and loader formats require adapters.
 
-All **196 required checks passed with zero skips on native Windows and Linux**
-at source/test commit `72b27dc76e32f6b8d0a63a9bf56216853be89db4` in the
-[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469320).
-The [validation record](psx-validation.json) records per-suite counts and private
-retail results: both DQVII discs rebuild exactly, with 190 matching C++ functions
-and 92 shared source files in the prior complete-build qualification. Syphon Filter 1/2/3 adds four exact complete-disc and clean rebuilds,
-41 matching C++ functions and a combined SF2 project with eight shared sources.
-The public console inspection command verifies each of these inputs. Both
-combined retail ZIPs passed every member's CRC check and full-disc hashes.
-A real Syphon Filter source edit changed one sector with valid EDC/ECC and all
-other sectors identical; gameplay was not tested. The
-[required workflow](../.github/workflows/psx.yml) fails on any skipped required
-suite. Retail bytes and derived sources never enter that workflow or Git.
+All **231 required checks passed with zero skips on native Windows and Linux**
+at source/test commit `93e89e870b8401d0afcdca8ccb2b0552af1368f4` in the
+[qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412). Windows/Linux compatibility,
+PS2, Game Boy, N64 and DS qualification/execution also passed. The
+[validation record](psx-validation.json) pins jobs, counts and private results.
+The [required workflow](../.github/workflows/psx.yml) fails on skipped required
+suites. Retail bytes and derived sources never enter CI or Git.
 
-Subsequent console recovery accepted 165 candidates directly and 21 identical
-function reuses, increasing private matched totals by 186. These are exact
-function-level compiler/link checks; the earlier retail ZIPs were not replaced.
-Both DQVII HBD archives now parse 3,729 blocks and 24,716 members each, with all
-5,342 standard compressed members independently decoded. Member edits on both
-discs changed only the intended two sectors and passed independent parity
-checks. The six formerly guarded type 1 members per disc are now recognized as
-raw GPU uploads. Their packed rectangles were verified by isolated execution of
-the original loader constructor; fixed-size edits pass independent parity checks
-and leave all other sectors identical. Broader source recovery passes continue;
-most executable functions still require further source recovery.
+All six supplied retail discs pass refreshed complete-image builds and clean
+rebuilds: DQVII has **428 matching C/C++ functions per disc** and
+**425 shared source files**; Syphon Filter 1 has **189**, Syphon Filter 2 has
+**197 per disc** with **195 shared files**, and Syphon Filter 3 has **193**.
+Both refreshed combined ZIPs pass every member's CRC check and retain the
+original full-disc hashes. Earlier qualified exports remain preserved privately.
+
+Full recovery passes, argument-position fixes, compiler-profile refinement and
+verified source reuse increased exact matches from **417 to 1,632** across those
+discs. **13,315 recognized entries still remain assembly**; complete disc
+reconstruction does not establish full retail source recovery or gameplay.
+The console saves genuine C/C++, respects claims and retains unsuccessful
+candidates for further work. Recovered address aliases survive standalone
+export and clean rebuilding.
+
+Both DQVII HBD archives parse 3,729 blocks and 24,716 members each; all 5,342
+standard compressed members were independently decoded. The six formerly
+guarded type 1 members per disc are raw GPU uploads. Isolated execution of the
+original loader constructor verifies their packed rectangles; fixed-size edits
+pass independent parity checks and leave all other sectors identical.
+Playthrough and disc-swap validation remain with the user.
 
 ```sh
 uv sync --locked --group dev

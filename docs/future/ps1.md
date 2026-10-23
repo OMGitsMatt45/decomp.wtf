@@ -1,6 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4 and qualified on native Windows/Linux: 196 required checks per host, zero skips**.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 231 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
@@ -42,8 +42,9 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
 - Reviewed scalar loader LBA/size/sector fields and additive R_MIPS_32/R_MIPS_26
   inverse authoring at existing sites, including HBD-LZSS code fragments.
 - Agent-free console C/C++ recovery, optional installed compiler-profile search,
-  claim handling, interruption reports and resumption. Private matched totals
-  increased by 186; unresolved functions retain assembly.
+  claim handling, interruption reports and resumption. Full private passes and
+  refinement increased exact function matches from 417 to 1,632 across six
+  discs; unresolved functions retain assembly.
 - Export helper upgrades with backups, preserving edited sources and assets.
   Commands and limits are in the [resource guide](../psx-resources.md).
 - Fixed-size raw GPU upload edits for all six previously guarded HBD members on
@@ -53,7 +54,11 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
   preserving other subchannels, audio and stored/virtual pregaps and postgaps.
   MAME verifies/extracts all three original timing fixtures.
 - Memory-load/store recovery templates, explicit zero-filled assembly fragments,
-  reduced draft overhead and continued full private retail recovery passes.
+  reduced draft overhead and preserved unused MIPS argument slots in inferred
+  integer/pointer signatures. Reviewed and wider signatures stay intact.
+- Automatic address aliases referenced by verified C/C++ survive standalone
+  export even when the original assembly did not name them. Refreshed source
+  projects pass clean complete-disc rebuilding; both combined ZIPs pass CRCs.
 
 ## Validation boundaries
 
