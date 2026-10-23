@@ -117,6 +117,48 @@ def test_console_machine_drafts_keep_original_argument_registers(tmp_path, capsy
 
 @pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")
 @pytest.mark.parametrize("toolchain", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+def test_recovered_address_alias_survives_export_and_clean_disc_build(tmp_path, toolchain):
+    import shutil
+    import subprocess
+    import sys
+    cfg = project.compiler_config(tmp_path, {"kind": "rom", "platform": "psx", "compiler": {
+        "toolchain": toolchain, "language": "c++", "sandbox": "none", "flags": ["-O2", "-G0"]}})
+    compiled = compiler.compile_source(cfg, "", "extern volatile int original_data[1]; int global_leaf(void) { return original_data[0]; }")
+    assert compiled.ok, compiled.log
+    function = elfobj.extract_function(compiled.obj, "global_leaf")
+    assert {r.type for r in function.relocs} == {5, 6}
+    code = bytearray(function.code)
+    for relocation in function.relocs:
+        word = struct.unpack_from("<I", code, relocation.offset)[0]
+        value = (0x80101000 + 0x8000) >> 16 if relocation.type == 5 else 0x1000
+        struct.pack_into("<I", code, relocation.offset, word & 0xFFFF0000 | value & 0xFFFF)
+    exe = bytearray(_resident_exe())
+    struct.pack_into("<I", exe, 0x808, 0x0C000000 | (0x80010500 >> 2 & 0x3FFFFFF))
+    exe[0xD00:0xD00 + len(code)] = code
+    original = _iso({"SYSTEM.CNF": b"BOOT=cdrom:\\GAME.EXE;1\n", "GAME.EXE": exe})
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
+    slug = net.import_rom(original, toolchain=toolchain, flags=["-O2", "-G0"], confirmed=True, log=lambda *_: None)
+    net._update_cfg(slug, lambda c: c["compiler"].update(sandbox="none"))
+    row = net.project_row(slug)
+    fn = net.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", row["id"], 0x80010500)
+    assert "B_80101000" not in fn["asm"]
+    agent, _ = net.local_agent("alias-recovery")
+    source = f"extern volatile int B_80101000[1]; int {fn['name']}(void) {{ return B_80101000[0]; }}"
+    assert net.attempt(agent, fn["name"], source, slug)["matched"]
+    exported = net.export_rom(slug, log=lambda *_: None)
+    assert exported["identical"] and not exported["fallback"], exported
+    tree = Path(exported["path"])
+    meta = json.loads((tree / "build.json").read_text())
+    assert meta["symbols"]["B_80101000"] == 0x80101000
+    for folder in ("asm", "assets", ".splat", "build"):
+        shutil.rmtree(tree / folder, ignore_errors=True)
+    rebuilt = subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True, timeout=120)
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert (tree / meta["disc"]["output"]).read_bytes() == original
+
+
+@pytest.mark.skipif(os.environ.get("DECOMP_TEST_PSX_CPP") != "1", reason="needs pinned PS1 tools")
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
 @pytest.mark.parametrize("body", ["void memory_leaf(int p, int v) { *(int *)(p + 4) = v; }",
     "int memory_leaf(int p) { return *(signed char *)(p + 3); }",
     "int memory_leaf(int p, int v) { int old = *(int *)p; *(int *)p = v; return old; }"],

@@ -18,9 +18,11 @@ import re
 import shutil
 import subprocess
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import yaml
+from elftools.elf.elffile import ELFFile
 
 from .. import cpp, toolchains
 from ..limits import capped
@@ -199,6 +201,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     functions.sort(key=lambda f: f["vram"])
 
     objects, private, as_fallback = [], [], []
+    source_symbols = {}
     for f in functions:
         row = rows.get((f["rom"], f["vram"]))
         f["obj_asm"] = f"build/{Path(f['asm']).with_suffix('.o').as_posix()}"
@@ -240,6 +243,13 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         f["src"] = src.relative_to(out).as_posix()
         f["obj"] = f"build/src/{f['seg']}/{f['name']}.o"
         private += [(f["obj"], section, base) for section, base in bases.items()]
+        # A matching C expression can use an address alias plus an offset
+        # even when the disassembler only named the final referenced address.
+        # Preserve the same automatic-name resolution used by the judge.
+        for symbol in ELFFile(BytesIO(compiled.obj)).get_section_by_name(".symtab").iter_symbols():
+            if symbol["st_shndx"] in ("SHN_UNDEF", "SHN_COMMON", 0xFF03, 0xFF04):
+                if address := AUTO_NAME.fullmatch(symbol.name):
+                    source_symbols[symbol.name] = int(address[1], 16)
 
     # 3. everything else splat wrote: entry code, data, bss, binary blobs
     config = yaml.safe_load((out / "splat.yaml").read_text(encoding="utf-8"))
@@ -318,6 +328,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                            "pieces": sorted(data, key=lambda d: d["vram"]), "bss": sorted(bss, key=lambda d: d["vram"])})
     syms = net.symbols(proj["id"])
     absolute = {s.name: s.address for s in syms.by_name.values() if s.name not in defined}
+    absolute.update({name: address for name, address in source_symbols.items() if name not in defined})
     # Splat can emit a branch into another function as .L<address>. Each
     # function is a separate object, so that object's local label is hidden
     # from the caller. Keep the original address available to the linker.
