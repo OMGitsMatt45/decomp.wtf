@@ -98,6 +98,11 @@ def setup() -> None:
     if not (ROOT / "asm" / "nonmatchings").exists():
         print("extracting the assembly and data from your copy (splat)")
         run([sys.executable, "-m", "splat", "split", "splat.yaml"])
+        if B["platform"] == "psx":
+            from decompnet.rom.split import namespace_overlay_labels
+            from decompnet.rom.psx_modules import literal_gp
+            namespace_overlay_labels(ROOT)
+            literal_gp(ROOT)
         for generated in (ROOT / "src").glob("*.c"):
             generated.unlink()  # splat's INCLUDE_ASM files; this tree builds one object per function
     for seg in B["segments"]:

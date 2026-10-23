@@ -62,7 +62,9 @@ def test_overlay_gp_bss_and_mixed_period_profiles(tmp_path):
         struct.pack_into("<IIII", header, 0x10, base, gp, base, len(body))
         struct.pack_into("<II", header, 0x28, base + 0x1900, 0x80)
         modules.append(bytes(header + body))
-    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": _resident_exe(),
+    resident = bytearray(_resident_exe())
+    struct.pack_into("<I", resident, 0x14, 0x80018000)
+    original = _iso({"SYSTEM.CNF": b"BOOT = cdrom:\\GAME.EXE;1\n", "GAME.EXE": bytes(resident),
                      "BATTLE.EXE": modules[0], "FIELD.EXE": modules[1]})
     net = RomNetwork(tmp_path / "app.db", tmp_path / "projects")
     slug = net.import_rom(original, confirmed=True, log=lambda *_: None)
@@ -82,7 +84,15 @@ def test_overlay_gp_bss_and_mixed_period_profiles(tmp_path):
             net.set_function_compiler(slug, fn["name"], {"flags": ["-O0", "-G0"]})
     result = net.export_rom(slug, log=lambda *_: None)
     assert result["identical"] and result["matched"] == 2 and not result["fallback"], result
-    assert (Path(result["path"]) / result["disc"]["output"]).read_bytes() == original
+    tree = Path(result["path"])
+    assert (tree / result["disc"]["output"]).read_bytes() == original
+    manifest = json.loads((tree / "build.json").read_text())
+    for folder in ("asm", "assets", "build"):
+        shutil.rmtree(tree / folder)
+    (tree / manifest["image"]).unlink()
+    rebuilt = subprocess.run([sys.executable, "build.py"], cwd=tree, capture_output=True, text=True, timeout=120)
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert (tree / manifest["disc"]["output"]).read_bytes() == original
 
 
 @pytest.mark.parametrize("tcid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])

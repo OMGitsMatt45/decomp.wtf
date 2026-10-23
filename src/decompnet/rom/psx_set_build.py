@@ -69,7 +69,7 @@ def build():
                 output.parent.mkdir(parents=True, exist_ok=True)
                 (Path(temporary) / output.relative_to(ROOT / "build")).replace(output)
         report.write_text(json.dumps({"identical": True, "discs": [d["output"] for d in meta["discs"]]}, indent=2), encoding="utf-8")
-        print(f"identical: all {len(outputs)} discs rebuilt from one source project")
+        print(f"identical: all {len(meta['discs'])} discs rebuilt from one source project")
         return 0
     except BaseException:
         for path in [*outputs, report]:
