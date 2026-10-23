@@ -11,7 +11,8 @@ DS_REQUIRED = {"test_ds", "test_ds_rom_check", "test_ds_bios", "test_ds_modes", 
                "test_ds_protect", "test_objdiff_errors"}
 N64_REQUIRED = {"test_n64_cpp", "test_ido_cpp", "test_ido_cfront", "test_ido_dependencies", "test_native_threads",
                 "test_n64_native", "test_n64code", "test_overlays", "test_n64_layouts", "test_n64_shiftable",
-                "test_n64_workflows", "test_n64_runtime", "test_n64_crc", "test_n64_owned_data", "test_n64_linker", "test_export", "test_rom", "test_app_engine"}
+                "test_n64_workflows", "test_n64_runtime", "test_n64_crc", "test_n64_owned_data", "test_n64_linker",
+                "test_n64_expansion", "test_collab", "test_export", "test_rom", "test_app_engine"}
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
             "test_gc", "test_export", "test_rom", "test_app_engine", "test_optional_tools",

@@ -28,4 +28,5 @@ def yaz0(data: bytes) -> bytes:
 
 def unpack_code(rom: bytes) -> list[tuple[int, bytes]]:
     """Find compressed Rare/Nintendo code, joining adjacent packed pages."""
-    return native.unpack(rom)
+    from .n64_gzip import code_blocks
+    return sorted([*native.unpack(rom), *code_blocks(rom)], key=lambda block: block[0])

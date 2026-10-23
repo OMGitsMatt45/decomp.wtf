@@ -21,8 +21,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 B = json.loads((ROOT / "build.json").read_text(encoding="utf-8"))
-LANGUAGE = "C++" if B["compiler"].get("language") == "c++" else "C"
+_LANGUAGES = {B["compiler"].get("language", "c"), *[f.get("compiler", {}).get("language", B["compiler"].get("language", "c"))
+                                                              for f in B.get("functions", [])]}
+LANGUAGE = "C/C++" if len(_LANGUAGES) > 1 else "C++" if "c++" in _LANGUAGES else "C"
 ASSEMBLY_ONLY = False
+EXPORTED_LABELS = {name for symbols in B.get("module_symbols", {}).values() for name in symbols}
 PREAMBLE = {
     "n64": '.include "macro.inc"\n.set noat\n.set noreorder\n.set gp=64\n.section .text, "ax"\n',
     "psx": '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n',
@@ -100,16 +103,30 @@ def setup() -> None:
 def c_source(fn: dict) -> str | None:
     if ASSEMBLY_ONLY:
         return None
-    extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+    extension = "cpp" if {**B["compiler"], **fn.get("compiler", {})}.get("language") == "c++" else "c"
     path = fn.get("source") or fn.get("c") or f"src/{fn['seg']}/{fn['name']}.{extension}"
     return path if (ROOT / path).exists() else None
+
+
+def local_exports(source: str) -> str:
+    """Expose recorded auxiliary labels across the export's one-file objects."""
+    if not EXPORTED_LABELS:
+        return ""
+    labels = set(re.findall(r"^\s*([A-Za-z_]\w*):", (ROOT / source).read_text(encoding="utf-8"), re.M))
+    return "".join(f".globl {name}\n" for name in sorted(labels & EXPORTED_LABELS))
 
 
 def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
     """[(kind, source, object)] to build, and function name -> the object that provides it."""
     out, provides = [], {}
     for a in B["assembly"]:
-        out.append(("asm", a["src"], a["obj"]))
+        source = a["src"]
+        if declarations := local_exports(source):
+            wrap = ROOT / "build/wrap" / ("data_" + hashlib.sha1(source.encode()).hexdigest() + ".s")
+            wrap.parent.mkdir(parents=True, exist_ok=True)
+            wrap.write_text(declarations + f'.include "{source}"\n', encoding="utf-8")
+            source = wrap.relative_to(ROOT).as_posix()
+        out.append(("asm", source, a["obj"]))
     for fn in B["functions"]:
         c = c_source(fn)
         if c:
@@ -118,7 +135,7 @@ def objects() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
         else:
             wrap = ROOT / "build" / "wrap" / f"{fn['name']}.s"
             wrap.parent.mkdir(parents=True, exist_ok=True)
-            wrap.write_text(PREAMBLE[B["platform"]] + f'.include "{fn["asm"]}"\n', encoding="utf-8")
+            wrap.write_text(PREAMBLE[B["platform"]] + local_exports(fn["asm"]) + f'.include "{fn["asm"]}"\n', encoding="utf-8")
             obj = f"build/{Path(fn['asm']).with_suffix('.o').as_posix()}"
             out.append(("asm", wrap.relative_to(ROOT).as_posix(), obj))
         provides[fn["name"]] = obj
@@ -155,7 +172,6 @@ def trim(path: Path) -> None:
 
 
 def build_objects(todo: list[tuple[str, str, str]]) -> None:
-    cfg = build_config() if any(kind == "c" for kind, _, _ in todo) else None
     as_ = binutils("as")
     for kind, src, obj in todo:
         target = ROOT / obj
@@ -165,6 +181,8 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
         if kind == "asm":
             run([as_, *B["as_flags"], "-o", obj, src])
         else:
+            fn = next(f for f in B["functions"] if c_source(f) == src)
+            cfg = build_config(fn)
             result = compile_function(cfg, src)
             if not result.ok:
                 fail(f"compiling {src} failed:\n{result.log}")
@@ -177,11 +195,12 @@ def build_objects(todo: list[tuple[str, str, str]]) -> None:
             trim(target)
 
 
-def build_config():
+def build_config(fn=None):
     # A missing language in an older export always means C, even after a
     # platform starts defaulting to C++. Preserve the game's external ABI.
+    selected = {**B["compiler"], **(fn.get("compiler", {}) if fn else {})}
     return compiler_config(ROOT, {"kind": "rom", "platform": B["platform"], "compiler": {
-        **B["compiler"], "language": B["compiler"].get("language", "c"), "include_dirs": ["include"]}})
+        **selected, "language": selected.get("language", "c"), "include_dirs": ["include"]}})
 
 
 def compile_function(cfg, src):
@@ -353,10 +372,14 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str, str]], mo
             lines += [f'"{n}_VRAM" = 0x{vram:08X};', f'"{n}_VRAM_END" = 0x{bss_end:08X};',
                       f'"{n}_BSS_START" = 0x{bss_start:08X};', f'"{n}_BSS_END" = 0x{bss_end:08X};',
                       f'"{n}_BSS_SIZE" = 0x{bss_end - bss_start:X};']
+    # Startup relocations may carry an established BSS address even when a
+    # heuristic layout could not infer its size. Keep those original values.
+    established = B["symbols"]
+    lines = [line for line in lines if not ((symbol := re.match(r'^"([^"]+)" =', line)) and symbol[1] in established)]
     return "\n".join(lines) + "\n"
 
 
-def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]]) -> None:
+def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]], *, scripts=None, destination=None) -> None:
     """Alternative programs share RAM, so link them independently, then restore file placement."""
     size = (ROOT / B["image"]).stat().st_size
     output = bytearray(size)
@@ -374,14 +397,14 @@ def build_modules(provides: dict[str, str], gaps: list[tuple[int, str, str]]) ->
         folder.mkdir(exist_ok=True)
         script = f"build/modules/{name}.ld"
         elf, binary = f"build/modules/{name}.elf", f"build/modules/{name}.bin"
-        (ROOT / script).write_text(linker_script(provides, gaps, name), encoding="utf-8")
+        (ROOT / script).write_text(scripts[name] if scripts is not None else linker_script(provides, gaps, name), encoding="utf-8")
         run([binutils("ld"), *B["ld_flags"], "-T", script, "-o", elf, *sorted(objects)])
         run([binutils("objcopy"), "-O", "binary", elf, binary])
         data = (ROOT / binary).read_bytes()
         if len(data) > end - start:
             fail(f"{name} rebuilt beyond its original file range")
         output[start:start + len(data)] = data
-    (ROOT / B["output"]).write_bytes(output)
+    (ROOT / (destination or B["output"])).write_bytes(output)
 
 
 def build() -> bool:
@@ -448,9 +471,9 @@ def check(name: str) -> bool:
         fail(f"no function {name}")
     src = c_source(fn)
     if not src:
-        extension = "cpp" if B["compiler"].get("language") == "c++" else "c"
+        extension = "cpp" if {**B["compiler"], **fn.get("compiler", {})}.get("language") == "c++" else "c"
         fail(f"write it first as src/{fn['seg']}/{name}.{extension}")
-    result = compile_function(build_config(), src)
+    result = compile_function(build_config(fn), src)
     if not result.ok:
         print(result.log)
         return False

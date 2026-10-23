@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import struct
+import shutil
 
 from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
@@ -35,12 +36,12 @@ def sections(path):
 
 def plan(builder, original_objects, module=None):
     b, root = builder.B, builder.ROOT
-    if b["platform"] != "n64" or b.get("container"):
-        raise ValueError("function reflow currently requires an uncompressed N64 cartridge")
+    if b["platform"] != "n64":
+        raise ValueError("function reflow requires an N64 cartridge")
     code = [s for s in b["segments"] if s["kind"] == "code"]
-    if len(code) != 1:
-        raise ValueError("function reflow currently requires one reviewed resident code module")
-    segment = code[0]
+    segment = next((s for s in code if s["name"] == module), None) if module else code[0] if len(code) == 1 else None
+    if segment is None:
+        raise ValueError("select a reviewed code module for function reflow")
     if segment["name"] not in b.get("reflow", {}):
         raise ValueError("function reflow needs a reviewed layout with an explicit text_end and zero reserve")
     if module is not None and segment["name"] != module:
@@ -85,7 +86,7 @@ def plan(builder, original_objects, module=None):
     if original[lo:hi].strip(b"\0"):
         raise ValueError("function growth requires a reviewed trailing zero reserve before data")
     entry = int.from_bytes(original[8:12], "big")
-    if first < entry < limit:
+    if segment["start"] == 0x1000 and first < entry < limit:
         raise ValueError("an entry inside a moving function window needs an explicit entry relocation")
     return {"segment": segment, "functions": functions, "start": first, "end": limit,
             "sizes": sizes, "padding": pads, "reserve": limit - cursor}
@@ -113,9 +114,26 @@ def inventory(builder, todo, provides, window, original_objects):
     b, root = builder.B, builder.ROOT
     first, end = window["start"], window["end"]
     ranges = [(f["vram"], f["vram"] + window["sizes"][f["name"]], f["name"]) for f in window["functions"]]
-    addresses = {**b["symbols"], **{f["name"]: f["vram"] for f in b["functions"]}}
-    for owner in b.get("module_symbols", {}).values():
-        addresses.update(owner)
+    owners = {provides[f["name"]]: f["seg"] for f in b["functions"]}
+    for segment in b["segments"]:
+        owners.update({obj: segment["name"] for obj in segment.get("objects", [])})
+        owners.update({p["obj"]: segment["name"] for p in segment.get("pieces", []) + segment.get("bss", [])})
+    name = window["segment"]["name"]
+    groups = b.get("exclusive_groups", {})
+    hidden = {owner for owner, group in groups.items() if owner != name and group == groups.get(name)}
+    excluded = {f["name"] for f in b["functions"] if f["seg"] in hidden}
+    excluded.update(symbol for owner, symbols in b.get("module_symbols", {}).items() if owner in hidden for symbol in symbols)
+    addresses = {**b["symbols"], **{f["name"]: f["vram"] for f in b["functions"] if f["seg"] not in hidden}}
+    for owner, symbols in b.get("module_symbols", {}).items():
+        if owner not in hidden:
+            addresses.update(symbols)
+    addresses = {symbol: address for symbol, address in addresses.items() if symbol not in excluded}
+    for path in (root / "asm/data").glob("**/*.s"):
+        obj = "build/" + path.relative_to(root).with_suffix(".o").as_posix()
+        if owners.get(obj) in hidden:
+            continue
+        for label, address in re.findall(r"\.word\s+(\.L([0-9A-Fa-f]{8}))\b", path.read_text(encoding="utf-8")):
+            addresses.setdefault(label, int(address, 16))
     relocations, hazards, aliases = [], [], {}
     changed = {f["name"] for f in window["functions"]
                if sections(root / provides[f["name"]]).get(".text") !=
@@ -131,6 +149,8 @@ def inventory(builder, todo, provides, window, original_objects):
                 hazards.append(f"{name} points inside changed function {target[2]}")
             aliases[name] = (target[2], address - target[0])
     for kind, source, obj in todo:
+        if owners.get(obj) in hidden:
+            continue
         with (root / obj).open("rb") as stream:
             elf = ELFFile(stream)
             relocated = {}
@@ -144,11 +164,14 @@ def inventory(builder, todo, provides, window, original_objects):
                 for relocation in table.iter_relocations():
                     offset, rtype = relocation["r_offset"], relocation["r_info_type"]
                     symbol = symbols.get_symbol(relocation["r_info_sym"])
-                    relocated.setdefault(section.name, set()).add(offset)
+                    if rtype:
+                        relocated.setdefault(section.name, set()).add(offset)
                     relocations.append({"object": obj, "section": section.name, "offset": offset,
                                         "type": rtype, "symbol": symbol.name})
                     if rtype not in ALLOWED_RELOCATIONS:
                         hazards.append(f"unsupported MIPS relocation {rtype} in {source}")
+                    if symbol['st_shndx'] == 'SHN_ABS' and first < symbol['st_value'] < end:
+                        hazards.append(f"fixed absolute relocation target {symbol.name} in {source}")
             for section in elf.iter_sections():
                 if not allocated(section) or section["sh_type"] == "SHT_NOBITS":
                     continue
@@ -206,10 +229,9 @@ def build(builder, module=None, cic=None, *, audit_only=False):
     b, root = builder.B, builder.ROOT
     output = root / "build/mod.z64"
     output.unlink(missing_ok=True)
+    (root / "build/shiftable-result.json").unlink(missing_ok=True)
     if b.get("format", "matching") != "shiftable":
         raise ValueError("export a shiftable N64 project first; the matching format keeps fixed addresses")
-    # The baseline always consumes original disassembly, independent of edits
-    # to recovered source, and must reproduce every original cartridge byte.
     builder.ASSEMBLY_ONLY = True
     try:
         if not builder.build():
@@ -217,16 +239,21 @@ def build(builder, module=None, cic=None, *, audit_only=False):
         _, original_objects = builder.objects()
     finally:
         builder.ASSEMBLY_ONLY = False
-    window = plan(builder, original_objects, module)
+    selected = [module] if module else list(b.get("reflow", {}))
+    if not selected:
+        raise ValueError("function reflow needs reviewed modules with explicit text_end and zero reserve")
+    windows = [plan(builder, original_objects, name) for name in selected]
     from decompnet.rom.n64_crc import identify, update
-    cartridge_cic = identify((root / b["image"]).read_bytes(), cic)
+    original = (root / (b.get("container", {}).get("image") or b["image"])).read_bytes()
+    cartridge_cic = identify(original, cic)
     todo, provides = builder.objects()
     builder.build_objects(todo)
-    for function in window["functions"]:
-        name = function["name"]
-        if not builder.c_source(function):
-            trim_reserve(root / provides[name], window["sizes"][name])
-    moved = {f["name"] for f in window["functions"]}
+    moved = {f["name"] for window in windows for f in window["functions"]}
+    for window in windows:
+        for function in window["functions"]:
+            name = function["name"]
+            if not builder.c_source(function):
+                trim_reserve(root / provides[name], window["sizes"][name])
     for function in b["functions"]:
         if not builder.c_source(function):
             continue
@@ -244,50 +271,91 @@ def build(builder, module=None, cic=None, *, audit_only=False):
         else:
             why = builder.validate(function, (root / provides[function["name"]]).read_bytes())
             if why:
-                raise ValueError("source outside the selected moving window must still match: " + why)
-    report, aliases = inventory(builder, todo, provides, window, original_objects)
+                raise ValueError("source outside the selected moving windows must still match: " + why)
+    reports, locations, module_aliases = [], {f["name"]: f["vram"] for f in b["functions"]}, {}
+    for window in windows:
+        report, aliases = inventory(builder, todo, provides, window, original_objects)
+        cursor = window["start"]
+        for index, function in enumerate(window["functions"]):
+            name = function["name"]
+            size = len(sections(root / provides[name]).get(".text", b""))
+            if not size or size % 4:
+                raise ValueError("moving functions need a nonempty word-aligned text section")
+            if index:
+                cursor += window["padding"][name]
+            locations[name] = cursor
+            cursor += size
+        if cursor > window["end"]:
+            raise ValueError(f"{report['module']}: function growth exceeds the reviewed code reserve by {cursor - window['end']} bytes")
+        report.update(functions={f["name"]: locations[f["name"]] for f in window["functions"]},
+                      used_growth=cursor - (window["end"] - window["reserve"]))
+        reports.append(report)
+        for alias, (owner, offset) in aliases.items():
+            value = locations[owner] + offset
+            if alias in locations and locations[alias] != value:
+                raise ValueError("a moving alias conflicts with another module's function identity")
+            module_aliases.setdefault(alias, {})[window["segment"]["name"]] = value
+    report = dict(reports[0]) if len(reports) == 1 else {"format": 2, "modules": reports,
+             "relocations": [r for item in reports for r in item["relocations"]], "hazards": []}
+    (root / "build/relocations.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     if audit_only:
         print("shiftable inventory verified: build/relocations.json")
         return True
-    gaps = builder.fill_gaps(original_objects)
-    script = builder.linker_script(provides, gaps)
-    cursor, locations = window["start"], {}
-    segment_base = window["segment"]["vram"]
-    for index, function in enumerate(window["functions"]):
-        name = function["name"]
-        size = len(sections(root / provides[name]).get(".text", b""))
-        if not size or size % 4:
-            raise ValueError("moving functions need a nonempty word-aligned text section")
-        if index:
-            cursor += window["padding"][name]
-        locations[name] = cursor
-        obj = builder.object_pattern(provides[name])
-        pattern = r"\. = 0x" + f"{function['vram'] - segment_base:X}" + r"; " + re.escape(obj) + r"\(\.text\)"
-        replacement = f". = 0x{cursor - segment_base:X}; {obj}(.text)"
-        script, count = re.subn(pattern, lambda _: replacement, script)
-        if count != 1:
-            raise ValueError("the export's function placement no longer matches its reviewed layout")
-        cursor += size
-    if cursor > window["end"]:
-        raise ValueError(f"function growth exceeds the reviewed code reserve by {cursor - window['end']} bytes")
-    for alias, (owner, offset) in aliases.items():
-        pattern = r'(?m)^"?' + re.escape(alias) + r'"? = 0x[0-9A-Fa-f]+;'
-        script = re.sub(pattern, lambda _: f'"{alias}" = "{owner}" + 0x{offset:X};', script)
-    (root / "build/mod.ld").write_text(script, encoding="utf-8")
-    objects = sorted({obj for _, _, obj in todo} | {obj for _, obj, _ in gaps})
-    builder.run([builder.binutils("ld"), *b["ld_flags"], "-T", "build/mod.ld", "-o", "build/mod.elf", *objects])
-    builder.run([builder.binutils("objcopy"), "-O", "binary", "build/mod.elf", "build/mod-candidate.z64"])
-    candidate = (root / "build/mod-candidate.z64").read_bytes()
-    original = (root / b["image"]).read_bytes()
+    # Original gaps inside reviewed text windows are zero padding. Placement
+    # accounts for them explicitly; their former absolute positions must not
+    # collide with the moved functions.
+    gaps = [gap for gap in builder.fill_gaps(original_objects) if not any(
+            gap[2] == w["segment"]["name"] and w["start"] <= gap[0] < w["end"] for w in windows)]
+    scripts = {}
+    object_owners = {provides[f["name"]]: f["seg"] for f in b["functions"]}
+    for segment in b["segments"]:
+        object_owners.update({obj: segment["name"] for obj in segment.get("objects", [])})
+        object_owners.update({p["obj"]: segment["name"] for p in segment.get("pieces", []) + segment.get("bss", [])})
+    for segment in b["segments"]:
+        name = segment["name"]
+        script = builder.linker_script(provides, gaps, name)
+        window = next((w for w in windows if w["segment"]["name"] == name), None)
+        if window:
+            base = segment["vram"]
+            for function in window["functions"]:
+                obj = builder.object_pattern(provides[function["name"]])
+                pattern = r"\. = 0x" + f"{function['vram'] - base:X}" + r"; " + re.escape(obj) + r"\(\.text\)"
+                replacement = f". = 0x{locations[function['name']] - base:X}; {obj}(.text)"
+                script, count = re.subn(pattern, lambda _: replacement, script)
+                if count != 1:
+                    raise ValueError("the export's function placement no longer matches its reviewed layout")
+        # Independent links use the same final locations for resident calls,
+        # pointers and qualified overlay references, even across separate ELFs.
+        bindings = dict(locations)
+        for alias, values in module_aliases.items():
+            if name in values:
+                bindings[alias] = values[name]
+            elif len(set(values.values())) == 1:
+                bindings[alias] = next(iter(values.values()))
+            elif any(r["symbol"] == alias and object_owners.get(r["object"]) == name
+                     for item in reports for r in item["relocations"]):
+                raise ValueError(f"{name} references ambiguous overlay alias {alias}; use a module-qualified symbol")
+        for symbol, address in bindings.items():
+            pattern = r'(?m)^"?' + re.escape(symbol) + r'"? = 0x[0-9A-Fa-f]+;'
+            script = re.sub(pattern, lambda _, s=symbol, a=address: f'"{s}" = 0x{a:X};', script)
+        scripts[name] = script
+    builder.build_modules(provides, gaps, scripts=scripts, destination="build/mod-analysis.z64")
+    if len(windows) == 1 and sum(s["kind"] == "code" for s in b["segments"]) == 1:
+        name = windows[0]["segment"]["name"]
+        shutil.copyfile(root / f"build/modules/{name}.elf", root / "build/mod.elf")
+        (root / "build/mod.ld").write_text(scripts[name], encoding="utf-8")
+    candidate = (root / "build/mod-analysis.z64").read_bytes()
+    recompressed = []
+    if container := b.get("container"):
+        from decompnet.rom.n64_layout import repack
+        candidate, recompressed = repack(original, container["layout"], candidate)
     if len(candidate) != len(original):
         raise ValueError("a shiftable build changed pinned cartridge file extents")
-    # The boot entry stays pinned; checksum serialization is an explicit output
-    # step for the modified cartridge and never affects baseline comparison.
     candidate = update(candidate, cartridge_cic)
     output.write_bytes(candidate)
-    report.update(output="build/mod.z64", output_sha256=hashlib.sha256(candidate).hexdigest(), functions=locations,
-                  used_growth=cursor - (window["end"] - window["reserve"]),
-                  cartridge_checksums_updated=True, cic=cartridge_cic)
+    report.update(output="build/mod.z64", output_sha256=hashlib.sha256(candidate).hexdigest(),
+                  functions={name: address for name, address in locations.items() if name in moved},
+                  cartridge_checksums_updated=True, cic=cartridge_cic, recompressed=recompressed)
     (root / "build/shiftable-result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print("shiftable: build/mod.z64; original baseline verified; function locations and fixups in build/shiftable-result.json")
     return True

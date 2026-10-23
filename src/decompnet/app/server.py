@@ -599,7 +599,10 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return out
 
     def p_compiler(slug, request, data):
-        net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None)
+        if data.get("function"):
+            net.set_function_compiler(slug, str(data["function"]), data.get("profile"))
+        else:
+            net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None)
         return net.overview(slug)
 
     def p_export(slug, request, data):

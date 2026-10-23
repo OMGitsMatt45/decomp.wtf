@@ -7,6 +7,7 @@ placement remains a separate import path; unknown addresses are never filled in.
 import hashlib
 import re
 import zlib
+from collections import defaultdict, deque
 
 MAX_DECODED = 32 * 1024 * 1024
 MAX_WORKING = 256 * 1024 * 1024
@@ -41,13 +42,14 @@ def decode(original, block, native_blocks=None, *, verify=True):
                 raise ValueError("Yaz0 header differs from the reviewed module size")
             from .n64code import yaz0
             data = yaz0(raw)
-        elif codec in ("deflate-1172", "deflate-1173"):
+        elif codec in ("deflate-1172", "deflate-1173", "gzip"):
             prefix = bytes.fromhex("1172" if codec.endswith("1172") else "1173")
-            header = 2 if codec.endswith("1172") else 5
+            header = 0 if codec == "gzip" else 2 if codec.endswith("1172") else 5
+            prefix = b"\x1f\x8b" if codec == "gzip" else prefix
             if len(raw) <= header or raw[:2] != prefix or \
                     (header == 5 and int.from_bytes(raw[2:5], "big") != expected):
                 raise ValueError("Rare compression header differs from the reviewed module")
-            stream = zlib.decompressobj(-15)
+            stream = zlib.decompressobj(31 if codec == "gzip" else -15)
             try:
                 data = stream.decompress(raw[header:], expected + 1)
             except zlib.error as error:
@@ -84,6 +86,95 @@ def working_image(original, provenance):
 def provenance(original, blocks, image):
     return {"format": 1, "sha256": hashlib.sha256(original).hexdigest(), "original_size": len(original),
             "working_sha256": hashlib.sha256(image).hexdigest(), "blocks": blocks}
+
+
+def encode(data, codec):
+    """Deterministic encoders for reviewed, fixed-allocation cartridge modules."""
+    data = bytes(data)
+    if not 0 < len(data) <= MAX_DECODED:
+        raise ValueError("N64 encoded module exceeds its bounded decoded size")
+    if codec in ("deflate-1172", "deflate-1173", "gzip"):
+        if codec.endswith("1173") and len(data) > 0xFFFFFF:
+            raise ValueError("Rare 1173 modules have a 24-bit decoded size")
+        compressor = zlib.compressobj(9, zlib.DEFLATED, 31 if codec == "gzip" else -15)
+        prefix = b"" if codec == "gzip" else b"\x11\x72" if codec.endswith("1172") else b"\x11\x73" + len(data).to_bytes(3, "big")
+        return prefix + compressor.compress(data) + compressor.flush()
+    if codec != "yaz0":
+        raise ValueError("edited automatic compressed pages need an explicit reviewed Yaz0/Rare module layout")
+    output = bytearray(b"Yaz0" + len(data).to_bytes(4, "big") + bytes(8))
+    positions = defaultdict(deque)
+    at = 0
+    while at < len(data):
+        control, tokens = 0, bytearray()
+        for bit in range(7, -1, -1):
+            if at >= len(data):
+                break
+            key = data[at:at + 3]
+            matches = positions[key]
+            while matches and matches[0] < at - 0x1000:
+                matches.popleft()
+            size, distance = 0, 0
+            if len(key) == 3:
+                for previous in list(matches)[-64:][::-1]:
+                    length, limit = 3, min(273, len(data) - at)
+                    while length < limit and data[previous + length] == data[at + length]:
+                        length += 1
+                    if length > size:
+                        size, distance = length, at - previous - 1
+                    if size == limit:
+                        break
+            if size >= 3:
+                if size >= 18:
+                    tokens.extend((distance >> 8, distance & 255, size - 18))
+                else:
+                    tokens.extend(((size - 2) << 4 | distance >> 8, distance & 255))
+            else:
+                control |= 1 << bit
+                tokens.append(data[at])
+                size = 1
+            for index in range(at, at + size):
+                expired = index - 0x1000
+                if expired >= 0:
+                    old_key = data[expired:expired + 3]
+                    old = positions.get(old_key)
+                    if old and old[0] == expired:
+                        old.popleft()
+                        if not old:
+                            del positions[old_key]
+                bucket = positions[data[index:index + 3]]
+                bucket.append(index)
+                while bucket and bucket[0] < index - 0x1000:
+                    bucket.popleft()
+            at += size
+        output.append(control)
+        output.extend(tokens)
+    return bytes(output)
+
+
+def repack(original, metadata, rebuilt):
+    """Recompress changed reviewed views, preserving fixed cartridge allocations."""
+    reference = working_image(original, metadata)
+    if len(rebuilt) != len(reference):
+        raise ValueError("a modified N64 analysis image changed its pinned extents")
+    result, records = bytearray(rebuilt[:len(original)]), []
+    for block in metadata["blocks"]:
+        start, size = block["working_start"], block["size"]
+        data = rebuilt[start:start + size]
+        if data == reference[start:start + size]:
+            continue
+        stored = encode(data, block["codec"])
+        lo, hi = block["offset"], block["end"]
+        if result[lo:hi] != original[lo:hi]:
+            raise ValueError("edit decoded modules, not the original stored compressed streams")
+        if len(stored) > hi - lo:
+            raise ValueError(f"compressed module at 0x{lo:X} exceeds its reviewed storage reserve by {len(stored) - (hi - lo)} bytes")
+        result[lo:lo + len(stored)] = stored
+        expected = {**block, "sha256": hashlib.sha256(data).hexdigest()}
+        if decode(bytes(result), expected) != data:
+            raise ValueError("the recompressed N64 module failed its decoding check")
+        records.append({"offset": lo, "codec": block["codec"], "stored_size": len(stored),
+                        "capacity": hi - lo, "decoded_sha256": expected["sha256"]})
+    return bytes(result), records
 
 
 def reviewed(original, document):

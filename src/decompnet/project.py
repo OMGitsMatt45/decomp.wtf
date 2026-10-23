@@ -52,6 +52,12 @@ def load_config(root: Path) -> dict:
         return tomllib.load(f)
 
 
+def function_config(cfg: dict, function: str | None = None) -> dict:
+    """Resolve a function's compiler without mutating the project defaults."""
+    override = cfg.get("function_compilers", {}).get(function, {}) if function else {}
+    return {**cfg, "compiler": {**cfg["compiler"], **override}} if override else cfg
+
+
 def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     """Build the sandboxed compile command for a project.
 

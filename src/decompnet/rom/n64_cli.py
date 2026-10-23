@@ -13,6 +13,14 @@ def add_parser(subparsers):
     inspect = sub.add_parser("inspect", help="validate a reviewed module layout against a cartridge")
     load = sub.add_parser("import", help="import your cartridge into a local workspace")
     export = sub.add_parser("export", help="export a complete matching or shiftable N64 project")
+    profile = sub.add_parser("profile", help="select a compiler profile for one function")
+    profile.add_argument("project")
+    profile.add_argument("function")
+    profile.add_argument("--toolchain")
+    profile.add_argument("--optimization", choices=("O0", "O1", "O2"))
+    profile.add_argument("--frontend", choices=("edg", "cfront"))
+    profile.add_argument("--language", choices=("c", "c++"))
+    profile.add_argument("--reset", action="store_true")
     for command in (inspect, load):
         command.add_argument("rom", type=Path)
         command.add_argument("--layout", type=Path, required=command is inspect)
@@ -21,7 +29,7 @@ def add_parser(subparsers):
     load.add_argument("--optimization", choices=("O0", "O1", "O2"), help="override the named toolchain's optimization profile")
     export.add_argument("project")
     export.add_argument("--format", choices=("matching", "shiftable"), default="matching")
-    for command in (load, export):
+    for command in (load, export, profile):
         command.add_argument("--workspace", required=True, type=Path)
 
 
@@ -50,6 +58,18 @@ def run(args):
                 slug = net.import_rom(args.rom, toolchain=args.toolchain, flags=flags, confirmed=args.own_copy,
                                       reviewed_layout=layout, log=lambda message: print(message, file=sys.stderr))
                 result = {"project": slug, "root": net.project_row(slug)["root"]}
+            elif args.n64_cmd == "profile":
+                from ..project import function_config
+                from .n64_profiles import profile, optimization
+                fn = net._function(args.function, args.project)
+                cfg = net.cfg(net.project_row(args.project))
+                current = function_config(cfg, fn["name"])["compiler"]
+                override = {key: value for key, value in (("toolchain", args.toolchain),
+                    ("cpp_frontend", args.frontend), ("language", args.language)) if value is not None}
+                selected = profile(current, override)
+                if args.optimization:
+                    selected = optimization(selected, args.optimization)
+                result = net.set_function_compiler(args.project, fn["name"], None if args.reset else selected)
             else:
                 if net.cfg(net.project_row(args.project)).get("platform") != "n64":
                     raise ValueError("choose an N64 cartridge project")

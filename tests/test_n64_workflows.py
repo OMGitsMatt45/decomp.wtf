@@ -49,7 +49,8 @@ def test_browser_layout_security_single_use_failures_and_exports(tmp_path):
         exported = await_job(client, client.post('/api/export', params={'slug': slug}, json={}, headers=headers))
         assert exported['state'] == 'done' and exported['result']['identical'], exported
         failed = await_job(client, client.post('/api/export', params={'slug': slug}, json={'format': 'shiftable'}, headers=headers))
-        assert failed['state'] == 'error' and 'uncompressed resident' in failed['error'], failed
+        assert failed['state'] == 'done' and failed['result']['identical'], failed
+        assert not failed['result']['shiftable']['ready'] and 'text_end' in failed['result']['shiftable']['detail'], failed
         assert (Path(exported['result']['path']) / 'build/game.z64').read_bytes() == original
         bad_layout = dict(layout, sha256='0' * 64)
         token = client.post('/api/n64/layout', json={'layout': bad_layout}, headers=headers).json()['id']
@@ -111,9 +112,8 @@ def test_overlay_claims_and_reads_remain_module_specific(tmp_path):
         assert function['name'] in net.get_function(function['name'], slug, agent)
     with pytest.raises(NetworkError, match='module-qualified'):
         net._function('0x7F000000', slug)
-    with pytest.raises(NetworkError, match='cannot share reviewed N64 layouts'):
-        Room(net, slug)
-    with pytest.raises(NetworkError, match='cannot share reviewed N64 layouts'):
+    assert Room(net, slug).slug == slug
+    with pytest.raises(NetworkError, match='module-aware protocol'):
         net.link_project(slug, {})
     assert 'link' not in net.cfg(project)
     net.release(first, functions[0]['name'], 'reviewed', slug)

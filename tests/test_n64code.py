@@ -75,3 +75,18 @@ def test_yaz0():
     # "abcabcabc": three literals, then a back-reference 3 back, 6 long (0x40 >> 4 = 4, + 2)
     data = b"Yaz0" + (9).to_bytes(4, "big") + bytes(8) + bytes([0b11100000]) + b"abc" + bytes([0x40, 0x02])
     assert yaz0(data) == b"abcabcabc"
+
+
+def test_gzip_code_uses_native_classification_and_checks_stream_integrity():
+    import gzip
+    from decompnet.rom.n64code import unpack_code
+    code = _code(0x805FB300, 160)
+    packed = gzip.compress(code, mtime=0)
+    assets = gzip.compress(bytes(range(256)) * 32, mtime=0)
+    image = bytes(0x1000) + assets + bytes(16) + packed
+    offset = 0x1000 + len(assets) + 16
+    assert unpack_code(image) == [(offset, code)]
+    damaged = bytearray(image)
+    damaged[-8] ^= 1  # gzip CRC, not deflate data
+    assert unpack_code(bytes(damaged)) == []
+    assert unpack_code(image[:-4]) == []

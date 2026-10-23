@@ -24,6 +24,7 @@ import yaml
 
 from .. import cpp, toolchains
 from ..limits import capped
+from ..project import function_config
 from . import match, split
 from .symbols import AUTO_NAME
 
@@ -63,13 +64,15 @@ def _symbol_lines(net, proj) -> list[str]:
     funcs = net.store.all("SELECT name, vram, size, rom_offset FROM functions WHERE project_id=?", proj["id"])
     addresses = {r["vram"] for r in funcs}
     lines = []
+    modules = net.cfg(proj).get("symbol_modules", {})
     for r in sorted(funcs, key=lambda r: (r["vram"], r["rom_offset"] or 0)):
         hint = f" rom:0x{r['rom_offset']:X}" if r["rom_offset"] is not None else ""
         lines.append(f"{r['name']} = 0x{r['vram']:08X}; // type:func{hint}")
     for s in sorted(syms.by_name.values(), key=lambda s: s.address):
         if s.address in addresses or AUTO_NAME.match(s.name):
             continue
-        lines.append(f"{s.name} = 0x{s.address:08X};")
+        hint = f" // segment:{modules[s.name]}" if s.name in modules else ""
+        lines.append(f"{s.name} = 0x{s.address:08X};{hint}")
     return lines
 
 
@@ -121,11 +124,6 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             if working_image(original, metadata) != image:
                 raise ExportError("N64 analysis image differs from the original compressed modules")
             container = {"image": "baserom.z64", "output": "build/game.z64", "layout": metadata}
-    if format == "shiftable":
-        source_config = yaml.safe_load(configs[0].read_text(encoding="utf-8"))
-        code = [s for s in source_config.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
-        if container or len(code) != 1:
-            raise ExportError("shiftable exports currently need one uncompressed resident N64 code module; use matching for this layout")
 
     if out.exists():
         keep = {".git"}
@@ -170,17 +168,22 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     units = net._unit_contexts(proj["id"])
     header = net._context(proj["id"])["header"]
     (out / "include").mkdir(exist_ok=True)
-    convert = cpp.game_abi if language == "c++" else lambda text: text
-    (out / "include" / "common.h").write_text(convert(header), encoding="utf-8", newline="\n")
+    (out / "include" / "common.h").write_text(header, encoding="utf-8", newline="\n")
     for u in units:
-        (out / "include" / f"common_{u}.h").write_text(convert(net._context(proj["id"], u)["header"]), encoding="utf-8", newline="\n")
-    functions = []
+        (out / "include" / f"common_{u}.h").write_text(net._context(proj["id"], u)["header"], encoding="utf-8", newline="\n")
+    functions, other_assembly = [], []
+    source_segments = _segments(config)
     for path in sorted((out / "asm" / "nonmatchings").glob("**/*.s")):
         rom_off, vram = _first_address(path)
         if vram is None:
             continue
         label = re.search(r"^\s*glabel\s+(\w+)", path.read_text(encoding="utf-8"), re.M)
-        functions.append({"name": label[1] if label else path.stem, "seg": path.parent.name, "vram": vram, "rom": rom_off,
+        if label is None:
+            other_assembly.append(path)
+            continue
+        owner = next((s["name"] for s in source_segments if s.get("type") == "code" and rom_off is not None and
+                      s["start"] <= rom_off < (s["end"] or len(image))), path.parent.name)
+        functions.append({"name": label[1] if label else path.stem, "seg": owner, "vram": vram, "rom": rom_off,
                           "asm": path.relative_to(out).as_posix()})
     functions.sort(key=lambda f: f["vram"])
 
@@ -193,7 +196,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             continue
         unit = net._effective_unit(row, units)
         hdr = net._context(proj["id"], unit)["header"]
-        compiled = net._compile(proj, hdr, row["matched_source"])
+        compiled = net._compile(proj, hdr, row["matched_source"], row)
         if not compiled.ok:
             as_fallback.append((f["name"], "doesn't compile any more"))
             f["kind"] = "asm"
@@ -214,6 +217,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
             as_fallback.append((f["name"], "its own data isn't laid out like the game's"))
             f["kind"] = "asm"
             continue
+        selected = function_config(cfg, row["name"])
+        fn_language = cpp.language(selected)
+        extension = "cpp" if fn_language == "c++" else "c"
+        convert = cpp.game_abi if fn_language == "c++" else lambda text: text
         src = out / "src" / f["seg"] / f"{f['name']}.{extension}"
         src.parent.mkdir(parents=True, exist_ok=True)
         include = "common.h" if not unit else f"common_{unit}.h"
@@ -227,7 +234,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     config = yaml.safe_load((out / "splat.yaml").read_text(encoding="utf-8"))
     segments = _segments(config)
     pieces = []  # (segment name, vram or None, rom offset or None, object, sections)
-    for path in sorted((out / "asm").glob("*.s")) + sorted((out / "asm" / "data").glob("**/*.s")):
+    for path in sorted((out / "asm").glob("*.s")) + sorted((out / "asm" / "data").glob("**/*.s")) + other_assembly:
         rom_off, vram = _first_address(path)
         obj = f"build/{path.relative_to(out).with_suffix('.o').as_posix()}"
         objects.append({"kind": "asm", "src": path.relative_to(out).as_posix(), "obj": obj})
@@ -303,8 +310,15 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     # function is a separate object, so that object's local label is hidden
     # from the caller. Keep the original address available to the linker.
     for path in (out / "asm").glob("**/*.s"):
-        for label, address in re.findall(r"(\.L([0-9A-F]{8}))\b", path.read_text(encoding="utf-8", errors="replace")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for label, address in re.findall(r"(\.L([0-9A-F]{8}))\b", text):
             absolute.setdefault(label, int(address, 16))
+        # The disassembler can name an external hardware/RSP address without
+        # creating an undefined-symbol file. These automatic names encode
+        # their exact original address, as SymbolTable.resolve already does.
+        for label in set(re.findall(r"\b[A-Za-z_]\w*\b", text)) - defined:
+            if address := AUTO_NAME.fullmatch(label):
+                absolute.setdefault(label, int(address[1], 16))
     for auto in ("undefined_syms_auto.txt", "undefined_funcs_auto.txt"):
         p = out / auto
         if p.exists():
@@ -314,8 +328,10 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     fn_json = []
     for f in functions:
         entry = {"name": f["name"], "seg": f["seg"], "vram": f["vram"], "rom": f["rom"], "asm": f["asm"]}
+        if f["name"] in cfg.get("function_compilers", {}):
+            entry["compiler"] = cfg["function_compilers"][f["name"]]
         if f["kind"] == "c":
-            entry["source" if language == "c++" else "c"] = f["src"]
+            entry["source"] = f["src"]
             entry["own"] = {sec: base for (obj, sec, base) in private if obj == f["obj"]}
         fn_json.append(entry)
 
@@ -350,6 +366,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
         from .n64_layout import number
         reviewed = json.loads((work / "n64-layout.json").read_text(encoding="utf-8"))
         build["reflow"] = {m["name"]: number(m["text_end"], "text_end") for m in reviewed["modules"] if "text_end" in m}
+        build["exclusive_groups"] = {m["name"]: m["exclusive_group"] for m in reviewed["modules"] if m.get("exclusive_group")}
     if platform == "ps2" and (program := cfg["rom"].get("program")) and (work / program).is_file():
         original = (work / program).read_bytes()
         if original.startswith(b"\x7fELF"):
@@ -370,7 +387,9 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     (out / "objdiff.json").write_text(json.dumps({"build_base": False, "build_target": False, "units": units_json}, indent=2),
                                       encoding="utf-8")
     matched = sum(1 for f in functions if f["kind"] == "c")
-    _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback, language)
+    source_languages = sorted({cpp.language(function_config(cfg, f["name"])) for f in functions if f["kind"] == "c"} or {language})
+    _write_docs(out, proj["name"], platform, base, matched, len(functions), as_fallback,
+                "mixed" if len(source_languages) > 1 else source_languages[0])
     if format == "shiftable":
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Shiftable source builds\n\n`python build.py` keeps the exact original reconstruction check. "
@@ -381,14 +400,19 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
                        "relocations and exhausted reserve fail instead of producing a mod. `build/relocations.json` and "
                        "`build/shiftable-result.json` record the fixups, addresses and size budget. Cartridge checksums "
                        "are updated for the verified CIC; use `--cic` only when you have established its family yourself. "
-                       "Compressed modules and mutually exclusive overlays currently use the matching export format.\n")
+                       "Modules and mutually exclusive overlays link independently; `--module NAME` selects one "
+                       "reviewed moving window. Edited reviewed Yaz0, Rare 1172/1173 and gzip streams recompress "
+                       "inside their pinned cartridge allocations and are decoded again for verification. "
+                       "Exhausting compressed storage also fails and removes any previous mod output.\n")
     if container:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## Compressed cartridge modules\n\nKeep the original cartridge as `baserom.z64`. "
                        "The build regenerates private decoded views, checks every source-built decoded byte, "
                        "then emits the original cartridge container as `build/game.z64`. Original compressed "
                        "streams are retained only after their decoded views match exactly. A changed decoded "
-                       "module fails verification; this format does not claim arbitrary recompression.\n")
+                       "module fails matching verification. In the shiftable format, reviewed module codecs "
+                       "can re-encode changed code within the original storage allocation. Automatic joined-page "
+                       "detections require an explicit reviewed layout before recompression.\n")
     if "program" in build:
         with (out / "README.md").open("a", encoding="utf-8") as docs:
             docs.write("\n## PS2 executable\n\nAlso keep your original main ELF as `baserom.elf` (ignored by Git). "
@@ -411,6 +435,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
     if not identical:
         log((proc.stdout + proc.stderr)[-3000:])
     result = {"path": str(out), "format": format, "language": language, "identical": identical, "matched": matched,
+              "source_languages": source_languages,
               "functions": len(functions), "fallback": as_fallback, "log": (proc.stdout + proc.stderr)[-3000:]}
     if format == "shiftable" and identical:
         audit = subprocess.run(capped([sys.executable, "build.py", "inventory"]), cwd=out, capture_output=True,
@@ -420,7 +445,7 @@ def export_rom(net, slug: str, out: Path, log=print, *, format="matching") -> di
 
 
 def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, total: int, fallback, language: str = "c") -> None:
-    lang, extension = ("C++", "cpp") if language == "c++" else ("C", "c")
+    lang, extension = ("C/C++", "{c,cpp}") if language == "mixed" else ("C++", "cpp") if language == "c++" else ("C", "c")
     names = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2"}
     notes = "".join(f"\n- `{n}`: kept as assembly, {why}" for n, why in fallback)
     (out / "README.md").write_text(f"""# {title} (decompilation)
@@ -428,6 +453,8 @@ def _write_docs(out: Path, title: str, platform: str, base: str, matched: int, t
 A matching decompilation of {title} for the {names[platform]}, started with [decomp.wtf](https://decomp.wtf).
 {matched} of {total} functions are {lang} that compiles to exactly the original code; the rest are still assembly.
 `build.py` rebuilds the game from this tree and checks it against your original, byte for byte.
+Compiler defaults are in `build.json`; a function's `compiler` object overrides
+its toolchain, flags, language and C++ frontend. Mixed profiles build together.
 
 ## Build
 

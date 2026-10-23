@@ -60,6 +60,7 @@ jobs:
           tests/test_n64_runtime.py tests/test_n64_crc.py tests/test_cpp_output.py
           tests/test_n64_owned_data.py
           tests/test_n64_linker.py
+          tests/test_n64_expansion.py tests/test_collab.py
           tests/test_rom.py tests/test_app_engine.py tests/test_export.py -k "not psx and not ps2"
       - name: Require every N64 suite without skips
         run: uv run --no-sync python tools/check_operational_results.py --n64-only operational-results.xml
