@@ -38,6 +38,16 @@ def add_parser(subparsers):
     profile.add_argument("--small-data", type=int, choices=(0, 8), help="select the original compiler's -G limit")
     profile.add_argument("--assembler", choices=("gnu", "maspsx-2.56", "maspsx-2.86"))
     profile.add_argument("--reset", action="store_true")
+    merge = sub.add_parser("merge", help="merge two reviewed adjacent open ranges, retaining their original evidence")
+    merge.add_argument("project")
+    merge.add_argument("head")
+    merge.add_argument("tail")
+    merge.add_argument("--reason", required=True, help="reviewed control-flow evidence that these ranges form one function")
+    split = sub.add_parser("split", help="split a reviewed open range at an original instruction boundary")
+    split.add_argument("project")
+    split.add_argument("function")
+    split.add_argument("--at", required=True, type=lambda value: int(value, 0), help="loaded address, for example 0x80010510")
+    split.add_argument("--name", default="", help="name of the new function, including its module when needed")
     recover = sub.add_parser("recover", help="recover and verify C/C++ locally without an AI agent")
     recover.add_argument("project")
     recover.add_argument("--workspace", required=True, type=Path)
@@ -74,7 +84,7 @@ def add_parser(subparsers):
     load.add_argument("--toolchain", choices=("gcc-2.7.2-psx", "gcc-2.8.1-psx"))
     load.add_argument("--layout", type=Path, help="reviewed hash-bound archive/compressed module layout JSON")
     export.add_argument("project")
-    for command in (load, export, combine, ungroup, profile):
+    for command in (load, export, combine, ungroup, profile, merge, split):
         command.add_argument("--workspace", required=True, type=Path)
 
 
@@ -138,6 +148,16 @@ def run(args):
                                       reviewed_layout=json.loads(args.layout.read_text(encoding="utf-8")) if args.layout else None,
                                       log=lambda message: print(message, file=sys.stderr))
                 result = {"project": slug, "root": net.project_row(slug)["root"], "disc": net.overview(slug)["disc"]}
+            elif args.psx_cmd in ("merge", "split"):
+                if net.cfg(net.project_row(args.project)).get("platform") != "psx" or args.project in net.links:
+                    raise ValueError("choose a local PlayStation 1 project")
+                agent, _ = net.local_agent("console-boundary-review")
+                if args.psx_cmd == "merge":
+                    from .psx_boundaries import merge_reviewed
+                    result = merge_reviewed(net, args.project, args.head, args.tail, agent=agent, reason=args.reason)
+                else:
+                    result = {"project": args.project, "function": args.function, "at": args.at,
+                              "message": net.split_function(agent, args.project, args.function, hex(args.at), args.name)}
             elif args.psx_cmd == "profile":
                 from ..project import function_config
                 current = function_config(net.cfg(net.project_row(args.project)), args.function)["compiler"]

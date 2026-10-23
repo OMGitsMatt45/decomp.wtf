@@ -40,13 +40,17 @@ class SourceRejected(ValueError):
     pass
 
 
-def check_source(source: str) -> None:
+def check_source(source: str, *, psx_gp_registers: bool = False) -> None:
     if len(source.encode()) > MAX_SOURCE_BYTES:
         raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
     for inc in _INCLUDE.findall(source):
         if inc.startswith("/") or ".." in inc.split("/"):
             raise SourceRejected(f"include path not allowed: {inc}")
-    code = _COMMENTS_AND_STRINGS.sub(" ", source)
+    checked = source
+    if psx_gp_registers:
+        for start, end in reversed(cpp.gp_register_annotations(source)):
+            checked = checked[:start] + re.sub(r"[^\n]", " ", checked[start:end]) + checked[end:]
+    code = _COMMENTS_AND_STRINGS.sub(" ", checked)
     for pattern, why in _FORBIDDEN:
         if pattern.search(code):
             raise SourceRejected(why)
@@ -93,6 +97,7 @@ class CompilerConfig:
     assembly_dialect: str = "rgbds"
     qemu_i386: str | None = None  # explicit Linux compatibility runner; sandboxing is unchanged
     toolchain_dirs: tuple[str, ...] = ()  # pinned trees whose i386 child programs need launchers
+    psx_gp_registers: bool = False  # exact GCC GP bindings, never instruction assembly
 
 
 @dataclass
@@ -217,7 +222,7 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
                 check(context_header)
                 check(source)
             else:
-                check_source(source)
+                check_source(source, psx_gp_registers=cfg.psx_gp_registers)
         except SourceRejected as e:
             return CompileResult(False, None, f"rejected: {e}")
 

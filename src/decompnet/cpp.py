@@ -4,6 +4,39 @@ import re
 
 _COMMENTS = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
 _DIRECTIVES = re.compile(r"^[ \t]*\#(?:[^\n\\]|\\[^\n]|\\\n)*", re.M)
+_GP_REGISTER = re.compile(r'\s*register\s+unsigned\s+int\s+[A-Za-z_]\w*\s+'
+                          r'(?P<annotation>(?:asm|__asm__)\s*\(\s*"\$28"\s*\))\s*;\s*')
+
+
+def gp_register_annotations(source: str) -> list[tuple[int, int]]:
+    """Exact top-level GCC GP register bindings, with no instruction template.
+
+    This recognizes a declaration of an architectural register, rather than an
+    assembly statement or symbol-name annotation. Strings, macros, initializers,
+    other registers and declarations inside function bodies do not qualify.
+    """
+    blank = lambda match: re.sub(r"[^\n]", " ", match[0])
+    # Keep the literal register name for validation; ignore punctuation inside
+    # comments, strings and directives when locating complete declarations.
+    declarations = _DIRECTIVES.sub(blank, _COMMENTS.sub(
+        lambda match: blank(match) if match[0].startswith(("//", "/*")) else match[0], source))
+    clean = _DIRECTIVES.sub(blank, _COMMENTS.sub(blank, source))
+    depth, start, annotations = 0, 0, []
+    for token in re.finditer(r"[{};]", clean):
+        char = token[0]
+        if depth == 0 and char == ";":
+            match = _GP_REGISTER.fullmatch(declarations[start:token.end()])
+            if match:
+                annotations.append((start + match.start("annotation"), start + match.end("annotation")))
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                start = token.end()
+        elif depth == 0:
+            start = token.end()
+    return annotations
 
 
 def language(config: dict) -> str:
@@ -45,6 +78,7 @@ def game_abi(source: str) -> str:
     """
     blank = lambda match: re.sub(r"[^\n]", " ", match[0])
     clean = _DIRECTIVES.sub(blank, _COMMENTS.sub(blank, source))
+    register_annotations = gp_register_annotations(source)
     depth, start, edits = 0, 0, []
     for token in re.finditer(r"[{};]", clean):
         char, at = token[0], token.start()
@@ -60,6 +94,7 @@ def game_abi(source: str) -> str:
                 if not explicit and not cpp_operator and re.match(r"extern\b", code):
                     edits.append((pos + len("extern"), ' "C"'))
                 elif not explicit and not cpp_operator and code.rstrip().endswith(")") and "=" not in code \
+                        and not any(pos <= begin < at for begin, _ in register_annotations) \
                         and not re.search(r"\b(template|namespace|static|typedef|using)\b|::", code) \
                         and re.search(r"\b\w+\s*\((?!\s*\*)", code):
                     edits.append((pos, 'extern "C" '))

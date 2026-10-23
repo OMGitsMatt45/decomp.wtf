@@ -15,6 +15,7 @@ N64_REQUIRED = {"test_n64_cpp", "test_ido_cpp", "test_ido_cfront", "test_ido_dep
                 "test_n64_expansion", "test_collab", "test_export", "test_rom", "test_app_engine"}
 PSX_REQUIRED = {"test_psx", "test_psx_cpp", "test_psx_disc", "test_psx_workflows", "test_psx_set", "test_psx_media", "test_psx_layout", "test_psx_modify", "test_psx_growth", "test_psx_storage", "test_psx_chd", "test_psx_assets", "test_psx_hbd", "test_psx_subcode", "test_psx_recover", "test_psx_calls", "test_psx_drafts", "test_psx_assembler", "test_psx_relocation_authoring", "test_overlays", "test_export"}
 PSX_REQUIRED |= {"test_psx_candidates", "test_psx_profile_concurrency", "test_psx_pointer_candidates"}
+PSX_REQUIRED |= {"test_psx_module_copies", "test_psx_registers", "test_psx_boundaries", "test_psx_failures"}
 REQUIRED = {"test_period_compilers", "test_n64_cpp", "test_ido_cpp", "test_ido_cfront",
             "test_psx", "test_psx_cpp", "test_ps2", "test_ps2_cpp", "test_gba", "test_gba_cpp",
             "test_gc", "test_export", "test_rom", "test_app_engine", "test_optional_tools",

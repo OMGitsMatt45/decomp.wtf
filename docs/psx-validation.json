@@ -59,7 +59,10 @@
     "Memory-leaf C/C++ recovery with load/store ordering, all-zero assembly entries retained without consuming attempt limits, and one m2c draft per console attempt",
     "Combined exports honor a separate destination and reject project/input overlap, preserving previous edited source",
     "Inferred o32 single-word integer/pointer signatures preserve unused argument slots; wide and reviewed signatures remain unchanged",
-    "Verified object automatic address aliases survive standalone source exports and clean complete-disc builds"
+    "Verified object automatic address aliases survive standalone source exports and clean complete-disc builds",
+    "Original period assembler profiles and C/C++/G0/G8 searches retain verified settings in clean standalone disc exports",
+    "Known module GP globals, conservative call-slot hints and bounded inferred pointer/word-argument alternatives require the full exact judge",
+    "Scoped overlay local jumps survive import/drafts; concurrent per-function profile updates and context guards preserve independently verified settings"
   ],
   "multi_disc": {
     "scope": "One source project and build command, independently verified outputs for every ordered disc.",
@@ -155,18 +158,18 @@
   },
   "native_qualification": {
     "status": "passed",
-    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
-    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412",
+    "tested_commit": "86165598c19e2764b7cd6e860922bbad2f9aaf48",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496662",
     "native_hosts": {
       "ubuntu-24.04": {
-        "job_id": 120571133589,
-        "passed": 231,
+        "job_id": 120619545122,
+        "passed": 292,
         "failed": 0,
         "skipped": 0
       },
       "windows-2022": {
-        "job_id": 120571133975,
-        "passed": 231,
+        "job_id": 120619545465,
+        "passed": 292,
         "failed": 0,
         "skipped": 0
       }
@@ -174,31 +177,39 @@
     "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
     "required_module_counts_per_host": {
       "test_export": 1,
-      "test_overlays": 4,
+      "test_overlays": 5,
       "test_psx": 16,
+      "test_psx_assembler": 15,
       "test_psx_assets": 23,
+      "test_psx_calls": 9,
+      "test_psx_candidates": 8,
       "test_psx_chd": 23,
       "test_psx_cpp": 10,
       "test_psx_disc": 23,
+      "test_psx_drafts": 7,
       "test_psx_growth": 10,
       "test_psx_hbd": 15,
       "test_psx_layout": 8,
       "test_psx_media": 11,
       "test_psx_modify": 20,
-      "test_psx_recover": 18,
+      "test_psx_pointer_candidates": 17,
+      "test_psx_profile_concurrency": 3,
+      "test_psx_recover": 19,
       "test_psx_relocation_authoring": 6,
       "test_psx_set": 5,
       "test_psx_storage": 8,
       "test_psx_subcode": 18,
       "test_psx_workflows": 12
     },
-    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages and pinned optional maspsx 2.56/2.86 profiles; no WSL, wibo or QEMU in native qualification.",
     "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
     "additional_checks": {
-      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362789",
-      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362456",
-      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362442",
-      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362541"
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496757",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496591",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496681",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496680",
+      "classic_ido_compiler": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496589",
+      "experimental_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496695"
     },
     "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
     "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
@@ -636,6 +647,56 @@
         "test_psx_subcode": 18,
         "test_psx_workflows": 12
       }
+    },
+    {
+      "status": "passed",
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120571133589,
+          "passed": 231,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120571133975,
+          "passed": 231,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 18,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362789",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362456",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362442",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362541"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
     }
   ],
   "independent_chd_qualification": {

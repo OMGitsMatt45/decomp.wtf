@@ -54,6 +54,7 @@ jobs:
           tests/test_psx_calls.py tests/test_psx_drafts.py tests/test_psx_assembler.py
           tests/test_psx_candidates.py tests/test_psx_profile_concurrency.py
           tests/test_psx_pointer_candidates.py
+          tests/test_psx_module_copies.py tests/test_psx_registers.py tests/test_psx_boundaries.py tests/test_psx_failures.py
           tests/test_psx_relocation_authoring.py tests/test_overlays.py
           "tests/test_export.py::test_export_rebuilds_the_game[psx]"
       - name: Require every PS1 suite without skips

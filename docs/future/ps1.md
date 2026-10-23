@@ -1,6 +1,6 @@
 # PlayStation disc and overlay reconstruction
 
-Status: **implemented in PR #4 and qualified on native Windows/Linux: 231 required checks per host, zero skips**.
+Status: **implemented in PR #4 and qualified on native Windows/Linux: 292 required checks per host, zero skips**.
 The [validation record](../psx-validation.json) pins tested revisions, native
 jobs and private retail results. See the [disc guide](../psx-disc.md) for commands.
 
@@ -65,6 +65,11 @@ jobs and private retail results. See the [disc guide](../psx-disc.md) for comman
   candidates remain eligible for profile searches.
 - Scoped local overlay jump labels survive import and draft generation.
   Concurrent per-function compiler updates preserve other workers' profiles.
+- Reviewed raw module copies share canonical source targets and update together
+  in mod builds, with original identity checks and retained archive padding.
+- Architectural GP state wrappers support explicit original-GCC register
+  bindings. Reviewed console split/merge operations preserve evidence and
+  reject stale compilation results. Failed drafts remain available for repair.
 
 ## Validation boundaries
 

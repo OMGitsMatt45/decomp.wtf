@@ -480,6 +480,11 @@ class Network:
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or any(current[key] != fn[key] for key in
+                                      ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")
+                                      if key in fn.keys()):
+                raise NetworkError("the function target changed during compilation; retry against its current boundaries")
             db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via))
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))

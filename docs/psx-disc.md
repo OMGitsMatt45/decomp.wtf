@@ -217,6 +217,15 @@ encoded storage only after independently rebuilt targets match exactly.
 It does not discover proprietary archives, infer relocation tables or support
 unspecified codecs. Loader review remains necessary for those formats.
 
+A raw module may declare identical storage copies with
+`"copies": [{"path": "LEVEL.FOG", "offset": "0x2000"}]`. Every range must
+contain the same original raw bytes, fit its non-boot ISO file and avoid other
+module allocations. One canonical module supplies the source targets; strict
+builds verify each copy and mod builds update every declared copy together.
+Archive padding outside those ranges stays intact. Compressed/storage-adapter
+copies and copies embedded in the boot program require additional loader and
+data-range support.
+
 `storage` is optional and enables modified compressed output. `capacity` covers
 the encoded stream and explicitly reviewed unused bytes immediately after it;
 extra capacity must originally be zero. `length_offset` is relative to the same

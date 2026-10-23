@@ -8,7 +8,7 @@ import re
 import shutil
 import tempfile
 
-from . import psx_disc, psx_media, psx_sector, psx_hbd
+from . import psx_disc, psx_media, psx_sector, psx_hbd, psx_layout
 from .n64 import RomError
 from .psx import _Disc
 
@@ -42,6 +42,11 @@ def reader(disc, record):
             raise RomError("resource read exceeds its ISO file")
         return disc.read(record["lba"] + offset // 2048, offset % 2048 + count)[offset % 2048:]
     return read
+
+
+def program_storage(layout):
+    for mapping in layout["maps"]:
+        yield from psx_layout.storage_maps(mapping)
 
 
 def load(root, meta):
@@ -107,7 +112,7 @@ def stage(root, name, source, *, relocate=False, references=None, sector=None, m
     original, layout = _original(root, meta)
     name = path_name(name)
     record = next((r for r in layout["files"] if r["path"] == name and not r["directory"]), None)
-    if record is None or any(m["path"] == name for m in layout["maps"]):
+    if record is None or any(m["path"] == name for m in program_storage(layout)):
         raise RomError("choose an existing resource file; mapped programs must be edited through source")
     source = Path(source)
     maximum = 16 << 20 if sector is not None else 128 << 20
@@ -175,6 +180,11 @@ def _references(disc, layout, resource, references):
             raise RomError("invalid or out-of-bounds resource loader reference")
         if any(p == record["path"] and lo < at + width and at < hi for p, lo, hi in used):
             raise RomError("resource loader references overlap")
+        for mapping in program_storage(layout):
+            start = mapping.get("file_offset", 0)
+            size = mapping.get("storage", {}).get("capacity", mapping.get("stored_size", mapping["size"]))
+            if mapping["path"] == record["path"] and start < at + width and at < start + size:
+                raise RomError("resource loader references overlap mapped program storage; edit programs through source")
         used.append((record["path"], at, at + width))
         if int.from_bytes(reader(disc, record)(at, width), ref["endian"]) != values[ref["kind"]]:
             raise RomError("resource loader reference differs from the pinned original value")
@@ -269,7 +279,7 @@ def apply(root, meta, output):
     files = {r["path"]: r for r in layout["files"] if not r["directory"]}
     if len({r["path"] for r in declaration["files"]}) != len(declaration["files"]):
         raise RomError("duplicate replacement resource")
-    mapped = {m["path"] for m in layout["maps"]}
+    mapped = {m["path"] for m in program_storage(layout)}
     resources, archives, total = [], {}, 0
     for entry in declaration["files"] + declaration["archives"]:
         name = entry["path"]

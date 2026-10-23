@@ -135,6 +135,11 @@ def _profile_search(net, slug, agent, fn, machine_drafts):
     sources = leaf_candidates(fn["target"], fn["name"])
     if fn["best_source"] and fn["best_source"] not in sources:
         sources.append(fn["best_source"])
+    elif not fn["best_source"]:
+        failed = net.store.one("SELECT source FROM attempts WHERE function_id=? AND context_version=? AND compiled=0 "
+                               "AND source IS NOT NULL ORDER BY id DESC LIMIT 1", fn["id"], context["version"])
+        if failed:
+            sources.append(failed["source"])
     if machine_drafts and seeds.available():
         data = "\n".join(net._jtbl_asm(project, fn)) if "jtbl_" in (fn["asm"] or "") else None
         draft = net._machine_draft(fn, project, context["header"], data, valid=True)
@@ -148,8 +153,11 @@ def _profile_search(net, slug, agent, fn, machine_drafts):
     now = time.time()
     with net.store.tx() as db:
         net._expire_claims(db)
+        current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
         if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone() or \
-                db.execute("SELECT status FROM functions WHERE id=?", (fn["id"],)).fetchone()["status"] != "open":
+                current is None or current["status"] != "open":
+            return None
+        if any(current[key] != fn[key] for key in ("name", "target", "relocs", "unit", "vram", "rom_offset")):
             return None
         db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
     try:

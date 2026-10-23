@@ -213,6 +213,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         wsl=linux,
         qemu_i386=c.get("qemu_i386", os.environ.get("DECOMP_QEMU_I386") if linux_host else None),
         toolchain_dirs=tuple(str(d) for d in dirs if str(d) != runtime32),
+        psx_gp_registers=cfg.get("platform") == "psx" and c.get("toolchain") in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")
+            and not c.get("cmd") and language in ("c", "c++"),
     )
 
 

@@ -50,6 +50,13 @@ profile automatically installs its dependencies and preserves the selection in
 standalone builds. These profiles reproduce supported period scheduling and
 instruction expansion; they do not establish compatibility with every ASPSX
 release or handwritten assembly extension.
+
+Architectural GP save/restore wrappers may use a standalone global declaration
+`register unsigned int psx_gp asm("$28");` with either registered PS1 GCC.
+Only this explicit register binding is accepted; instruction assembly, other
+register bindings, initializers and custom compiler commands remain excluded.
+These hardware wrappers are architecture-specific C. Ordinary small globals
+continue to use module GP facts and normal C declarations.
 The pinned Linux binutils-mips binaries require glibc 2.38 or newer (for example,
 Ubuntu 24.04); this also applies to PS1 exported-project linking.
 

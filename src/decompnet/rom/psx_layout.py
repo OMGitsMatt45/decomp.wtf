@@ -16,6 +16,9 @@ from .n64 import RomError
 from .psx import _Disc
 
 
+MAX_COPIES = 4096
+
+
 def number(value, name):
     try:
         if isinstance(value, bool):
@@ -80,6 +83,13 @@ def read_map(disc, mapping):
     if "stored_sha256" in mapping and hashlib.sha256(data).hexdigest() != mapping["stored_sha256"]:
         raise RomError("PS1 archived module storage differs")
     return transform(data, mapping) if "codec" in mapping else data
+
+
+def storage_maps(mapping):
+    """One analysis module can have explicitly reviewed identical raw copies."""
+    yield mapping
+    for copy in mapping.get("copies", []):
+        yield {**mapping, **copy, "copies": []}
 
 
 def storage_layout(disc, mapping, storage):
@@ -177,8 +187,8 @@ def apply(picked, src, reviewed):
     if not isinstance(definitions, list) or not 1 <= len(definitions) <= 128:
         raise RomError("declare 1 to 128 reviewed PS1 modules")
     files = {f["path"]: f for f in layout["files"] if not f["directory"]}
-    maps, overlays, modules, occupied = [layout["maps"][0]], [], {}, []
-    allowed = {"name", "path", "offset", "stored_size", "size", "codec", "load", "code_start", "code_end", "gp", "bss", "bss_size", "relocations", "storage"}
+    maps, overlays, modules, occupied, copy_count = [layout["maps"][0]], [], {}, [], 0
+    allowed = {"name", "path", "offset", "stored_size", "size", "codec", "load", "code_start", "code_end", "gp", "bss", "bss_size", "relocations", "storage", "copies"}
     with source(src, layout) as stream:
         disc = _Disc(stream)
         for item in definitions:
@@ -253,6 +263,30 @@ def apply(picked, src, reviewed):
                         raise RomError("reviewed relocation base disagrees with the original encoded addend")
             data = transform(stored, mapping)
             mapping["sha256"] = hashlib.sha256(data).hexdigest()
+            copies = item.get("copies", [])
+            if not isinstance(copies, list) or len(copies) > MAX_COPIES - copy_count:
+                raise RomError("reviewed PS1 module copies must be a bounded list of at most 4096 storage ranges")
+            if copies and (mapping["codec"] != "raw" or mapping.get("storage")):
+                raise RomError("reviewed PS1 copies require a raw module without an encoded storage adapter")
+            for copy in copies:
+                if not isinstance(copy, dict) or set(copy) != {"path", "offset"}:
+                    raise RomError("reviewed PS1 copies need path and offset only")
+                copy_path = str(copy["path"]).upper()
+                copy_file = files.get(copy_path)
+                copy_offset = number(copy["offset"], "copy offset")
+                if not copy_file or copy_path == maps[0]["path"] or not 0 <= copy_offset < copy_offset + stored_size <= copy_file["size"]:
+                    raise RomError("reviewed PS1 module copy storage is outside a non-boot ISO file")
+                if any(p == copy_path and a < copy_offset + stored_size and copy_offset < b for p, a, b in occupied):
+                    raise RomError("reviewed PS1 module copy storage extents overlap")
+                copy_stored = disc.read(copy_file["lba"] + copy_offset // 2048,
+                                        copy_offset % 2048 + stored_size)[copy_offset % 2048:]
+                if copy_stored != stored:
+                    raise RomError("reviewed PS1 module copy differs from its canonical raw storage")
+                mapping.setdefault("copies", []).append({"path": copy_path, "lba": copy_file["lba"],
+                    "file_size": copy_file["size"], "file_offset": copy_offset, "stored_size": stored_size,
+                    "stored_sha256": mapping["stored_sha256"]})
+                occupied.append((copy_path, copy_offset, copy_offset + stored_size))
+                copy_count += 1
             maps.append(mapping)
             overlays.append((name, data, load, start))
             modules["ovl_" + name] = {"gp": gp, "bss": bss, "bss_size": bss_size,

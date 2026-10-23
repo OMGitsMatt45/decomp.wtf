@@ -138,7 +138,7 @@ def verify(src, layout: dict) -> _Disc:
     if (disc.size, disc.skip) != (layout["sector_size"], layout["skip"]) or inventory(disc, size) != layout["files"]:
         raise RomError("the PS1 disc filesystem differs from the reconstruction manifest")
     by_path = {f["path"]: f for f in layout["files"] if not f["directory"]}
-    ranges = []
+    ranges, storage_ranges, fields, copy_count = [], [], [], 0
     for m in layout["maps"]:
         rec = by_path.get(m["path"])
         offset, stored = m.get("file_offset", 0), m.get("stored_size", m["size"])
@@ -148,9 +148,44 @@ def verify(src, layout: dict) -> _Disc:
         if start < 0 or start + m["size"] > layout["analysis_size"]:
             raise RomError("a PS1 program's analysis extent is out of bounds")
         ranges.append((start, start + m["size"]))
+        capacity = m.get("storage", {}).get("capacity", stored)
+        if not stored <= capacity <= rec["size"] - offset:
+            raise RomError("a PS1 program's storage capacity exceeds its file bounds")
+        storage_ranges.append((m["path"], offset, offset + capacity))
+        copies = m.get("copies", [])
+        from .psx_layout import MAX_COPIES, read_map, storage_maps, storage_layout
+        if m.get("storage"):
+            storage = storage_layout(disc, m, m["storage"])
+            at, width = storage["length_offset"], storage["length_width"]
+            fields.append((m["path"], at, at + width))
+        if not isinstance(copies, list) or len(copies) > MAX_COPIES - copy_count or copies and (
+                m.get("codec", "raw") != "raw" or m.get("storage")):
+            raise RomError("PS1 module copies require bounded raw storage ranges")
+        if copies:
+            canonical = read_map(disc, m)
+        for copy in copies:
+            if not isinstance(copy, dict) or set(copy) != {"path", "lba", "file_size", "file_offset", "stored_size", "stored_sha256"}:
+                raise RomError("a PS1 module copy has unsupported storage fields")
+            copy_file, at = by_path.get(copy["path"]), copy["file_offset"]
+            if not copy_file or copy["path"] == layout["maps"][0]["path"] or \
+                    (copy_file["lba"], copy_file["size"]) != (copy["lba"], copy["file_size"]) or \
+                    copy["stored_size"] != stored or copy["stored_sha256"] != m.get("stored_sha256") or \
+                    not 0 <= at < at + stored <= copy_file["size"]:
+                raise RomError("a PS1 module copy's disc extent differs from the manifest")
+            storage_ranges.append((copy["path"], at, at + stored))
+            copy_count += 1
+        for copy_map in list(storage_maps(m))[1:]:
+            if read_map(disc, copy_map) != canonical:
+                raise RomError("a PS1 module copy differs from its canonical decoded bytes")
     ranges.sort()
     if any(a[1] > b[0] for a, b in zip(ranges, ranges[1:])):
         raise RomError("PS1 analysis program extents overlap")
+    storage_ranges.sort()
+    if any(a[0] == b[0] and a[2] > b[1] for a, b in zip(storage_ranges, storage_ranges[1:])):
+        raise RomError("PS1 program storage or module copy extents overlap")
+    for index, (path, start, end) in enumerate(fields):
+        if any(p == path and a < end and start < b for p, a, b in storage_ranges + fields[:index]):
+            raise RomError("PS1 archive length fields overlap program storage or module copies")
     return disc
 
 

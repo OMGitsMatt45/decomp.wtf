@@ -60,26 +60,20 @@ def rebuild(original, rebuilt, layout, output):
                 prefix = max(mapping.get("code_at", 0), 0x800 if old.startswith(b"PS-X EXE") else 0)
                 if data[:prefix] != old[:prefix]:
                     raise RomError("a PS1 mod cannot change executable headers or module prefixes")
-                files.append(mapping["path"])
-                offset = mapping.get("file_offset", 0)
+                locations = list(psx_layout.storage_maps(mapping))
+                files.extend(location["path"] for location in locations if location["path"] not in files)
                 if mapping.get("codec", "raw") != "raw" or mapping.get("relocations") or mapping.get("storage"):
                     encoded, storage = psx_layout.encode_mod(disc, mapping, data, old)
                     capacity = storage["capacity"] if storage else len(encoded)
-                    patch(mapping, offset, encoded + bytes(capacity - len(encoded)))
-                    if storage:
-                        patch(mapping, storage["length_offset"], len(encoded).to_bytes(storage["length_width"], storage["endian"]))
-                    modules.append({"module": mapping["segment"], "path": mapping["path"], "codec": mapping.get("codec", "raw"),
-                                    "stored_size": len(encoded), "capacity": capacity})
+                    for location in locations:
+                        patch(location, location.get("file_offset", 0), encoded + bytes(capacity - len(encoded)))
+                        if storage:
+                            patch(location, storage["length_offset"], len(encoded).to_bytes(storage["length_width"], storage["endian"]))
+                        modules.append({"module": mapping["segment"], "path": location["path"], "codec": mapping.get("codec", "raw"),
+                                        "stored_size": len(encoded), "capacity": capacity})
                     continue
-                for at in range(0, len(data)):
-                    if data[at] == old[at]:
-                        continue
-                    lba, inside = divmod(offset + at, 2048)
-                    lba += mapping["lba"]
-                    payload = sectors.setdefault(lba, bytearray())
-                    if not payload:
-                        payload += disc.sector(lba)
-                    payload[inside] = data[at]
+                for location in locations:
+                    patch(location, location.get("file_offset", 0), data)
             if rebuilt[cursor:] != baseline[cursor:]:
                 raise RomError("a PS1 mod changed unmapped analysis bytes")
             output.parent.mkdir(parents=True, exist_ok=True)

@@ -147,7 +147,7 @@ decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --l
 Recovery tries deterministic integer/memory-leaf source candidates and m2c drafts,
 then accepts only exact compiler and full-link matches. It uses the project's
 C/C++ language and original PS1 compiler settings. `--leaves-only` omits m2c;
-`--search-profiles` also probes installed GCC 2.7.2/2.8.1 at O0/O1/O2, G0/G8,
+`--search-profiles` also probes installed GCC 2.7.2/2.8.1 C/C++ frontends at O0/O1/O2, G0/G8,
 and installed GNU/maspsx 2.56/2.86 assembler profiles. It retains saved improved
 sources while trying these alternatives and saves
 compiler settings only after an exact match. Failed probes keep existing
@@ -163,6 +163,10 @@ Console recovery generates one m2c draft per attempt rather than a second
 browser preview draft. Inferred integer/pointer signatures retain unused MIPS
 argument words, so a third argument stays in its original register even when
 earlier arguments are unused. Wider or reviewed signatures are left intact.
+The original failed draft remains available for diagnosis; repeating the same
+compile failure in the same context keeps one failure record. Profile searches
+can retry that source with the installed frontends without granting recovery
+credit for a failed compile.
 A full pass is a set of verified candidates, not a claim
 that every binary function has been recovered.
 
@@ -172,6 +176,22 @@ Ctrl+C returns a partial report. Existing claims are respected. Stop browser
 autopilot before using this command on the same local project. Unresolved
 functions remain assembly; exact bytes do not establish source-level intent or
 whole-game behavior.
+
+## Review a function boundary
+
+An inferred boundary may split one routine or combine independently called
+routines. Review the original control flow and entry references before using:
+
+```sh
+decompnet --db "work/app.db" psx split PROJECT FUNCTION --at 0x80012340 --workspace "work/projects"
+decompnet --db "work/app.db" psx merge PROJECT HEAD TAIL --reason "Reviewed shared stack frame and epilogue; no external tail entries" --workspace "work/projects"
+```
+
+Merges require adjacent open ranges in one module, original byte agreement and
+no outside code/data references into the tail. The review archives both old
+ranges, sources, attempts and profiles before replacing the active boundary.
+It grants no recovered credit. New source must pass the ordinary full judge;
+stale work against earlier boundaries is rejected.
 
 ## Format references and validation
 

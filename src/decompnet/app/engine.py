@@ -943,6 +943,7 @@ class RomNetwork(Network):
             raise NetworkError(f"`{new_name}` is not a free C identifier")
         if self.cfg(proj).get("platform") == "gba":
             return self._split_gba(agent, proj, fn, addr, new_name, syms)
+        syms = SymbolTable([Symbol(s.name, s.address, s.size, s.kind) for s in syms.by_name.values()])
         rf = self._parse_asm(fn["name"], fn["asm"], fn["unit"])
         try:
             head, tail = split.split_function(rf, addr, new_name)
@@ -954,6 +955,14 @@ class RomNetwork(Network):
             old.size = head.size
         th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
         with self.store.tx() as db:
+            self._expire_claims(db)
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or current["status"] != "open" or any(current[key] != fn[key] for key in
+                    ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")):
+                raise NetworkError("the function target changed before splitting; review its current boundaries")
+            held = db.execute("SELECT agent_id FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
+            if held is not None and held["agent_id"] != agent.id:
+                raise NetworkError(f"{fn['name']} is claimed; finish or release its work before splitting")
             db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL, best_score=NULL "
                        "WHERE id=?", (head.size, len(head.lines), th.code, json.dumps(th.to_json()),
                                       self._asm_source(head), fn["id"]))
@@ -964,12 +973,14 @@ class RomNetwork(Network):
             db.execute("UPDATE symbols SET size=? WHERE project_id=? AND name=?", (head.size, proj["id"], fn["name"]))
             db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                        (proj["id"], new_name, addr, tail.size, "func"))
-            cfg = self.cfg(proj)
+            cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
             if fn["name"] in cfg.get("function_compilers", {}):
                 cfg["function_compilers"][new_name] = dict(cfg["function_compilers"][fn["name"]])
                 db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
             self._event(db, proj["id"], agent.id, "split", f"{fn['name']} / {new_name}")
         self._xrefs.pop(proj["id"], None)
+        self._syms.pop(proj["id"], None)
+        self.twins.forget(proj)
         return (f"✅ split: {fn['name']} is now {len(head.lines)} instructions; {new_name} at 0x{addr:08X} has "
                 f"{len(tail.lines)}. Continue with {fn['name']} (get_function shows its new assembly).")
 
@@ -1869,6 +1880,12 @@ class RomNetwork(Network):
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or any(current[key] != fn[key] for key in
+                                      ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")):
+                raise NetworkError("the function target changed before compilation; retry against its current boundaries")
+            if current["status"] != "open":
+                return {"matched": False, "score": None}
             if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 raise NetworkError(f"{fn['name']} is claimed")
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
@@ -1915,6 +1932,10 @@ class RomNetwork(Network):
                 source = f"/* machine draft (m2c), tried by autopilot */\n{seeds.M2C_MACROS}\n{candidate}\n"
                 result = self._compile(proj, ctx["header"], source, fn)
                 if not result.ok:
+                    if candidate == drafts[0] and self.cfg(proj).get("platform") == "psx" and not self.store.one(
+                            "SELECT 1 FROM attempts WHERE function_id=? AND context_version=? AND compiled=0 AND source=? LIMIT 1",
+                            fn["id"], ctx["version"], source):
+                        self._record(fn, agent, None, source, ctx["version"], compiled=False, via="autopilot")
                     continue
                 cand, verdict, _ = self._evaluate(fn, proj, result.obj)
                 if cand is None:
