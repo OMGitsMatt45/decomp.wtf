@@ -20,7 +20,7 @@ Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
 - Qualify the common contract with an original fixture that builds and executes
   on native Windows/Linux. That result does not qualify a console runtime.
 
-## DS and PS1 merged; PS2 active
+## DS, PS1 and experimental PS2 native output
 
 [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29), merged at
 `9b5440283bd90472edc029d4a1be3f8cfd1ad661`, implements the first
@@ -60,7 +60,7 @@ exporter, adaptive GPU presentation, one executable for the ordered disc set,
 shared memory cards and explicit hybrid execution. Windows/Linux CI builds and
 executes original fixtures; full retail playthrough acceptance stays with the
 user. New game adapters must satisfy the shared adaptive GPU contract.
-PS2 implementation is active in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).
+PS2 native output is implemented in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).
 Its [native output guide](future/ps2.md) covers the experimental standalone
 C++/CMake exporter, source-shipped runtime, adaptive Vulkan geometry, audio,
 input and saves. CLI, GUI and connected tools use the same exporter. Original

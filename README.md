@@ -153,7 +153,7 @@ is implemented in PR #30 with an original two-disc hardware fixture and a
 Windows/Linux standalone build/execution workflow. DQVII is the first retail
 target; boot checks and full playthrough acceptance remain distinct.
 
-[PS2 native output](docs/future/ps2.md) is in development in PR #5. Shared disc
+[PS2 native output](docs/future/ps2.md) is implemented experimentally in PR #5. Shared disc
 and overlay discovery feed a standalone C++/CMake export with source-shipped
 runtime, adaptive Vulkan geometry, audio, input and saves. Use `decomp pc ps2-native
 GAME.iso NEW_OUTPUT --experimental`, or the GUI's native PC output. Exact-hash

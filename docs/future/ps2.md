@@ -232,7 +232,8 @@ original Vulkan commands on an explicitly selected software device. Windows CI
 builds the same C++ probe and verifies required-device failure; its lack of an
 execution device is recorded as `vulkan_executed: false`. No game graphics,
 physical GPU, window/drawable adaptation or fullscreen qualification follows
-from this headless assessment. Those remain required integration work.
+from this headless assessment. The standalone exporter above qualifies its
+window/drawable integration separately; physical-GPU coverage remains open.
 
 The candidate supplies an EE runtime, R3000A IRX execution with IOP kernel/HLE
 services, VU interpreters, GS, audio and virtual filesystem code. Those are
