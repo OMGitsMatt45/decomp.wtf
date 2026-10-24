@@ -22,7 +22,9 @@ INPUTS_PATH = ROOT / 'tools/ps2_gs/inputs.json'
 
 def fingerprint(root):
     digest = hashlib.sha256()
-    for path in sorted(Path(root).rglob('*')):
+    # WindowsPath ordering folds case. Pin the same POSIX byte order on every
+    # host so identical, checksum-verified archives have one source identity.
+    for path in sorted(Path(root).rglob('*'), key=lambda p: p.relative_to(root).as_posix()):
         if path.is_file():
             digest.update(path.relative_to(root).as_posix().encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()

@@ -1,5 +1,6 @@
 """Original Vulkan GS fixtures, separately qualified from a complete game."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -8,6 +9,15 @@ import subprocess
 import pytest
 
 from tools.qualify_ps2_graphics import download, executable, fingerprint, qualify
+
+
+def test_source_identity_orders_paths_consistently_on_both_hosts(tmp_path):
+    (tmp_path / 'a.cpp').write_bytes(b'lowercase')
+    (tmp_path / 'Z.cpp').write_bytes(b'uppercase')
+    digest = hashlib.sha256()
+    for name, data in (('Z.cpp', b'uppercase'), ('a.cpp', b'lowercase')):
+        digest.update(name.encode() + b'\0' + hashlib.sha256(data).digest())
+    assert fingerprint(tmp_path) == digest.hexdigest()
 
 
 @pytest.fixture(scope='module')
