@@ -1,7 +1,8 @@
 """Bounded R5900 control-flow discovery from owner ELF bytes.
 
-This records reachable instructions and direct-call seeds, not a complete
-function map. Indirect calls/jump tables and system services stay explicit.
+This records reachable instructions and function seeds, not a universal function
+map. Bounded constant pointers/jump tables resolve through register data flow;
+unknown indirect calls and system-service callbacks remain explicit.
 Valid-looking words after a return are not automatically promoted to EE code.
 """
 from __future__ import annotations
@@ -66,6 +67,9 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
             if kind & 15 == 2 and section_index not in (0, 0xFFF1): seed(address, 'elf-symbol')
     for pc in roots: seed(pc, 'supplied-root')
 
+    from .indirect import resolve
+    indirect, pointer_reads = resolve(original,info,offset,list(seeds),max_instructions=max_instructions)
+
     pending = deque(seeds)
     processed, reached = set(), {}
     calls, unresolved, invalid, services = [], [], [], []
@@ -117,8 +121,13 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
         elif instruction.isJump():
             is_return = instruction.isReturn() or (op == 0 and (word & 63) == 9 and rd == 0 and rs == 31)
             if not is_return:
-                unresolved.append(dict(pc=pc, kind='indirect-call' if is_call
-                    else 'indirect-jump', register=(instruction.getRaw() >> 21) & 31))
+                if pc in indirect:
+                    for target in indirect[pc]:
+                        follow(pc,target,'indirect-target')
+                        if is_call and offset(target) is not None:seed(target,'indirect-call')
+                else:
+                    unresolved.append(dict(pc=pc, kind='indirect-call' if is_call
+                        else 'indirect-jump', register=(instruction.getRaw() >> 21) & 31))
             if is_call: follow(pc, pc + 8, 'continuation')
         elif instruction.getOpcodeName() in ('eret', 'break'):
             services.append(dict(pc=pc, kind=instruction.getOpcodeName()))
@@ -138,5 +147,7 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
         native_game_qualified=False, instructions=len(reached), code_ranges=ranges,
         function_seeds=[dict(address=pc, reasons=sorted(reasons)) for pc, reasons in sorted(seeds.items())],
         direct_calls=sorted(calls, key=lambda c: c['pc']),
+        resolved_indirect=[dict(pc=pc,targets=targets) for pc,targets in sorted(indirect.items()) if pc in reached],
+        pointer_reads=pointer_reads,
         unresolved=sorted(unresolved, key=lambda c: c['pc']),
         invalid=sorted(invalid, key=lambda c: c['pc']), services=sorted(services, key=lambda c: c['pc']))

@@ -39,3 +39,11 @@ def original():
     struct.pack_into('<I',raw,symbols+16+8,len(words)*4)
     struct.pack_into('<I',raw,table+4*40+20,32) # null plus one exact STT_FUNC
     return bytes(raw)
+
+
+def stripped_original():
+    raw=bytearray(original())
+    struct.pack_into('<I',raw,32,0)
+    struct.pack_into('<3H',raw,46,0,0,0)
+    struct.pack_into('<I',raw,52+24,5) # original code/constants are read-only
+    return bytes(raw)

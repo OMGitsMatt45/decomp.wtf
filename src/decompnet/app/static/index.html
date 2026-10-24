@@ -84,8 +84,8 @@
           <label class="field grow"><span>Compiler</span><select id="compilerPick"></select></label>
         </div>
         <p class="muted small" id="compilerNote" hidden></p>
-        <label class="field" id="dsOutputRow" hidden><span>Output</span><select id="dsOutput"><option value="pc">Native PC source project (experimental)</option><option value="matching">Matching console reconstruction</option></select><small>PC output creates an editable C/C++ project with GPU graphics, audio and saves. PS1 runtime terms are noncommercial. PS2 uses GPL-3.0 runtime sources and needs a reviewed code map for stripped games.</small></label>
-        <label class="field" id="ps2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ps2Profile" class="mono" placeholder="Local path to the game's profile.json"><small>Required for stripped retail code. The map must match your original input's SHA-256.</small></label>
+        <label class="field" id="dsOutputRow" hidden><span>Output</span><select id="dsOutput"><option value="pc">Native PC source project (experimental)</option><option value="matching">Matching console reconstruction</option></select><small>PC output creates an editable C/C++ project with GPU graphics, audio and saves. PS1 runtime terms are noncommercial. PS2 runtime sources use GPL-3.0.</small></label>
+        <label class="field" id="ps2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ps2Profile" class="mono" placeholder="Optional local path to the game's profile.json"><small>Needed when automatic recovery cannot resolve the game. Bundled maps are selected automatically; custom maps must match your original input.</small></label>
         <label class="field" id="psxAdditionalDiscsRow" hidden><span>Additional PS1 discs, in order</span><textarea id="psxAdditionalDiscs" rows="2" placeholder="One local path per line, starting with disc 2"></textarea><small>All discs share one PC project and memory cards. Use the path option for CUE sheets, companion tracks or M3U playlists.</small></label>
         <label class="field" id="dsInputRow" hidden><span>DS ROM format</span><select id="dsInputFormat"><option value="auto">Detect automatically</option><option value="decrypted">Already decrypted for an emulator</option></select></label>
         <label class="field" id="dsSaveRow" hidden><span>Cartridge save chip</span><select id="dsSaveType"></select><small>Use the chip for this game. A wrong size can prevent saving; existing emulator saves often reveal the size.</small></label>
@@ -347,7 +347,7 @@
         <div class="src-state" id="srcState"></div>
         <div id="psxDiscSet" hidden></div>
         <p id="pcOutputStatus" class="muted small"></p>
-        <label class="field" id="pcPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="pcPS2Profile" class="mono" placeholder="Local path to profile.json"><small>Required for stripped games; tied to your original input.</small></label>
+        <label class="field" id="pcPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="pcPS2Profile" class="mono" placeholder="Optional local path to profile.json"><small>Needed for unresolved code or callbacks; tied to your original input.</small></label>
         <label class="field" id="pcSaveRow" hidden><span>PC project's cartridge save chip</span><select id="pcSaveType"></select></label>
         <div id="pcVideoRows" hidden>
           <label class="field"><span>PC rendering</span><select id="pcRenderer"><option value="auto">GPU when available (OpenGL 3.3)</option><option value="opengl">Require GPU rendering</option><option value="software">Original software rendering</option></select></label>

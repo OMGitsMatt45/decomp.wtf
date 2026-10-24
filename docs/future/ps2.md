@@ -43,8 +43,13 @@ hashes when required. Install a current GPU driver from
 
 The optional GPL-3.0 DQVIII USA analysis profile is selected only for the exact
 whole-disc hash below. It contains addresses/names and explicit SDK bindings,
-without original instructions/assets. Other stripped games need `--profile
-reviewed.json`; symbol-bearing original programs work without one. Maps must
+without original instructions/assets. Symbol-bearing programs and stripped
+programs with closed, unambiguous reachable code work without a manual map.
+Bounded data flow resolves constant register/GP pointers and indexed tables,
+including unsigned bounds checks. It preserves unknown joins, delay-slot order,
+annulment and caller-saved clobbers. Writable pointer data, unresolved callbacks,
+system services, shared/backward function entries and embedded gaps require
+`--profile reviewed.json`. Automatic maps retain their recovery method. Maps must
 distinguish code from data and declare native SDK bindings. The complete map is
 retained as `game/profile.json`. Explicitly typed late constructor code and
 alternate entries can reside in file-backed executable load memory even outside
@@ -72,6 +77,25 @@ medium and command-priority RPCs, static VU0 current/sticky flags, VF0's hardwir
 value, disabled GS depth-test semantics and serialized GPU recording against
 presentation/readback. Shared VU helper types and compact module dispatch avoid
 compiler memory exhaustion when building large retail exports.
+
+The shared MPEG service preserves unrelated guest code/data: inherited fixed
+guest-global writes and callback addresses are removed. Original MPEG-2 input
+verifies decoded RGBA pixels, RAW8 Y/Cb/Cr macroblocks, RAW8xy padded strides,
+insufficient/out-of-RAM buffer rejection and one MiB of unchanged guest memory.
+The source-shipped optional runtime checks cover 406 cases across sixteen
+IOP/SIF/DMA, scheduler/IRQ/fiber, memory, VU, GS, pad, filesystem and media suites.
+The exhaustive VU loop matrix is intentionally allotted a longer timeout.
+
+On Windows, run `powershell -File .\tools\qualify-ps2-hardware.ps1` from the
+application checkout after installing uv, CMake, Desktop C++ Build Tools and a
+current Vulkan GPU driver. This builds/runs the original standalone fixture and
+saves hardware-assessment.json, native reports, captures and logs in a new
+timestamped temporary directory. It requires no game or BIOS. The report matches
+the actual SDL device to Vulkan's device inventory and only marks integrated or
+discrete devices as physical hardware. CPU, virtual, missing and ambiguous
+devices remain unqualified. `--allow-software` on the Python developer tool
+permits comparison without changing that result. Physical Windows GPU execution
+is local user validation; hosted Windows CI does not establish it.
 
 Original service programs verify bounded FIO reads/stat/seeks, original CD LBAs,
 CD/DVD RPCs, pad edges/axes, 1,024 exact SPU2 stereo PCM samples and memory-card
@@ -201,12 +225,15 @@ The original CPU fixture still has zero emission errors. Stripped discovery alon
 does not provide a complete retail translation map; the newer exporter uses an
 explicit input-bound profile for this case.
 
-The bounded shared control-flow pass reaches 56,195 instructions and 961 function
+The original direct-only control-flow pass reached 56,195 instructions and 961 function
 seeds in the stripped boot ELF, with zero invalid instructions and 81 unresolved
 indirect sites. It avoids the later embedded-data region that caused the initial
 emission errors. Indirect callbacks, jump tables, further roots and complete
 function boundaries still require resolution; these seeds do not replace a
-complete translation map.
+complete translation map. The bounded constant-set pass now reaches 58,578
+instructions, resolves 31 indirect sites and retains 62 unresolved sites, with
+zero invalid instructions. New paths can expose additional unresolved calls;
+these counts remain analysis evidence rather than a complete retail map.
 
 Wrapping the six discovered overlays with the shared MWo3 adapter yields 1,146
 emitted functions in the initial candidate scan, with zero emission errors,
@@ -247,7 +274,8 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
   owner input, retaining exact identities and unresolved-target reports.
 - [x] Require reviewed stripped ELF maps covering code/data, indirect callbacks
   and function boundaries; retain exact-input profiles in exported projects.
-  General automatic recovery of complete maps remains future work.
+  Closed reachable programs can be mapped automatically; ambiguous layouts and
+  external callbacks retain reviewed profiles.
 - [x] Guard module/function entries, reject unresolved or ambiguous dispatch and
   disclose IOP/VU interpreters in manifests. Original module-switch fixtures
   cover overlapping addresses. Runtime self-modification is unsupported.

@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 from .. import pc,toolchains
-from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch
+from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -122,7 +122,7 @@ def generate(project,root):
     sdk,runtime_pins=_sdk();emitter=_emitter(sdk)
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
-    runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor)
+    runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor);mpeg_patch.install(vendor)
     _dependencies(root/'native/dependencies.cmake')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PS2-runtime-GPL-3.0.txt')
     records=[];emissions=[]
@@ -180,7 +180,8 @@ def generate(project,root):
     loaded_end=max(s['physical']+s['memory_size'] for s in inspection['program']['loads'] if s['region']=='ee-ram')
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
-        ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp')):
+        ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
+        ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')

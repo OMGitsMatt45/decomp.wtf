@@ -5,19 +5,25 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import re
 
 from decompnet import pc,ps2_native
 from decompnet.ps2_native import provider
 from decompnet.ps2_native.extract_assets import stage
-from tests.fixtures.ps2_port import original
+from tests.fixtures.ps2_port import stripped_original
 from tools.qualify_ps2_runtime import executable
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 def run(command,cwd,log,*,env=None,timeout=1800,success=True):
-    result=subprocess.run(list(map(str,command)),cwd=cwd,env=env,capture_output=True,text=True,
-        encoding='utf-8',errors='replace',timeout=timeout)
+    try:
+        result=subprocess.run(list(map(str,command)),cwd=cwd,env=env,capture_output=True,text=True,
+            encoding='utf-8',errors='replace',timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        def decoded(value):return value.decode('utf-8','replace') if isinstance(value,bytes) else (value or '')
+        log.write_text(decoded(error.stdout)+decoded(error.stderr)+'\nCommand timed out.\n',encoding='utf-8')
+        raise ValueError('command timed out; inspect '+str(log)) from error
     log.write_text(result.stdout+result.stderr,encoding='utf-8')
     if (result.returncode==0)!=success:raise ValueError('unexpected command result; inspect '+str(log))
     return result
@@ -43,15 +49,18 @@ def qualify(destination,*,sdk=None,execute=True):
     sdk=Path(sdk).resolve() if sdk else out/'Pinned source runtime'
     if not sdk.exists():provider.download(sdk)
     pins=provider.verify(sdk);os.environ['DECOMP_PS2_PORT_SDK']=str(sdk)
-    owner=out/'original-gs.elf';owner.write_bytes(original())
+    owner=out/'original-gs.elf';owner.write_bytes(stripped_original())
     project=out/'Standalone PS2 source with spaces'
     exported=ps2_native.export(owner,project,title='Original PS2 graphics fixture',renderer='vulkan',log=print)
+    recovered=json.loads((project/'game/profile.json').read_text(encoding='utf-8'))
+    if recovered['modules'][0].get('recovery',{}).get('method')!='bounded-closed-reachable-cfg':
+        raise ValueError('the stripped original fixture did not use automatic recovery')
     stage(owner,project)
     # The output builds independently: no app Python package, emitter or console
     # matching toolchain participates in this CMake build.
     build=out/'Standalone build with spaces'
-    run(['cmake','-S',project,'-B',build,'-DDECOMP_PS2_BUILD_SERVICE_TESTS=ON'],out,out/'configure.log')
-    run(['cmake','--build',build,'--target','ps2_pc','ps2_service_probe','--config','Release','--parallel','2'],out,out/'build.log')
+    run(['cmake','-S',project,'-B',build,'-DDECOMP_PS2_BUILD_SERVICE_TESTS=ON','-DDECOMP_PS2_BUILD_RUNTIME_TESTS=ON'],out,out/'configure.log')
+    run(['cmake','--build',build,'--target','ps2_pc','ps2_service_probe','ps2_mpeg_probe','ps2_runtime_tests','--config','Release','--parallel','2'],out,out/'build.log')
     native=executable(build,'ps2_pc')
     reports={}
     services=out/'Original service state';services.mkdir();service_results={}
@@ -60,6 +69,16 @@ def qualify(destination,*,sdk=None,execute=True):
     for mode in ('write','read'):
         service=run([executable(build,'ps2_service_probe'),services,mode],out,out/f'services-{mode}.log',timeout=30)
         service_results[mode]=json.loads(service.stdout)
+    movie=run([executable(build,'ps2_mpeg_probe')],out,out/'mpeg.log',timeout=30)
+    service_results['mpeg']=json.loads(movie.stdout)
+    suites={}
+    for suite in ('pad','io','kernel','interrupt','fiber','memory','vu1','vu_upper','vu_program','vu0','gs','iop','native_iop','sif_rpc','sif_dma','media'):
+        result=run([executable(build,'ps2_runtime_tests'),'--suite',suite],services,out/('runtime-'+suite+'.log'),
+                   timeout=1200 if suite=='vu1' else 90)
+        count=re.search(r'Total Tests: (\d+)\s+Passed: (\d+)\s+Failed: (\d+)',result.stdout)
+        if not count or int(count[1])<1 or count[1]!=count[2] or int(count[3]):
+            raise ValueError('incomplete pinned runtime test result: '+suite)
+        suites[suite]=int(count[1])
     if execute:
         for renderer in ('vulkan','software'):
             report=out/(renderer+'.json');capture=out/(renderer+'.ppm')
@@ -70,6 +89,8 @@ def qualify(destination,*,sdk=None,execute=True):
             if (not data['success'] or data['drawable']!=[640,480] or data['source']!=[64,64] or
                 data['missing_functions'] or data['execution_failures'] or data['presented_frames']<20):
                 raise ValueError('standalone runtime/display result differs: '+renderer)
+            expected=exported['manifest']['code_generation'][0]['guards']['original_elf_sha256']
+            if data.get('resident_modules')!=[expected]:raise ValueError('original resident module bytes differ after execution')
             if renderer=='vulkan' and (not data['gpu_primitives'] or data['internal_scale']!=10 or data['scale_limited']):
                 raise ValueError('adaptive Vulkan geometry rendering failed')
             reports[renderer]=dict(run=data,picture=picture(capture))
@@ -103,7 +124,7 @@ def qualify(destination,*,sdk=None,execute=True):
     result=dict(schema='decomp.wtf.ps2-port-assessment/v1',source_sha256=pins['source_sha256'],
         backend_revision=integration,host_build=True,graphics_executed=execute,retail=False,
         integrity_verified=verified['integrity_verified'],runs=reports,required_gpu_failure=missing,
-        native_services=service_results,original_input_sha256=exported['manifest']['inputs'][0]['sha256'])
+        native_services=service_results,runtime_suites=suites,original_input_sha256=exported['manifest']['inputs'][0]['sha256'])
     (out/'assessment.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     return result
 
