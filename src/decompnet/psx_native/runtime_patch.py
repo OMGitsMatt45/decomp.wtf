@@ -53,6 +53,14 @@ def patch(root):
     if(window)SDL_GL_GetDrawableSize(window,&w,&h);
     if(h<=0)h=psx_sdl_display_pixel_height(window);''')
     path.write_text(text,encoding='utf-8')
+    path=root/'runtime/src/gpu_gl_renderer.c'
+    text=path.read_text(encoding='utf-8-sig')
+    text=replace(text,'static int s_pgxp_render_wanted = 0;', 'static atomic_int s_pgxp_render_wanted = 0;')
+    text=replace(text,'    __atomic_store_n(&s_pgxp_render_wanted,\n                     (s_pgxp_depth || s_pgxp_cpersp || s_pgxp_seam || s_bcls_on) ? 1 : 0,\n                     __ATOMIC_RELEASE);',
+        '    atomic_store_explicit(&s_pgxp_render_wanted,\n                     (s_pgxp_depth || s_pgxp_cpersp || s_pgxp_seam || s_bcls_on) ? 1 : 0,\n                     memory_order_release);')
+    text=replace(text,'    return __atomic_load_n(&s_pgxp_render_wanted, __ATOMIC_ACQUIRE);',
+        '    return atomic_load_explicit(&s_pgxp_render_wanted, memory_order_acquire);')
+    path.write_text(text,encoding='utf-8')
     path=root/'runtime/src/autocompile.c'
     text=path.read_text(encoding='utf-8-sig')
     text=replace(text,'void autocompile_configure(const char *cmd, const char *cwd) {',
