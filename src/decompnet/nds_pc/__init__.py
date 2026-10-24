@@ -299,7 +299,7 @@ game source is private code derived from the owner's input. Keep it private.
 `pc-project.json` records generated-file integrity; it does not certify gameplay.
 ''',encoding='utf-8')
     backend_revision=revision()
-    manifest=dict(schema=pc.SCHEMA,platform='nds',backend=dict(id=BACKEND_ID,revision=backend_revision),
+    manifest=dict(schema=pc.SCHEMA,output_kind='cpu-probe',platform='nds',backend=dict(id=BACKEND_ID,revision=backend_revision),
         runtime=dict(id='nds-original-static-runtime',revision=backend_revision),execution_model='static-recompiled',
         inputs=[dict(sha256=digest)],build=dict(system='cmake',target='ds_static'),
         fallback=dict(interpreter=False,runtime_compilation=False),

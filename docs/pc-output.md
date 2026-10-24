@@ -113,7 +113,7 @@ and backend first, then broaden to other Dragon Quest and Pokémon titles.
 ## Implemented shared contract
 
 `decompnet.pc` defines a PC backend adapter and atomic project export. Each
-adapter writes `pc-project.json` with schema `decomp.wtf.pc-project/v1`, a
+adapter writes `pc-project.json` with schema `decomp.wtf.pc-project/v2`, a
 remaining platform, pinned backend and runtime identities, ordered SHA-256 input
 identities, `native-source`/`static-recompiled`/`hybrid` execution, a CMake target,
 source-file hashes and explicit interpreter/runtime-compilation fallback flags.
@@ -139,3 +139,32 @@ secondary-screen UI and conservative native-screen fallbacks. Original GL and
 guest fixtures qualify this presentation path. Further gameplay acceptance
 belongs to the user. Optional mobile assets and other game-specific extras are
 deferred to later output enhancement work.
+
+
+## Shared GPU presentation standard
+
+Every new game export, for every remaining console, declares
+`decomp.wtf.presentation/v1` in its project manifest. It includes a GPU geometry
+renderer and a software option. The initial window follows the active monitor;
+resizing, fullscreen and high-DPI rendering use the current physical drawable
+size. A fixed host resolution does not satisfy this contract. Automatic GPU
+failure must be reported when the runtime falls back to software; an explicitly
+required GPU backend must fail visibly if it cannot start.
+
+PS1 and the other single-screen consoles use `screens: 1` and
+`screen_mode: single`. DS has two screens and retains its optional unified
+camera. The common GPU requirement does not add DS screen merging to PS1.
+A user can still choose a starting window size or software rendering without
+removing the project's adaptive GPU capability.
+
+`decomp pc verify` checks these declarations and generated-file integrity.
+It does not execute the renderer or prove that the hardware supports it.
+Platform qualification must also build and execute original guest fixtures,
+exercise actual GPU output, resize/fullscreen behavior, and check fallback
+reporting. Runtime reports identify the renderer and drawable size actually used.
+
+Existing v1 projects remain readable for integrity checks and report
+`presentation_declared: false`; they do not acquire a GPU qualification claim.
+New adapters must emit v2. Original CPU comparison fixtures use the explicit
+`output_kind: cpu-probe` exception and disclaim graphics and retail qualification.
+They cannot serve as evidence that a game renderer works.

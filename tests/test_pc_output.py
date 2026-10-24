@@ -16,7 +16,7 @@ def generate(project, root):
         'if(value!=0x04030201u)return 1; puts("pc-fixture-pass"); return 0; }\n')
     (root/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
         'project(PCFixture LANGUAGES CXX)\nadd_executable(pc_fixture main.cpp)\n')
-    manifest=dict(schema=pc.SCHEMA, platform='nds',backend=dict(id='original-fixture',revision='1'),
+    manifest=dict(schema=pc.SCHEMA, output_kind='cpu-probe', qualification=dict(graphics=False,retail=False), platform='nds',backend=dict(id='original-fixture',revision='1'),
         execution_model='native-source',runtime=dict(id='original-host-fixture',revision='1'),
         inputs=[dict(sha256=hashlib.sha256(b'original fixture').hexdigest())],
         build=dict(system='cmake',target='pc_fixture'),
@@ -91,3 +91,93 @@ def test_manifest_rejects_incomplete_or_misleading_pc_output(tmp_path,change):
     elif change=='platform':data['platform']='n64'
     path.write_text(json.dumps(data))
     with pytest.raises(pc.PCError):pc.verify(tmp_path)
+
+
+def _game_manifest(root, *, platform='nds'):
+    generate({}, root)
+    path = root/'pc-project.json'
+    data = json.loads(path.read_text())
+    data.pop('output_kind')
+    data.pop('qualification')
+    data['platform'] = platform
+    data['presentation'] = pc.presentation(screens=2, screen_mode='dual') if platform == 'nds' else pc.presentation()
+    return path, data
+
+
+@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba', 'gb', 'gbc'])
+def test_same_adaptive_gpu_contract_for_every_remaining_console(tmp_path, platform):
+    path, data = _game_manifest(tmp_path, platform=platform)
+    path.write_text(json.dumps(data))
+    result = pc.verify(tmp_path)
+    assert result['presentation_declared'] is True
+    assert result['host_build_verified'] is False
+    assert result['gameplay_verified'] is False
+
+
+@pytest.mark.parametrize(('key', 'value'), [
+    ('renderers', ['software']), ('renderers', ['opengl']), ('renderers', ['opengl', {}]),
+    ('renderers', ['opengl', 'software', 'software']), ('renderer', 'unknown'),
+    ('renderer', {}), ('gpu_rendering', 'framebuffer-upscale'), ('resolution', '1920x1080'),
+    ('initial_window', 'fixed'), ('fullscreen', 'fixed'), ('resizable', False),
+    ('resizable', 1), ('high_dpi', False), ('software_fallback', 'silent'),
+    ('screens', 1), ('screens', True), ('screen_mode', 'single'),
+])
+def test_game_presentation_rejects_missing_gpu_fixed_display_and_silent_fallback(tmp_path, key, value):
+    path, data = _game_manifest(tmp_path)
+    data['presentation'][key] = value
+    path.write_text(json.dumps(data))
+    with pytest.raises(pc.PCError):
+        pc.verify(tmp_path)
+
+
+def test_game_export_cannot_omit_presentation(tmp_path):
+    path, data = _game_manifest(tmp_path)
+    data.pop('presentation')
+    path.write_text(json.dumps(data))
+    with pytest.raises(pc.PCError, match='presentation contract'):
+        pc.verify(tmp_path)
+
+
+def test_single_screen_console_cannot_claim_ds_screen_merger(tmp_path):
+    path, data = _game_manifest(tmp_path, platform='psx')
+    data['presentation'] = pc.presentation(screens=2, screen_mode='unified')
+    path.write_text(json.dumps(data))
+    with pytest.raises(pc.PCError, match='screen count'):
+        pc.verify(tmp_path)
+
+
+@pytest.mark.parametrize('qualification', [None, [], {}, {'graphics': True, 'retail': False},
+    {'graphics': False, 'retail': True}])
+def test_cpu_probe_must_disclose_its_limits(tmp_path, qualification):
+    generate({}, tmp_path)
+    path = tmp_path/'pc-project.json'
+    data = json.loads(path.read_text())
+    data['qualification'] = qualification
+    path.write_text(json.dumps(data))
+    with pytest.raises(pc.PCError, match='CPU probe'):
+        pc.verify(tmp_path)
+
+
+def test_legacy_integrity_remains_readable_without_new_presentation_claim(tmp_path):
+    generate({}, tmp_path)
+    path = tmp_path/'pc-project.json'
+    data = json.loads(path.read_text())
+    data['schema'] = pc.LEGACY_SCHEMA
+    data.pop('output_kind')
+    data.pop('qualification')
+    path.write_text(json.dumps(data))
+    result = pc.verify(tmp_path)
+    assert result['integrity_verified'] and not result['presentation_declared']
+
+
+def test_new_adapter_cannot_publish_legacy_output(tmp_path):
+    def legacy(project, root):
+        generate(project, root)
+        path = root/'pc-project.json'
+        data = json.loads(path.read_text())
+        data['schema'] = pc.LEGACY_SCHEMA
+        path.write_text(json.dumps(data))
+    adapter = pc.Backend('original-fixture', 'nds', '1', legacy)
+    with pytest.raises(pc.PCError, match='current project schema'):
+        pc.export_backend(dict(platform='nds'), tmp_path/'output', adapter)
+    assert not (tmp_path/'output').exists()

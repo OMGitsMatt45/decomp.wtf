@@ -71,6 +71,29 @@ The `PS1 native runtime candidate` workflow builds and runs this proof on Window
 and Linux, including a fresh rebuild from the retained output. No game, retail
 BIOS, proprietary SDK or recovered game source enters the workflow.
 
+## Local hardware observations awaiting final qualification
+
+The development standalone project has executed an original two-disc ISO fixture
+against the complete runtime. Observed checks include native guest dispatch,
+CD reads of the expected 2048-byte payload on each disc, nonzero SPU audio,
+memory-card writes and a save reloaded after booting the other disc. A real
+OpenGL 4.5 Mesa run rendered geometry into a 960×720 drawable at internal scale 3.
+This fixed size was a test setting; the requested product behavior remains
+adaptive to the user's current display.
+
+An original fixture whose SYSTEM.CNF contains only BOOT exposed an OpenBIOS
+configuration issue: missing EVENT/TCB/STACK values remained zero. The development
+integration initializes their documented defaults before the existing parser
+handles explicit values. A regression fixture must retain the omitted settings.
+
+These observations are development evidence, not finished backend qualification.
+The standalone exporter/application changes are still in the disconnected cloud
+workspace and are not included in this published branch. A fresh source export,
+Windows/Linux execution, resize/fallback and live disc-swap tests, application
+regressions and targeted DQVII checks remain necessary before declaring PS1 done.
+The shared GPU requirement is documented in the
+[PC output specification](../pc-output.md#shared-gpu-presentation-standard).
+
 ## Remaining integration
 
 1. Build a standalone source repository against the complete pinned hardware

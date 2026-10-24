@@ -61,7 +61,7 @@ def test_browser_generates_standalone_ds_sources_and_preserves_prior_work(tmp_pa
             result=first['result'];root=Path(result['path'])
             assert result['format']=='pc' and result['integrity_verified'] and not result['gameplay_verified']
             assert pc.verify(root)['manifest']['save_type']=='eeprom8k'
-            assert result['manifest']['presentation']==dict(renderer='opengl',screen_mode='unified',resolution='window')
+            assert result['manifest']['presentation']==pc.presentation('opengl',screens=2,screen_mode='unified')
             assert (root/'game/arm9/fn_table.cpp').is_file()
             assert formats==['decrypted'] and not net.store.all('SELECT * FROM projects')
             assert not list((tmp_path/'home/uploads').glob('*'))
@@ -158,7 +158,7 @@ def test_connected_agent_generates_and_exports_native_sources_without_matching(t
     assert str(root) in result and 'Native PC source project' in result and 'experimental' in result
     assert 'Imported as' not in result and 'Source integrity verified' in result
     assert pc.verify(root)['manifest']['save_type']=='eeprom8k'
-    assert output['manifest']['presentation']==dict(renderer='opengl',screen_mode='unified',resolution='window')
+    assert output['manifest']['presentation']==pc.presentation('opengl',screens=2,screen_mode='unified')
     assert not net.store.all('SELECT * FROM projects') and formats==['decrypted']
     job=next(iter(jobs.jobs))
     assert anyio.run(lambda:registered['import_status'](ctx,job))==result

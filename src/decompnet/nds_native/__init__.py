@@ -513,7 +513,7 @@ build and successful boot are separate from field/battle/save compatibility.
         execution_model='static-recompiled',build=dict(system='cmake',target='ds_pc'),
         fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
         code_generation=stats,save_type=project['save_type'],asset_sha256=asset_digest,
-        presentation=dict(renderer=project['renderer'],screen_mode=project['screen_mode'],resolution='window'),files={})
+        presentation=pc.presentation(project['renderer'],screens=2,screen_mode=project['screen_mode']),files={})
     for path in sorted(root.rglob('*')):
         if path.is_file():manifest['files'][path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
