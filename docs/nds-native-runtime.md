@@ -68,7 +68,10 @@ The generated repository builds independently of decomp.wtf. Python 3.9+ stages
 assets; CMake 3.20+ and a C++20 compiler build the project on x86-64 Windows/Linux.
 Host-tool download links are in the main README and generated README. The default
 window build downloads and verifies SDL2 2.32.10 automatically. The DS runtime
-source is already included. `-DNDS_WITH_SDL=OFF` makes a headless-only build.
+source is already included. Linux desktop builds also need the distribution's
+X11/Xext and OpenGL/EGL development packages before SDL configuration; see
+[manual host dependencies](../README.md#downloads-you-install-yourself).
+`-DNDS_WITH_SDL=OFF` makes a headless-only build.
 
 ```sh
 python tools/extract_assets.py /path/to/original.nds

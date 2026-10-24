@@ -103,6 +103,19 @@ Public decomp repositories can require additional build tools; follow that
 project's setup instructions. For generated PC projects on Linux, use your
 distribution's GCC or Clang C++ package.
 
+Linux windowed DS builds also need desktop graphics development libraries before
+CMake builds SDL: [X11](https://packages.ubuntu.com/noble/libx11-dev),
+[Xext](https://packages.ubuntu.com/noble/libxext-dev),
+[OpenGL](https://packages.ubuntu.com/noble/libgl-dev) and
+[EGL](https://packages.ubuntu.com/noble/libegl-dev). On Ubuntu/Debian:
+
+```sh
+sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
+```
+
+Use the equivalent development packages on other distributions. Headless DS
+builds (`-DNDS_WITH_SDL=OFF`) do not need desktop graphics libraries.
+
 ## Development and scope
 
 The [roadmap](docs/future-work.md) separates shared application work from platform

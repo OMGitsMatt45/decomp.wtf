@@ -48,7 +48,7 @@ jobs:
       - run: uv sync --locked --group dev --python 3.12
       - name: Linux OpenGL qualification driver
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+        run: sudo apt-get update && sudo apt-get install -y xvfb libx11-dev libxext-dev libgl-dev libegl-dev libglx-mesa0 libegl-mesa0 libgl1-mesa-dri
       - name: Install checksum-pinned DS native runtime sources
         run: uv run --no-sync python -c "from decompnet import toolchains; toolchains.install('dsr-sdk')"
       - name: Generate, build and execute original DS code and compare CPU oracles

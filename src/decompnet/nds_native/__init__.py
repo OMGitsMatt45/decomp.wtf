@@ -428,6 +428,17 @@ SDL2 2.32.10 is downloaded and checksum-verified by CMake automatically.
 The DS runtime source is already included. No decomp.wtf or console compiler
 installation is needed to build this repository.
 
+Linux desktop builds also need X11/Xext and OpenGL/EGL development libraries
+before CMake configures SDL. On Ubuntu/Debian:
+
+```sh
+sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
+```
+
+Other distributions need equivalent development packages. See
+[SDL's Linux build documentation](https://wiki.libsdl.org/SDL2/Installation#linuxunix).
+Headless builds do not need these graphics packages.
+
 ```sh
 python tools/extract_assets.py /path/to/original.nds
 cmake -S . -B build
