@@ -90,3 +90,4 @@ def test_generated_native_code_matches_original_execution(tmp_path):
     native = next(p for p in (build / 'native_probe', build / 'native_probe.exe', build / 'Release/native_probe.exe') if p.is_file())
     result = json.loads(candidate.run([native, output / 'original.exe', '0x80010000', '7', '0'], output, output / 'rebuild-run.log'))
     assert result['registers'][2] == 19 and result['native_dispatches'] > 0
+    assert result['cps_mode'] == 1

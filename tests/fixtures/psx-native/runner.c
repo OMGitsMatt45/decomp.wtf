@@ -67,6 +67,6 @@ int main(int argc,char** argv) {
     if(argc==6)return 5;
     printf("{\"registers\":[");
     for(unsigned i=0;i<32;++i)printf("%s%u",i?",":"",cpu.gpr[i]);
-    printf("],\"pc\":%u,\"memory\":%u,\"native_dispatches\":%u}\n",cpu.pc,psx_read_word(0x80020000u),calls);
+    printf("],\"pc\":%u,\"memory\":%u,\"native_dispatches\":%u,\"cps_mode\":%d}\n",cpu.pc,psx_read_word(0x80020000u),calls,g_psx_cps_mode);
     return calls==0||g_psx_cps_mode!=1;
 }

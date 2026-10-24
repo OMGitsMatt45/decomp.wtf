@@ -97,7 +97,9 @@ def qualify(sdk,destination,*,recompiler=None):
             f'set(PSX_CANDIDATE_ROOT {quote(sdk)} CACHE PATH "Pinned external candidate source")\n'
             'add_executable(native_probe runner.c '+ ' '.join(quote(p.relative_to(stage)) for p in source)+')\n'
             'target_include_directories(native_probe PRIVATE "${PSX_CANDIDATE_ROOT}/runtime/include")\n'
-            'target_compile_definitions(native_probe PRIVATE PSX_NO_DEBUG_TOOLS)\n')
+            'target_compile_definitions(native_probe PRIVATE PSX_NO_DEBUG_TOOLS)\n'
+            '# Keep the emitted .CRT$XCU mode initializer in optimized MSVC links.\n'
+            'if(MSVC)\n  target_link_options(native_probe PRIVATE /OPT:NOREF)\nendif()\n')
         shutil.copyfile(sdk/'LICENSE',stage/'PSXRecomp-LICENSE.txt')
         (stage/'README.md').write_text(
             '# Original PS1 CPU probe\n\n'
