@@ -342,15 +342,16 @@ struct Display::Impl {
             }
             const auto clear=unified_scene.clear_color;
             gl->ClearColor(float(clear&31)/31,float((clear>>5)&31)/31,float((clear>>10)&31)/31,1);gl->Clear(GL_COLOR_BUFFER_BIT);
-            const float h=float(height)/2,w=h*256/192;
-            const Rect original{(width-w)/2,unified_on_top?h:0,w,h};
+            const float h=std::min(height/2.0F,width*192.0F/256),w=h*256/192;
+            const Rect original{(width-w)/2,unified_on_top?height-h:0,w,h};
             geometry(unified_scene,original,nullptr);flat(unified_ui.data(),256,192,original);
             touch_rect=unified_on_top?Rect{}:original;
             // Generic output cannot identify every game's secondary-screen UI.
             // Keep it accessible in an inset; F7 can hide it after title review.
             if(secondary_visible) {
-                const float sh=height/4.0F,sw=sh*256/192;
-                const Rect secondary{width-sw-16,height-sh-16,sw,sh};
+                const float margin=std::min(16.0F,std::min(width,height)/16.0F);
+                const float sh=std::min(height/4.0F,(width-2*margin)*192/256),sw=sh*256/192;
+                const Rect secondary{width-sw-margin,height-sh-margin,sw,sh};
                 flat(unified_on_top?frame.bottom:frame.top,256,192,secondary);
                 if(unified_on_top)touch_rect=secondary;
             }

@@ -94,6 +94,13 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         for(int sy=356;sy<364;++sy)for(int sx=316;sx<324;++sx)
             require(pixels[sx+sy*640]==0xff0000ff,"wireframe quads have no triangulation diagonal");
+        // Portrait/narrow displays must retain the complete touch/UI rectangle.
+        SDL_SetWindowSize(window,320,720);SDL_PumpEvents();frame.scene=&scene;mask.fill(1);
+        for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)mask[y*256+x]=0;
+        display.present(frame);pixels=display.read_pixels();
+        require(display.width()==320&&display.height()==720,"portrait drawable resolution");
+        require(pixels[2+482*320]==0xffff0000,"portrait layout keeps left-edge UI on screen");
+        require(display.touch(160,600,x,y)&&x==128&&y==96,"portrait touch coordinates follow fitted UI");
         std::cout<<"GPU geometry, unified camera, UI, texture, camera retention and touch checks passed: "<<display.device()<<'\n';
     } catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     SDL_Quit();return 0;
