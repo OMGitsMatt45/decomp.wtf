@@ -76,8 +76,6 @@ def test_standalone_executable_stages_a_valid_bootable_disc(tmp_path):
 
 def test_imported_disc_retains_reviewed_module_bytes_and_rejects_changed_layout(tmp_path):
     from decompnet.rom import detect,psx_media
-    from decompnet.rom.psx import _Disc
-    from decompnet.rom.errors import RomError
     path=tmp_path/'original.iso';path.write_bytes(disc())
     picked=detect.identify(path);root=tmp_path/'imported';root.mkdir()
     psx_media.snapshot(path,picked,root)

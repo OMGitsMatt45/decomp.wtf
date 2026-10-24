@@ -36,6 +36,10 @@ def patch(root):
         '    if(decomp_width){game_w=decomp_width;game_h=decomp_height;}\n    sdl_window = SDL_CreateWindow(\n        window_title.c_str(),')
     text=replace(text,'    psx_apply_window_icon(sdl_window, argv[0]);',
         '    decomp_place_window(sdl_window);\n    psx_apply_window_icon(sdl_window, argv[0]);')
+    # Give compile-time policy constants static storage: MSVC otherwise treats
+    # their use in the captured launch callback's static_assert as a runtime read.
+    for name in ('frame_interpolation_offered','skip_fmv_offered'):
+        text=replace(text,f'    constexpr bool {name} = false;',f'    static constexpr bool {name} = false;')
     text=replace(text,'    if (!sdl_window) {\n        std::fprintf(stderr, "SDL_CreateWindow failed: %s\\n", SDL_GetError());',
         '''    if(!sdl_window && (win_flags & SDL_WINDOW_OPENGL) && !decomp_require_gpu) {
         std::fprintf(stderr,"decomp.wtf: OpenGL window unavailable; trying reported software fallback\\n");

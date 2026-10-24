@@ -22,10 +22,13 @@ class Program:
     def bios_b(self,selector):self.li(9,selector);self.emit(0x0c00002c,0)
     def branch(self,op,rs,rt,label):
         self.patches.append((len(self.words),'branch',(op,rs,rt),label));self.emit(0,0)
+    def call(self,label):
+        self.patches.append((len(self.words),'call',0,label));self.emit(0,0)
     def finish(self):
         for at,kind,reg,name in self.patches:
             address=self.labels[name]
-            if kind=='branch':
+            if kind=='call':self.words[at]=0x0c000000|((address>>2)&0x03ffffff)
+            elif kind=='branch':
                 op,rs,rt=reg;offset=(address-(BASE+at*4+4))//4
                 self.words[at]=(op<<26)|(rs<<21)|(rt<<16)|(offset&0xffff)
             else:
@@ -42,6 +45,7 @@ def executable(index=1):
     # ExitCriticalSection is normally supplied by a game's CRT startup.
     # BIOS Exec enters a game with interrupts disabled; CD events need them.
     p.li(4,2);p.emit(0x0000000c,0)
+    p.call('alias_start');p.call('alias_tail')
     p.store(0x80020000,index)
     for value in (0x00000000,0x03000000,0x08000001,0x05000000,0x06c60260,0x07040010):p.store(0x1f801814,value)
     for value in (0xe1000400,0xe3000000,0xe403bd3f,0xe5000000,
@@ -82,6 +86,9 @@ def executable(index=1):
     p.store(0x80020010,0xa004)
     p.li(17,0x80020004);p.label('loop')
     p.emit(0x8e2c0000,0,0x258c0001,0xae2c0000,0x1000fffb,0)
+    # Two callable entries share a tail at the same addresses on both discs.
+    p.label('alias_start');p.emit(0x24020001)
+    p.label('alias_tail');p.emit(0x24420002,0x03e00008,0)
     p.string('filename','cdrom:\\SAMPLE.BIN;1')
     p.string('cardname','bu00:DECOMP')
     payload=p.finish();payload+=bytes(-len(payload)%2048)

@@ -51,7 +51,7 @@ def module(recompiler,disc,folder,run,sdk):
         if path.suffix not in ('.c','.h'):continue
         text=path.read_text(encoding='utf-8')
         for name in sorted(EXPORTS,key=len,reverse=True):text=re.sub(r'\b'+name+r'\b',prefix+name,text)
-        text=re.sub(r'\bfunc_[0-9a-fA-F]{8}\b',lambda match:prefix+match[0],text)
+        text=re.sub(r'\b(?:func_|psx_alias_body_)[0-9a-fA-F]{8}\b',lambda match:prefix+match[0],text)
         for name in ('dirty_ram_text_native_ok_ranges_from','dirty_ram_text_native_ok_ranges'):
             text=re.sub(r'\b'+name+r'\b',prefix+name,text)
         path.write_text(text,encoding='utf-8')
