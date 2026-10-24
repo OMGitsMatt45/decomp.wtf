@@ -92,7 +92,8 @@ int main() {
         require(display.touch(320,360,x,y)&&x==128&&y==96,"touch adapts to the resized drawable");
         auto wire=scene;wire.polygons[0].attr&=~(31u<<16);wire.clear_color=0x001f7c00;frame.scene=&wire;
         display.present(frame);pixels=display.read_pixels();
-        require(pixels[320+360*640]==0xff0000ff,"wireframe quads have no triangulation diagonal");
+        for(int sy=356;sy<364;++sy)for(int sx=316;sx<324;++sx)
+            require(pixels[sx+sy*640]==0xff0000ff,"wireframe quads have no triangulation diagonal");
         std::cout<<"GPU geometry, unified camera, UI, texture, camera retention and touch checks passed: "<<display.device()<<'\n';
     } catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     SDL_Quit();return 0;
