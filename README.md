@@ -154,9 +154,12 @@ Windows/Linux standalone build/execution workflow. DQVII is the first retail
 target; boot checks and full playthrough acceptance remain distinct.
 
 [PS2 native output](docs/future/ps2.md) is in development in PR #5. Shared disc
-and overlay discovery, original EE execution and a separate Vulkan GS renderer
-are under qualification. PS2 PC game export is not enabled yet; its target is
-the same standalone source-project and adaptive GPU contract as DS and PS1.
+and overlay discovery feed a standalone C++/CMake export with source-shipped
+runtime, adaptive Vulkan geometry, audio, input and saves. Use `decomp pc ps2-native
+GAME.iso NEW_OUTPUT --experimental`, or the GUI's native PC output. Exact-hash
+profiles are selected automatically when bundled; other stripped games require
+a reviewed code map. Windows/Linux qualification and retail acceptance are
+reported separately; source generation alone does not certify a working port.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

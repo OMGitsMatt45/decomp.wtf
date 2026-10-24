@@ -8,6 +8,69 @@ screen. DQVIII is the first supplied retail validation input. Import, module
 discovery, translation, runtime and export remain shared PS2 components; a
 title-specific profile cannot qualify other games or replace generic support.
 
+## Standalone export
+
+The CLI and GUI share a source exporter. It ships generated EE C++, the pinned
+GPL-3.0 runtime and SDL3 GS sources, checked CMake dependencies, an owner-asset
+helper, retained code map and input hashes. No BIOS is needed. The host supplies
+Vulkan geometry rendering, reported software fallback, required-GPU errors,
+current-display startup, drawable/high-DPI resize, F11 native fullscreen,
+keyboard/gamepad input, audio and per-project saves. Unknown/changed EE code
+fails; IOP/VU interpretation is disclosed. Generation is not gameplay validation.
+
+```sh
+decomp pc ps2-native GAME.iso NEW_OUTPUT --experimental
+python NEW_OUTPUT/tools/extract_assets.py /path/to/GAME.iso
+cmake -S NEW_OUTPUT -B NEW_OUTPUT/build
+cmake --build NEW_OUTPUT/build --config Release --target ps2_pc --parallel 2
+```
+
+The asset helper's `--reference` option verifies and retains the original disc's
+absolute path without copying it. Boot and IOP files are extracted; other files
+and original sector numbers stream from ISO/BIN. The default copies the disc for
+portability. Existing destinations/assets and saves are preserved. Failed
+emission retains diagnostics separately.
+
+Install [Python 3.12+](https://www.python.org/downloads/),
+[CMake 3.24+](https://cmake.org/download/) and an x86-64 C++20 compiler. Windows uses
+[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/).
+The output README lists Linux desktop/audio/FFmpeg development packages.
+SDL3, raylib, shader tools and Windows FFmpeg libraries download with checked
+hashes when required. Install a current GPU driver from
+[NVIDIA](https://www.nvidia.com/Download/index.aspx),
+[AMD](https://www.amd.com/en/support/download/drivers.html) or
+[Intel](https://www.intel.com/content/www/us/en/download-center/home.html).
+
+The optional GPL-3.0 DQVIII USA analysis profile is selected only for the exact
+whole-disc hash below. It contains addresses/names and explicit SDK bindings,
+without original instructions/assets. Other stripped games need `--profile
+reviewed.json`; symbol-bearing original programs work without one. Maps must
+distinguish code from data and declare native SDK bindings. The complete map is
+retained as `game/profile.json`. Explicitly typed late constructor code and
+alternate entries can reside in file-backed executable load memory even outside
+the primary text section. Analysis ELFs preserve original load images. Owner
+boot files stay unchanged. Function guards avoid comparing unrelated mutable
+data in mixed writable segments.
+
+The original standalone fixture has built/executed locally on Linux through both
+Vulkan and software rendering. Generated EE code sends a triangle through GIF
+DMA and GS, resizes the drawable from 320x320 to 640x480, and changes geometry
+scale from 5x to 10x. Captures contain the expected triangle. Changed code and
+missing required GPUs must fail. Static VU upper instructions have 288 value/flag
+comparisons across direct helpers and actual emitted C++.
+The [standalone workflow](../../.github/workflows/ps2-native-port.yml) builds the
+output on Windows/Linux; Linux executes graphics and Windows checks required
+device failures. Results apply only to the tested commit.
+
+The runtime package pins PS2Recomp `888ec479165f41b899bb081e0ca7123b8c5af31a`
+and the generic GS component from DQ8-Recompiled
+`f6dfd968001b492415969bb70bd5aad3bfa79abd`. Game launchers, branding, address
+hooks and menus are excluded. Archives and the resulting tree are checked by
+[runtime-inputs.json](../../src/decompnet/ps2_native/runtime-inputs.json).
+Integration fixes include FIO access flags, indexed disc lookups/reads, static
+VU0 current/sticky flags, VF0's hardwired value and serialized GPU recording
+against presentation/readback.
+
 ## Candidate assessment
 
 The first candidate is [PS2Recomp](https://github.com/ran-j/PS2Recomp), pinned to
@@ -44,7 +107,8 @@ remain unsupported. The registry is qualified through original memory-loaded
 fixtures; retail loaders, constructor execution, BSS and runtime registration of
 HLE replacements need integration checks. Missing dispatch stops.
 No graphics, audio, IOP, vector unit, save, gameplay or general retail claim
-follows from a CPU result. The app does not register a PS2 PC backend yet.
+follows from a CPU result. The newer standalone backend has its own qualification
+path; the older CPU checks remain independent regression evidence.
 Logs, generated sources, expected/actual state and the candidate license remain
 in the assessment directory, including on failure.
 
@@ -117,8 +181,9 @@ zero decode failures, but its separate emission report contained 7,948 errors.
 It still returned success. Many diagnostics came from interpreting embedded
 data as instructions. The integration now requires a complete diagnostic report
 and rejects emission errors even when exit status and decode counts say success.
-The original CPU fixture still has zero emission errors. Stripped function and
-code/data discovery needs further work before this retail output can be built.
+The original CPU fixture still has zero emission errors. Stripped discovery alone
+does not provide a complete retail translation map; the newer exporter uses an
+explicit input-bound profile for this case.
 
 The bounded shared control-flow pass reaches 56,195 instructions and 961 function
 seeds in the stripped boot ELF, with zero invalid instructions and 81 unresolved

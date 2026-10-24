@@ -51,11 +51,11 @@ def isolate(folder: Path, guards: dict) -> dict:
     stubs_header = namespace + '_stubs.h'
     sources = {}
     names = {name: namespace + '_' + name for name in declarations}
-    token = re.compile(r'\b(' + '|'.join(map(re.escape, declarations)) + r')\b')
+    token = re.compile(r'\b[A-Za-z_]\w*\b')
     for path in folder.iterdir():
         if path.suffix not in ('.cpp', '.h') or path == registration or path.name == 'ps2_code_guard.hpp': continue
         source = path.read_text(encoding='utf-8')
-        source = token.sub(lambda m: names[m[0]], source)
+        source = token.sub(lambda m: names.get(m[0],m[0]), source)
         source = source.replace('ps2_recompiled_functions.h', functions_header).replace('ps2_recompiled_stubs.h', stubs_header)
         source = source.replace('PS2_RECOMPILED_FUNCTIONS_H', namespace.upper() + '_FUNCTIONS_H')
         target = folder / (functions_header if path.name == 'ps2_recompiled_functions.h'
@@ -75,8 +75,10 @@ def isolate(folder: Path, guards: dict) -> dict:
     return module
 
 
-def registry(modules: list[dict], output: Path) -> dict:
+def registry(modules: list[dict], output: Path, *, project_root: Path | None = None) -> dict:
     output = Path(output).resolve()
+    project_root=Path(project_root).resolve() if project_root is not None else output.parent
+    if not output.is_relative_to(project_root):raise PCError('PS2 registry must stay inside its source project')
     if output.exists(): raise PCError('PS2 module registry output exists; preserve existing work')
     if not modules or len(modules) > 1024: raise PCError('PS2 module registry count is invalid')
     if len({m['identity'] for m in modules}) != len(modules): raise PCError('PS2 module identities must be unique')
@@ -88,7 +90,7 @@ def registry(modules: list[dict], output: Path) -> dict:
                 module['namespace'] != expected_namespace or module['functions_header'] != expected_namespace + '_functions.h'):
             raise PCError('PS2 module namespace differs from its identity')
         folder = Path(module['path']).resolve()
-        if not folder.is_relative_to(output.parent): raise PCError('PS2 module source must stay inside the source project')
+        if not folder.is_relative_to(project_root): raise PCError('PS2 module source must stay inside the source project')
         prefix = Path(os.path.relpath(folder, output.parent)).as_posix()
         if any(c in prefix for c in '\\"\r\n'): raise PCError('PS2 module source path cannot be represented in an include')
         lines += [f'#include "{prefix}/{module["functions_header"]}"',
@@ -105,6 +107,11 @@ def registry(modules: list[dict], output: Path) -> dict:
     if end - base > 0x02000000: raise PCError('PS2 dense module registry exceeds its 32 MiB address-span bound')
     count = (end - base) // 4
     for address, candidates in sorted(entries.items()):
+        if len(candidates) == 1 and candidates[0][0]['guards'].get('guard_scope') == 'function':
+            function = candidates[0][1]
+            lines += [f'static void dispatch_{address:x}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
+                f'    {function}(rdram, ctx, runtime);', '}']
+            continue
         lines += [f'static void dispatch_{address:x}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
                   '    PS2Runtime::RecompiledFunction selected = nullptr;']
         for index, (module, function) in enumerate(candidates):
