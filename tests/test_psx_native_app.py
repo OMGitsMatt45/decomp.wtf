@@ -77,6 +77,28 @@ def test_direct_generation_checks_ownership_before_reading_media(tmp_path):
     assert not (tmp_path/'projects').exists()
 
 
+def test_existing_combined_project_exports_all_ordered_retained_inputs(tmp_path,monkeypatch):
+    from decompnet.rom.psx_set import configure
+    net=RomNetwork(tmp_path/'db',tmp_path/'projects');calls=[]
+    for index in (1,2):
+        root=tmp_path/f'disc{index}';root.mkdir();(root/'user.cpp').write_text('keep')
+        cfg=dict(platform='psx',kind='fork',psx_disc=dict(supported=True,sha256=str(index)*64),
+                 psx_modules={'reviewed_module':{'code_start':0,'code_end':16}})
+        with net.store.tx() as db:
+            db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
+                       (f'disc{index}',f'Disc {index}',str(root),json.dumps(cfg)))
+    configure(net,'disc1',['disc2','disc1'],'One ordered game')
+    def publish(project,destination,backend):
+        calls.append(project);return dict(path=str(destination))
+    monkeypatch.setattr('decompnet.pc.export_backend',publish)
+    result=net.export_rom('disc1',format='pc',renderer='opengl')
+    assert result['path']==str(tmp_path/'disc1/pc-source')
+    assert [Path(row['root']).name for row in calls[0]['native_inputs']]==['disc2','disc1']
+    assert calls[0]['title']=='One ordered game' and calls[0]['renderer']=='opengl'
+    assert all(row['psx_modules']['reviewed_module']['code_end']==16 for row in calls[0]['native_inputs'])
+    assert (tmp_path/'disc1/user.cpp').read_text()=='keep'
+
+
 def test_cli_retains_disc_order_and_separate_output_path(tmp_path,monkeypatch,capsys):
     parser=argparse.ArgumentParser();pc_cli.add_parser(parser.add_subparsers(dest='action'))
     args=parser.parse_args(['pc','psx-native','first.cue','second.cue',str(tmp_path/'output'),'--experimental'])

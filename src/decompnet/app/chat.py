@@ -24,6 +24,11 @@ For a DS native PC project, use generate_pc_project(path, own_copy=true, save_ty
 ds_input_format="auto" or "decrypted"). This experimental path analyzes the ROM and generates a standalone
 C++ project with a source-shipped runtime. It does not require matching every function or installing a
 console compiler. For an existing DS reconstruction, use export_project(format="pc", save_type=...).
+For PS1, use generate_pc_project(path, own_copy=true, platform="psx", disc_paths=[additional discs in order]).
+An M3U can list the whole game. The output is one C/C++ project with adaptive OpenGL rendering and shared
+memory cards. PS1 uses one screen. Its optional runtime has noncommercial terms and hybrid execution;
+unknown code is interpreted, and runtime guest-code compilation is disabled. Existing imported PS1 disc
+sets can use export_project(format="pc"). DS save-chip and unified-screen options apply only to DS.
 Read the generated README for host building and controls. Report source integrity, host execution and
 gameplay acceptance separately; a successful export does not certify a full game. Gameplay acceptance
 is owner-run. Helpers are optional; start them only when the user requests them.
@@ -286,7 +291,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
     async def export_project(ctx: Context, format: str = "matching", save_type: str = "auto",
                              renderer: str = "auto", screen_mode: str = "dual") -> str:
         """Export the current project: matching console reconstruction by default, or experimental native PC
-        sources with format=pc on DS. For PC output choose the cartridge save chip. Returns the output path;
+        sources with format=pc on DS/PS1. Choose the cartridge save chip for DS; a PS1 disc set shares
+        one executable and memory cards. Returns the output path;
         source integrity and matching-console verification do not certify gameplay.
         """
         agent = chat_agent(ctx)

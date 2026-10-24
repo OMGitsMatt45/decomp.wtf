@@ -42,6 +42,7 @@ def input_platform(path: Path) -> str:
     """Select direct native generation, retaining support for unnamed DS uploads."""
     path=Path(path)
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
+    if path.suffix.lower() in ('.cue','.m3u','.chd','.iso','.exe'):return 'psx'
     from .forks.scratch_dsd import crc16
     with path.open('rb') as stream:head=stream.read(0x200)
     if len(head)==0x200 and crc16(head[:0x15e])==int.from_bytes(head[0x15e:0x160],'little'):

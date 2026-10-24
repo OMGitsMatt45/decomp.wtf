@@ -74,6 +74,16 @@ def test_standalone_executable_stages_a_valid_bootable_disc(tmp_path):
     assert wrapped[0]['image']==discs[0]['image']
 
 
+@pytest.mark.parametrize('compressed',[False,True])
+def test_original_chd_program_and_container_are_retained(tmp_path,compressed):
+    from .test_psx_media import original_chd
+    from .test_psx_disc import fixture
+    path=tmp_path/'original.chd';raw=original_chd(fixture(2448,24),compressed=compressed)
+    path.write_bytes(raw);discs=media.prepare([path]);out=tmp_path/'project';recipe(out,discs)
+    assert discs[0]['image'].startswith(b'PS-X EXE')
+    stage(out,[path]);assert (out/'assets/disc1/original.chd').read_bytes()==raw
+
+
 def test_imported_disc_retains_reviewed_module_bytes_and_rejects_changed_layout(tmp_path):
     from decompnet.rom import detect,psx_media
     path=tmp_path/'original.iso';path.write_bytes(disc())

@@ -180,7 +180,8 @@ cards live under saves. Keep them when updating the source project.
 Useful options: --renderer auto|opengl|software, --resolution WIDTHxHEIGHT,
 --fullscreen, --headless, --frames N, --report result.json, --capture picture.ppm.
 Explicit OpenGL requires a working context; automatic mode reports a software
-fallback. Headless checks intentionally use software. Bounded validation can
+fallback. Headless checks use --renderer software (also when the export default
+explicitly requires OpenGL). Bounded validation can
 also observe RAM with --observe ADDRESS, switch discs with --switch-disc FRAME:N,
 or resize with --resize FRAME:WIDTHxHEIGHT. A full playthrough is a separate
 acceptance step; a build or boot does not certify every game's compatibility.
