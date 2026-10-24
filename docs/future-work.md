@@ -7,6 +7,9 @@ N64, GameCube and Wii are removed from application functionality in the redesign
 
 ## Shared application phase
 
+Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
+`acacecf517100d8bb49018d41360c0a97ed1a21b`:
+
 - Enforce the remaining platform scope at imports, public projects, saved
   project access, CLI, UI, setup and agent entry points without deleting data.
 - Separate console reconstruction from native PC export in capabilities and
@@ -19,13 +22,20 @@ N64, GameCube and Wii are removed from application functionality in the redesign
 
 ## Platform phase: start with DS
 
-First implement and qualify DS ARM9/ARM7 execution integration and its runtime,
-including overlays, memory, graphics, audio, timing, input, files and saves.
-Evaluate DQIV's native runtime/source as a reusable dependency after reviewing its
-interfaces and license. Do not assume its title-specific implementation supports
-another DQ or Pokémon title unchanged. Use original fixtures first, then validate
-one chosen retail title through boot/title/menu, field/battle, audio, input and
-save/reload. Full playthrough remains with the user.
+[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) implements the first
+experimental DS static translator and standalone CMake repository generator.
+Original ARM9/ARM7 programs execute as generated C++, communicate through RAM,
+call Thumb code, switch overlays at one address and persist a RAM checkpoint.
+Independent original-byte execution checks registers, flags and program output.
+See [current commands and limits](nds-pc.md) and the [DS implementation plan](future/ds-native.md).
+
+Next integrate retail ARM9 decoding and extend CPU semantics and runtime services:
+interrupts, timing, synchronization, graphics, audio, input, cartridge/files and
+real save devices. The [DQIV runtime assessment](future/ds-runtime-assessment.md)
+does not establish permission to adopt that code; no upstream runtime is copied.
+The generator is explicit CLI-only while general platform export stays disabled.
+Then validate one chosen DQ or Pokémon title through boot/title/menu, field/battle,
+audio, input and save/reload. Full playthrough remains with the user.
 
 GBA, PS1 and PS2 follow the common contract with separate backends. Reuse existing
 Pokémon source projects and suitable recompiler/runtime projects. PS1 retains one
@@ -36,7 +46,7 @@ output is additional work. Other console plans are deferred.
 ## PR migration
 
 The [PR scope audit](pr-scope-audit.md) records updates to all 26 pre-existing PRs.
-The shared redesign is [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
+The shared redesign merged in [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
 and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) tracks DS native output.
 
 Merged PRs #1, #7 and #25 qualify DS console reconstruction, not PC output; merged

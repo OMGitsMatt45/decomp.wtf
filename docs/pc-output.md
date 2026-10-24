@@ -120,3 +120,9 @@ checks a generated project. Application project overviews expose PC capabilities
 separately from matching-console reconstruction. No platform backend is
 registered yet. An original host fixture proves the adapter and CMake build/run
 path only; it does not execute a DS game or establish a DS hardware runtime.
+
+PR #29 adds an explicitly invoked [experimental DS static generator](nds-pc.md)
+using this contract. Its original ARM9/ARM7 fixture executes translated C++ with
+RAM communication, Thumb calls, overlay switching and a RAM checkpoint. It stays
+outside the general backend registry while retail decoding and hardware services
+remain incomplete. This execution milestone does not qualify a playable DS game.

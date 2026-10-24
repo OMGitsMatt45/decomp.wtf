@@ -117,6 +117,19 @@ def export(project: dict, destination: Path, backend_id: str | None = None) -> d
     platforms.require(platform, PCError)
     if len(candidates) != 1:
         raise PCError(status(platform)['reason'] or 'select one registered PC backend')
+    return export_backend(project, destination, candidates[0])
+
+
+def export_backend(project: dict, destination: Path, backend: Backend) -> dict:
+    """Publish a selected adapter, including explicitly invoked experimental ones.
+
+    Experimental adapters are not automatically advertised as general platform
+    support. They use the same integrity and publication checks as registered ones.
+    """
+    platform = platforms.canonical(project.get('platform', ''))
+    platforms.require(platform, PCError)
+    if backend.platform != platform:
+        raise PCError('backend does not support the input platform')
     destination = Path(destination)
     if destination.exists():
         raise PCError('choose a new PC-project destination; existing work is preserved')
@@ -125,7 +138,6 @@ def export(project: dict, destination: Path, backend_id: str | None = None) -> d
                  Path(root).resolve().is_relative_to(destination.resolve())):
         raise PCError('PC-project output must not contain the input project')
     destination.parent.mkdir(parents=True, exist_ok=True)
-    backend = candidates[0]
     with tempfile.TemporaryDirectory(prefix='.pc-export-', dir=destination.parent) as temp:
         stage = Path(temp) / 'project'
         stage.mkdir()

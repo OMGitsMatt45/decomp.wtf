@@ -13,11 +13,21 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    generate = actions.add_parser('nds-generate', help='experimental DS static C++ repository from reviewed code ranges')
+    generate.add_argument('rom', type=Path)
+    generate.add_argument('profile', type=Path)
+    generate.add_argument('output', type=Path)
+    generate.add_argument('--experimental', action='store_true', required=True,
+                          help='acknowledge incomplete ISA/hardware coverage; no retail port is qualified')
 
 
 def run(args):
     try:
-        result = pc.status(args.platform) if args.pc_action == 'status' else pc.verify(args.path)
+        if args.pc_action == 'nds-generate':
+            from .nds_pc import export
+            result = export(args.rom,args.profile,args.output)
+        else:
+            result = pc.status(args.platform) if args.pc_action == 'status' else pc.verify(args.path)
         print(json.dumps(result, indent=2))
         return 0
     except (pc.PCError, OSError, ValueError) as error:

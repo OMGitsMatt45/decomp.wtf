@@ -1,7 +1,7 @@
 # Nintendo DS: encrypted imports and reconstruction qualification
 
 Current product scope: this file records the historical console-reconstruction
-baseline. [DS native PC output](ds-native.md) is a separate, unimplemented next
+baseline. [DS native PC output](ds-native.md) is a separate experimental
 phase on the shared contract in PR #28. These reconstruction checks do not
 establish a playable Windows game.
 
