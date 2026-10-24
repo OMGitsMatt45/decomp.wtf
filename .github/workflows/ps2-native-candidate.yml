@@ -1,0 +1,60 @@
+name: PS2 native runtime candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/qualify_ps2_runtime.py'
+      - 'tools/ps2_runtime/**'
+      - 'tests/test_ps2_native_candidate.py'
+      - 'tests/fixtures/ps2_native.py'
+      - '.github/workflows/ps2-native-candidate.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  ee-candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_REQUIRE_PS2_CANDIDATE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux native runtime build prerequisites
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
+          libgl1-mesa-dev libasound2-dev
+      - name: Isolate optional GPL source outside the app checkout
+        shell: bash
+        run: echo "DECOMP_PS2_CANDIDATE_ROOT=$RUNNER_TEMP/PS2 candidate source" >> "$GITHUB_ENV"
+      - name: Fetch and verify the pinned candidate commit and complete source tree
+        run: >-
+          uv run --no-sync python -c
+          "import os; from tools.qualify_ps2_runtime import download; download(os.environ['DECOMP_PS2_CANDIDATE_ROOT'])"
+      - name: Generate C++, build the runtime and compare original instruction execution
+        run: >-
+          uv run --no-sync python -m pytest -q tests/test_ps2_native_candidate.py
+          --basetemp=ps2-native-results --junitxml=ps2-native-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ps2-native-candidate-${{ matrix.os }}
+          path: |
+            ps2-native-results.xml
+            ps2-native-results/**/assessment.json
+            ps2-native-results/**/inputs.json
+            ps2-native-results/**/*.log
+            ps2-native-results/**/case-*.json

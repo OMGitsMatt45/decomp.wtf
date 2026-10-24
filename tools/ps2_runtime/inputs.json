@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "purpose": "Original PS2 CPU candidate assessment; not a game backend",
+  "candidate": {
+    "repository": "ran-j/PS2Recomp",
+    "commit": "e5636981a1c9de368f6b71e819c3dc188dfedbf4",
+    "tree": "f53888c06d1cc37e9b87e25fea3c23d3ede5ea7e",
+    "license": "GPL-3.0",
+    "license_file": "LICENSE"
+  },
+  "dependencies": [
+    {
+      "name": "elfio",
+      "repo": "serge1/ELFIO",
+      "tag": "Release_3.12",
+      "sha": "8ae6cec5d60495822ecd57d736f66149da9b1830",
+      "type": "commit"
+    },
+    {
+      "name": "toml11",
+      "repo": "ToruNiina/toml11",
+      "tag": "v4.4.0",
+      "sha": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286",
+      "type": "commit"
+    },
+    {
+      "name": "fmt",
+      "repo": "fmtlib/fmt",
+      "tag": "12.1.0",
+      "sha": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f",
+      "type": "commit"
+    },
+    {
+      "name": "libdwarf",
+      "repo": "davea42/libdwarf-code",
+      "tag": "v2.2.0",
+      "sha": "2e088b983562860f497b4fd789a3e61524eb857c",
+      "type": "commit"
+    },
+    {
+      "name": "rabbitizer",
+      "repo": "Decompollaborate/rabbitizer",
+      "tag": "1.14.3",
+      "sha": "d5804fa488474830a47fbf9f3693048ec1e45589",
+      "type": "commit"
+    },
+    {
+      "name": "raylib",
+      "repo": "raysan5/raylib",
+      "tag": "5.5",
+      "sha": "c1ab645ca298a2801097931d1079b10ff7eb9df8",
+      "type": "commit"
+    }
+  ]
+}
