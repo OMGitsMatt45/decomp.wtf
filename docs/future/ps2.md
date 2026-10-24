@@ -30,9 +30,19 @@ These checks qualify CPU translation only. The integration guards every emitted
 function entry against its own original executable sections, including direct
 calls that bypass runtime lookup. The assessment alters code before dispatching
 each of the 19 entries and requires a specific code-mismatch rejection. The
-original candidate's generated table has no such guards. Mutable executable
-sections and self-modification within a running function remain unsupported;
-module switching needs a separate guarded registry. Missing dispatch stops.
+original candidate's generated table has no such guards. The shared registry
+isolates each module's symbols and selects its implementation by original code
+bytes, including internal resume entries. Two original variants contain 19
+functions each at the same addresses. The assessment compares 60 original/native
+states, including direct/indirect calls in the second variant and an A/B/A
+resident switch. Unknown/mixed code is rejected. Separate original host sentinels
+verify ambiguity rejection and that a failure after guest side effects propagates
+without restarting another implementation.
+
+Mutable executable sections and self-modification within a running function
+remain unsupported. The registry is qualified through original memory-loaded
+fixtures; retail loaders, constructor execution, BSS and runtime registration of
+HLE replacements need integration checks. Missing dispatch stops.
 No graphics, audio, IOP, vector unit, save, gameplay or general retail claim
 follows from a CPU result. The app does not register a PS2 PC backend yet.
 Logs, generated sources, expected/actual state and the candidate license remain
@@ -158,6 +168,8 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
   belong in an explicit input-hash-verified profile.
 - [ ] Add per-module original-byte guards and explicit handling of overlays,
   unresolved dispatch, self-modifying code and all interpreter fallbacks.
+  The shared registry and generated entry guards now pass original module-switch
+  fixtures; retail loading and dirty-code/runtime-hook integration remain open.
   IOP and VU interpreters make eventual game execution hybrid even when EE
   functions are statically translated; the project manifest must declare this.
 - [ ] Qualify IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and scheduler/IRQ

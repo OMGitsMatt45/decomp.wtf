@@ -49,8 +49,8 @@ def candidate():
 def test_generated_cpp_matches_original_ee(candidate, tmp_path):
     report = qualify(candidate, tmp_path / 'PS2 assessment with spaces')
     assert len(report['checks']) == 54
-    assert report['generated_cpp_files'] >= 20
-    assert report['functions_recompiled'] == 19
+    assert report['generated_cpp_files'] >= 39
+    assert report['functions_recompiled'] == 38 and report['functions_per_module'] == 19
     assert report['stubs'] == report['skipped_functions'] == report['decode_failures'] == 0
     assert report['compiler']['id'] in ('GNU', 'Clang', 'MSVC', 'AppleClang')
     assert report['qualification'] == dict(cpu=True, graphics=False, iop=False,
@@ -58,9 +58,15 @@ def test_generated_cpp_matches_original_ee(candidate, tmp_path):
     assert report['app_backend_registered'] is False
     assert report['interpreter_fallback'] is False
     assert report['runtime_code_generation'] is False
-    assert report['changed_code_guard'] == 'generated-function-entry'
+    assert report['changed_code_guard'] == 'module-registry-and-function-entry'
     assert report['code_guards']['guarded_functions'] == 19
     assert not report['code_guards']['self_modification_within_function_qualified']
+    assert report['module_registry']['modules'] == 2
+    assert len(set(report['module_registry']['module_identities'])) == 2
+    assert report['module_registry']['shared_entries'] >= 19
+    assert report['resident_switch_order'] == ['a', 'b', 'a']
+    assert report['variant_checks'] == ['word_add', 'direct_call', 'indirect_call']
+    assert report['native_original_state_comparisons'] == 60
 
 
 def test_source_identity_rejects_modifications(candidate, tmp_path):

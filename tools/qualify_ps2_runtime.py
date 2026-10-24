@@ -15,11 +15,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import struct
 import tempfile
 
-from tests.fixtures.ps2_native import cases, program, reference, MASK64
+from tests.fixtures.ps2_native import BASE, cases, program, reference, MASK64, r
 from decompnet.ps2_native.reports import generation_report
 from decompnet.ps2_native.codegen import guard_generated
+from decompnet.ps2_native.registry import isolate, registry
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUTS = json.loads((ROOT / 'tools/ps2_runtime/inputs.json').read_text())
@@ -101,9 +103,17 @@ def qualify(sdk, destination):
     (destination / 'inputs.json').write_text(json.dumps(INPUTS, indent=2) + '\n')
     fixture = destination / 'probe'; fixture.mkdir()
     image, code, entries = program()
+    variant_image, variant_code = bytearray(image), bytearray(code)
+    # Original second module at the same addresses: word add becomes wide add,
+    # and the common helper uses OR. The independent byte oracle supports both.
+    for address, word in ((entries['word_add'], r(0x2D, 4, 5, 2)), (entries['helper'], r(0x25, 4, 5, 2))):
+        struct.pack_into('<I', variant_code, address - BASE, word)
+        struct.pack_into('<I', variant_image, 0x100 + address - BASE, word)
+    variant_image, variant_code = bytes(variant_image), bytes(variant_code)
     (fixture / 'original.elf').write_bytes(image)
     (fixture / 'original_program.h').write_text('#pragma once\n#include <cstdint>\n'
         'inline constexpr unsigned char original_program[] = {' + ','.join(map(str, code)) + '};\n'
+        'inline constexpr unsigned char variant_program[] = {' + ','.join(map(str, variant_code)) + '};\n'
         f'inline constexpr uint32_t original_helper = {entries["helper"]};\n')
     shutil.copyfile(ROOT / 'tools/ps2_runtime/runner.cpp', fixture / 'runner.cpp')
     shutil.copyfile(ROOT / 'tools/ps2_runtime/Probe.cmake', fixture / 'ProbeTargets.cmake')
@@ -139,6 +149,16 @@ def qualify(sdk, destination):
     statistics = generation_report(generation, expected_functions=len(entries))
     if not list((fixture / 'generated').glob('*.cpp')): raise ValueError('candidate emitted no source')
     guards = guard_generated(fixture / 'generated', image, expected_functions=statistics['recompiled'])
+    module_a = isolate(fixture / 'generated', guards)
+    variant = fixture / 'variant'; variant.mkdir()
+    (variant / 'original.elf').write_bytes(variant_image)
+    shutil.copyfile(fixture / 'config.toml', variant / 'config.toml')
+    variant_statistics = generation_report(run([recompiler, 'config.toml'], variant,
+        destination / 'variant-generation.log'), expected_functions=len(entries))
+    variant_guards = guard_generated(variant / 'generated', variant_image,
+        expected_functions=variant_statistics['recompiled'])
+    module_b = isolate(variant / 'generated', variant_guards)
+    registry_report = registry([module_a, module_b], fixture / 'module_registry.cpp')
     run(config + ['-DDECOMP_PS2_PROBE_DIR=' + fixture.as_posix()], destination, destination / 'native-configure.log')
     run(['cmake', '--build', build, '--target', 'ps2_cpu_probe', '--config', 'Release', '--parallel', '2'],
         destination, destination / 'native-build.log')
@@ -155,6 +175,21 @@ def qualify(sdk, destination):
             (fixture / f'case-{index}-expected.json').write_text(json.dumps(expected, indent=2))
             raise ValueError(f'original/native mismatch: {name}, case {index}; inspect case JSON')
         checks.append(dict(function=name, a=f'{a:032x}', b=f'{b:032x}'))
+    variant_checks = []
+    for name in ('word_add', 'direct_call', 'indirect_call'):
+        a = b = 0x80000000
+        result_path = fixture / f'variant-{name}.json'
+        run([native, f'{entries[name]:x}', f'{a:x}', '0', f'{b:x}', '0', result_path, 'module-b'], fixture,
+            destination / f'variant-{name}.log', timeout=30)
+        if json.loads(result_path.read_text()) != reference(variant_code, entries[name], a, b, entries):
+            raise ValueError('original/native variant mismatch: ' + name)
+        variant_checks.append(name)
+    cycle = fixture / 'module-cycle.json'
+    run([native, f'{entries["word_add"]:x}', '80000000', '0', '80000000', '0', cycle, 'module-cycle'],
+        fixture, destination / 'module-cycle.log', timeout=30)
+    expected_cycle = dict(states=[reference(c, entries['word_add'], 0x80000000, 0x80000000, entries)
+        for c in (code, variant_code, code)], mixed_rejected=True)
+    if json.loads(cycle.read_text()) != expected_cycle: raise ValueError('resident module switch or mixed-code rejection failed')
     for name, entry in entries.items():
         tampered = fixture / f'tampered-{name}.json'
         run([native, f'{entry:x}', '0', '0', '0', '0', tampered, 'cpu', 'tamper'],
@@ -169,13 +204,17 @@ def qualify(sdk, destination):
     report = dict(schema='decomp.wtf.ps2-candidate/v1', candidate=original_identity, compiler=compiler,
         cmake=run(['cmake', '--version'], destination, destination / 'cmake-version.log').splitlines()[0],
         original_elf_sha256=hashlib.sha256(image).hexdigest(), checks=checks,
-        generated_cpp_files=len(list((fixture / 'generated').glob('*.cpp'))),
-        functions_recompiled=len(entries), stubs=0, skipped_functions=0, decode_failures=0,
-        generation_statistics=statistics,
+        variant_elf_sha256=hashlib.sha256(variant_image).hexdigest(),
+        generated_cpp_files=len(list((fixture / 'generated').glob('*.cpp'))) + len(list((variant / 'generated').glob('*.cpp'))) + 1,
+        functions_recompiled=len(entries) * 2, functions_per_module=len(entries),
+        stubs=0, skipped_functions=0, decode_failures=0,
+        generation_statistics=statistics, variant_generation_statistics=variant_statistics,
+        module_registry=registry_report, variant_checks=variant_checks, resident_switch_order=['a', 'b', 'a'],
+        native_original_state_comparisons=len(checks) + len(variant_checks) + 3,
         generated_sources={p.relative_to(fixture).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                           for p in sorted((fixture / 'generated').iterdir()) if p.is_file()},
+            for folder in (fixture / 'generated', variant / 'generated') for p in sorted(folder.iterdir()) if p.is_file()},
         execution_model='static-recompiled', interpreter_fallback=False, runtime_code_generation=False,
-        changed_code_guard='generated-function-entry', code_guards=guards,
+        changed_code_guard='module-registry-and-function-entry', code_guards=guards,
         qualification=dict(cpu=True, graphics=False, iop=False, vu=False, audio=False, saves=False, retail=False),
         app_backend_registered=False, ffmpeg_enabled=False)
     (destination / 'assessment.json').write_text(json.dumps(report, indent=2) + '\n')

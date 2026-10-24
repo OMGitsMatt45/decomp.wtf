@@ -67,5 +67,6 @@ def guard_generated(folder: Path, original: bytes, *, expected_functions: int) -
     for path, text in sources.items(): path.write_text(text, encoding='utf-8')
     return dict(original_elf_sha256=identity, guarded_functions=len(definitions),
         executable_ranges=len(sections), guarded_bytes=sum(s['size'] for s in sections),
+        code_ranges=[dict(address=s['address'], size=s['size']) for s in sections],
         guard='generated-function-entry', mutable_executable_sections_supported=False,
         self_modification_within_function_qualified=False)

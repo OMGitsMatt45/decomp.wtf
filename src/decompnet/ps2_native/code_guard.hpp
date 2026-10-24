@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Immutable code guards for source-shipped PS2 modules. No interpreter fallback.
 #pragma once
+#ifndef DECOMP_PS2_CODE_GUARD_HPP
+#define DECOMP_PS2_CODE_GUARD_HPP
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -24,3 +26,4 @@ inline void check_code(const uint8_t *ram, uint32_t physical,
         throw CodeMismatch(identity);
 }
 } // namespace decomp_ps2
+#endif

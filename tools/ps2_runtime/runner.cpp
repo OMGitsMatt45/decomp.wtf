@@ -11,6 +11,21 @@
 
 static uint64_t number(const char *text) { return std::stoull(text, nullptr, 16); }
 
+static void write_state(std::ostream &out, const R5900Context &ctx, const uint8_t *ram) {
+    out << "{\"registers\":[";
+    for (unsigned n = 0; n < 32; ++n) {
+        uint64_t words[2]; std::memcpy(words, &ctx.r[n], sizeof(words));
+        if (n) out << ',';
+        out << '"' << std::hex << std::setfill('0') << std::setw(16) << words[1]
+            << std::setw(16) << words[0] << '"';
+    }
+    out << "],\"hi\":" << std::dec << ctx.hi << ",\"lo\":" << ctx.lo
+        << ",\"pc\":" << ctx.pc << ",\"memory\":\"";
+    for (unsigned n = 0; n < 64; ++n)
+        out << std::hex << std::setfill('0') << std::setw(2) << static_cast<unsigned>(ram[0x200000 + n]);
+    out << "\"}";
+}
+
 int main(int argc, char **argv) {
     try {
         if (argc != 8 && argc != 9) throw std::runtime_error("entry aLow aHigh bLow bHigh output mode [tamper]");
@@ -19,7 +34,8 @@ int main(int argc, char **argv) {
         runtime->setMissingFunctionPolicy(PS2Runtime::MissingFunctionPolicy::Stop);
         auto &ctx = runtime->cpu();
         auto *ram = runtime->memory().getRDRAM();
-        std::memcpy(ram + 0x100000, original_program, sizeof(original_program));
+        const std::string mode = argv[7];
+        std::memcpy(ram + 0x100000, mode == "module-b" ? variant_program : original_program, sizeof(original_program));
         for (unsigned n = 0; n < 64; ++n) ram[0x200000 + n] = static_cast<uint8_t>(n);
         for (unsigned n = 0; n < 32; ++n)
             ctx.r[n] = _mm_set_epi64x(static_cast<int64_t>(0xA500000000000000ull + n), 0x51000000ull + n);
@@ -37,6 +53,27 @@ int main(int argc, char **argv) {
         std::ofstream out(argv[6]);
         if (!out) throw std::runtime_error("cannot open output");
         if (!runtime->hasFunction(ctx.pc)) throw std::runtime_error("entry missing from generated table");
+        if (mode == "module-cycle") {
+            const R5900Context initial = ctx;
+            out << "{\"states\":[";
+            for (unsigned n = 0; n < 3; ++n) {
+                std::memcpy(ram + 0x100000, n == 1 ? variant_program : original_program, sizeof(original_program));
+                ctx = initial;
+                runtime->lookupFunction(ctx.pc)(ram, &ctx, runtime.get());
+                if (runtime->isStopRequested()) throw std::runtime_error("module switch hit unresolved dispatch");
+                if (n) out << ',';
+                write_state(out, ctx, ram);
+            }
+            // A known first instruction plus another module's helper is not
+            // either module. Selecting by one entry word would accept this.
+            std::memcpy(ram + original_helper, variant_program + original_helper - 0x100000, 4);
+            ctx = initial;
+            bool rejected = false;
+            try { runtime->lookupFunction(ctx.pc)(ram, &ctx, runtime.get()); }
+            catch (const decomp_ps2::CodeMismatch &) { rejected = true; }
+            out << "],\"mixed_rejected\":" << (rejected ? "true" : "false") << "}\n";
+            return out ? 0 : 1;
+        }
         try {
             runtime->lookupFunction(ctx.pc)(ram, &ctx, runtime.get());
         } catch (const decomp_ps2::CodeMismatch &) {
@@ -45,18 +82,7 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (runtime->isStopRequested()) throw std::runtime_error("guest dispatch stopped on an unresolved target");
-        out << "{\"registers\":[";
-        for (unsigned n = 0; n < 32; ++n) {
-            uint64_t words[2]; std::memcpy(words, &ctx.r[n], sizeof(words));
-            if (n) out << ',';
-            out << '"' << std::hex << std::setfill('0') << std::setw(16) << words[1]
-                << std::setw(16) << words[0] << '"';
-        }
-        out << "],\"hi\":" << std::dec << ctx.hi << ",\"lo\":" << ctx.lo
-            << ",\"pc\":" << ctx.pc << ",\"memory\":\"";
-        for (unsigned n = 0; n < 64; ++n)
-            out << std::hex << std::setfill('0') << std::setw(2) << static_cast<unsigned>(ram[0x200000 + n]);
-        out << "\"}\n";
+        write_state(out, ctx, ram); out << '\n';
         if (!out) throw std::runtime_error("cannot write result");
         return 0;
     } catch (const std::exception &error) {
