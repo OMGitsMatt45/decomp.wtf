@@ -29,12 +29,12 @@ def guard_generated(folder: Path, original: bytes, *, expected_functions: int) -
     if header.exists() or common.exists(): raise PCError('PS2 generated code is already guarded; preserve existing output')
     definitions = {}
     sources = {}
-    declarations = re.findall(DECLARATION + r';', (folder / 'ps2_recompiled_functions.h').read_text())
+    declarations = re.findall(DECLARATION + r';', (folder / 'ps2_recompiled_functions.h').read_text(encoding='utf-8'))
     if (not declarations or len(declarations) != expected_functions or
             len(declarations) != len(set(declarations))):
         raise PCError('pinned PS2 emitter declarations differ or contain duplicates')
     for path in sorted(folder.glob('*.cpp')):
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         matches = list(re.finditer(DECLARATION + r' \{', text))
         for match in matches:
             name = match[1]
@@ -62,9 +62,9 @@ def guard_generated(folder: Path, original: bytes, *, expected_functions: int) -
     lines += ['inline void check(const uint8_t *ram) {', *checks, '}', '}']
     # Validate every input before modifying generated output. The pinned SDK is
     # never changed; these files belong to the new, reviewable source project.
-    header.write_text('\n'.join(lines) + '\n')
+    header.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     common.write_bytes(Path(__file__).with_name('code_guard.hpp').read_bytes())
-    for path, text in sources.items(): path.write_text(text)
+    for path, text in sources.items(): path.write_text(text, encoding='utf-8')
     return dict(original_elf_sha256=identity, guarded_functions=len(definitions),
         executable_ranges=len(sections), guarded_bytes=sum(s['size'] for s in sections),
         guard='generated-function-entry', mutable_executable_sections_supported=False,

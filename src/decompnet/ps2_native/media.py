@@ -46,6 +46,8 @@ def elf_info(data: bytes, *, boot_name: str = '') -> dict:
         raise PCError('PS2 ELF program-header table is invalid or truncated')
     if shnum and (shnum > 8192 or shsize != 40 or shoff < ehsize or shoff + shnum * shsize > len(data) or shnames >= shnum):
         raise PCError('PS2 ELF section-header table is invalid or truncated')
+    if not shnum and (shoff or shnames):
+        raise PCError('PS2 ELF extended section indexes need separate layout support')
     loads = []
     for index in range(phnum):
         ptype, offset, address, physical_address, filesz, memsz, pflags, alignment = struct.unpack_from('<8I', data, phoff + index * phsize)
@@ -69,7 +71,7 @@ def elf_info(data: bytes, *, boot_name: str = '') -> dict:
         _, stype, sflags, address, offset, size, _, _, _, entsize = struct.unpack_from('<10I', data, shoff + index * shsize)
         if stype != 8 and (offset > len(data) or size > len(data) - offset):
             raise PCError('PS2 ELF section exceeds its original file')
-        if stype == 2 and size:
+        if stype in (2, 11) and size:
             if entsize != 16 or size % entsize: raise PCError('PS2 ELF symbol table has an invalid entry size')
             symbols += size // entsize
         if sflags & 4 and stype != 8 and size:
@@ -157,7 +159,7 @@ def _inventory(disc):
     return entries, blocks
 
 
-def inspect(path: Path, *, hash_input: bool = True) -> dict:
+def inspect(path: Path, *, hash_input: bool = True, discover_code: bool = False) -> dict:
     path = Path(path)
     try:
         with path.open('rb') as stream:
@@ -166,7 +168,8 @@ def inspect(path: Path, *, hash_input: bool = True) -> dict:
             if head[:4] == b'\x7fELF':
                 if before.st_size > MAX_PROGRAM: raise PCError('PS2 EE program exceeds the supported 32 MiB input bound')
                 stream.seek(0); raw = stream.read()
-                program = elf_info(raw, boot_name=path.name)
+                program_bytes = raw
+                program = elf_info(program_bytes, boot_name=path.name)
                 result = dict(input_kind='ee-elf', program=program, files=[])
             else:
                 disc = _Disc(stream)
@@ -183,7 +186,8 @@ def inspect(path: Path, *, hash_input: bool = True) -> dict:
                 name = boot[1].decode('ascii').strip().replace('\\', '/').upper()
                 if any(part in ('', '.', '..') for part in name.split('/')):
                     raise PCError('PS2 BOOT2 path is invalid')
-                program = elf_info(read(name, MAX_PROGRAM), boot_name=name)
+                program_bytes = read(name, MAX_PROGRAM)
+                program = elf_info(program_bytes, boot_name=name)
                 overlays = []
                 for rec in entries:
                     if rec['directory']: continue
@@ -192,16 +196,27 @@ def inspect(path: Path, *, hash_input: bool = True) -> dict:
                         rec['elf_type'] = int.from_bytes(header[16:18], 'little')
                         rec['role'] = 'iop-irx' if rec['elf_type'] in (0xFF80, 0xFF81) else 'ee-elf' if rec['path'] == name else 'elf-module'
                     elif header[:4] == b'MWo3':
-                        overlay = mwo3_info(read(rec['path'], MAX_PROGRAM))
+                        overlay_bytes = read(rec['path'], MAX_PROGRAM)
+                        overlay = mwo3_info(overlay_bytes)
                         overlay['path'] = rec['path']
                         overlay['elf_reservations'] = [s['index'] for s in program['loads']
                             if not s['file_size'] and s['region'] == 'ee-ram' and
                             s['physical'] == overlay['physical'] and s['memory_size'] == overlay['memory_size']]
+                        if discover_code:
+                            from .discovery import discover
+                            from .modules import mwo3_elf
+                            roots = [pc for pc in overlay['constructors']
+                                if overlay['text_address'] <= pc < overlay['text_address'] + overlay['text_size']]
+                            overlay['code_discovery'] = discover(mwo3_elf(overlay_bytes), roots=roots)
+                            overlay['code_discovery']['entry_role'] = 'synthetic-overlay-text-start'
                         overlays.append(overlay); rec['role'] = 'ee-overlay'; rec['overlay_format'] = 'MWo3'
                 result = dict(input_kind='disc', sector_size=disc.size, sector_data_offset=disc.skip,
                     volume_blocks=blocks, program=program, files=entries,
                     overlays=overlays,
                     iop_modules=[e['path'] for e in entries if e.get('role') == 'iop-irx'])
+            if discover_code:
+                from .discovery import discover
+                program['code_discovery'] = discover(program_bytes)
             digest = _hash(stream) if hash_input else None
             after = os.fstat(stream.fileno())
             if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):

@@ -150,6 +150,10 @@ def test_generic_metrowerks_overlays_share_addresses_with_independent_identities
     assert modules[0]['sha256'] != modules[1]['sha256']
     assert modules[0]['constructors'] == [0x500040, 0]
     assert modules[0]['bss_size'] == 32 and not modules[0]['elf_reservations']
+    analyzed = media.inspect(path, discover_code=True)['overlays']
+    assert all(m['code_discovery']['instructions'] == 2 for m in analyzed)
+    assert all(m['code_discovery']['entry_role'] == 'synthetic-overlay-text-start' for m in analyzed)
+    assert analyzed[0]['code_discovery']['original_elf_sha256'] != analyzed[1]['code_discovery']['original_elf_sha256']
 
 
 @pytest.mark.parametrize('offset,value', [(8, 0x1FFFFFF), (12, 0x10000), (24, 0x400000), (28, 0x600000)])

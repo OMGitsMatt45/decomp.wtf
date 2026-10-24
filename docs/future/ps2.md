@@ -72,12 +72,24 @@ Original tests exercise nested paths, sparse DVD extents above 4 GiB, stripped
 ELFs, overlapping zero-fill BSS loads, malformed/truncated layouts and input
 changes during inspection. Unsafe or unsupported ISO layouts fail explicitly.
 
+Add `--discover-code` to trace bounded R5900 control flow from the ELF entry,
+function symbols and discovered direct calls. It records reachable byte ranges,
+direct-call seeds, system-service sites and unresolved indirect/external targets.
+Branch delay/likely behavior, linked branches and zero-link `JALR` are covered
+by original fixtures. Instruction and symbol bounds fail explicitly. This is
+preparation evidence, not a complete function map or gameplay qualification.
+No compiler or runtime is installed by either inspection mode.
+
 Metrowerks MWo3 overlays are recognized from their own headers, with independent
 hashes, load/text/data/BSS extents and constructor tables. An overlay can be
 wrapped for analysis as an ELF while preserving its entire original load image
 and marking only its declared text executable. This adapter has no title table
 or fixed load address. Its synthetic ELF entry marks the start of text; it is
 not evidence of a standalone module entry or complete function recovery.
+With code discovery requested, in-module constructors also seed overlay analysis;
+the synthetic text-start root remains labelled. Calls into the main executable
+stay explicit external targets. The [MWo3 format reference](https://github.com/Sinan-Karakaya/DQ8-Recompiled/wiki/File-Formats)
+documents the format; this adapter has no DQVIII-specific load table.
 
 The privately supplied USA DQVIII archive contained all 252 volumes and passed
 its archive CRC check. The ISO is 4,180,148,224 bytes, SHA-256
@@ -97,6 +109,13 @@ data as instructions. The integration now requires a complete diagnostic report
 and rejects emission errors even when exit status and decode counts say success.
 The original CPU fixture still has zero emission errors. Stripped function and
 code/data discovery needs further work before this retail output can be built.
+
+The bounded shared control-flow pass reaches 56,195 instructions and 961 function
+seeds in the stripped boot ELF, with zero invalid instructions and 81 unresolved
+indirect sites. It avoids the later embedded-data region that caused the initial
+emission errors. Indirect callbacks, jump tables, further roots and complete
+function boundaries still require resolution; these seeds do not replace a
+complete translation map.
 
 Wrapping the six discovered overlays with the shared MWo3 adapter yields 1,146
 emitted functions in the initial candidate scan, with zero emission errors,
@@ -132,8 +151,11 @@ by host presentation. A GPU window displaying a software framebuffer does not
 satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-standard).
 
 - [x] Qualify the original EE instruction fixture through native Windows and Linux builds.
-- [ ] Automate stripped ELF function discovery, code/data boundaries and module
-  inventories from the owner's disc, retaining exact input identities.
+- [x] Stream disc/module inventories and bounded direct-control-flow seeds from
+  owner input, retaining exact identities and unresolved-target reports.
+- [ ] Complete stripped ELF function boundaries, indirect callbacks and jump
+  tables without promoting embedded data to EE code. Any title-specific facts
+  belong in an explicit input-hash-verified profile.
 - [ ] Add per-module original-byte guards and explicit handling of overlays,
   unresolved dispatch, self-modifying code and all interpreter fallbacks.
   IOP and VU interpreters make eventual game execution hybrid even when EE
