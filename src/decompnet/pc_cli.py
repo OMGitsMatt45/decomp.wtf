@@ -19,11 +19,23 @@ def add_parser(sub):
     generate.add_argument('output', type=Path)
     generate.add_argument('--experimental', action='store_true', required=True,
                           help='acknowledge incomplete ISA/hardware coverage; no retail port is qualified')
+    native = actions.add_parser('nds-native', help='experimental DS C++ repository with a source-shipped hardware runtime')
+    native.add_argument('rom', type=Path)
+    native.add_argument('output', type=Path)
+    native.add_argument('--profile', type=Path, help='reviewed original fixture; otherwise analyze the ROM automatically')
+    native.add_argument('--input-format', choices=('auto','decrypted'), default='auto')
+    native.add_argument('--arm7-bios', type=Path, help='optional private decoding input for encrypted originals')
+    native.add_argument('--save-type', default='auto', help='cartridge chip, e.g. eeprom64k or flash512k')
+    native.add_argument('--experimental', action='store_true', required=True)
 
 
 def run(args):
     try:
-        if args.pc_action == 'nds-generate':
+        if args.pc_action == 'nds-native':
+            from .nds_native import export
+            result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,
+                            arm7_bios=args.arm7_bios,save_type=args.save_type)
+        elif args.pc_action == 'nds-generate':
             from .nds_pc import export
             result = export(args.rom,args.profile,args.output)
         else:

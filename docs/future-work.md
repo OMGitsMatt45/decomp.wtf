@@ -29,10 +29,12 @@ call Thumb code, switch overlays at one address and persist a RAM checkpoint.
 Independent original-byte execution checks registers, flags and program output.
 See [current commands and limits](nds-pc.md) and the [DS implementation plan](future/ds-native.md).
 
-Next integrate retail ARM9 decoding and extend CPU semantics and runtime services:
-interrupts, timing, synchronization, graphics, audio, input, cartridge/files and
-real save devices. The [DQIV runtime assessment](future/ds-runtime-assessment.md)
-does not establish permission to adopt that code; no upstream runtime is copied.
+The additional [native hardware-runtime path](nds-native-runtime.md) integrates
+retail module decoding, the pinned MIT DQ9-Decomp emitter/runtime, graphics,
+audio, timing/IRQs, input and cartridge saves. Original guest programs exercise
+those interfaces; retail DQV compatibility is being fixed and qualified. The
+[DQIV runtime assessment](future/ds-runtime-assessment.md) remains a product
+reference; no DQIV runtime or mobile OBB dependency is copied.
 The generator is explicit CLI-only while general platform export stays disabled.
 Then validate one chosen DQ or Pokémon title through boot/title/menu, field/battle,
 audio, input and save/reload. Full playthrough remains with the user.

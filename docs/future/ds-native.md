@@ -7,8 +7,17 @@ and #25 remain console reconstruction and source-recovery history; a successful
 
 The [DQIV 1.5 runtime assessment](ds-runtime-assessment.md) records the first
 source/interface review and the boundary between a known source-port adapter and
-a general DS binary translator. No upstream runtime has been adopted. The new
-integer/memory runtime is original MIT code. See the [current generator guide](../nds-pc.md).
+a general DS binary translator. No DQIV implementation has been adopted. The
+small integer/memory runtime is original MIT code. See its [generator guide](../nds-pc.md).
+
+The additional [hardware-runtime adapter](../nds-native-runtime.md) now adopts
+the separately reviewed MIT DQ9-Decomp runtime and emitter, pinned by commit and
+archive hash. It analyzes DS inputs without matching compilers and ships native
+runtime source in generated repositories. Original guest code verifies screens,
+sound, IRQs, IPC, EEPROM reload, TCM controls, cartridge DMA and Thumb switches.
+DQV retail testing now reaches an adventure-selection menu with DS audio; later
+gameplay and save compatibility remain under active validation. No DQIV code or
+mobile OBB dependency is adopted.
 
 ## Product
 
@@ -46,7 +55,7 @@ Follow the shared [repository acceptance target](../pc-output.md#generated-repos
    overlays at one address. Code ranges are reviewed explicitly; discovery is
    not automatic. Final registers, flags and memory are checked against original
    byte execution in Unicorn. Another 75 integer/shift cases cover edge behavior.
-4. **RAM, dispatch and explicit overlay service started; hardware services pending.** Supply the DS memory/runtime interfaces: interrupts/timing, synchronization,
+4. **Source-shipped hardware runtime integrated; retail qualification ongoing.** Qualify the DS memory/runtime interfaces: interrupts/timing, synchronization,
    2D/3D graphics, audio, input/touch, cartridge/files, save data and ARM7 services.
    Declare any interpreter or runtime-compilation fallback in the generated
    manifest; qualify static and hybrid output separately.

@@ -5,6 +5,12 @@ ARM7 and overlay instruction ranges to C++ and generates a standalone source
 repository. This is a working original-program milestone. It cannot yet turn a
 retail Dragon Quest or Pokémon ROM into a playable PC port.
 
+This page describes the small CPU-comparison backend (`nds-generate`). The
+additional [DS hardware-runtime adapter](nds-native-runtime.md), `nds-native`,
+analyzes ROMs automatically and ships a pinned native runtime. Its original
+hardware fixture exercises both screens, sound, IRQs, IPC and cartridge saves.
+Retail compatibility is tracked separately.
+
 ## Generate and build
 
 The development installation needs Python 3.12+ and `uv sync --locked --group dev`.

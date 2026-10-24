@@ -14,7 +14,7 @@ of current application support.
 
 | Console | Source recovery / console reconstruction | Native PC output |
 | --- | --- | --- |
-| Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ generator; retail runtime incomplete |
+| Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Backend required |
 | PlayStation 2 | EE program/ELF recovery | Backend required |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
@@ -42,8 +42,15 @@ checkout with the documented original input should build the working PC game.
 [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) begins the DS backend
 with an explicit [experimental generator](docs/nds-pc.md). Reviewed ARM/Thumb
 instructions become C++ and execute with two CPU contexts and overlay switching.
-It currently runs original test programs; it cannot produce a playable retail
-DQ or Pokémon port. The GUI keeps general DS PC export unavailable.
+The [native runtime path](docs/nds-native-runtime.md) also analyzes DS ROMs and
+ships graphics, audio, input, timing and cartridge services as source. Original
+programs verify rendering, sound, interrupts, IPC and real save reload. DQV
+compatibility is still being fixed; general DS PC export remains unavailable in
+the GUI until retail validation is complete.
+
+Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
+not required. BIOS and firmware are not runtime dependencies; an encrypted
+original may need an owner-supplied ARM7 BIOS during initial decoding.
 
 ## Install and run
 
