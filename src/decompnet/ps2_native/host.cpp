@@ -21,6 +21,7 @@
 #include <string>
 
 namespace fs=std::filesystem;
+std::vector<std::string> decomp_ps2_resident_modules(const uint8_t *ram);
 namespace {
 std::string quoted(const std::string &text) {
     std::string out="\"";
@@ -227,6 +228,7 @@ int main(int argc,char **argv) {
     }catch(const std::exception &failure){error=failure.what();std::fprintf(stderr,"error: %s\n",error.c_str());result=1;}
     if(!report.empty()){
         std::ofstream out(report);
+        const auto resident=decomp_ps2_resident_modules(runtime?runtime->memory().getRDRAM():nullptr);
         const auto stats=host.gpu?host.gpu->stats():dq8::gfx::SdlGpuStats{};
         const auto device=host.gpu?SDL_GetGPUDeviceProperties(host.gpu->gpuDevice()):0;
         out<<"{\n  \"schema\":\"decomp.wtf.ps2-run/v1\",\n  \"success\":"<<(result?"false":"true")
@@ -241,6 +243,9 @@ int main(int argc,char **argv) {
            <<",\n  \"guest_fields\":"<<host.fields<<",\n  \"presented_frames\":"<<host.frames<<",\n  \"gpu_primitives\":"<<stats.primitivesDrawn
            <<",\n  \"gpu_presents\":"<<stats.presents<<",\n  \"disc_read_bytes\":"<<decomp_ps2::disc::read_bytes
            <<",\n  \"disc_type\":"<<decomp_ps2::disc::medium()
+           <<",\n  \"resident_modules\":[";
+        for(size_t n=0;n<resident.size();++n){if(n)out<<',';out<<quoted(resident[n]);}
+        out<<']'
            <<",\n  \"missing_functions\":"<<(runtime?runtime->decompMissingFunctions.load():0)
            <<",\n  \"execution_failures\":"<<(runtime?runtime->decompExecutionFailures.load():0)
            <<",\n  \"ee_interpreter\":false,\n  \"iop_interpreter\":true,\n  \"vu_interpreter\":true,\n  \"runtime_compilation\":false\n}\n";

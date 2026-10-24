@@ -163,7 +163,8 @@ map. Windows/Linux qualification and retail acceptance are
 reported separately; source generation alone does not certify a working port.
 
 To validate PS2 output on your Windows GPU, run
-`powershell -File .\tools\qualify-ps2-hardware.ps1` from this repository. Install
+`uv run --locked --group dev --python 3.12 python -m tools.qualify_ps2_hardware "$env:TEMP\decomp-ps2-gpu"`
+in PowerShell from this repository, choosing a new output folder for each run. Install
 [uv](https://docs.astral.sh/uv/getting-started/installation/),
 [CMake](https://cmake.org/download/) and
 [Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/).

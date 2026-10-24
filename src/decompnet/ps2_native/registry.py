@@ -83,7 +83,7 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
     if not modules or len(modules) > 1024: raise PCError('PS2 module registry count is invalid')
     if len({m['identity'] for m in modules}) != len(modules): raise PCError('PS2 module identities must be unique')
     entries = {}
-    lines = ['#include "ps2_runtime.h"', '#include <stdexcept>']
+    lines = ['#include "ps2_runtime.h"', '#include <stdexcept>', '#include <string>', '#include <vector>']
     for module in modules:
         expected_namespace = 'decomp_ps2_module_' + module['identity']
         if (not re.fullmatch('[0-9a-f]{64}', module['identity']) or
@@ -142,6 +142,12 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
     lines += ['}; struct RegistryInitializer { RegistryInitializer() {',
         '    for (const auto &entry : known_entries) g_ps2RecompiledFunctionTable[entry.slot] = entry.function;',
         '} }; static const RegistryInitializer initialize; }']
+    lines += ['std::vector<std::string> decomp_ps2_resident_modules(const uint8_t *ram) {',
+              '    std::vector<std::string> found; if (!ram) return found;']
+    for module in modules:
+        lines += [f'    try {{ {module["namespace"]}::check(ram); found.emplace_back("{module["identity"]}"); }}',
+                  '    catch (const decomp_ps2::CodeMismatch &) {}']
+    lines += ['    return found;', '}']
     output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     return dict(modules=len(modules), entries=len(entries), shared_entries=sum(len(v) > 1 for v in entries.values()),
         module_identities=[m['identity'] for m in modules],

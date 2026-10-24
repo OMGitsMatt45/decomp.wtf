@@ -89,6 +89,8 @@ def qualify(destination,*,sdk=None,execute=True):
             if (not data['success'] or data['drawable']!=[640,480] or data['source']!=[64,64] or
                 data['missing_functions'] or data['execution_failures'] or data['presented_frames']<20):
                 raise ValueError('standalone runtime/display result differs: '+renderer)
+            expected=exported['manifest']['code_generation'][0]['guards']['original_elf_sha256']
+            if data.get('resident_modules')!=[expected]:raise ValueError('original resident module bytes differ after execution')
             if renderer=='vulkan' and (not data['gpu_primitives'] or data['internal_scale']!=10 or data['scale_limited']):
                 raise ValueError('adaptive Vulkan geometry rendering failed')
             reports[renderer]=dict(run=data,picture=picture(capture))

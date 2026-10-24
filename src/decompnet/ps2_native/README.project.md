@@ -53,6 +53,8 @@ Options include --renderer auto|vulkan|software, --resolution WIDTHxHEIGHT,
 unavailable. Automatic mode reports its software fallback. Reports expose guest
 dispatch failures, disc reads, GPU draws, drawable dimensions and internal scale;
 a blank boot or missing requested capture is not valid rendering evidence.
+Resident module identities are checked against the complete declared code bytes
+at shutdown. This records current residency, rather than a full execution trace.
 
 Symbol-free programs with closed, unambiguous reachable control flow can be
 mapped automatically. Constant pointers and bounded jump tables are analyzed;
