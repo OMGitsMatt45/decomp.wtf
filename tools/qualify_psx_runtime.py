@@ -27,6 +27,29 @@ CODEGEN_HASH='115b1739'
 ROOT=Path(__file__).resolve().parent.parent
 
 
+def retain_msvc_initializer(path):
+    """Anchor the generated mode marker during MSVC compilation and linking.
+
+    The candidate emits an unreferenced static .CRT$XCU pointer. MSVC removes
+    it even with /OPT:NOREF. External linkage plus an explicit linker reference
+    retains the initializer without disabling dead-code removal globally.
+    """
+    original=path.read_bytes()
+    text=original.decode('utf-8')
+    old='__declspec(allocate(".CRT$XCU")) static void (*psx_cps_mark_game_ctor)(void) = psx_cps_mark_game;'
+    new='__declspec(allocate(".CRT$XCU")) void (*psx_cps_mark_game_ctor)(void) = psx_cps_mark_game;\n' \
+        '#if defined(_M_IX86)\n' \
+        '#pragma comment(linker, "/include:_psx_cps_mark_game_ctor")\n' \
+        '#else\n' \
+        '#pragma comment(linker, "/include:psx_cps_mark_game_ctor")\n' \
+        '#endif'
+    if text.count(old)!=1:raise ValueError('candidate MSVC initializer layout differs; review its retention patch')
+    path.write_bytes(text.replace(old,new).encode('utf-8'))
+    return dict(id='msvc-cps-initializer-retention-v1',file='generated/'+path.name,
+        original_sha256=hashlib.sha256(original).hexdigest(),
+        patched_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+
+
 def fingerprint(sdk):
     paths=[sdk/name for name in ('LICENSE','runtime/codegen_hash_sources.cmake','runtime/hash_codegen.cmake')]
     for folder in ('recompiler','runtime/include'):
@@ -90,6 +113,7 @@ def qualify(sdk,destination,*,recompiler=None):
             '--project-root',sdk],stage,stage/'generation.log')
         source=sorted(generated.glob('*_full_*.c'))+sorted(generated.glob('*_dispatch.c'))
         if len(source)<2:raise ValueError('candidate emitted no native source/dispatch')
+        patches=[retain_msvc_initializer(path) for path in source if path.name.endswith('_dispatch.c')]
         shutil.copyfile(ROOT/'tests/fixtures/psx-native/runner.c',stage/'runner.c')
         quote=lambda path:json.dumps(path.as_posix())
         (stage/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
@@ -97,9 +121,7 @@ def qualify(sdk,destination,*,recompiler=None):
             f'set(PSX_CANDIDATE_ROOT {quote(sdk)} CACHE PATH "Pinned external candidate source")\n'
             'add_executable(native_probe runner.c '+ ' '.join(quote(p.relative_to(stage)) for p in source)+')\n'
             'target_include_directories(native_probe PRIVATE "${PSX_CANDIDATE_ROOT}/runtime/include")\n'
-            'target_compile_definitions(native_probe PRIVATE PSX_NO_DEBUG_TOOLS)\n'
-            '# Keep the emitted .CRT$XCU mode initializer in optimized MSVC links.\n'
-            'if(MSVC)\n  target_link_options(native_probe PRIVATE /OPT:NOREF)\nendif()\n')
+            'target_compile_definitions(native_probe PRIVATE PSX_NO_DEBUG_TOOLS)\n')
         shutil.copyfile(sdk/'LICENSE',stage/'PSXRecomp-LICENSE.txt')
         (stage/'README.md').write_text(
             '# Original PS1 CPU probe\n\n'
@@ -110,7 +132,8 @@ def qualify(sdk,destination,*,recompiler=None):
             'Rebuild with the pinned candidate source retained at PSX_CANDIDATE_ROOT:\n\n'
             '```sh\ncmake -S . -B build -DPSX_CANDIDATE_ROOT=/path/to/pinned/source\n'
             'cmake --build build --config Release --parallel 2\n```\n\n'
-            'assessment.json records the tested inputs and execution boundaries.\n',encoding='utf-8')
+            'assessment.json records the tested inputs, execution boundaries and\n'
+            'the generated MSVC initializer-retention patch with before/after hashes.\n',encoding='utf-8')
         build=stage/'build'
         run(['cmake','-S',stage,'-B',build,'-DCMAKE_BUILD_TYPE=Release'],stage,stage/'native-configure.log')
         run(['cmake','--build',build,'--config','Release','--parallel','2'],stage,stage/'native-build.log')
@@ -129,6 +152,7 @@ def qualify(sdk,destination,*,recompiler=None):
                 qualification_source_sha256=SOURCE_SHA256,codegen_hash=codegen,license=LICENSE,
                 default_execution_model='hybrid',interpreter_fallback=True,runtime_compilation=True),
             original_sha256=hashlib.sha256(image).hexdigest(),checks=checks,changed_code_rejected=True,
+            generated_patches=patches,startup_mode_verified=True,
             fixture_execution_model='static-recompiled',fixture_interpreter_fallback=False,
             hardware_runtime_qualified=False,retail_qualified=False,pc_backend_registered=False)
         (stage/'assessment.json').write_text(json.dumps(report,indent=2)+'\n')

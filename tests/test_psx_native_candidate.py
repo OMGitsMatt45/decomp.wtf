@@ -75,6 +75,8 @@ def test_generated_native_code_matches_original_execution(tmp_path):
     assert len(report['checks']) == 20
     assert all(check['native_dispatches'] > 0 for check in report['checks'])
     assert report['changed_code_rejected']
+    assert report['startup_mode_verified']
+    assert [patch['id'] for patch in report['generated_patches']] == ['msvc-cps-initializer-retention-v1']
     assert report['fixture_execution_model'] == 'static-recompiled'
     assert not report['fixture_interpreter_fallback']
     assert not report['hardware_runtime_qualified'] and not report['retail_qualified']

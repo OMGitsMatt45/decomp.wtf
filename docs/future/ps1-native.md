@@ -38,6 +38,14 @@ return PC and an observed RAM word, covering signed branches, call/return delay
 slots, argument changes, calls and RAM reads/writes. Changed code must be rejected
 by native dispatch. This probe links no interpreter or runtime compiler.
 
+An integration patch anchors the generated MSVC `.CRT$XCU` startup marker with
+external linkage and a linker reference. Actual Windows execution caught its
+removal as an unused static pointer, including with `/OPT:NOREF`; compiling the
+candidate alone had not exposed that failure. Reports record the generated
+file's before/after hashes, and execution requires the marker to initialize.
+The external candidate checkout stays unchanged. This fix still needs to be
+carried into the complete runtime integration, including its BIOS initializer.
+
 The harness supplies bounded RAM, disabled interrupts and an immutable-code guard.
 It does not qualify the candidate's dirty-memory implementation, full R3000
 pipeline, cycle timing, GTE, peripherals or GPU. The memory case includes a NOP
