@@ -103,7 +103,7 @@ def qualify(sdk, destination):
         'inline constexpr unsigned char original_program[] = {' + ','.join(map(str, code)) + '};\n'
         f'inline constexpr uint32_t original_helper = {entries["helper"]};\n')
     shutil.copyfile(ROOT / 'tools/ps2_runtime/runner.cpp', fixture / 'runner.cpp')
-    shutil.copyfile(ROOT / 'tools/ps2_runtime/Probe.cmake', fixture / 'CMakeLists.txt')
+    shutil.copyfile(ROOT / 'tools/ps2_runtime/Probe.cmake', fixture / 'ProbeTargets.cmake')
     shutil.copyfile(sdk / 'LICENSE', destination / 'PS2Recomp-LICENSE.txt')
     deps = '\n'.join('FetchContent_Declare(' + dep['name'] + '\n'
         '  GIT_REPOSITORY https://github.com/' + dep['repo'] + '.git\n'
@@ -112,7 +112,7 @@ def qualify(sdk, destination):
     hook = destination / 'pinned-dependencies.cmake'
     hook.write_text('include(FetchContent)\n' + deps + '\n'
         'if(DECOMP_PS2_PROBE_DIR)\n'
-        '  cmake_language(DEFER CALL add_subdirectory "${DECOMP_PS2_PROBE_DIR}" "${CMAKE_BINARY_DIR}/probe")\n'
+        '  cmake_language(DEFER CALL include "${DECOMP_PS2_PROBE_DIR}/ProbeTargets.cmake")\n'
         'endif()\n')
     build = destination / 'build'
     config = ['cmake', '-S', sdk, '-B', build, '-DCMAKE_BUILD_TYPE=Release',
