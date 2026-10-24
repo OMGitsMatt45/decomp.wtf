@@ -1,0 +1,67 @@
+name: PS2 Vulkan GS candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/ps2_gs/**'
+      - 'tools/qualify_ps2_graphics.py'
+      - 'tools/qualify_ps2_runtime.py'
+      - 'src/decompnet/ps2_native/reports.py'
+      - 'tests/test_ps2_native_graphics.py'
+      - '.github/workflows/ps2-native-graphics.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  gs-candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            execute: '1'
+          - os: windows-2022
+            execute: '0'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_REQUIRE_PS2_GS: '1'
+      DECOMP_PS2_GS_EXECUTE: ${{ matrix.execute }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux software Vulkan device for deterministic command execution
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
+      - name: Select Linux software Vulkan explicitly
+        if: runner.os == 'Linux'
+        run: >-
+          uv run --no-sync python -c
+          "import os; from pathlib import Path; p=next(Path('/usr/share/vulkan/icd.d').glob('lvp_icd*.json')); open(os.environ['GITHUB_ENV'],'a').write('VK_DRIVER_FILES='+str(p)+'\nVK_ICD_FILENAMES='+str(p)+'\n')"
+      - name: Select source location outside the application checkout
+        shell: bash
+        run: echo "DECOMP_PS2_GS_ROOT=$RUNNER_TEMP/PS2 GS candidate source" >> "$GITHUB_ENV"
+      - name: Download checksum-pinned renderer and minimum dependency sources
+        run: >-
+          uv run --no-sync python -c
+          "import os; from tools.qualify_ps2_graphics import download; download(os.environ['DECOMP_PS2_GS_ROOT'])"
+      - name: Build native probe; execute original Vulkan commands on Linux
+        run: >-
+          uv run --no-sync python -m pytest -q tests/test_ps2_native_graphics.py
+          --basetemp=ps2-gs-results --junitxml=ps2-gs-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ps2-gs-candidate-${{ matrix.os }}
+          path: |
+            ps2-gs-results.xml
+            ps2-gs-results/**/assessment.json
+            ps2-gs-results/**/inputs.json
+            ps2-gs-results/**/*.log

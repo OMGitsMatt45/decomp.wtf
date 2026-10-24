@@ -85,6 +85,24 @@ code/data discovery needs further work before this retail output can be built.
 
 ## Runtime work required before game output
 
+The separate GS assessment uses optional LGPLv3+ [paraLLEl-GS](https://github.com/Arntzen-Software/parallel-gs)
+at `cc6184af7e0c03da603045ca371ffa5dae9b0655`, with Granite and four required
+dependencies pinned by commit/archive checksums. It builds the Vulkan compute
+renderer and sends original PACKED triangle and IMAGE GIF packets. Assertions
+check exact coverage, image uploads with FLG=2/3, local-to-host VRAM readback and
+a GS resolution change from 64 to 128 pixels. This is GPU renderer code, not
+CPU rasterization presented through a GPU window. The local execution device is
+Mesa llvmpipe (software Vulkan); reports identify that limitation explicitly.
+
+Run `python -m tools.qualify_ps2_graphics /new/assessment` to download and assess
+the pinned source, or add `--sdk-root /existing/pinned/source`. `--build-only`
+qualifies compilation without claiming device execution. Linux CI executes the
+original Vulkan commands on an explicitly selected software device. Windows CI
+builds the same C++ probe and verifies required-device failure; its lack of an
+execution device is recorded as `vulkan_executed: false`. No game graphics,
+physical GPU, window/drawable adaptation or fullscreen qualification follows
+from this headless assessment. Those remain required integration work.
+
 The candidate supplies an EE runtime, R3000A IRX execution with IOP kernel/HLE
 services, VU interpreters, GS, audio and virtual filesystem code. Those are
 reuse candidates whose behavior needs original execution tests. Its current

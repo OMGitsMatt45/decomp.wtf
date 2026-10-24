@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "license": "LGPL-3.0-or-later (renderer); dependencies retain their own licenses",
+  "purpose": "Original GS Vulkan renderer assessment; not a registered game backend",
+  "archives": [
+    {
+      "name": "renderer",
+      "repository": "Arntzen-Software/parallel-gs",
+      "commit": "cc6184af7e0c03da603045ca371ffa5dae9b0655",
+      "prefix": "",
+      "url": "https://codeload.github.com/Arntzen-Software/parallel-gs/tar.gz/cc6184af7e0c03da603045ca371ffa5dae9b0655",
+      "sha256": "fe3829c8f08915fada0e838a5f482c7bc66137c7c0e713e4b7a5490def754966",
+      "size": 593545
+    },
+    {
+      "name": "granite",
+      "repository": "Themaister/Granite",
+      "commit": "16e7395f6a4858c1783dbf6f521f90b9d5f82ac5",
+      "prefix": "Granite",
+      "url": "https://codeload.github.com/Themaister/Granite/tar.gz/16e7395f6a4858c1783dbf6f521f90b9d5f82ac5",
+      "sha256": "0101aec7322dd3f08e1ab2db36dab5033815e7225ee41d6760391270d82fd366",
+      "size": 2490450
+    },
+    {
+      "name": "vulkan-headers",
+      "repository": "KhronosGroup/Vulkan-Headers",
+      "commit": "11d6898377797e07dbd543aaaa367e4465074597",
+      "prefix": "Granite/third_party/khronos/vulkan-headers",
+      "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/11d6898377797e07dbd543aaaa367e4465074597",
+      "sha256": "162e7e95e101dfe3118bef4abd0dd2a38f8308e5c61f60bfcef8c0e8783fc48c",
+      "size": 3378434
+    },
+    {
+      "name": "volk",
+      "repository": "zeux/volk",
+      "commit": "47cddf7ed97b94118a08aacb548a411188e016cc",
+      "prefix": "Granite/third_party/volk",
+      "url": "https://codeload.github.com/zeux/volk/tar.gz/47cddf7ed97b94118a08aacb548a411188e016cc",
+      "sha256": "ed771f9132ea077af0abc74d29f415a81f181f83c3ac5e0f67b2f2149976fe2d",
+      "size": 85349
+    },
+    {
+      "name": "rapidjson",
+      "repository": "miloyip/rapidjson",
+      "commit": "06d58b9e848c650114556a23294d0b6440078c61",
+      "prefix": "Granite/third_party/rapidjson",
+      "url": "https://codeload.github.com/miloyip/rapidjson/tar.gz/06d58b9e848c650114556a23294d0b6440078c61",
+      "sha256": "30d28bbe0bfff9d8dc5d3cf62799b6ee550499cc1520e44bdece81e002480d19",
+      "size": 1107982
+    },
+    {
+      "name": "stb",
+      "repository": "nothings/stb",
+      "commit": "c9064e317699d2e495f36ba4f9ac037e88ee371a",
+      "prefix": "Granite/third_party/stb/stb",
+      "url": "https://codeload.github.com/nothings/stb/tar.gz/c9064e317699d2e495f36ba4f9ac037e88ee371a",
+      "sha256": "1739aba9054c875e565194d101b7264ba2349a02dbd55ecdf188517f7a166063",
+      "size": 1388675
+    }
+  ],
+  "source_sha256": "c8dc41cb32fa0108f480284d2b661c705e0957fd8ceb04125f32023258a4ae90"
+}
