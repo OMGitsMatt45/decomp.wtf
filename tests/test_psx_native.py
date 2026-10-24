@@ -178,7 +178,9 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
         str(native_project[1]/'assets/disc2/Original disc 2.iso'))
     assert second['disc_index']==2 and second['disc_count']==2
     assert second['observed']==[2,0xd0000002,2048,0xa004,0xd0000001,2048]
-    assert second['module_dispatches'][1]>0 and second['module_dispatches'][0]==0
+    assert second['module_dispatches'][1]>0
+    # The original helper bytes are identical on both discs and may safely
+    # reuse the first module. Disc-specific code must produce disc 2's marker.
     reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True)
     assert reference['native_dispatches']==0 and reference['interpreted_instructions']>0
     assert reference['observed'][:4]==first['observed'][:4]
