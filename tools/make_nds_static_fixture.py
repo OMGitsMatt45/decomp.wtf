@@ -34,7 +34,9 @@ def main():
             with elf.open('rb') as stream:
                 symbols = {s.name:s['st_value'] for s in ELFFile(stream).get_section_by_name('.symtab').iter_symbols()
                            if s.name in ('_start','main_end','thumb_start','thumb_end','loader','overlay1_source','overlay2_source',
-                                         'save_read','save_read_end','save_write','save_write_end','irq_start','irq_end')}
+                                         'save_read','save_read_end','save_write','save_write_end','irq_start','irq_end',
+                                         'shared_start','shared_end','shared_exit','shared_exit_end','regular_start','regular_end','child_start','child_end',
+                                         'large_start','large_end')}
             result[cpu] = dict(hex=binary.read_bytes().hex(),symbols=symbols)
     (ROOT/'tests/fixtures'/fixture/'program.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
 

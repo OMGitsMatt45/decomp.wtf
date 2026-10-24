@@ -4,6 +4,8 @@
 .arm
 .text
 .global _start, main_end, save_read, save_read_end, save_write, save_write_end, irq_start, irq_end, thumb_start, thumb_end
+.global shared_start, shared_end, shared_exit, shared_exit_end, regular_start, regular_end, child_start, child_end
+.global large_start, large_end
 _start:
     ldr r6, =0x02010000
     bl save_read
@@ -67,6 +69,19 @@ wait_card:
     mvn r0, #0
     blx r4
     str r0, [r6, #48]
+    ldr r4, =shared_start + 1
+    blx r4
+    str r0, [r6, #52]
+    ldr r4, =regular_start + 1
+    blx r4
+    str r0, [r6, #56]
+    ldr r4, =large_start + 1
+    ldr r0, =299
+    blx r4
+    str r0, [r6, #60]
+    ldr r0, =300
+    blx r4
+    str r0, [r6, #64]
     /* Engine A: direct VRAM display, solid red. */
     ldr r0, =0x04000240
     mov r1, #0x80
@@ -206,3 +221,51 @@ switch_default:
     movs r0, #255
     bx lr
 thumb_end:
+shared_start:
+    push {r3, r4, r5, lr}
+    movs r4, #42
+    /* BL is a long jump to a shared return, not a returning subroutine. */
+    bl shared_exit
+    movs r0, #99
+    pop {r3, r4, r5, pc}
+shared_end:
+shared_exit:
+    movs r0, r4
+    pop {r3, r4, r5, pc}
+shared_exit_end:
+regular_start:
+    push {r4, lr}
+    bl child_start
+    adds r0, #3
+    pop {r4, pc}
+regular_end:
+child_start:
+    push {r4, lr}
+    movs r0, #60
+    pop {r4, pc}
+child_end:
+large_start:
+    movs r2, #150
+    lsls r2, r2, #1
+    cmp r0, r2
+    blo large_dispatch
+    b large_default
+large_dispatch:
+    adds r1, r0, r0
+    add r1, pc
+    ldrh r1, [r1, #6]
+    lsls r1, r1, #16
+    asrs r1, r1, #16
+large_jump:
+    add pc, r1
+    .rept 299
+    .hword large_default - (large_jump+4)
+    .endr
+    .hword large_last - (large_jump+4)
+large_default:
+    movs r0, #255
+    bx lr
+large_last:
+    movs r0, #77
+    bx lr
+large_end:

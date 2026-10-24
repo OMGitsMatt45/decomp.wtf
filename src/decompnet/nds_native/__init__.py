@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py'):
+    for name in ('__init__.py','main.cpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 

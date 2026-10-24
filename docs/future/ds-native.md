@@ -15,8 +15,9 @@ the separately reviewed MIT DQ9-Decomp runtime and emitter, pinned by commit and
 archive hash. It analyzes DS inputs without matching compilers and ships native
 runtime source in generated repositories. Original guest code verifies screens,
 sound, IRQs, IPC, EEPROM reload, TCM controls, cartridge DMA and Thumb switches.
-DQV retail testing now reaches name entry with DS audio; later
-gameplay and save compatibility remain under active validation. No DQIV code or
+DQV retail testing now reaches the opening castle scene with DS audio and
+reloads its created prologue save. Later field/battle behavior and save
+compatibility remain under active validation. No DQIV code or
 mobile OBB dependency is adopted.
 
 ## Product

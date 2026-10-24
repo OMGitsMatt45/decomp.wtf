@@ -24,6 +24,9 @@ def hardware():
                       ('save_write','save_write_end'),('irq_start','irq_end')):
         ranges.append(dict(address=symbols[begin],size=symbols[end]-symbols[begin],mode='arm'))
     ranges.append(dict(address=symbols['thumb_start'],size=symbols['thumb_end']-symbols['thumb_start'],mode='thumb'))
+    for begin,end in (('shared_start','shared_end'),('shared_exit','shared_exit_end'),
+                      ('regular_start','regular_end'),('child_start','child_end'),('large_start','large_end')):
+        ranges.append(dict(address=symbols[begin],size=symbols[end]-symbols[begin],mode='thumb'))
     symbols7=program['arm7']['symbols']
     raw,profile=image(bytes.fromhex(program['arm9']['hex']),bytes.fromhex(program['arm7']['hex']),
         code9=ranges,code7=[dict(address=symbols7['_start'],size=symbols7['main_end']-symbols7['_start'],mode='arm')],
@@ -32,5 +35,5 @@ def hardware():
     raw=bytearray(raw);raw.extend(bytes(0x8200-len(raw)))
     for i in range(128):struct.pack_into('<I',raw,0x8000+i*4,0xd5000000+i)
     raw=bytes(raw);profile['input_sha256']=hashlib.sha256(raw).hexdigest()
-    profile['observe_words']=[0x02010000+i*4 for i in range(13)]
+    profile['observe_words']=[0x02010000+i*4 for i in range(17)]
     return raw,profile

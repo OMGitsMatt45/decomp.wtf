@@ -104,19 +104,32 @@ The source-shipped runtime records decomp.wtf's changes in its patch document:
 The emitter also distinguishes a signed negative-index guard from a switch's
 upper bound. This prevents truncating a Thumb halfword jump table to its first
 case. These changes contain no retail-specific addresses or bytes.
+Shared Thumb return epilogues reached with BL consume the caller's saved frame;
+generated code returns to the outer caller instead of falling into another case.
+Halfword switch analysis also handles more than 256 entries, bounded by the
+image, function and table/code boundaries (with a 4096-entry ceiling).
 
 Original CC0 fixtures test ARM9/ARM7 communication, a real overlay-copy loader,
 both rendered screens, nonzero DS PCM output, guest VBlank IRQs, button input,
 SPI EEPROM reload, selective TCM mapping, repeated one-word card DMA, and signed
-Thumb switch cases. Generated input identity uses streaming SHA-256, checked
+Thumb switch cases.
+Shared-return and 300-case original fixtures cover the additional compiler
+patterns. Cartridge bytes are committed atomically during play and on exit;
+an interrupted-process test verifies that prior writes reload successfully.
+Generated input identity uses streaming SHA-256, checked
 against standard vectors and padding boundaries. The dedicated workflow installs
 the pinned source dependency and tests the generated host on Windows and Linux.
 
-DQV retail testing is ongoing. It exposed the short-DMA stall and a switch-table
-coverage defect; both fixes have original regression cases. A correct save-chip
+DQV retail testing is ongoing. It exposed the short-DMA stall, switch-table
+coverage defects and a shared-epilogue control-flow defect; all fixes have
+original regression cases. A correct save-chip
 configuration is also required. Successful source generation, boot, rendering,
 audio, menus, field/battle behavior and save/reload are separate checks. The
 eventual full playthrough stays with the user. GUI availability is explicitly
 experimental and does not establish retail compatibility. The clean standalone
-DQV output also built and ran through name entry; advancing into new-game setup
-exposed another invalid indirect call, under active investigation.
+DQV output also built and ran through name entry. The shared-epilogue and large
+switch fixes then allowed the native build to enter the opening castle scene,
+with rendered scenery and characters matching the reference scene. Continuing
+from the cartridge save lists the saved name, level and prologue and resumes
+the scene after a restart. Player-controlled field/battle behavior and later
+retail saves remain under validation.

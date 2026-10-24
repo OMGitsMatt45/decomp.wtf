@@ -163,6 +163,10 @@ int main(int argc,char** argv) {
             if(display && !display->input(input))break;
 #endif
             session.step(input);audio_samples+=session.audio_frames();
+            // Commit dirty cartridge bytes during play as well as on exit.
+            // The runtime writes atomically and retains dirty data for retry
+            // if the destination is temporarily unwritable.
+            if((frame+1)%60==0)session.flush_save();
             if(pcm.is_open()) {
                 for(size_t i=0;i<session.audio_frames()*2;++i){const auto value=uint16_t(session.audio_data()[i]);pcm.put(char(value));pcm.put(char(value>>8));}
                 if(!pcm)throw std::runtime_error("could not write audio output");

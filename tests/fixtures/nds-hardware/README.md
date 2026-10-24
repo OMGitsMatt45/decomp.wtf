@@ -10,3 +10,8 @@ VBlank IRQ handler, reads keys, sends an IPC word and increments one EEPROM byte
 through the cartridge SPI registers. ARM7 receives the FIFO word and drives a
 looping original PCM8 waveform through the DS sound registers. Both CPUs keep
 running. Tests inspect actual pixels, sound, IRQ/input state and save reload.
+
+The guest also checks selective DTCM enable, repeated one-word cartridge DMA,
+signed Thumb halfword switches, a 300-entry switch, and a BL to a shared return
+epilogue. A normal nested BL with a separate saved frame must still resume its
+caller. All paths have original assembled bytes and observable memory results.

@@ -7,6 +7,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -78,7 +79,7 @@ def test_generated_guest_code_drives_video_audio_irqs_ipc_keys_and_cartridge_sav
     assert count>0 and keys==0x3fe and ipc==0x12345678 and old==255 and new==0 and arm7_progress>0
     assert dtcm==0xa55a1234
     assert first==0xd5000000 and last==0xd500007f and card_irq==0x80000
-    assert switch==[22,33,255]
+    assert switch==[22,33,255,42,63,77,255]
     assert result['unimplemented_io']==0 and result['audio_frames']>0
     for name,color in (('top',b'\xff\x00\x00'),('bottom',b'\x00\xff\x00')):
         image=(capture/(name+'.ppm')).read_bytes()
@@ -101,6 +102,22 @@ def test_wrong_assets_fail_before_running_or_creating_a_save(tmp_path,hardware_p
         assert not (tmp_path/'bad.sav').exists()
     finally:
         assets.write_bytes(before)
+
+
+def test_cartridge_save_is_durable_before_the_process_exits(tmp_path,hardware_project):
+    _,root,exe=hardware_project
+    save=tmp_path/'during-play.sav'
+    process=subprocess.Popen([str(exe),'--assets',str(root/'assets'),'--save',str(save),
+        '--headless','--frames','1000000'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    try:
+        deadline=time.monotonic()+15
+        while time.monotonic()<deadline and not save.exists() and process.poll() is None:time.sleep(.02)
+        assert save.exists() and process.poll() is None,'cartridge writes must persist during a running session'
+    finally:
+        if process.poll() is None:process.terminate()
+        process.wait(timeout=15)
+    assert save.stat().st_size==8192 and save.read_bytes()[0]==0
+    assert execute(exe,root,'--save',save)['observed'][3:5]==[0,1]
 
 
 def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
