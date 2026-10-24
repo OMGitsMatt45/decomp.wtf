@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(PS1Native LANGUAGES C CXX)
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -29,6 +29,13 @@ target_compile_definitions(ps1_pc PRIVATE DECOMP_NO_RUNTIME_COMPILATION=1)
 # optimization in normal builds. Preserve guest semantics and reasonable builds.
 if(MSVC)
   target_compile_options(ps1_pc PRIVATE /bigobj)
+  # The pinned runtime enables MSVC atomics for audio_trace.c only, while these
+  # newer device/thread sources also include stdatomic.h. Scope the switch to
+  # C sources so Visual Studio does not leak it into the mixed C++ target.
+  foreach(unit guest_tty render_thread starvation_ring host_overlay gpu_gl_renderer host_span_ring)
+    set_property(SOURCE "${PSXRECOMP_ROOT}/runtime/src/${unit}.c"
+      APPEND PROPERTY COMPILE_OPTIONS /experimental:c11atomics)
+  endforeach()
   set_source_files_properties("${PSXRECOMP_ROOT}/generated/OpenBIOS_full.c" PROPERTIES COMPILE_OPTIONS /O1)
 else()
   set_source_files_properties("${PSXRECOMP_ROOT}/generated/OpenBIOS_full.c" PROPERTIES COMPILE_OPTIONS -O1)
