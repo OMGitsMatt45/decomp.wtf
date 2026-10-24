@@ -195,6 +195,13 @@ def test_live_tray_change_preserves_resident_native_module(native_project):
     assert report['module_dispatches'][0]>0 and report['module_dispatches'][1]==0
 
 
+def test_standalone_executable_envelope_boots_through_real_bios(native_project):
+    from decompnet.psx_native.extract_assets import iso
+    path=native_project[0]/'standalone.iso';path.write_bytes(iso(executable()))
+    report,_=run(native_project,'standalone-executable','--headless','--renderer','software','--disc',path)
+    assert report['observed'][0]==1 and report['native_dispatches']>0
+
+
 def test_automatic_fallback_and_required_gpu_failure(native_project):
     report,_=run(native_project,'automatic-fallback','--hidden-window','--renderer','auto')
     assert report['renderer']=='software' and report['software_fallback']

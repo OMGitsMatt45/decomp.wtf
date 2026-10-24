@@ -21,19 +21,25 @@ def iso(program):
     def both16(n):return struct.pack('<H',n)+struct.pack('>H',n)
     def both32(n):return struct.pack('<I',n)+struct.pack('>I',n)
     def record(name,lba,size,directory=False):
-        value=b'\0\0'+both32(lba)+both32(size)+bytes(7)+bytes([2 if directory else 0,0,0])+both16(1)+bytes([len(name)])+name
+        value=b'\0\0'+both32(lba)+both32(size)+bytes([120,1,1,0,0,0,0])+bytes([2 if directory else 0,0,0])+both16(1)+bytes([len(name)])+name
         value+=bytes(len(value)%2)
         return bytes([len(value)])+value[1:]
     files={'SYSTEM.CNF':b'BOOT = cdrom:\\PSX.EXE;1\r\n','PSX.EXE':program}
-    lba=20;places={}
+    lba=21;places={}
     for name,data in files.items():places[name]=(lba,len(data));lba+=(len(data)+2047)//2048
-    root=record(b'\0',19,2048,True)+record(b'\1',19,2048,True)
+    root=record(b'\0',20,2048,True)+record(b'\1',20,2048,True)
     for name,(start,size) in places.items():root+=record((name+';1').encode(),start,size)
     pvd=bytearray(2048);pvd[:7]=b'\x01CD001\x01';pvd[8:40]=b'PLAYSTATION'.ljust(32,b' ')
     pvd[40:72]=b'ORIGINAL_PROGRAM'.ljust(32,b' ');pvd[80:88]=both32(lba)
     pvd[120:124]=both16(1);pvd[124:128]=both16(1);pvd[128:132]=both16(2048)
-    pvd[156:190]=record(b'\0',19,2048,True);pvd[881]=1
-    image=bytearray(16*2048)+pvd+bytearray(b'\xffCD001\x01'.ljust(2048,b'\0'))+bytearray(2048)+root.ljust(2048,b'\0')
+    pvd[132:140]=both32(10);pvd[140:144]=struct.pack('<I',18);pvd[148:152]=struct.pack('>I',19)
+    pvd[156:190]=record(b'\0',20,2048,True);pvd[881]=1
+    for at in (813,830):pvd[at:at+17]=b'2020010100000000\0'
+    for at in (847,864):pvd[at:at+17]=b'0000000000000000\0'
+    little=b'\x01\0'+struct.pack('<IH',20,1)+b'\0\0'
+    big=b'\x01\0'+struct.pack('>IH',20,1)+b'\0\0'
+    image=bytearray(16*2048)+pvd+bytearray(b'\xffCD001\x01'.ljust(2048,b'\0'))
+    image+=little.ljust(2048,b'\0')+big.ljust(2048,b'\0')+root.ljust(2048,b'\0')
     for data in files.values():image+=data+bytes(-len(data)%2048)
     return bytes(image)
 
