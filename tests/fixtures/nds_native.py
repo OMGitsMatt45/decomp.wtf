@@ -37,3 +37,13 @@ def hardware():
     raw=bytes(raw);profile['input_sha256']=hashlib.sha256(raw).hexdigest()
     profile['observe_words']=[0x02010000+i*4 for i in range(17)]
     return raw,profile
+
+
+def video():
+    program=json.loads((Path(__file__).parent/'nds-video/program.json').read_text())
+    code=lambda cpu:[dict(address=program[cpu]['symbols']['_start'],
+        size=program[cpu]['symbols']['main_end']-program[cpu]['symbols']['_start'],mode='arm')]
+    raw,profile=image(bytes.fromhex(program['arm9']['hex']),bytes.fromhex(program['arm7']['hex']),
+        code9=code('arm9'),code7=code('arm7'),overlays=False)
+    profile.pop('save_region');profile['observe_words']=[]
+    return raw,profile

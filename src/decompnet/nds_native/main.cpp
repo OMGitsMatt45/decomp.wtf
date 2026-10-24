@@ -5,6 +5,7 @@
 #include <dsr/periph.h>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <stdexcept>
@@ -12,6 +13,7 @@
 #include <vector>
 #ifdef NDS_WITH_SDL
 #include <SDL.h>
+#include "video.hpp"
 #endif
 #include "profile.hpp"
 
@@ -30,28 +32,25 @@ uint64_t hash(const uint32_t* pixels) {
     }
     return value;
 }
-void ppm(const std::filesystem::path& path,const uint32_t* pixels) {
+void ppm(const std::filesystem::path& path,const uint32_t* pixels,unsigned width=256,unsigned height=192) {
     std::ofstream output(path,std::ios::binary);
-    output<<"P6\n256 192\n255\n";
-    for(unsigned i=0;i<256*192;++i)for(unsigned shift:{16u,8u,0u})output.put(char(pixels[i]>>shift));
+    output<<"P6\n"<<width<<" "<<height<<"\n255\n";
+    for(size_t i=0;i<size_t(width)*height;++i)for(unsigned shift:{16u,8u,0u})output.put(char(pixels[i]>>shift));
     if(!output)throw std::runtime_error("could not write screen capture");
 }
 #ifdef NDS_WITH_SDL
 struct Display {
-    SDL_Window* window=nullptr;
-    SDL_Renderer* renderer=nullptr;
-    SDL_Texture* texture=nullptr;
+    std::unique_ptr<video::Display> video;
+    video::Scene pending,latched;
     SDL_AudioDeviceID audio=0;
     SDL_AudioStream* resampler=nullptr;
-    Display() {
+    explicit Display(video::Options options) {
+#ifdef _WIN32
+        SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2");
+        SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING,"1");
+#endif
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS)!=0)throw std::runtime_error(SDL_GetError());
-        window=SDL_CreateWindow("DS PC project",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,
-                                512,768,SDL_WINDOW_RESIZABLE);
-        if(window)renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
-        if(window && !renderer)renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
-        if(renderer)texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,256,384);
-        if(!texture)throw std::runtime_error(SDL_GetError());
-        SDL_RenderSetLogicalSize(renderer,256,384);
+        video=std::make_unique<video::Display>(options);
         SDL_AudioSpec wanted{};wanted.freq=48000;wanted.format=AUDIO_S16SYS;wanted.channels=2;wanted.samples=1024;
         audio=SDL_OpenAudioDevice(nullptr,0,&wanted,nullptr,0);
         if(!audio)throw std::runtime_error(SDL_GetError());
@@ -62,14 +61,15 @@ struct Display {
     ~Display() {
         if(audio)SDL_CloseAudioDevice(audio);
         if(resampler)SDL_FreeAudioStream(resampler);
-        if(texture)SDL_DestroyTexture(texture);
-        if(renderer)SDL_DestroyRenderer(renderer);
-        if(window)SDL_DestroyWindow(window);
+        video.reset();
         SDL_Quit();
     }
     bool input(dsr::InputState& input) {
         SDL_Event event;
-        while(SDL_PollEvent(&event))if(event.type==SDL_QUIT)return false;
+        while(SDL_PollEvent(&event)) {
+            if(event.type==SDL_QUIT)return false;
+            if(event.type==SDL_KEYDOWN)video->key(event.key);
+        }
         const auto* keys=SDL_GetKeyboardState(nullptr);
         const SDL_Scancode codes[]={SDL_SCANCODE_X,SDL_SCANCODE_Z,SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_RETURN,
             SDL_SCANCODE_RIGHT,SDL_SCANCODE_LEFT,SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,
@@ -77,17 +77,14 @@ struct Display {
         for(unsigned i=0;i<12;++i)if(keys[codes[i]])input.buttons|=1u<<i;
         if(keys[SDL_SCANCODE_ESCAPE])return false;
         int x,y;const auto buttons=SDL_GetMouseState(&x,&y);
-        float logical_x,logical_y;
-        SDL_RenderWindowToLogical(renderer,x,y,&logical_x,&logical_y);
-        input.pen_down=(buttons&SDL_BUTTON_LMASK) && logical_x>=0 && logical_x<256 && logical_y>=192 && logical_y<384;
-        input.pen_x=int(logical_x);input.pen_y=int(logical_y)-192;
+        int dx=0,dy=0;input.pen_down=(buttons&SDL_BUTTON_LMASK) && video->touch(x,y,dx,dy);
+        input.pen_x=dx;input.pen_y=dy;
         return true;
     }
     void present(dsr::Session& session) {
-        SDL_Rect top{0,0,256,192},bottom{0,192,256,192};
-        SDL_UpdateTexture(texture,&top,session.screen_top(),256*4);
-        SDL_UpdateTexture(texture,&bottom,session.screen_bottom(),256*4);
-        SDL_RenderClear(renderer);SDL_RenderCopy(renderer,texture,nullptr,nullptr);SDL_RenderPresent(renderer);
+        const auto& gpu=session.machine().gpu2d();
+        video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
+                        (gpu.frame_view().powcnt1&(1u<<15))!=0});
         if(SDL_AudioStreamPut(resampler,session.audio_data(),int(session.audio_frames()*4))!=0)
             throw std::runtime_error(SDL_GetError());
         const int available=SDL_AudioStreamAvailable(resampler);
@@ -108,10 +105,13 @@ int main(int argc,char** argv) {
     try {
         std::filesystem::path assets="assets",save="saves/game.sav",capture,script,audio_path,memory_dump;
         uint64_t frames=0;bool headless=false,diagnostics=false;
+        std::string renderer=profile::renderer,screen_mode=profile::screen_mode;
+        unsigned width=0,height=0;bool fullscreen=false;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
             if(option=="--headless"){headless=true;continue;}
             if(option=="--diagnostics"){diagnostics=true;continue;}
+            if(option=="--fullscreen"){fullscreen=true;continue;}
             if(i+1>=argc)throw std::runtime_error("missing option value");
             const std::string value=argv[++i];
             if(option=="--assets")assets=value;
@@ -121,9 +121,19 @@ int main(int argc,char** argv) {
             else if(option=="--input-script")script=value;
             else if(option=="--audio-pcm")audio_path=value;
             else if(option=="--dump-memory")memory_dump=value;
+            else if(option=="--renderer")renderer=value;
+            else if(option=="--screen-mode")screen_mode=value;
+            else if(option=="--resolution") {
+                const auto split=value.find('x');
+                if(split==std::string::npos)throw std::runtime_error("resolution must be WIDTHxHEIGHT");
+                width=unsigned(count(value.substr(0,split),8192));height=unsigned(count(value.substr(split+1),8192));
+            }
             else throw std::runtime_error("unknown option: "+option);
         }
         if(headless && !frames)throw std::runtime_error("headless mode requires --frames N");
+        if(renderer!="auto"&&renderer!="opengl"&&renderer!="software")throw std::runtime_error("renderer must be auto, opengl or software");
+        if(screen_mode!="dual"&&screen_mode!="unified")throw std::runtime_error("screen mode must be dual or unified");
+        if(renderer=="software"&&screen_mode=="unified")throw std::runtime_error("the unified camera requires OpenGL rendering");
 #ifndef NDS_WITH_SDL
         if(!headless)throw std::runtime_error("rebuild with NDS_WITH_SDL=ON for a window");
 #endif
@@ -152,7 +162,14 @@ int main(int argc,char** argv) {
         std::ofstream pcm;
         if(!audio_path.empty()){pcm.open(audio_path,std::ios::binary);if(!pcm)throw std::runtime_error("could not open audio output");}
 #ifdef NDS_WITH_SDL
-        std::unique_ptr<Display> display;if(!headless)display=std::make_unique<Display>();
+        std::unique_ptr<Display> display;
+        if(!headless) {
+            display=std::make_unique<Display>(video::Options{renderer,screen_mode,int(width),int(height),fullscreen,!capture.empty()});
+            if(display->video->renderer()=="opengl") {
+                session.machine().gpu3d().set_capture_opaque_only(true);
+                session.machine().gpu3d().on_render_complete=[&]{display->pending=video::Scene::capture(session.machine());};
+            }
+        }
         uint64_t deadline=SDL_GetPerformanceCounter();
 #endif
         uint64_t audio_samples=0;
@@ -161,6 +178,7 @@ int main(int argc,char** argv) {
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
             if(display && !display->input(input))break;
+            if(display)display->latched=std::move(display->pending);
 #endif
             session.step(input);audio_samples+=session.audio_frames();
             // Commit dirty cartridge bytes during play as well as on exit.
@@ -202,6 +220,12 @@ int main(int argc,char** argv) {
         if(!capture.empty()) {
             std::filesystem::create_directories(capture);
             ppm(capture/"top.ppm",session.screen_top());ppm(capture/"bottom.ppm",session.screen_bottom());
+#ifdef NDS_WITH_SDL
+            if(display) {
+                const auto pixels=display->video->read_pixels();
+                if(!pixels.empty())ppm(capture/"display.ppm",pixels.data(),display->video->width(),display->video->height());
+            }
+#endif
         }
         if(!memory_dump.empty()) {
             std::filesystem::create_directories(memory_dump);
@@ -226,7 +250,17 @@ int main(int argc,char** argv) {
             std::cout<<(i?",":"")<<session.machine().read32(dsr::CpuId::Arm9,profile::observations[i]);
         std::cout<<"],\"cpu_pc\":["<<session.machine().debug_cpu_snapshot(dsr::CpuId::Arm9).current_pc
                  <<","<<session.machine().debug_cpu_snapshot(dsr::CpuId::Arm7).current_pc
-                 <<"],\"unimplemented_io\":"<<session.machine().unimplemented_io_count()<<"}\n";
+                 <<"],\"unimplemented_io\":"<<session.machine().unimplemented_io_count();
+#ifdef NDS_WITH_SDL
+        if(display) {
+            auto& video=*display->video;
+            std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
+                <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()<<",\"unified\":"<<(video.unified()?"true":"false")
+                <<",\"polygons_drawn\":"<<video.polygons_drawn()<<"}";
+            session.machine().gpu3d().on_render_complete=nullptr;
+        }
+#endif
+        std::cout<<"}\n";
     } catch(const std::exception& error) {
         std::cerr<<"DS PC project: "<<error.what()<<'\n';return 1;
     }

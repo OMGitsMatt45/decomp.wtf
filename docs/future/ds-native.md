@@ -1,6 +1,7 @@
 # DS native PC-output backend
 
-Status: **experimental static generator implemented in PR #29; retail runtime incomplete**.
+Status: **experimental DS native repository generation implemented in PR #29;
+per-title compatibility requires validation**.
 Uses the shared application/output contract merged in PR #28. Merged PRs #1, #7
 and #25 remain console reconstruction and source-recovery history; a successful
 `.nds` rebuild or emulator execution is not this milestone.
@@ -15,10 +16,17 @@ the separately reviewed MIT DQ9-Decomp runtime and emitter, pinned by commit and
 archive hash. It analyzes DS inputs without matching compilers and ships native
 runtime source in generated repositories. Original guest code verifies screens,
 sound, IRQs, IPC, EEPROM reload, TCM controls, cartridge DMA and Thumb switches.
-DQV retail testing now reaches the opening castle scene with DS audio and
-reloads its created prologue save. Later field/battle behavior and save
-compatibility remain under active validation. No DQIV code or
+DQV smoke testing reached scene/menu/field operation with DS audio and
+reloaded its prologue save, including independent save interoperability.
+Combat, later saves and playthrough acceptance belong to the user. No DQIV code or
 mobile OBB dependency is adopted.
+
+Common output now includes optional OpenGL geometry rendering at the current
+drawable resolution and one extended 3D camera. Window sizing derives from the
+user's monitor; resizing, high-DPI changes and fullscreen update rendering
+without regeneration. The original screens remain available for menus, touch
+and guarded effects. See the [runtime guide](../nds-native-runtime.md) for the
+camera's update-rate/culling limits and original GPU qualification fixtures.
 
 ## Product
 
@@ -91,7 +99,8 @@ It has no interpreter or runtime compiler fallback. The hardware adapter now
 supplies graphics, audio and save-device services and is exposed experimentally
 in the application. A successful fixture is evidence for its tested CPU/runtime
 path, not a claim that DS retail output is complete. Optional owner-supplied
-mobile-remaster enhancements for DQ IV/V/VI follow native DS qualification;
+mobile-remaster enhancements for DQ IV/V/VI and the remaining Goldie features
+are deferred to later game-specific output work;
 the original DS sound remains a complete choice without an OBB.
 
 Ordinary DS is first. DSi container work in PR #24 stays separate; ARM9i/ARM7i,

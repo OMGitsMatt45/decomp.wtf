@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fixture',choices=('nds-static','nds-hardware'),default='nds-static')
+    parser.add_argument('--fixture',choices=('nds-static','nds-hardware','nds-video'),default='nds-static')
     fixture = parser.parse_args().fixture
     tools = toolchains.require('arm-gnu')/'bin'
     suffix = '.exe' if os.name=='nt' else ''

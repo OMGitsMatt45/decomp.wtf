@@ -144,12 +144,14 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
     async def generate_pc_project(ctx: Context, path: str, own_copy: bool = False,
-                                  save_type: str = "auto", ds_input_format: str = "auto") -> str:
+                                  save_type: str = "auto", ds_input_format: str = "auto",
+                                  renderer: str = "auto", screen_mode: str = "dual") -> str:
         """Generate an experimental DS native PC source repository directly from the user's ROM.
 
         No matching project or console compiler is needed. Select the cartridge save chip for a new game;
         auto infers only from an existing raw save. Use decrypted for an already-decrypted ROM.
         Set own_copy only when ownership was confirmed. The resulting README explains building/running.
+        renderer: auto, opengl or software. screen_mode: dual or unified (one extended 3D camera, requires OpenGL).
         """
         chat_agent(ctx)
         if not own_copy:
@@ -159,7 +161,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         except ValueError as error:
             raise ToolError(str(error)) from None
         return await _follow(jobs.start("pc-export", lambda log: net.generate_ds_pc(game,
-            confirmed=True, input_format=ds_input_format, save_type=save_type, log=log)))
+            confirmed=True, input_format=ds_input_format, save_type=save_type,
+            renderer=renderer,screen_mode=screen_mode,log=log)))
 
     async def _follow(jid: str, wait: float = 55) -> str:
         job = jobs.jobs[jid]
@@ -269,7 +272,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         return f"Autopilot is trying {st['total']} functions' machine drafts in the background; progress() shows it."
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
-    async def export_project(ctx: Context, format: str = "matching", save_type: str = "auto") -> str:
+    async def export_project(ctx: Context, format: str = "matching", save_type: str = "auto",
+                             renderer: str = "auto", screen_mode: str = "dual") -> str:
         """Export the current project: matching console reconstruction by default, or experimental native PC
         sources with format=pc on DS. For PC output choose the cartridge save chip. Returns the output path;
         source integrity and matching-console verification do not certify gameplay.
@@ -280,7 +284,7 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
             raise ToolError("choose matching console reconstruction or pc output")
         if format == "pc":
             return await _follow(jobs.start("pc-export", lambda log: net.export_rom(slug,
-                format="pc",save_type=save_type,log=log)))
+                format="pc",save_type=save_type,renderer=renderer,screen_mode=screen_mode,log=log)))
         try:
             res = await anyio.to_thread.run_sync(lambda: net.export_rom(slug, log=lambda *_: None))
         except (NetworkError, RuntimeError, OSError) as e:

@@ -149,7 +149,10 @@ def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
         pytest.skip('SDL presentation qualification runs in the dedicated native workflow')
     _,root,_=hardware_project
     build=root/'build-sdl'
-    for cmd in (['cmake','-S',str(root),'-B',str(build),'-DNDS_WITH_SDL=ON','-DCMAKE_BUILD_TYPE=Release'],
+    configure=['cmake','-S',str(root),'-B',str(build),'-DNDS_WITH_SDL=ON','-DCMAKE_BUILD_TYPE=Release']
+    if source_dir:=os.environ.get('DECOMP_DS_SDL_SOURCE'):
+        configure.append('-DFETCHCONTENT_SOURCE_DIR_SDL2='+source_dir)
+    for cmd in (configure,
                 ['cmake','--build',str(build),'--config','Release','--parallel','2']):
         done=subprocess.run(cmd,capture_output=True,text=True,timeout=600)
         assert done.returncode==0,done.stdout+done.stderr
@@ -207,6 +210,15 @@ def test_invalid_bios_configuration_fails_before_tool_installation(tmp_path,monk
     with pytest.raises(pc.PCError,match='decrypted input' if kind=='decrypted' else '16 KiB'):
         export(rom,tmp_path/'output',arm7_bios=bios,input_format='decrypted' if kind=='decrypted' else 'auto')
     assert not (tmp_path/'output').exists() and rom.read_bytes()==raw
+
+
+@pytest.mark.parametrize('renderer,mode',[('unknown','dual'),('opengl','unknown'),('software','unified')])
+def test_invalid_video_options_fail_before_tool_installation(tmp_path,monkeypatch,renderer,mode):
+    raw,_=hardware();rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    monkeypatch.setattr(toolchains,'ensure',lambda *_a,**_k:pytest.fail('invalid presentation must precede tool installation'))
+    with pytest.raises(pc.PCError,match='renderer|screen mode|requires OpenGL'):
+        export(rom,tmp_path/'output',renderer=renderer,screen_mode=mode)
+    assert not (tmp_path/'output').exists()
 
 
 def test_hash_implementation_matches_standard_vectors_and_padding_boundaries(tmp_path):

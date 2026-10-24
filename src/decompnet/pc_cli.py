@@ -26,6 +26,8 @@ def add_parser(sub):
     native.add_argument('--input-format', choices=('auto','decrypted'), default='auto')
     native.add_argument('--arm7-bios', type=Path, help='optional private decoding input for encrypted originals')
     native.add_argument('--save-type', default='auto', help='cartridge chip for a new game, e.g. eeprom64k; auto infers from an existing raw save')
+    native.add_argument('--renderer', choices=('auto','opengl','software'),default='auto',help='default native renderer; OpenGL draws 3D geometry at the window resolution')
+    native.add_argument('--screen-mode', choices=('dual','unified'),default='dual',help='default presentation; unified extends one 3D camera across the window')
     native.add_argument('--experimental', action='store_true', required=True)
 
 
@@ -34,7 +36,7 @@ def run(args):
         if args.pc_action == 'nds-native':
             from .nds_native import export
             result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,
-                            arm7_bios=args.arm7_bios,save_type=args.save_type)
+                            arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer,screen_mode=args.screen_mode)
         elif args.pc_action == 'nds-generate':
             from .nds_pc import export
             result = export(args.rom,args.profile,args.output)

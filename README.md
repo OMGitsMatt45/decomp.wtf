@@ -44,14 +44,21 @@ with an explicit [experimental generator](docs/nds-pc.md). Reviewed ARM/Thumb
 instructions become C++ and execute with two CPU contexts and overlay switching.
 The [native runtime path](docs/nds-native-runtime.md) also analyzes DS ROMs and
 ships graphics, audio, input, timing and cartridge services as source. Original
-programs verify rendering, sound, interrupts, IPC and real save reload. DQV
-compatibility is still being fixed. DS import offers experimental PC generation
+programs verify rendering, sound, interrupts, IPC and real save reload. Retail
+compatibility remains title-specific. DS import offers experimental PC generation
 directly, without a matching compiler, and existing DS projects can export the
 same native repository from the Source tab. Select the game's cartridge save
 chip; DQV Europe defaults to the verified 64 KiB EEPROM configuration.
 
+DS output also offers OpenGL rendering and an optional single-camera picture.
+3D geometry renders at the current window/monitor resolution, adapting to
+resizes and high-DPI changes. Fullscreen uses the active monitor's native
+resolution. F6 switches the original screens/unified camera; F7 controls the
+secondary-screen inset; F11 toggles fullscreen. The [guide](docs/nds-native-runtime.md)
+describes native-screen fallbacks and per-title camera limits.
+
 Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
-not required. Optional mobile-remaster enhancements for DQ IV/V/VI are planned,
+not required. Optional mobile-remaster enhancements for DQ IV/V/VI are deferred,
 with per-title mappings and an original-DS-audio option; they are not implemented
 yet. BIOS and firmware are not runtime dependencies; an encrypted
 original may need an owner-supplied ARM7 BIOS during initial decoding.
@@ -85,6 +92,7 @@ Install the following only for the features you choose:
 | [Python 3.9+](https://www.python.org/downloads/) | Standalone asset extraction in generated DS PC repositories. The main application uses Python 3.12+, managed by uv. |
 | [CMake 3.20+](https://cmake.org/download/) | Building generated native PC projects and running the output-contract fixture. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | GPU rendering in generated DS projects requires OpenGL 3.3. Use the driver for your card, or your Linux distribution's graphics packages. Automatic mode retains software presentation if unavailable. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
@@ -103,8 +111,12 @@ contract and DS static code generation with actual host builds and execution;
 this is not DS retail execution:
 
 ```sh
-uv run pytest -q tests/test_platform_scope.py tests/test_pc_output.py tests/test_nds_pc.py
+uv run pytest -q tests/test_platform_scope.py tests/test_pc_output.py tests/test_nds_pc.py tests/test_nds_native.py tests/test_nds_native_app.py tests/test_nds_native_video.py
 ```
+
+The DS workflow installs the pinned source runtime and requires SDL checks on
+Windows/Linux plus OpenGL execution on Linux. See the [native guide](docs/nds-native-runtime.md)
+for GPU qualification and conservative compatibility limits.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

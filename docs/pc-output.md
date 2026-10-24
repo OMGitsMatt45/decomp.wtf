@@ -130,5 +130,10 @@ native repositories. The latter is available from DS import, the Source tab and
 `decomp pc nds-native`. Its tests build and run graphics, audio, IRQ/input/IPC,
 overlay loading and cartridge-save behavior on Windows/Linux. DQV source
 generation, standalone building, boot/menu/field operation and initial save
-interoperability have also been observed. Further gameplay acceptance belongs
-to the user. Optional mobile assets remain a separate, unimplemented enhancement.
+interoperability have also been observed. GPU geometry rendering uses the
+current drawable resolution and adapts to window/monitor changes. The optional
+unified camera extends submitted 3D scenery over one picture, with accessible
+secondary-screen UI and conservative native-screen fallbacks. Original GL and
+guest fixtures qualify this presentation path. Further gameplay acceptance
+belongs to the user. Optional mobile assets and other game-specific extras are
+deferred to later output enhancement work.

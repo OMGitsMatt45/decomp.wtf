@@ -350,6 +350,7 @@ function setupCompilers(info) {
   $("dsOutputRow").hidden = p !== "nds" || !!info.bootUtility;
   const nativeDS = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
   $("dsSaveRow").hidden = !nativeDS;
+  $("dsVideoRows").hidden = !nativeDS;
   $("romLayoutRow").hidden = !["psx", "playstation"].includes(p);
   $("romLayoutFile").value = "";
   if (info.bootUtility) {
@@ -392,6 +393,14 @@ function updateAnalyse() {
 $("mwAccept").addEventListener("change", updateAnalyse);
 $("dsOutput").onchange = () => { if (picked) setupCompilers(picked.info); updateAnalyse(); };
 $("dsSaveType").onchange = updateAnalyse;
+for (const prefix of ["ds", "pc"]) {
+  $(`${prefix}ScreenMode`).onchange = () => {
+    if ($(`${prefix}ScreenMode`).value === "unified" && $(`${prefix}Renderer`).value === "software") $(`${prefix}Renderer`).value = "auto";
+  };
+  $(`${prefix}Renderer`).onchange = () => {
+    if ($(`${prefix}Renderer`).value === "software") $(`${prefix}ScreenMode`).value = "dual";
+  };
+}
 
 function fillDsSaves(select,code) {
   const chips = [["", "Choose the game's save chip"], ["eeprom512b", "EEPROM 512 bytes"],
@@ -489,7 +498,7 @@ $("analyse").onclick = async () => {
   }
   const body = picked.buf instanceof Blob ? picked.buf : new Blob([picked.buf]);
   const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
-  const pcOutput = !$("dsSaveRow").hidden ? `&output=pc&save_type=${encodeURIComponent($("dsSaveType").value)}` : "";
+  const pcOutput = !$("dsSaveRow").hidden ? `&output=pc&save_type=${encodeURIComponent($("dsSaveType").value)}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
   let layoutQuery = "";
   const layoutFile = !$("romLayoutRow").hidden && $("romLayoutFile").files[0];
   if (layoutFile) {
@@ -2388,6 +2397,7 @@ function renderSource(ov) {
   $("pcExport").disabled = !ov.outputs?.pc?.available;
   $("pcOutputStatus").textContent = ov.outputs?.pc?.available ? "Experimental native PC source export is available. Verify gameplay for your game." : "Native PC export is not available yet. Console reconstruction remains available.";
   $("pcSaveRow").hidden = ov.platform !== "nds" || !ov.outputs?.pc?.available;
+  $("pcVideoRows").hidden = $("pcSaveRow").hidden;
   if ($("pcSaveType").dataset.project !== ov.slug) {
     fillDsSaves($("pcSaveType"),ov.rom?.game_code || ov.version);
     $("pcSaveType").dataset.project = ov.slug;
@@ -2473,7 +2483,7 @@ $("pcExport").onclick = async () => {
   if (!$("pcSaveRow").hidden && !saveType) return toast("Choose the cartridge save chip for this game.", "err");
   button.disabled = true;
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: saveType || "auto" } });
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: saveType || "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value } });
     const result = await followJob(job);
     $("expLog").hidden = false;
     $("expLog").textContent = `PC project: ${result.path}\nIntegrity verified. Host build and gameplay validation are separate.`;

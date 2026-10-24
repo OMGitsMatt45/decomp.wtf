@@ -32,7 +32,7 @@ See [current commands and limits](nds-pc.md) and the [DS implementation plan](fu
 The additional [native hardware-runtime path](nds-native-runtime.md) integrates
 retail module decoding, the pinned MIT DQ9-Decomp emitter/runtime, graphics,
 audio, timing/IRQs, input and cartridge saves. Original guest programs exercise
-those interfaces; retail DQV compatibility is being fixed and qualified. The
+those interfaces; DQV smoke-test findings have original regression cases. The
 [DQIV runtime assessment](future/ds-runtime-assessment.md) remains a product
 reference; no DQIV runtime or mobile OBB dependency is copied.
 The native adapter is available experimentally through DS import and the Source
@@ -41,7 +41,14 @@ Original fixtures validate native execution and hardware/save interfaces;
 DQV additionally has standalone build, boot/menu/field and initial save-reload
 evidence. Further gameplay acceptance, including combat and later saves, stays
 with the user. Continue implementation work through automated regressions and
-reported defects. Optional mobile-asset enhancements are not implemented yet.
+reported defects. The current DS scope also includes GPU geometry rendering at
+the user's changing drawable resolution, fullscreen at native monitor size,
+and an optional single-camera picture with accessible secondary-screen UI.
+Original guest/OpenGL fixtures verify geometry, UI, texture, touch, camera
+retention, resizing and preservation of DS execution. The [runtime guide](nds-native-runtime.md)
+records conservative original-screen fallbacks and remaining per-title limits.
+Optional mobile assets and other Goldie extras are deferred to later
+game-specific output work; they do not block the common DS milestone.
 
 GBA, PS1 and PS2 follow the common contract with separate backends. Reuse existing
 Pokémon source projects and suitable recompiler/runtime projects. PS1 retains one

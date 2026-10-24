@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -316,10 +316,12 @@ or a guessed ARM function entry, which could conceal a translation defect.
 ''',encoding='utf-8')
 
 
-def _profile(root, digest, reviewed, save_type):
+def _profile(root, digest, reviewed, save_type, renderer, screen_mode):
     observations=reviewed.get('observe_words',[])
     lines=['#pragma once','#include "hash.hpp"','#include <dsr/machine.h>','namespace profile {',
            'inline constexpr const char* save_type='+json.dumps(save_type)+';',
+           'inline constexpr const char* renderer='+json.dumps(renderer)+';',
+           'inline constexpr const char* screen_mode='+json.dumps(screen_mode)+';',
            'inline constexpr uint32_t observations[]={'+','.join(hex(a)+'u' for a in observations or [0])+'};',
            f'inline constexpr unsigned observation_count={len(observations)};',
            'inline void verify_input(const std::filesystem::path& path) {',
@@ -374,10 +376,11 @@ def generate(project,root):
             if not 0<=start<start+len(value)<=len(data):raise pc.PCError('decoded asset patch exceeds the original ROM')
             normalized[start:start+len(value)]=value
         asset_digest=hashlib.sha256(normalized).hexdigest()
-    _profile(root,asset_digest,reviewed,project['save_type'])
+    _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'],project['screen_mode'])
     (root/'game/input.json').write_text(json.dumps(dict(sha256=digest,size=len(data),
         asset_sha256=asset_digest,asset_patches=patches),indent=2)+'\n',encoding='utf-8')
     for source,destination in (('main.cpp','native/main.cpp'),('hash.hpp','native/hash.hpp'),
+                               ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')
     license=resources.files('decompnet.nds_pc').joinpath('runtime.LICENSE').read_text(encoding='utf-8')
@@ -433,9 +436,52 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Run `build/ds_pc --assets assets` on Linux or
-`build/Release/ds_pc.exe --assets assets` with Visual Studio. The screens are
-stacked. Arrow keys move; X/Z are A/B; S/A are X/Y; Q/W are L/R;
+`build/Release/ds_pc.exe --assets assets` with Visual Studio.
+Arrow keys move; X/Z are A/B; S/A are X/Y; Q/W are L/R;
 Enter/Backspace are Start/Select. Click the lower screen for touch; Escape quits.
+F11 switches fullscreen at the current monitor's native resolution. The initial
+window size comes from the active monitor's usable area. Resizing or moving
+between monitors updates rendering to the actual drawable size, including
+high-DPI scaling. `--resolution WIDTHxHEIGHT` optionally sets an initial window
+size; the renderer keeps adapting after that.
+
+## Rendering and one-picture mode
+
+The export's renderer and picture choices are recorded in `native/profile.hpp`
+and the manifest. They can be changed without regenerating game code:
+
+```sh
+./build/ds_pc --renderer opengl --screen-mode unified --fullscreen
+```
+
+`--renderer auto` tries OpenGL 3.3, reporting a software fallback if unavailable.
+`opengl` requires the driver/context; it draws transformed game geometry at the
+drawable resolution. `software` preserves the DS-resolution picture. OpenGL
+loads through SDL. Driver downloads: [NVIDIA](https://www.nvidia.com/Download/index.aspx),
+[AMD](https://www.amd.com/en/support),
+[Intel](https://www.intel.com/content/www/us/en/download-center/home.html), or
+your Linux distribution's graphics packages.
+The native DS renderer stays active for display capture, UI and guarded effects.
+
+`--screen-mode dual` preserves the two LCDs. `unified` extends one 3D camera over
+the picture, including geometry beyond the original screen bounds; it requires
+OpenGL. For alternating cameras it retains the latest bottom-camera scene and
+inherits that camera's update rate. It does not synthesize extra game frames or
+recover geometry the game culled before submitting it. F6 switches views.
+The secondary LCD stays visible in an inset to preserve unknown game interfaces;
+F7 hides/shows it. Touch coordinates follow the bottom LCD's displayed region.
+Original text/sprites remain sharply scaled. Menus, 2D-only scenes and guarded
+effects restore the complete two-screen picture. Fog, edge marking, shadow and
+depth-equal polygons and clear-image mode currently use that native path.
+Game-specific camera, menu and culling enhancements can be added to this source
+project later. Mobile sound, party chat and other title-specific extras are
+outside this generic DS output.
+
+`--capture DIR` also saves `display.ppm` at the presented drawable resolution.
+The JSON result identifies the actual renderer, driver, dimensions, active
+unified view and geometry draw count. Headless mode runs the DS machine without
+a presentation driver.
+
 Cartridge saves are written to `saves/game.sav`, or the path given by `--save`.
 The selected save chip is pinned in `native/profile.hpp`; review it for each game.
 `auto` infers from an existing raw save. Choose the actual chip for a new game.
@@ -455,18 +501,22 @@ build and successful boot are separate from field/battle/save compatibility.
         runtime=dict(id='dq9-decomp-dsr',revision=SDK_COMMIT),inputs=[dict(sha256=digest)],
         execution_model='static-recompiled',build=dict(system='cmake',target='ds_pc'),
         fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
-        code_generation=stats,save_type=project['save_type'],asset_sha256=asset_digest,files={})
+        code_generation=stats,save_type=project['save_type'],asset_sha256=asset_digest,
+        presentation=dict(renderer=project['renderer'],screen_mode=project['screen_mode'],resolution='window'),files={})
     for path in sorted(root.rglob('*')):
         if path.is_file():manifest['files'][path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
 
 
-def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto'):
+def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual'):
     rom=Path(rom).resolve()
     if not rom.is_file() or not 0x200<=rom.stat().st_size<=512*1024*1024:
         raise pc.PCError('DS input must be an existing ROM no larger than 512 MiB')
     NdsImage(rom.read_bytes())  # reject invalid headers/TWL before any dependency install
     if input_format not in ('auto','decrypted'):raise pc.PCError('input format must be auto or decrypted')
+    if renderer not in ('auto','opengl','software'):raise pc.PCError('renderer must be auto, opengl or software')
+    if screen_mode not in ('dual','unified'):raise pc.PCError('screen mode must be dual or unified')
+    if renderer=='software' and screen_mode=='unified':raise pc.PCError('the unified camera requires OpenGL rendering')
     bios=None
     if arm7_bios is not None:
         if input_format=='decrypted':raise pc.PCError('decrypted input must not be decrypted again with a BIOS')
@@ -481,12 +531,13 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
         if path.stat().st_size>1024*1024:raise pc.PCError('reviewed profile is too large')
         reviewed=json.loads(path.read_text(encoding='utf-8'))
     return dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
-        input_format=input_format,bios=bios,save_type=save_type)
+        input_format=input_format,bios=bios,save_type=save_type,renderer=renderer,screen_mode=screen_mode)
 
 
 def _generate_project(project,root):
     prepared=_prepare(project['rom'],input_format=project.get('input_format','auto'),
-                      arm7_bios=project.get('bios'),save_type=project.get('save_type','auto'))
+                      arm7_bios=project.get('bios'),save_type=project.get('save_type','auto'),
+                      renderer=project.get('renderer','auto'),screen_mode=project.get('screen_mode','dual'))
     generate(prepared,root)
 
 
@@ -494,8 +545,9 @@ def backend():
     return pc.Backend(BACKEND_ID,'nds',revision(),_generate_project,experimental=True)
 
 
-def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',log=None):
-    project=_prepare(rom,profile=profile,input_format=input_format,arm7_bios=arm7_bios,save_type=save_type)
+def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual',log=None):
+    project=_prepare(rom,profile=profile,input_format=input_format,arm7_bios=arm7_bios,save_type=save_type,
+                     renderer=renderer,screen_mode=screen_mode)
     token=_progress.set(log)
     try:
         return pc.export_backend(project,Path(output),pc.Backend(BACKEND_ID,'nds',revision(),generate,True))
