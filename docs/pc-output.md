@@ -17,7 +17,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | Target | Current from-scratch support | Route toward PC output |
 | --- | --- | --- |
 | DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
-| PS1 | Disc/EXE recovery, reviewed modules and combined multi-disc reconstruction carried into PR #28 | Evaluate a PS1 recompiler/runtime backend against DQVII, retaining both discs in one generated project. |
+| PS1 | Disc/EXE recovery, reviewed modules and combined multi-disc reconstruction carried into PR #28; original native CPU candidate proof | Active runtime/backend integration targeting DQVII, retaining both discs in one generated project. |
 | GBA | ARM/Thumb matching and cartridge reconstruction | Prefer an existing title decompilation where available, then integrate a PC runtime or translation backend. Pokémon source projects already exist. |
 | PS2 | EE program/ELF recovery and reconstruction | Requires a PC execution/runtime path covering the game's EE, IOP, vector-unit, graphics and audio behavior. Current support does not provide it. |
 | 3DS | Planned; no qualified raw-game pipeline | Both game import/execution integration and a PC runtime are additional work. |
@@ -66,16 +66,18 @@ and executes this structure through original ARM9/ARM7 programs, a hardware
 fixture and a privately supplied DQV ROM. These are separate levels of evidence;
 they do not certify every title or a full playthrough.
 
-## First active platform: DS; DQVII retained for later PS1 integration
+## DS merged; PS1 runtime integration active
 
-Start with the shared application contract and DS backend. Preserve the existing
+The shared application contract and DS backend have merged. Preserve the existing
 DQVII imports, original hashes, HBD/archive work, reviewed
 engine/VRAM module placements and recovered source. Evaluate
 [PSXRecomp](https://github.com/RetroPortingToolKit/psxrecomp) as an optional
 backend rather than assuming we must build all PS1 hardware services ourselves.
 Its documentation describes generated C, a shared PS1 runtime, streamed overlays
-and multi-disc project setup. It is a beta dependency candidate; it has **not**
-been built or qualified for DQVII in decomp.wtf.
+and multi-disc project setup. The [PS1 implementation plan](future/ps1-native.md)
+pins its source/license and records an original generated-C CPU execution proof.
+The candidate has noncommercial terms and defaults to hybrid execution.
+Its complete hardware runtime and DQVII remain unqualified.
 
 Before integration, review and pin the framework and dependency revisions,
 licenses, execution model and generated-project interfaces. Prove an original

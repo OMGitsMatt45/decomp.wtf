@@ -98,4 +98,6 @@ keys belong in this branch. See the [main roadmap](../future-work.md).
 
 Reviewed boot-data envelopes and differing-call-site signature repairs passed native qualification at a5b1297.
 
-PC game output remains unimplemented. See the [DQ/Pokémon PC-output scope](../pc-output.md); exhaustive retail source matching is checkpointed while the next milestone evaluates a PC runtime/backend.
+PC game output remains unimplemented. The active [PS1 native output plan](ps1-native.md)
+records the original CPU proof and remaining full-runtime/disc-set work.
+Exhaustive retail source matching remains checkpointed in PR #26.

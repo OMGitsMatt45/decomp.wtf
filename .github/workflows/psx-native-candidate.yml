@@ -1,0 +1,48 @@
+name: PS1 native runtime candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/qualify_psx_runtime.py'
+      - 'tests/test_psx_native_candidate.py'
+      - 'tests/fixtures/psx-native/**'
+      - 'tests/fixtures/psx_native.py'
+      - '.github/workflows/psx-native-candidate.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-probes:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_REQUIRE_PSX_CANDIDATE: '1'
+      DECOMP_PSX_CANDIDATE_ROOT: ${{ runner.temp }}/PS1 candidate source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Fetch pinned optional noncommercial candidate and verify archive
+        run: uv run --no-sync python -c "import os; from pathlib import Path; from tools.qualify_psx_runtime import download; download(Path(os.environ['DECOMP_PSX_CANDIDATE_ROOT']))"
+      - name: Generate native C, compare original-byte execution and reject changed code
+        run: >-
+          uv run --no-sync python -m pytest -q tests/test_psx_native_candidate.py
+          --basetemp=psx-native-results --junitxml=psx-native-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: psx-native-candidate-${{ matrix.os }}
+          path: |
+            psx-native-results.xml
+            psx-native-results/**/assessment.json
+            psx-native-results/**/*.log

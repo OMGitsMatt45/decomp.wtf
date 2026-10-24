@@ -131,6 +131,11 @@ The DS workflow installs the pinned source runtime and requires SDL checks on
 Windows/Linux plus OpenGL execution on Linux. See the [native guide](docs/nds-native-runtime.md)
 for GPU qualification and conservative compatibility limits.
 
+DS native output is merged in PR #29. [PS1 native output](docs/future/ps1-native.md)
+is now active, starting with an optional noncommercial runtime candidate and an
+original generated-C CPU proof. A complete PS1 PC export is not available yet;
+the first retail target is DQVII with both discs in one source project/build.
+
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private
 retail sources and all failed recovery attempts are checkpointed in

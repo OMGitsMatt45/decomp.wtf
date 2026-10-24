@@ -1,0 +1,86 @@
+# PS1 native PC output
+
+DS native output merged in [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29)
+at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`. PS1 is the active platform.
+The first retail target is DQVII: **one source repository and build for both
+ordered discs**, with runtime disc switching and shared saves. The existing
+disc parsers, reviewed module placements and private source checkpoints remain
+inputs to that work. Exhaustive matching recovery stays paused in PR #26.
+
+## Optional runtime candidate
+
+The first assessment uses [PSXRecomp](https://github.com/RetroPortingToolKit/psxrecomp),
+pinned to `31df2e1e0e0a6525733e68ff70e72ecbef84bb09`:
+
+| Item | Pin / finding |
+| --- | --- |
+| [Source download](https://codeload.github.com/RetroPortingToolKit/psxrecomp/tar.gz/31df2e1e0e0a6525733e68ff70e72ecbef84bb09) SHA-256 | `3376c1bf0509ca7045e92d0673ecbc9245084e017ffaa66d954c77519972d171` |
+| Recompiler, codegen scripts, runtime headers and license fingerprint | `28937b3662e511935ecf986e7f0c1374a10d5068842504ef9c3a6731383b8a5b` |
+| Emitter code-generation identifier | `115b1739` |
+| [Candidate license](https://github.com/RetroPortingToolKit/psxrecomp/blob/31df2e1e0e0a6525733e68ff70e72ecbef84bb09/LICENSE) | PolyForm Noncommercial 1.0.0; separate from this application's MIT license |
+| Candidate's default execution model | Hybrid: static C, interpreter fallback, runtime code compilation |
+| BIOS candidate | Bundled MIT OpenBIOS; its complete integration is still unqualified |
+
+The candidate is optional and is not installed by application setup or registered
+as a PC backend. Its noncommercial terms must remain visible in any integration
+and generated output. This assessment does not change decomp.wtf's MIT license
+or establish commercial use rights for the candidate. The default hybrid model
+must be reported honestly, including both fallback mechanisms.
+
+## Implemented execution proof
+
+`tools/qualify_psx_runtime.py` verifies the pinned source and emitter, builds the
+emitter when needed, and generates C from an original CC0 PS-X EXE. A native
+CPU-only host executes that generated code; an independent Unicorn instance
+executes the original MIPS bytes. Twenty cases compare all general registers,
+return PC and an observed RAM word, covering signed branches, call/return delay
+slots, argument changes, calls and RAM reads/writes. Changed code must be rejected
+by native dispatch. This probe links no interpreter or runtime compiler.
+
+The harness supplies bounded RAM, disabled interrupts and an immutable-code guard.
+It does not qualify the candidate's dirty-memory implementation, full R3000
+pipeline, cycle timing, GTE, peripherals or GPU. The memory case includes a NOP
+after its load; Unicorn's MIPS32 execution is not an oracle for R3000 load-delay
+hazards. The assessment records `hardware_runtime_qualified: false` and
+`retail_qualified: false`. This is a CPU integration proof, not a playable port.
+
+From a developer checkout with Python 3.12+, CMake and a native C/C++ compiler:
+
+```sh
+uv sync --locked --group dev
+uv run python -m tools.qualify_psx_runtime /path/to/new-proof --sdk-root /path/to/new-candidate --download-sdk
+```
+
+The helper automatically downloads only the pinned archive above. To reuse an
+existing verified source tree, omit `--download-sdk`. `--recompiler PATH` can
+reuse its built emitter; the code-generation identifier is checked before use.
+Existing proof directories are preserved. Reports include execution boundaries,
+input hash, pins and logs; retained generated C can be rebuilt after publication.
+Original probe sources are CC0; external/generated helpers retain candidate terms.
+
+The `PS1 native runtime candidate` workflow builds and runs this proof on Windows
+and Linux, including a fresh rebuild from the retained output. No game, retail
+BIOS, proprietary SDK or recovered game source enters the workflow.
+
+## Remaining integration
+
+1. Build a standalone source repository against the complete pinned hardware
+   runtime. Qualify original guest programs for GPU/GTE, audio, input, timing,
+   interrupts, CD-ROM reads and persistent memory-card save/reload. Review and
+   pin additional dependency/license requirements. Keep fallback counts visible.
+2. Prove an original ordered two-disc fixture through the existing disc-set
+   importer, one generated build and runtime disc switching. Preserve each disc's
+   identity/hash and shared save state, including both entry-point and overlay
+   dispatch. Missing or reordered media must produce a useful error.
+3. Register the PS1 adapter only after its standalone project builds and executes
+   on Windows/Linux. Add CLI, GUI and optional agent access through the shared
+   PC-project contract. Provide GPU rendering and a window/fullscreen size that
+   adapts to the user's display rather than a fixed host resolution.
+4. Adapt the reviewed DQVII boot, streamed module and archive facts to the runtime.
+   Use targeted automated boot/module/save/disc checks, fixing failures with
+   original regressions where possible. The user owns playthrough acceptance.
+
+Do not substitute reconstruction success, matching percentages or CMake
+configuration for native game execution. A generally useful translator/runtime
+can support many titles while still requiring specific loader and compatibility
+fixes; no full-game or universal compatibility claim is made by this assessment.
