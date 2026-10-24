@@ -212,8 +212,9 @@ def _reviewed(data, profile, work):
     for cpu in ('arm9','arm7'):
         item=processors[cpu]
         sp=item.get('stack') if isinstance(item,dict) else None
-        if type(sp) is not int or sp%4 or not (0x02000004<=sp<=0x02400000 or 0x03800004<=sp<=0x03810000):
-            raise pc.PCError('reviewed stack is not aligned supported RAM')
+        private=(0x00800004,0x00804000) if cpu=='arm9' else (0x03800004,0x03810000)
+        if type(sp) is not int or sp%4 or not (0x02000004<=sp<=0x02400000 or private[0]<=sp<=private[1]):
+            raise pc.PCError(cpu+' reviewed stack is not aligned RAM accessible to that processor')
     observations=profile.get('observe_words',[])
     if not isinstance(observations,list) or len(observations)>256 or any(type(a) is not int or a%4 or
             not (0x02000000<=a<0x02400000) for a in observations):
@@ -466,6 +467,12 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
         raise pc.PCError('DS input must be an existing ROM no larger than 512 MiB')
     NdsImage(rom.read_bytes())  # reject invalid headers/TWL before any dependency install
     if input_format not in ('auto','decrypted'):raise pc.PCError('input format must be auto or decrypted')
+    bios=None
+    if arm7_bios is not None:
+        if input_format=='decrypted':raise pc.PCError('decrypted input must not be decrypted again with a BIOS')
+        bios=Path(arm7_bios).expanduser().resolve()
+        if not bios.is_file() or bios.stat().st_size!=16*1024:
+            raise pc.PCError('ARM7 BIOS must be an existing 16 KiB file')
     if save_type not in ('auto','eeprom512b','eeprom8k','eeprom64k','eeprom128k','flash256k','flash512k','flash1m','flash8m'):
         raise pc.PCError('unsupported cartridge save type')
     reviewed=None
@@ -474,7 +481,7 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
         if path.stat().st_size>1024*1024:raise pc.PCError('reviewed profile is too large')
         reviewed=json.loads(path.read_text(encoding='utf-8'))
     return dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
-        input_format=input_format,bios=arm7_bios,save_type=save_type)
+        input_format=input_format,bios=bios,save_type=save_type)
 
 
 def _generate_project(project,root):

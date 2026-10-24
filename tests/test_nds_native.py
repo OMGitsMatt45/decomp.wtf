@@ -171,6 +171,44 @@ def test_unsupported_code_does_not_publish_an_incomplete_repository(tmp_path,sdk
     assert not (tmp_path/'out').exists()
 
 
+@pytest.mark.parametrize('cpu,stack',[('arm9',0x0380ff00),('arm7',0x00803f00)])
+def test_reviewed_stacks_cannot_use_the_other_processors_private_ram(tmp_path,sdk,cpu,stack):
+    raw,profile=hardware();profile['processors'][cpu]['stack']=stack
+    rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
+    with pytest.raises(pc.PCError,match='accessible to that processor'):
+        export(rom,tmp_path/'out',profile=path)
+    assert not (tmp_path/'out').exists() and rom.read_bytes()==raw
+
+
+def test_reviewed_arm9_stack_can_use_its_default_dtcm(tmp_path):
+    from decompnet.nds_native import _reviewed
+    raw,profile=hardware();profile['processors']['arm9']['stack']=0x00803f00
+    _,facts=_reviewed(raw,profile,tmp_path)
+    assert facts['processors']['arm9']['stack']==0x00803f00
+
+
+def test_relative_bios_input_remains_accessible_from_analysis_working_directory(tmp_path,monkeypatch):
+    from decompnet.nds_native import _prepare
+    raw,_=hardware();rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    bios=tmp_path/'decoder-input.bin';bios.write_bytes(bytes(16*1024))  # synthetic size fixture, never executed
+    monkeypatch.chdir(tmp_path)
+    prepared=_prepare('original.nds',arm7_bios='decoder-input.bin')
+    work=tmp_path/'analysis';work.mkdir();monkeypatch.chdir(work)
+    assert prepared['bios'].is_absolute() and prepared['bios'].read_bytes()==bios.read_bytes()
+
+
+@pytest.mark.parametrize('kind',['decrypted','wrong-size','missing'])
+def test_invalid_bios_configuration_fails_before_tool_installation(tmp_path,monkeypatch,kind):
+    raw,_=hardware();rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    bios=tmp_path/'decoder-input.bin'
+    if kind!='missing':bios.write_bytes(bytes(4096 if kind=='wrong-size' else 16*1024))
+    monkeypatch.setattr(toolchains,'ensure',lambda *_a,**_k:pytest.fail('invalid input must precede tool installation'))
+    with pytest.raises(pc.PCError,match='decrypted input' if kind=='decrypted' else '16 KiB'):
+        export(rom,tmp_path/'output',arm7_bios=bios,input_format='decrypted' if kind=='decrypted' else 'auto')
+    assert not (tmp_path/'output').exists() and rom.read_bytes()==raw
+
+
 def test_hash_implementation_matches_standard_vectors_and_padding_boundaries(tmp_path):
     # The generated host uses this digest before touching a cartridge/save.
     (tmp_path/'hash.hpp').write_text(_source('hash.hpp'))
