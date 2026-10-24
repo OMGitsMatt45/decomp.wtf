@@ -97,7 +97,12 @@ The author's [Nexus listing](https://www.nexusmods.com/dragonquest4/mods/1)
 describes visual upgrades and orchestral music and points back to that thread
 for current project details; the listing itself is marked out of date. This
 identifies the intended enhancement project, not a tested archive format or
-compatible asset hash. DQV and DQVI mod references still need separate review.
+compatible asset hash. DQV and DQVI can instead use optional stock mobile
+assets; a remaster mod is not required. Their official mobile-release pages are
+[DQV](https://www.jp.square-enix.com/dqsp/dq5/en/) and
+[DQVI](https://www.jp.square-enix.com/dqsp/dq6/en/). Archive package/version,
+content hashes and per-title mappings still need validation against local
+owner-supplied files; a download-page label alone does not qualify an archive.
 
 ## Runtime corrections and qualification
 
