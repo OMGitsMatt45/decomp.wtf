@@ -33,6 +33,13 @@ follows from a CPU result. The app does not register a PS2 PC backend yet.
 Logs, generated sources, expected/actual state and the candidate license remain
 in the assessment directory, including on failure.
 
+The first [Windows/Linux qualification run](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40116366272)
+passed all four assessment tests on each host, including all 54 native/original
+execution comparisons. It translates 19 functions with zero stubs, skips or
+decode failures. The fixture ELF SHA-256 is
+`f4d4ff25d26efbc29445dbaa25de58fb2219d08bef4d8559cc4888791bb3e01b`.
+This evidence covers the listed instruction subset, not the entire R5900 ISA.
+
 Run from the app checkout with Python 3.12+, CMake 3.24+, Git and a C++20
 compiler on x86-64 Windows or Linux:
 
@@ -58,9 +65,13 @@ reuse candidates whose behavior needs original execution tests. Its current
 by host presentation. A GPU window displaying a software framebuffer does not
 satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-standard).
 
-- [ ] Qualify original EE translation through native Windows and Linux builds.
+- [x] Qualify the original EE instruction fixture through native Windows and Linux builds.
+- [ ] Automate stripped ELF function discovery, code/data boundaries and module
+  inventories from the owner's disc, retaining exact input identities.
 - [ ] Add per-module original-byte guards and explicit handling of overlays,
   unresolved dispatch, self-modifying code and all interpreter fallbacks.
+  IOP and VU interpreters make eventual game execution hybrid even when EE
+  functions are statically translated; the project manifest must declare this.
 - [ ] Qualify IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and scheduler/IRQ
   behavior with original programs. Do not silently replace game logic with
   `ret0`, `ret1` or skipped wrappers.
