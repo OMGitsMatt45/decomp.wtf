@@ -1,7 +1,8 @@
 # PS1 native PC output
 
 DS native output merged in [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29)
-at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`. PS1 is the active platform.
+at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`. PS1 is the active platform in
+[PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
 The first retail target is DQVII: **one source repository and build for both
 ordered discs**, with runtime disc switching and shared saves. The existing
 disc parsers, reviewed module placements and private source checkpoints remain

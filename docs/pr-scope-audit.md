@@ -17,6 +17,9 @@ are deferred without claiming new support.
   adaptive GPU presentation at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`.
   Original fixtures and targeted DQV execution qualify its documented scope;
   full playthrough acceptance remains with the user.
+- [#30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30) begins PS1 native
+  output with an optional pinned runtime assessment and original native CPU
+  proof. Full hardware, ordered two-disc and DQVII integration remain open.
 - #4 is closed as superseded by #28; #8 is closed because its consoles are removed.
   Their branches/review history are preserved. #26 is retargeted onto #28's branch
   and retains the paused game-specific source checkpoints privately.

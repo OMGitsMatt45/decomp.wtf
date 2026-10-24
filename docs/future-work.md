@@ -51,7 +51,8 @@ records conservative original-screen fallbacks and remaining per-title limits.
 Optional mobile assets and other Goldie extras are deferred to later
 game-specific output work; they do not block the common DS milestone.
 
-PS1 is now active. The [native output plan](future/ps1-native.md) records the
+PS1 is now active in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
+The [native output plan](future/ps1-native.md) records the
 pinned optional runtime candidate, an original generated-C CPU proof and the
 remaining hardware, disc-set and DQVII integration. PS1 retains one project for
 the ordered disc set. Its PC backend remains unavailable until the full runtime
