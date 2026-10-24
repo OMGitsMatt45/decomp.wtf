@@ -20,7 +20,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
 | PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. Hybrid execution and noncommercial dependency terms are explicit. |
 | GBA | ARM/Thumb matching and cartridge reconstruction | Prefer an existing title decompilation where available, then integrate a PC runtime or translation backend. Pokémon source projects already exist. |
-| PS2 | EE program/ELF recovery and reconstruction | Requires a PC execution/runtime path covering the game's EE, IOP, vector-unit, graphics and audio behavior. Current support does not provide it. |
+| PS2 | EE program/ELF reconstruction; shared disc/overlay inspection and native CPU/GS candidate qualification | Integrate EE, IOP, VU, media, audio, saves and adaptive GPU presentation into the same standalone project contract. Game export remains in development in [PR #5](future/ps2.md). |
 | 3DS | Planned; no qualified raw-game pipeline | Both game import/execution integration and a PC runtime are additional work. |
 | Switch | Planned; no qualified raw-game pipeline | Both program/service integration and a PC runtime are additional work. |
 
@@ -49,6 +49,11 @@ cmake/                    pinned dependency and module/build configuration
 tools/                    validate input and extract/rebuild the owner's assets
 tests/                    original execution fixtures and applicable runtime checks
 ```
+
+The console adapter supplies the common import, translation, runtime and export
+pipeline. Games with special loaders, layouts or services may need a separate,
+input-hash-verified profile. Keep those profiles distinct from the shared backend;
+a working title-specific port does not establish general console compatibility.
 
 Game assets are extracted locally from the owner's input and excluded from Git.
 The README identifies the expected input locations, output executable and save

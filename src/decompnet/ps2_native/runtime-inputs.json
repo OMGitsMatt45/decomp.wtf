@@ -1,0 +1,73 @@
+{
+  "schema": "decomp.wtf.ps2-runtime-inputs/v1",
+  "license": "GPL-3.0; dependencies retain their licenses",
+  "archives": [
+    {
+      "name": "runtime",
+      "repository": "Sinan-Karakaya/PS2Recomp",
+      "commit": "888ec479165f41b899bb081e0ca7123b8c5af31a",
+      "url": "https://codeload.github.com/Sinan-Karakaya/PS2Recomp/tar.gz/888ec479165f41b899bb081e0ca7123b8c5af31a",
+      "sha256": "52c56379b1bc6cb3e781c995307cd62790278617dcb0b4db1e5daf356c1dfe14",
+      "size": 4398250,
+      "copy": [
+        {
+          "source": ".",
+          "target": "thirdparty/PS2Recomp"
+        }
+      ]
+    },
+    {
+      "name": "graphics",
+      "repository": "Sinan-Karakaya/DQ8-Recompiled",
+      "commit": "f6dfd968001b492415969bb70bd5aad3bfa79abd",
+      "url": "https://codeload.github.com/Sinan-Karakaya/DQ8-Recompiled/tar.gz/f6dfd968001b492415969bb70bd5aad3bfa79abd",
+      "sha256": "6f9154c5efb2e972c82624fd287d01d5202fef82881c126a53d9fb8a17eb8741",
+      "size": 1111327,
+      "copy": [
+        {
+          "source": "src/gfx",
+          "target": "src/gfx"
+        },
+        {
+          "source": "cmake/Dq8HostSimd.cmake",
+          "target": "cmake/Dq8HostSimd.cmake"
+        },
+        {
+          "source": "cmake/Dq8Shaders.cmake",
+          "target": "cmake/Dq8Shaders.cmake"
+        },
+        {
+          "source": "cmake/Dq8EmbedSpirv.cmake",
+          "target": "cmake/Dq8EmbedSpirv.cmake"
+        },
+        {
+          "source": "cmake/Dq8EmbedBinary.cmake",
+          "target": "cmake/Dq8EmbedBinary.cmake"
+        },
+        {
+          "source": "cmake/Dq8Icon.cmake",
+          "target": "cmake/Dq8Icon.cmake"
+        },
+        {
+          "source": "LICENSE",
+          "target": "LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "simde",
+      "repository": "simd-everywhere/simde",
+      "commit": "9d2cda6bbc91abd4f14a4eef97ccd55b6c77fd24",
+      "url": "https://codeload.github.com/simd-everywhere/simde/tar.gz/9d2cda6bbc91abd4f14a4eef97ccd55b6c77fd24",
+      "sha256": "a4ce9b197222e810f7ccd16a7e6639e562da12bbbf16ed0c9a4e8029f631425d",
+      "size": 8165833,
+      "copy": [
+        {
+          "source": ".",
+          "target": "thirdparty/simde"
+        }
+      ]
+    }
+  ],
+  "source_sha256": "34f24ba9a7c31e09a0f25e51d6215baa655b3df12e8a5d570f1b41f29360f766"
+}

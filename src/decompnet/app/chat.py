@@ -29,6 +29,9 @@ An M3U can list the whole game. The output is one C/C++ project with adaptive Op
 memory cards. PS1 uses one screen. Its optional runtime has noncommercial terms and hybrid execution;
 unknown code is interpreted, and runtime guest-code compilation is disabled. Existing imported PS1 disc
 sets can use export_project(format="pc"). DS save-chip and unified-screen options apply only to DS.
+For PS2, use generate_pc_project(path, own_copy=true, platform="ps2", renderer="vulkan").
+Exact-hash bundled maps are selected automatically; other stripped games need ps2_profile=the local
+reviewed JSON map path. PS2 outputs ship a GPL-3.0 runtime and disclose IOP/VU interpretation.
 Read the generated README for host building and controls. Report source integrity, host execution and
 gameplay acceptance separately; a successful export does not certify a full game. Gameplay acceptance
 is owner-run. Helpers are optional; start them only when the user requests them.
@@ -151,15 +154,18 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
     async def generate_pc_project(ctx: Context, path: str, own_copy: bool = False,
                                   save_type: str = "auto", ds_input_format: str = "auto",
                                   renderer: str = "auto", screen_mode: str = "dual",
-                                  platform: str = "auto", disc_paths: list[str] | None = None) -> str:
-        """Generate a DS or PS1 native PC source repository directly from original inputs.
+                                  platform: str = "auto", disc_paths: list[str] | None = None,
+                                  ps2_profile: str = "") -> str:
+        """Generate a DS, PS1 or experimental PS2 native PC source repository from original inputs.
 
         No matching project or console compiler is needed. Select the cartridge save chip for a new game;
         auto infers only from an existing raw save. Use decrypted for an already-decrypted ROM.
         Set own_copy only when ownership was confirmed. The resulting README explains building/running.
         renderer: auto, opengl or software. screen_mode: dual or unified (one extended 3D camera, requires OpenGL).
         PS1 uses one screen; disc_paths lists additional discs in game order, sharing one build and memory cards.
-        platform: auto, nds or psx. PS1 CUE files require their companion tracks; M3U playlists are supported.
+        platform: auto, nds, psx or ps2. PS1 CUE files require their companion tracks; M3U playlists are supported.
+        PS2 uses Vulkan (renderer=auto, vulkan or software). ps2_profile is an optional local reviewed
+        code-map path, required for stripped inputs without a bundled exact-hash profile.
         """
         chat_agent(ctx)
         if not own_copy:
@@ -170,12 +176,18 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
             raise ToolError(str(error)) from None
         from .. import pc
         target=platform if platform!='auto' else pc.input_platform(game)
+        if target=='ps2':
+            if disc_paths:raise ToolError('additional discs apply to PS1')
+            try:profile=hostenv.local_path(ps2_profile) if ps2_profile else None
+            except ValueError as error:raise ToolError(str(error)) from None
+            return await _follow(jobs.start('pc-export',lambda log:net.generate_ps2_pc(game,
+                confirmed=True,profile=profile,renderer=renderer,log=log)))
         if target=='psx':
             try:games=[game,*[hostenv.local_path(value) for value in (disc_paths or [])]]
             except ValueError as error:raise ToolError(str(error)) from None
             return await _follow(jobs.start('pc-export',lambda log: net.generate_psx_pc(games,
                 confirmed=True,renderer=renderer,log=log)))
-        if target!='nds' or disc_paths:raise ToolError('select nds or psx; additional discs apply to PS1')
+        if target!='nds' or disc_paths:raise ToolError('select nds, psx or ps2; additional discs apply to PS1')
         return await _follow(jobs.start("pc-export", lambda log: net.generate_ds_pc(game,
             confirmed=True, input_format=ds_input_format, save_type=save_type,
             renderer=renderer,screen_mode=screen_mode,log=log)))
