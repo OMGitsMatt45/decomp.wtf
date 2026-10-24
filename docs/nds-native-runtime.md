@@ -149,5 +149,7 @@ from the cartridge save lists the saved name, level and prologue and resumes
 the scene after a restart. A 30,000-frame run reaches the ship cabin; directional
 input moves the player and the field and Misc menus open. A fresh standalone
 repository generated from the ROM, without a prior source project, built and
-reproduced the same 22,400-frame run and screen hashes. Battle behavior and
-later retail saves remain under validation.
+reproduced the same 22,400-frame run and screen hashes. An independent emulator
+also loaded the native build's raw save and resumed the prologue. Combat,
+later retail saves and playthrough validation are owner-run acceptance checks.
+Implementation checks use automated fixtures and targeted defect reproductions.

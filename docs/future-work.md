@@ -37,8 +37,11 @@ those interfaces; retail DQV compatibility is being fixed and qualified. The
 reference; no DQIV runtime or mobile OBB dependency is copied.
 The native adapter is available experimentally through DS import and the Source
 tab as well as the CLI; it does not require a matching console compiler.
-Then validate one chosen DQ or Pokémon title through boot/title/menu, field/battle,
-audio, input and save/reload. Full playthrough remains with the user.
+Original fixtures validate native execution and hardware/save interfaces;
+DQV additionally has standalone build, boot/menu/field and initial save-reload
+evidence. Further gameplay acceptance, including combat and later saves, stays
+with the user. Continue implementation work through automated regressions and
+reported defects. Optional mobile-asset enhancements are not implemented yet.
 
 GBA, PS1 and PS2 follow the common contract with separate backends. Reuse existing
 Pokémon source projects and suitable recompiler/runtime projects. PS1 retains one

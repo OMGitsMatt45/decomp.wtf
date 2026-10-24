@@ -45,9 +45,9 @@ Follow the shared [repository acceptance target](../pc-output.md#generated-repos
    identity and ARM/Thumb entry modes; distinguish cartridge offsets from RAM
    addresses and initialized data from BSS. Retain compressed/protected loader
    facts rather than silently treating stored bytes as executable code. The
-   current adapter requires reviewed ranges and rejects retail secure-area ARM9
-   inputs, constructor execution and unsupported mappings. It remains outside
-   the global backend registry and GUI.
+   small CPU-comparison adapter still requires reviewed ranges. The hardware
+   adapter analyzes retail modules automatically, derives supported thread ABI
+   bindings and is registered experimentally in the application and CLI.
 3. **Original fixture implemented and executed.** Translate/execute an original fixture's ARM code through the intended native
    path. A prewritten host C++ sample only qualifies the common build contract.
    Include indirect calls, processor interaction and an overlay transition so
@@ -67,9 +67,14 @@ Follow the shared [repository acceptance target](../pc-output.md#generated-repos
    separately tests SPI EEPROM saves and reload. A
    dedicated Windows/Linux workflow exercises extraction, compilation, execution,
    save reload and clean rebuild without console tools or a DS emulator process.
-6. **Pending.** Validate one agreed DQ or Pokémon title through boot/title/menu, rendering,
-   sound/input, field/battle, overlay changes and save/reload. The user handles
-   the eventual full playthrough. A different title requires compatibility
+6. **Automated and initial retail checks recorded; user gameplay acceptance remains.**
+   Original fixtures verify rendering, audio, input/IRQs, overlays, cartridge
+   saves and runtime regressions on Windows/Linux. DQV has also passed source
+   generation, a standalone build, boot/menu/field operation and initial save
+   reload, including loading its save in an independent emulator. Combat,
+   later saves and playthrough validation are owner-run acceptance checks.
+   Implementation checks use automated fixtures and targeted defect
+   reproductions. A different title needs compatibility
    validation, not another compiler or another exhaustive source-recovery pass.
 
 ## Output and qualification

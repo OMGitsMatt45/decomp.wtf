@@ -2,9 +2,10 @@
 
 The product goal is a Windows-buildable source repository with a working console
 runtime, similar to [DQIV Recompiled 1.5](https://github.com/GoldieLeGenie/DQIV-Recompiled/releases/tag/1.5).
-**No existing from-scratch platform workflow in this fork currently generates
-that output.** Native Windows toolchains run the decompilation tools; their
-output still targets the original console.
+DS now has an [experimental native adapter](nds-native-runtime.md) that generates
+this repository structure from a ROM and builds translated ARM9/ARM7 C++ with a
+source-shipped hardware runtime. Other platform workflows still target the
+original console. General retail compatibility is not yet qualified.
 
 The [archived upstream](https://github.com/i12bp8/decomp.wtf#platforms) also
 describes its rebuildable project as a base for ports. Resetting to upstream
@@ -15,7 +16,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 
 | Target | Current from-scratch support | Route toward PC output |
 | --- | --- | --- |
-| DS | ARM9/ARM7 recovery and console reconstruction | Evaluate the existing DQIV source port/runtime for reuse; other titles still need their own program integration, overlays, graphics, audio, timing and saves. |
+| DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
 | PS1 | Disc/EXE recovery, reviewed modules and combined multi-disc reconstruction carried into PR #28 | Evaluate a PS1 recompiler/runtime backend against DQVII, retaining both discs in one generated project. |
 | GBA | ARM/Thumb matching and cartridge reconstruction | Prefer an existing title decompilation where available, then integrate a PC runtime or translation backend. Pokémon source projects already exist. |
 | PS2 | EE program/ELF recovery and reconstruction | Requires a PC execution/runtime path covering the game's EE, IOP, vector-unit, graphics and audio behavior. Current support does not provide it. |
@@ -60,8 +61,10 @@ before static translation can produce a working native project. Any remaining
 interpreter or runtime-compilation path is declared in the execution model.
 
 This structure is the platform adapters' acceptance target. The common host
-fixture verifies export/build plumbing only; no current raw-game adapter produces
-this complete repository yet. DS is the first implementation target.
+fixture verifies export/build plumbing. The DS adapter additionally produces
+and executes this structure through original ARM9/ARM7 programs, a hardware
+fixture and a privately supplied DQV ROM. These are separate levels of evidence;
+they do not certify every title or a full playthrough.
 
 ## First active platform: DS; DQVII retained for later PS1 integration
 
@@ -117,12 +120,15 @@ output directories are preserved; invalid staged output is discarded.
 
 `decomp pc status --platform nds` reports availability. `decomp pc verify PATH`
 checks a generated project. Application project overviews expose PC capabilities
-separately from matching-console reconstruction. No platform backend is
-registered yet. An original host fixture proves the adapter and CMake build/run
-path only; it does not execute a DS game or establish a DS hardware runtime.
+separately from matching-console reconstruction. The DS hardware adapter is
+registered as experimental. Capability inspection does not install tools;
+generation installs its pinned source dependencies automatically.
 
-PR #29 adds an explicitly invoked [experimental DS static generator](nds-pc.md)
-using this contract. Its original ARM9/ARM7 fixture executes translated C++ with
-RAM communication, Thumb calls, overlay switching and a RAM checkpoint. It stays
-outside the general backend registry while retail decoding and hardware services
-remain incomplete. This execution milestone does not qualify a playable DS game.
+PR #29 retains the smaller [DS static generator](nds-pc.md) for original CPU
+comparison fixtures and adds the [hardware adapter](nds-native-runtime.md) for
+native repositories. The latter is available from DS import, the Source tab and
+`decomp pc nds-native`. Its tests build and run graphics, audio, IRQ/input/IPC,
+overlay loading and cartridge-save behavior on Windows/Linux. DQV source
+generation, standalone building, boot/menu/field operation and initial save
+interoperability have also been observed. Further gameplay acceptance belongs
+to the user. Optional mobile assets remain a separate, unimplemented enhancement.
