@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -132,7 +133,10 @@ def qualify(sdk, destination):
     (fixture / 'config.toml').write_text('[general]\ninput = "original.elf"\noutput = "generated"\n'
         'single_file_output = false\noutput_worker_threads = 1\n'
         'patch_syscalls = false\npatch_cop0 = false\npatch_cache = false\nstubs = []\nskip = []\n')
-    run([recompiler, 'config.toml'], fixture, destination / 'generation.log')
+    generation = run([recompiler, 'config.toml'], fixture, destination / 'generation.log')
+    stats = re.search(r'Functions processed: (\d+), recompiled: (\d+), stubs: (\d+), skipped: (\d+), decode failures: (\d+)', generation)
+    if not stats or tuple(map(int, stats.groups())) != (len(entries), len(entries), 0, 0, 0):
+        raise ValueError('candidate must translate every original function without stubs, skips or decode failures')
     if not list((fixture / 'generated').glob('*.cpp')): raise ValueError('candidate emitted no source')
     run(config + ['-DDECOMP_PS2_PROBE_DIR=' + fixture.as_posix()], destination, destination / 'native-configure.log')
     run(['cmake', '--build', build, '--target', 'ps2_cpu_probe', '--config', 'Release', '--parallel', '2'],
@@ -156,10 +160,17 @@ def qualify(sdk, destination):
     if json.loads(tampered.read_text()) != {'native_rejected': True}:
         raise ValueError('assessment host did not reject changed original bytes')
     if identity(sdk) != original_identity: raise ValueError('qualification changed the pinned source checkout')
-    report = dict(schema='decomp.wtf.ps2-candidate/v1', candidate=original_identity,
-        compiler=run(['cmake', '--version'], destination, destination / 'cmake-version.log').splitlines()[0],
+    compiler_file = next((build / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake'))
+    compiler_info = compiler_file.read_text(encoding='utf-8')
+    compiler = {key: re.search(r'set\(CMAKE_CXX_COMPILER_' + key.upper() + r' "([^"]+)"\)', compiler_info).group(1)
+                for key in ('id', 'version')}
+    report = dict(schema='decomp.wtf.ps2-candidate/v1', candidate=original_identity, compiler=compiler,
+        cmake=run(['cmake', '--version'], destination, destination / 'cmake-version.log').splitlines()[0],
         original_elf_sha256=hashlib.sha256(image).hexdigest(), checks=checks,
         generated_cpp_files=len(list((fixture / 'generated').glob('*.cpp'))),
+        functions_recompiled=len(entries), stubs=0, skipped_functions=0, decode_failures=0,
+        generated_sources={p.relative_to(fixture).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                           for p in sorted((fixture / 'generated').iterdir()) if p.is_file()},
         execution_model='static-recompiled', interpreter_fallback=False, runtime_code_generation=False,
         changed_code_guard='assessment-host-only',
         qualification=dict(cpu=True, graphics=False, iop=False, vu=False, audio=False, saves=False, retail=False),

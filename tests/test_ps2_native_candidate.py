@@ -50,6 +50,9 @@ def test_generated_cpp_matches_original_ee(candidate, tmp_path):
     report = qualify(candidate, tmp_path / 'PS2 assessment with spaces')
     assert len(report['checks']) == 54
     assert report['generated_cpp_files'] >= 20
+    assert report['functions_recompiled'] == 19
+    assert report['stubs'] == report['skipped_functions'] == report['decode_failures'] == 0
+    assert report['compiler']['id'] in ('GNU', 'Clang', 'MSVC', 'AppleClang')
     assert report['qualification'] == dict(cpu=True, graphics=False, iop=False,
         vu=False, audio=False, saves=False, retail=False)
     assert report['app_backend_registered'] is False
