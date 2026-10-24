@@ -1,0 +1,73 @@
+name: PS2 standalone native project
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/decompnet/ps2_native/**'
+      - 'src/decompnet/pc.py'
+      - 'src/decompnet/pc_cli.py'
+      - 'src/decompnet/app/**'
+      - 'tools/qualify_ps2_port.py'
+      - 'tests/test_ps2_native_*.py'
+      - 'tests/fixtures/ps2_port.py'
+      - '.github/workflows/ps2-native-port.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  standalone:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Linux desktop, audio, movie and software Vulkan prerequisites
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev
+          libxss-dev libxtst-dev libxinerama-dev libasound2-dev libgl1-mesa-dev
+          libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev
+          mesa-vulkan-drivers xvfb xauth
+      - name: Original disc, code map and application route checks
+        run: >-
+          uv run --no-sync python -m pytest -q
+          tests/test_ps2_native_media.py tests/test_ps2_native_profile.py
+          tests/test_ps2_native_codegen.py tests/test_ps2_native_registry.py
+          tests/test_ps2_native_disc_files.py tests/test_ps2_native_provider.py
+          tests/test_ps2_native_app.py
+      - name: Linux standalone build, geometry rendering, resize and failure checks
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          export VK_DRIVER_FILES=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          export VK_ICD_FILENAMES="$VK_DRIVER_FILES"
+          printf 'pcm.!default { type null }\n' > "$RUNNER_TEMP/ps2-alsa.conf"
+          export ALSA_CONFIG_PATH="$RUNNER_TEMP/ps2-alsa.conf"
+          xvfb-run -a uv run --no-sync python -m tools.qualify_ps2_port "${{ runner.temp }}/PS2 standalone results"
+      - name: Windows standalone build, required GPU failure and vector checks
+        if: runner.os == 'Windows'
+        run: >-
+          uv run --no-sync python -m tools.qualify_ps2_port
+          "${{ runner.temp }}/PS2 standalone results" --build-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ps2-standalone-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/PS2 standalone results/assessment.json
+            ${{ runner.temp }}/PS2 standalone results/*.json
+            ${{ runner.temp }}/PS2 standalone results/*.log
+            ${{ runner.temp }}/PS2 standalone results/*.ppm

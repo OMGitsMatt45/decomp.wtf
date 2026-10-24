@@ -5,6 +5,10 @@ now distinguishes historical console matching/reconstruction from native PC game
 output. Open platform plans were retitled where needed; unrelated future plans
 are deferred without claiming new support.
 
+This is the historical migration snapshot, including titles and states at the
+audit date. Subsequent DS/PS1 merges and experimental PS2 implementation are
+tracked in the [current roadmap](future-work.md) and platform guides.
+
 - [#27](https://github.com/OMGitsMatt45/decomp.wtf/pull/27) preserves main at
   `f965c3d783415b4c0d89ea49827760b4d9cab54c` with an identical Git tree and one
   empty snapshot commit. No implementation is merged by creating that PR.
@@ -31,7 +35,7 @@ are deferred without claiming new support.
   import/runtime work; their raw-game pipelines are not implemented. #21 now
   prioritizes native adapters/code generation and execution qualification.
 
-| PR | State after audit | Current title |
+| PR | State after audit | Title at audit |
 | --- | --- | --- |
 | [#1](https://github.com/OMGitsMatt45/decomp.wtf/pull/1) | Merged history | Fix encrypted DS imports, source splits, and Thumb autopilot |
 | [#2](https://github.com/OMGitsMatt45/decomp.wtf/pull/2) | Closed / superseded | Add native Windows PS1 GCC 2.8.1 and track PS2 compiler support |
@@ -60,8 +64,8 @@ are deferred without claiming new support.
 | [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) | Merged history | Fix decrypted DS rebuilds and recover protected ARM7 C/C++ modules |
 | [#26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26) | Open | Game Specific Source Recovery |
 
-Main now includes the explicitly authorized PR #28 and #29 merges; PR #27 preserves
-the earlier application. [PS1 native output](future/ps1-native.md) is now active.
+At the audit checkpoint, main included the authorized PR #28 and #29 merges;
+PR #27 preserves the earlier application. PS1 integration was the next active phase.
 Historical qualification records apply to their tested revisions; they do not
 qualify the redesigned application's future PC backends. The native export UI
 stays unavailable on a platform until a real adapter is registered.

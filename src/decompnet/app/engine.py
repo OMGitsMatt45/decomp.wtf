@@ -1551,6 +1551,20 @@ class RomNetwork(Network):
         log('Native PC source project: '+result['path'])
         return result
 
+    def generate_ps2_pc(self, game: Path, *, confirmed=False, profile=None, renderer='auto', log=print):
+        """Generate a standalone PS2 project from owner media and a reviewed code map."""
+        if not confirmed:
+            raise NetworkError('confirm that this is your own legally obtained copy of the game')
+        from ..ps2_native import export
+        from .. import pc
+        import uuid
+        name=_slugify(Path(game).stem)[:60] or 'ps2-game'
+        output=self.workspace/(name+'-pc-'+uuid.uuid4().hex[:8])
+        try:result=export(game,output,profile=profile,renderer=renderer,log=log)
+        except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
+        log('Native PC source project: '+result['path'])
+        return result
+
     def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
                        renderer='auto',screen_mode='dual',log=print) -> dict:
         """Generate a PC repository directly, without a console matching project/compiler."""
@@ -1571,7 +1585,7 @@ class RomNetwork(Network):
         log('Native PC source project: '+result['path'])
         return result
 
-    def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',screen_mode='dual') -> dict:
+    def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',screen_mode='dual',ps2_profile=None) -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
         if format == 'pc':
             from .. import pc
@@ -1603,6 +1617,12 @@ class RomNetwork(Network):
                     project={**cfg,'root':proj['root'],'native_inputs':inputs,'renderer':renderer,
                              'title':cfg.get('psx_disc_set',{}).get('title') or proj['name']}
                     return pc.export_backend(project,Path(proj['root'])/'pc-source',backend())
+                if cfg.get('platform') == 'ps2':
+                    from ..ps2_native import export
+                    source=cfg.get('rom',{}).get('file')
+                    if not source:raise pc.PCError('this project has no retained PS2 input; generate from the original disc on the home screen')
+                    return export(Path(proj['root'])/source,Path(proj['root'])/'pc-source',
+                        profile=ps2_profile,renderer=renderer,log=log)
                 return pc.export({**cfg, 'root': proj['root']}, Path(proj['root'])/'pc-source')
             except (pc.PCError, OSError, ValueError) as error:
                 raise NetworkError(str(error)) from error

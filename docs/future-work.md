@@ -20,7 +20,7 @@ Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
 - Qualify the common contract with an original fixture that builds and executes
   on native Windows/Linux. That result does not qualify a console runtime.
 
-## DS milestone merged; PS1 active
+## DS, PS1 and experimental PS2 native output
 
 [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29), merged at
 `9b5440283bd90472edc029d4a1be3f8cfd1ad661`, implements the first
@@ -51,7 +51,8 @@ records conservative original-screen fallbacks and remaining per-title limits.
 Optional mobile assets and other Goldie extras are deferred to later
 game-specific output work; they do not block the common DS milestone.
 
-PS1 is now active in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
+PS1 merged in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30) at
+`701b6575d2f2775da14f5231d710d1b1f4cfaa0e`.
 The [native output plan](future/ps1-native.md) records the
 pinned optional runtime, original generated-C CPU and hardware fixtures, and
 DQVII validation. The [PS1 guide](ps1-native.md) describes the implemented native
@@ -59,8 +60,20 @@ exporter, adaptive GPU presentation, one executable for the ordered disc set,
 shared memory cards and explicit hybrid execution. Windows/Linux CI builds and
 executes original fixtures; full retail playthrough acceptance stays with the
 user. New game adapters must satisfy the shared adaptive GPU contract.
-GBA and PS2 follow with separate backends; reuse existing Pokémon
-source projects and suitable recompiler/runtime projects.
+PS2 native output is implemented in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).
+Its [native output guide](future/ps2.md) covers the experimental standalone
+C++/CMake exporter, source-shipped runtime, adaptive Vulkan geometry, audio,
+input and saves. CLI, GUI and connected tools use the same exporter. Original
+fixtures cover native instruction execution, module switching, disc services,
+save reloads, audio mixing, graphics, resize and explicit failure reports.
+Shared streaming inspection discovers EE/IOP programs and Metrowerks overlays;
+generated function guards reject changed executable bytes. The DQVIII USA
+export builds and reaches its settings prompt through the generic host. Its
+optional exact-hash profile contains code maps and SDK bindings, with no game
+instructions or assets. Full playthrough acceptance remains with the user;
+untested games still need reviewed maps and compatibility validation.
+GBA follows with a separate backend;
+reuse existing Pokémon source projects and suitable recompiler/runtime projects.
 3DS and Switch remain planned and need import
 and runtime integration as well. GB/GBC retains its assembly workbench; native PC
 output is additional work. Other console plans are deferred.

@@ -42,6 +42,12 @@ def input_platform(path: Path) -> str:
     """Select direct native generation, retaining support for unnamed DS uploads."""
     path=Path(path)
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
+    if path.suffix.lower() in ('.elf','.iso','.bin'):
+        from .ps2_native.media import inspect
+        try:
+            inspect(path,hash_input=False)
+            return 'ps2'
+        except PCError:pass
     if path.suffix.lower() in ('.cue','.m3u','.chd','.iso','.exe'):return 'psx'
     from .forks.scratch_dsd import crc16
     with path.open('rb') as stream:head=stream.read(0x200)
@@ -57,7 +63,8 @@ def _backends():
         return list(BACKENDS.values())
     from .nds_native import backend
     from .psx_native import backend as psx_backend
-    return [backend(),psx_backend()]
+    from .ps2_native import backend as ps2_backend
+    return [backend(),psx_backend(),ps2_backend()]
 
 
 def status(platform: str = '') -> dict:
