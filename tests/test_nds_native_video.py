@@ -62,7 +62,12 @@ endif()
     if shutil.which('xvfb-run') and os.name!='nt':run=['xvfb-run','-a',*run]
     done=subprocess.run(run,env=env,capture_output=True,text=True,timeout=30)
     assert done.returncode==0,done.stdout+done.stderr
-    reference,result=json.loads(original.stdout),json.loads(done.stdout)
+    reference=json.loads(original.stdout)
+    # xvfb-run joins the child's stderr to stdout. Retain its diagnostics while
+    # locating the single JSON report; the native executable keeps them separate.
+    records=[line for line in done.stdout.splitlines() if line.startswith('{"frames":')]
+    assert len(records)==1,done.stdout+done.stderr
+    result=json.loads(records[0])
     assert result['video']['renderer']=='opengl' and result['video']['unified'] and result['video']['polygons_drawn']>0
     assert result['video']['width']==960 and result['video']['height']==540
     assert all(result[key]==reference[key] for key in ('frames','ticks','top_hash','bottom_hash','cpu_pc','unimplemented_io'))
