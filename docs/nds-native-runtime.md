@@ -16,11 +16,20 @@ On the home screen, drop a DS ROM and choose **Native PC source project
 This route bypasses console matching/compiler setup. It creates a fresh output
 folder and reports its path. Existing DS reconstruction projects can use
 **Export native PC project** on the Source tab. Existing output is preserved.
-Both GUI and CLI use the same source generator and integrity checks.
+The GUI, CLI and connected-agent tools use the same source generator and
+integrity checks.
 
 ```sh
 uv run decomp pc nds-native original.nds output --experimental --input-format decrypted --save-type eeprom64k
 ```
+
+An optional agent connected with `decomp mcp` can call
+`generate_pc_project(path, own_copy=true, ds_input_format="decrypted", save_type="eeprom64k")`.
+This generates directly from the ROM without creating a matching project or
+starting helpers. For an already-open DS reconstruction, use
+`export_project(format="pc", save_type="eeprom64k")`; its default remains a
+matching console export. Long-running jobs return an ID for `import_status`.
+The tools report source generation separately from host/gameplay acceptance.
 
 Use `--input-format decrypted` only for a decrypted copy. `auto` uses the normal
 DS decoder; `--arm7-bios PATH` supplies the private decoding input for encrypted
@@ -135,7 +144,7 @@ Generated input identity uses streaming SHA-256, checked
 against standard vectors and padding boundaries. The dedicated workflow installs
 the pinned source dependency and tests the generated host on Windows and Linux.
 
-DQV retail testing is ongoing. It exposed the short-DMA stall, switch-table
+DQV retail smoke testing exposed the short-DMA stall, switch-table
 coverage defects and a shared-epilogue control-flow defect; all fixes have
 original regression cases. A correct save-chip
 configuration is also required. Successful source generation, boot, rendering,
