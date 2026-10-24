@@ -21,7 +21,7 @@ def add_parser(sub):
     ps2 = actions.add_parser('ps2-native', help='experimental PS2 C++ source project with a source-shipped hardware runtime')
     ps2.add_argument('input',type=Path)
     ps2.add_argument('output',type=Path)
-    ps2.add_argument('--profile',type=Path,help='input-hash-verified function, code/data and native SDK map; required for stripped retail code')
+    ps2.add_argument('--profile',type=Path,help='reviewed input-bound map for ambiguous code, external callbacks and native SDK bindings')
     ps2.add_argument('--title',default='')
     ps2.add_argument('--renderer',choices=('auto','vulkan','software'),default='auto')
     ps2.add_argument('--experimental',action='store_true',required=True)

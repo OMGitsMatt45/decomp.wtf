@@ -157,9 +157,18 @@ target; boot checks and full playthrough acceptance remain distinct.
 and overlay discovery feed a standalone C++/CMake export with source-shipped
 runtime, adaptive Vulkan geometry, audio, input and saves. Use `decomp pc ps2-native
 GAME.iso NEW_OUTPUT --experimental`, or the GUI's native PC output. Exact-hash
-profiles are selected automatically when bundled; other stripped games require
-a reviewed code map. Windows/Linux qualification and retail acceptance are
+profiles are selected automatically when bundled. Closed stripped programs can
+be mapped automatically; ambiguous code and external callbacks need a reviewed
+map. Windows/Linux qualification and retail acceptance are
 reported separately; source generation alone does not certify a working port.
+
+To validate PS2 output on your Windows GPU, run
+`powershell -File .\tools\qualify-ps2-hardware.ps1` from this repository. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/),
+[CMake](https://cmake.org/download/) and
+[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/).
+The command uses an original test program and reports the actual Vulkan device
+class; software/virtual rendering does not count as physical-GPU validation.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

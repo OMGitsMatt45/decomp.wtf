@@ -44,7 +44,7 @@ Run build/ps2_pc or build/Release/ps2_pc.exe. F11 toggles native-monitor fullscr
 The initial window follows the active display; resizing/moving it updates its
 physical drawable and internal geometry scale, including HiDPI. Saves live under
 saves; preserve them when updating the project. Default keyboard controls are
-Z/X/A/S for face buttons, arrows for the direction pad, Enter for Start and
+X/C/Z/V for Cross/Circle/Square/Triangle, arrows for the direction pad, Enter for Start and
 Backspace for Select; standard gamepads are detected by SDL.
 
 Options include --renderer auto|vulkan|software, --resolution WIDTHxHEIGHT,
@@ -53,3 +53,14 @@ Options include --renderer auto|vulkan|software, --resolution WIDTHxHEIGHT,
 unavailable. Automatic mode reports its software fallback. Reports expose guest
 dispatch failures, disc reads, GPU draws, drawable dimensions and internal scale;
 a blank boot or missing requested capture is not valid rendering evidence.
+
+Symbol-free programs with closed, unambiguous reachable control flow can be
+mapped automatically. Constant pointers and bounded jump tables are analyzed;
+unknown targets, external callbacks, writable pointer tables and embedded gaps
+require a reviewed input-bound profile. The retained game/profile.json records
+automatic recovery and any explicit SDK bindings.
+
+Optional developer checks build with -DDECOMP_PS2_BUILD_SERVICE_TESTS=ON and
+-DDECOMP_PS2_BUILD_RUNTIME_TESTS=ON. They include original MPEG-2 pixels, RAW8
+macroblock output, buffer guards and the pinned runtime's IOP/VU/IRQ/media suites.
+The game target does not use the optional test emitter library during play.

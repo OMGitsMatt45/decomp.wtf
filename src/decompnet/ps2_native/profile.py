@@ -36,8 +36,9 @@ def module(original, row=None):
                     functions.append(dict(name=f'function_{symbol["st_value"]:08x}',address=symbol['st_value'],size=symbol['st_size']))
         functions=list({f['address']:f for f in functions}.values())
         if not functions:
-            raise PCError('stripped PS2 code requires an input-hash-verified profile with reviewed function and code/data ranges; ps2-inspect --discover-code provides candidates')
-        row=dict(sha256=info['sha256'],functions=functions,native_services=[],code_ranges=[dict(address=s['address'],size=s['size']) for s in info['executable_sections']])
+            from .recovery import closed_module
+            row=closed_module(original)
+        else:row=dict(sha256=info['sha256'],functions=functions,native_services=[],code_ranges=[dict(address=s['address'],size=s['size']) for s in info['executable_sections']])
     if row.get('sha256')!=hashlib.sha256(original).hexdigest():
         raise PCError('PS2 profile module SHA-256 differs from the owner input')
     functions=row.get('functions',[])
@@ -76,7 +77,9 @@ def module(original, row=None):
             raise PCError('PS2 native service must name a mapped SDK function')
         bindings.append(dict(address=a,name=name))
     if len({s['address'] for s in bindings})!=len(bindings):raise PCError('duplicate PS2 native service binding')
-    return dict(sha256=info['sha256'],functions=clean,code_ranges=ranges,native_services=bindings)
+    result=dict(sha256=info['sha256'],functions=clean,code_ranges=ranges,native_services=bindings)
+    if row.get('recovery'):result['recovery']=row['recovery']
+    return result
 
 
 def load(path,input_identity):

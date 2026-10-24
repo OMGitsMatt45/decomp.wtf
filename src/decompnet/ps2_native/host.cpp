@@ -228,9 +228,13 @@ int main(int argc,char **argv) {
     if(!report.empty()){
         std::ofstream out(report);
         const auto stats=host.gpu?host.gpu->stats():dq8::gfx::SdlGpuStats{};
+        const auto device=host.gpu?SDL_GetGPUDeviceProperties(host.gpu->gpuDevice()):0;
         out<<"{\n  \"schema\":\"decomp.wtf.ps2-run/v1\",\n  \"success\":"<<(result?"false":"true")
            <<",\n  \"error\":"<<quoted(error)<<",\n  \"renderer\":"<<quoted(host.gpu?"vulkan":"software")
            <<",\n  \"software_fallback\":"<<quoted(fallback)<<",\n  \"drawable\":["<<host.drawable_width<<','<<host.drawable_height<<']'
+           <<",\n  \"gpu_device\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_NAME_STRING,""):"")
+           <<",\n  \"gpu_driver\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING,""):"")
+           <<",\n  \"gpu_driver_version\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING,""):"")
            <<",\n  \"source\":["<<host.source_width<<','<<host.source_height<<']'
            <<",\n  \"internal_scale\":"<<(host.gpu?host.gpu->activeResolutionScale():1)
            <<",\n  \"scale_limited\":"<<(host.scale_limited?"true":"false")

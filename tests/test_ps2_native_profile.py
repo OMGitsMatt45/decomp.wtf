@@ -18,8 +18,9 @@ def test_original_symbol_map_is_complete_and_stripped_bytes_need_review():
     stripped=bytearray(original)
     table=struct.unpack_from('<I',stripped,32)[0]
     struct.pack_into('<I',stripped,table+4*40+4,1) # .symtab becomes data
-    with pytest.raises(PCError,match='stripped'):
-        profile.module(stripped)
+    recovered=profile.module(stripped)
+    assert recovered['recovery']['method']=='bounded-closed-reachable-cfg'
+    assert recovered['functions']==[dict(name=f'function_{BASE:08x}',address=BASE,size=12)]
 
 
 def test_profile_rejects_changed_input_or_code_crossing_data(tmp_path):
