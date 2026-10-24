@@ -5,8 +5,10 @@ runtime, similar to [DQIV Recompiled 1.5](https://github.com/GoldieLeGenie/DQIV-
 DS now has an [experimental native adapter](nds-native-runtime.md) that generates
 this repository structure from a ROM and builds translated ARM9/ARM7 C++ with a
 source-shipped hardware runtime. PS1 has a corresponding experimental native
-export with adaptive GPU rendering and shared multi-disc state. Other platform workflows still target the
-original console. General retail compatibility is not yet qualified.
+export with adaptive GPU rendering and shared multi-disc state. PS2 now exports
+a standalone C++/CMake project with a source runtime and adaptive Vulkan geometry.
+Other implemented platform workflows still target the original console.
+General retail compatibility is not yet qualified.
 
 The [archived upstream](https://github.com/i12bp8/decomp.wtf#platforms) also
 describes its rebuildable project as a base for ports. Resetting to upstream
@@ -20,7 +22,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
 | PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. Hybrid execution and noncommercial dependency terms are explicit. |
 | GBA | ARM/Thumb matching and cartridge reconstruction | Prefer an existing title decompilation where available, then integrate a PC runtime or translation backend. Pokémon source projects already exist. |
-| PS2 | EE program/ELF reconstruction; shared disc/overlay inspection and native CPU/GS candidate qualification | Integrate EE, IOP, VU, media, audio, saves and adaptive GPU presentation into the same standalone project contract. Game export remains in development in [PR #5](future/ps2.md). |
+| PS2 | EE reconstruction; shared disc/overlay inspection and experimental native PC export | Pinned PS2Recomp/SDL3 GS sources supply adaptive Vulkan geometry, audio, input, disc access and saves. The DQVIII export builds and reaches its settings prompt. Reviewed stripped-code maps and hybrid IOP/VU execution are explicit; see [qualification scope](future/ps2.md). |
 | 3DS | Planned; no qualified raw-game pipeline | Both game import/execution integration and a PC runtime are additional work. |
 | Switch | Planned; no qualified raw-game pipeline | Both program/service integration and a PC runtime are additional work. |
 
@@ -72,7 +74,7 @@ and executes this structure through original ARM9/ARM7 programs, a hardware
 fixture and a privately supplied DQV ROM. These are separate levels of evidence;
 they do not certify every title or a full playthrough.
 
-## DS merged; PS1 native integration
+## DS and PS1 native integration
 
 The shared application contract and DS backend have merged. Preserve the existing
 DQVII imports, original hashes, HBD/archive work, reviewed
