@@ -369,6 +369,18 @@ sha256 = "5917df26bffc05d4752276a2e0b1edd21bd6e920aabe1992be8a50efc9d10932"
 binary = "dsd.exe"
 platforms = ["windows-x86_64"]
 
+[psxrecomp-sdk]
+name = "PS1 native runtime and recompiler sources"
+kind = "tool"
+license = "PolyForm-Noncommercial-1.0.0; OpenBIOS MIT"
+source = "RetroPortingToolKit/psxrecomp 31df2e1e0e0a6525733e68ff70e72ecbef84bb09"
+description = "Optional noncommercial PS1 C recompiler, GPU/audio/input/CD and memory-card runtime. Includes MIT OpenBIOS; no retail BIOS or games."
+[[psxrecomp-sdk.parts]]
+url = "https://codeload.github.com/RetroPortingToolKit/psxrecomp/tar.gz/31df2e1e0e0a6525733e68ff70e72ecbef84bb09"
+sha256 = "3376c1bf0509ca7045e92d0673ecbc9245084e017ffaa66d954c77519972d171"
+subdir = "psxrecomp-31df2e1e0e0a6525733e68ff70e72ecbef84bb09"
+platforms = ["linux-x86_64", "windows-x86_64"]
+
 [dsr-sdk]
 name = "DS static runtime and recompiler sources"
 kind = "tool"

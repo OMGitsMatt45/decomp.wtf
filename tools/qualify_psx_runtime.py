@@ -53,7 +53,8 @@ def retain_msvc_initializer(path):
 def fingerprint(sdk):
     paths=[sdk/name for name in ('LICENSE','runtime/codegen_hash_sources.cmake','runtime/hash_codegen.cmake')]
     for folder in ('recompiler','runtime/include'):
-        paths.extend(p for p in (sdk/folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc')
+        paths.extend(p for p in (sdk/folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc'
+                     and p.relative_to(sdk).as_posix()!='runtime/include/overlay_codegen_hash.h')
     digest=hashlib.sha256()
     for path in sorted(paths,key=lambda p:p.relative_to(sdk).as_posix()):
         digest.update(path.relative_to(sdk).as_posix().encode()+b'\0'+hashlib.sha256(path.read_bytes()).digest())

@@ -1535,6 +1535,22 @@ class RomNetwork(Network):
         configure(self, slug, projects, title)
         return self.overview(slug)
 
+    def generate_psx_pc(self, games, *, confirmed=False, renderer='auto', title='', log=print):
+        """One native PC source repository for the complete ordered PS1 disc set."""
+        if not confirmed:
+            raise NetworkError('confirm that this is your own legally obtained copy of the game')
+        from ..psx_native import export
+        from .. import pc
+        import uuid
+        if isinstance(games,(str,Path)):games=[Path(games)]
+        if not games:raise NetworkError('provide the first PS1 disc')
+        name=_slugify(title or Path(games[0]).stem)[:60] or 'ps1-game'
+        output=self.workspace/(name+'-pc-'+uuid.uuid4().hex[:8])
+        try:result=export(games,output,title=title,renderer=renderer,log=log)
+        except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
+        log('Native PC source project: '+result['path'])
+        return result
+
     def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
                        renderer='auto',screen_mode='dual',log=print) -> dict:
         """Generate a PC repository directly, without a console matching project/compiler."""
@@ -1577,6 +1593,16 @@ class RomNetwork(Network):
                     return export(game,root/'pc-source',input_format=input_format,save_type=save_type,
                         renderer=renderer,screen_mode=screen_mode,
                         arm7_bios=os.environ.get('DECOMP_ARM7_BIOS') if input_format=='auto' else None,log=log)
+                if cfg.get('platform') == 'psx':
+                    from ..psx_native import backend
+                    if cfg.get('psx_disc_set'):
+                        from ..rom.psx_set import members
+                        rows=members(self,cfg['psx_disc_set'])
+                    else:rows=[(proj,cfg)]
+                    inputs=[{**config,'root':row['root']} for row,config in rows]
+                    project={**cfg,'root':proj['root'],'native_inputs':inputs,'renderer':renderer,
+                             'title':cfg.get('psx_disc_set',{}).get('title') or proj['name']}
+                    return pc.export_backend(project,Path(proj['root'])/'pc-source',backend())
                 return pc.export({**cfg, 'root': proj['root']}, Path(proj['root'])/'pc-source')
             except (pc.PCError, OSError, ValueError) as error:
                 raise NetworkError(str(error)) from error

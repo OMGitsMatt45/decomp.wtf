@@ -38,13 +38,25 @@ class Backend:
 BACKENDS: dict[str, Backend] | None = None
 
 
+def input_platform(path: Path) -> str:
+    """Select direct native generation, retaining support for unnamed DS uploads."""
+    path=Path(path)
+    if path.suffix.lower() in ('.nds','.srl'):return 'nds'
+    from .forks.scratch_dsd import crc16
+    with path.open('rb') as stream:head=stream.read(0x200)
+    if len(head)==0x200 and crc16(head[:0x15e])==int.from_bytes(head[0x15e:0x160],'little'):
+        return 'nds'
+    return 'psx'
+
+
 def _backends():
     # Resolve lazily: the DS adapter uses this contract and optional tools are
     # installed only when generating, never while checking app capabilities.
     if BACKENDS is not None:
         return list(BACKENDS.values())
     from .nds_native import backend
-    return [backend()]
+    from .psx_native import backend as psx_backend
+    return [backend(),psx_backend()]
 
 
 def status(platform: str = '') -> dict:
@@ -56,7 +68,7 @@ def status(platform: str = '') -> dict:
         experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
         reason='' if available else 'No PC-project backend is installed for this platform. '
-            'DS is the first implementation target; matching console exports remain separate.')
+            'Matching console exports remain separate from native PC projects.')
 
 
 def _file(root: Path, name: str) -> Path:

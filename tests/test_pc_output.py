@@ -43,7 +43,9 @@ def test_ds_hardware_backend_is_available_as_experimental_without_installing_too
     status=pc.status('nds')
     assert status['available'] and status['experimental']
     assert [b['id'] for b in status['backends']]==['nds-dsr-experimental']
-    assert not pc.status('psx')['available']
+    psx=pc.status('psx')
+    assert psx['available'] and psx['experimental']
+    assert [b['id'] for b in psx['backends']]==['psx-psxrecomp-experimental']
 
 
 def test_generated_project_builds_and_executes_on_host(tmp_path,backend):

@@ -511,7 +511,17 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             try:
                 if q.get('output') == 'pc':
                     if layout is not None or toolchain:
-                        raise NetworkError('DS PC output does not use a console compiler or PS1 layout')
+                        raise NetworkError('Native PC output does not use a matching console compiler or reconstruction layout')
+                    from .. import pc
+                    target=q.get('pc_platform') or pc.input_platform(game)
+                    if target=='psx':
+                        try:extra=json.loads(q.get('discs','[]'))
+                        except (TypeError,ValueError):raise NetworkError('additional discs must be an ordered list of paths')
+                        if not isinstance(extra,list) or len(extra)>15 or any(not isinstance(path,str) for path in extra):
+                            raise NetworkError('provide up to fifteen additional disc paths in order')
+                        paths=[game,*[hostenv.local_path(path) for path in extra]]
+                        return net.generate_psx_pc(paths,confirmed=True,renderer=q.get('renderer','auto'),log=log)
+                    if target!='nds':raise NetworkError('native PC generation is available for DS and PS1')
                     return net.generate_ds_pc(game,confirmed=True,input_format=q.get('ds_input_format','auto'),
                                               save_type=q.get('save_type','auto'),renderer=q.get('renderer','auto'),
                                               screen_mode=q.get('screen_mode','dual'),log=log)

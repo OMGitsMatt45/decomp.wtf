@@ -10,7 +10,8 @@ from decompnet import pc
 from tools import qualify_psx_runtime as candidate
 
 
-def test_assessment_does_not_enable_product_export():
+def test_assessment_does_not_enable_product_export(monkeypatch):
+    monkeypatch.setattr(pc,'BACKENDS',{})
     assert not pc.status('psx')['available']
 
 
@@ -64,6 +65,7 @@ def test_wrong_emitter_is_rejected_before_generation(tmp_path, monkeypatch):
 
 
 def test_generated_native_code_matches_original_execution(tmp_path):
+    before=pc.status('psx')
     sdk = os.environ.get('DECOMP_PSX_CANDIDATE_ROOT')
     if not sdk:
         if os.environ.get('DECOMP_REQUIRE_PSX_CANDIDATE') == '1':
@@ -82,7 +84,7 @@ def test_generated_native_code_matches_original_execution(tmp_path):
     assert not report['hardware_runtime_qualified'] and not report['retail_qualified']
     assert report['candidate']['default_execution_model'] == 'hybrid'
     assert report['candidate']['license'] == 'PolyForm-Noncommercial-1.0.0'
-    assert not pc.status('psx')['available']
+    assert pc.status('psx')==before
     assert (output / 'PSXRecomp-LICENSE.txt').read_bytes() == (Path(sdk) / 'LICENSE').read_bytes()
 
     # Reconfigure after staged publication: no deleted staging paths may remain.
