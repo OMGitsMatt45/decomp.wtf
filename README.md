@@ -85,6 +85,7 @@ Install the following only for the features you choose:
 | [Python 3.9+](https://www.python.org/downloads/) | Standalone asset extraction in generated DS PC repositories. The main application uses Python 3.12+, managed by uv. |
 | [CMake 3.20+](https://cmake.org/download/) | Building generated native PC projects and running the output-contract fixture. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
+| [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
 Older 32-bit compilers need your distribution's 32-bit runtime, such as

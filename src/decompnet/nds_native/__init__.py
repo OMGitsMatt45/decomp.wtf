@@ -278,6 +278,21 @@ void Machine::Impl::enable_dma'''
 void Machine::Impl::enable_dma'''
     if text.count(before)!=1:raise pc.PCError('pinned DS runtime card DMA patch no longer matches source')
     path.write_text(text.replace(before,after),encoding='utf-8')
+    path=target/'runtime/core/src/runtime.cpp'
+    text=path.read_text(encoding='utf-8')
+    before=r'''                 "[dsr] hint: the program reached code its generated tables do not contain. This usually means the image "
+                 "differs from the one tools/build_port.py was run on (another region or revision, or a modified file); "
+                 "rebuild with that exact file: python tools/build_port.py --rebuild-workspace --rom <your .nds>.\n");'''
+    after=r'''                 "[dsr] Static execution reached an unresolved target. Keep pc-project.json and "
+                 "these diagnostics for review of translation coverage and runtime behavior.\n");'''
+    if text.count(before)!=1:raise pc.PCError('pinned DS runtime diagnostic patch no longer matches source')
+    text=text.replace(before,after)
+    before=r'''    std::fprintf(stderr,
+                 "[dsr] add a function entry with --extra-entries: func_%08x kind:function(arm,size=0x4) addr:0x%08x\n",
+                 target & ~1u, target & ~1u);
+'''
+    if text.count(before)!=1:raise pc.PCError('pinned DS runtime entry hint patch no longer matches source')
+    path.write_text(text.replace(before,''),encoding='utf-8')
     (target/'DECOMP_WTF_PATCHES.md').write_text('''# decomp.wtf runtime changes
 
 Base: 0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931 (MIT).
@@ -294,6 +309,9 @@ reads all 128 words of one block using repeating one-word DMA and checks data
 and the cartridge completion IRQ. The latched count, rather than a later
 programmed count write, limits this correction to one-word transfers. Other
 DMA block sizes retain the pinned runtime's notification/rearm behavior.
+Unresolved-target diagnostics refer to this generated repository and retain
+CPU/register details. They no longer suggest a missing upstream build command
+or a guessed ARM function entry, which could conceal a translation defect.
 ''',encoding='utf-8')
 
 
@@ -419,6 +437,7 @@ stacked. Arrow keys move; X/Z are A/B; S/A are X/Y; Q/W are L/R;
 Enter/Backspace are Start/Select. Click the lower screen for touch; Escape quits.
 Cartridge saves are written to `saves/game.sav`, or the path given by `--save`.
 The selected save chip is pinned in `native/profile.hpp`; review it for each game.
+`auto` infers from an existing raw save. Choose the actual chip for a new game.
 
 For a bounded headless check use `--headless --frames 300`. Add `--capture DIR`
 for final PPM screens, `--audio-pcm FILE` for little-endian signed stereo samples,

@@ -25,7 +25,7 @@ def add_parser(sub):
     native.add_argument('--profile', type=Path, help='reviewed original fixture; otherwise analyze the ROM automatically')
     native.add_argument('--input-format', choices=('auto','decrypted'), default='auto')
     native.add_argument('--arm7-bios', type=Path, help='optional private decoding input for encrypted originals')
-    native.add_argument('--save-type', default='auto', help='cartridge chip, e.g. eeprom64k or flash512k')
+    native.add_argument('--save-type', default='auto', help='cartridge chip for a new game, e.g. eeprom64k; auto infers from an existing raw save')
     native.add_argument('--experimental', action='store_true', required=True)
 
 
