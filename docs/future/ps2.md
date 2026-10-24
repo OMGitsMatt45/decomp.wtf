@@ -56,6 +56,33 @@ The dedicated workflow runs both hosts and fails if required tools are missing.
 MPEG decoding is disabled for this CPU assessment; movie support is required
 before qualifying a game runtime.
 
+## Disc preparation and DQVIII findings
+
+`decomp pc ps2-inspect GAME.iso` inspects a PS2 ISO/BIN or standalone EE ELF
+without installing a compiler or runtime. It streams the image, hashes the
+original input, follows BOOT2, records ordered ELF load segments and inventories
+IOP modules. `--quick` skips the whole-image hash and explicitly reports that
+full input identity is unverified. It does not generate or qualify a game.
+Original tests exercise nested paths, sparse DVD extents above 4 GiB, stripped
+ELFs, overlapping zero-fill BSS loads, malformed/truncated layouts and input
+changes during inspection. Unsafe or unsupported ISO layouts fail explicitly.
+
+The privately supplied USA DQVIII archive contained all 252 volumes and passed
+its archive CRC check. The ISO is 4,180,148,224 bytes, SHA-256
+`a38f71b7a02f1ae0fe65cc78137ee9c943b75b44473ae1cd5ed89ef0e61400e9`.
+Its boot program is `SLUS_212.07` (2,960,032 bytes), SHA-256
+`56ac18170704111c9cbf2f3a8a71ee5b708f39706649671ca1b1314451ef9c28`.
+It has no function symbols, multiple overlapping BSS loads and 16 IOP IRX
+modules. These are input facts, not boot/gameplay evidence.
+
+The unmodified candidate's initial function scan reported 8,314 functions and
+zero decode failures, but its separate emission report contained 7,948 errors.
+It still returned success. Many diagnostics came from interpreting embedded
+data as instructions. The integration now requires a complete diagnostic report
+and rejects emission errors even when exit status and decode counts say success.
+The original CPU fixture still has zero emission errors. Stripped function and
+code/data discovery needs further work before this retail output can be built.
+
 ## Runtime work required before game output
 
 The candidate supplies an EE runtime, R3000A IRX execution with IOP kernel/HLE

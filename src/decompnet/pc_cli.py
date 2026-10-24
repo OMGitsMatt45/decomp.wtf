@@ -13,6 +13,9 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    ps2_inspect = actions.add_parser('ps2-inspect', help='inspect a PS2 ISO/BIN or EE ELF without running or exporting it')
+    ps2_inspect.add_argument('input', type=Path)
+    ps2_inspect.add_argument('--quick', action='store_true', help='skip whole-image SHA-256; does not verify full input identity')
     generate = actions.add_parser('nds-generate', help='experimental DS static C++ repository from reviewed code ranges')
     generate.add_argument('rom', type=Path)
     generate.add_argument('profile', type=Path)
@@ -39,7 +42,10 @@ def add_parser(sub):
 
 def run(args):
     try:
-        if args.pc_action == 'psx-native':
+        if args.pc_action == 'ps2-inspect':
+            from .ps2_native.media import inspect
+            result = inspect(args.input, hash_input=not args.quick)
+        elif args.pc_action == 'psx-native':
             from .psx_native import export
             result = export(args.inputs,args.output,title=args.title,renderer=args.renderer)
         elif args.pc_action == 'nds-native':

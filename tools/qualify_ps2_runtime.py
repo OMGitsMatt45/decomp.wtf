@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 
 from tests.fixtures.ps2_native import cases, program, reference, MASK64
+from decompnet.ps2_native.reports import generation_report
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUTS = json.loads((ROOT / 'tools/ps2_runtime/inputs.json').read_text())
@@ -134,9 +135,7 @@ def qualify(sdk, destination):
         'single_file_output = false\noutput_worker_threads = 1\n'
         'patch_syscalls = false\npatch_cop0 = false\npatch_cache = false\nstubs = []\nskip = []\n')
     generation = run([recompiler, 'config.toml'], fixture, destination / 'generation.log')
-    stats = re.search(r'Functions processed: (\d+), recompiled: (\d+), stubs: (\d+), skipped: (\d+), decode failures: (\d+)', generation)
-    if not stats or tuple(map(int, stats.groups())) != (len(entries), len(entries), 0, 0, 0):
-        raise ValueError('candidate must translate every original function without stubs, skips or decode failures')
+    statistics = generation_report(generation, expected_functions=len(entries))
     if not list((fixture / 'generated').glob('*.cpp')): raise ValueError('candidate emitted no source')
     run(config + ['-DDECOMP_PS2_PROBE_DIR=' + fixture.as_posix()], destination, destination / 'native-configure.log')
     run(['cmake', '--build', build, '--target', 'ps2_cpu_probe', '--config', 'Release', '--parallel', '2'],
@@ -169,6 +168,7 @@ def qualify(sdk, destination):
         original_elf_sha256=hashlib.sha256(image).hexdigest(), checks=checks,
         generated_cpp_files=len(list((fixture / 'generated').glob('*.cpp'))),
         functions_recompiled=len(entries), stubs=0, skipped_functions=0, decode_failures=0,
+        generation_statistics=statistics,
         generated_sources={p.relative_to(fixture).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in sorted((fixture / 'generated').iterdir()) if p.is_file()},
         execution_model='static-recompiled', interpreter_fallback=False, runtime_code_generation=False,
