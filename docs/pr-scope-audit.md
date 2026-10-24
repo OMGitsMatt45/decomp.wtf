@@ -11,7 +11,7 @@ are deferred without claiming new support.
 - [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28) is the application
   redesign: remove N64/GameCube/Wii functionality and supply a shared PC-output
   contract. It carries forward #4's shared PS1 implementation commits. Merged
-  into main on 2026-10-24 at `acacecf517100d8bb49018d41360c0a97ed1a21b`.
+  into main on 2026-10-23 UTC at `acacecf517100d8bb49018d41360c0a97ed1a21b`.
 - [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) is the fresh DS native
   backend workstream, now an implementation draft based on main. It adds an
   explicit experimental static translator and original-fixture runtime; it does

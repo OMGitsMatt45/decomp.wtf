@@ -138,3 +138,11 @@ execution, including zero/32/oversized shifts and carry/overflow boundaries.
 Checks also cover saves, a clean rebuild, wrong inputs/assets, unsupported
 execution, profile errors and preservation of existing work. The dedicated
 `DS static PC repository` workflow runs these tests on Windows and Linux.
+
+Initial implementation `1913efd5af9a6ae1360def623d93d458e70ecff5` passed
+[24 checks on each native host](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40044562004)
+with no skips. The [shared foundation checks](https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40044561894)
+also passed on both hosts. A focused local run passed 55 checks, and a built
+Python wheel independently generated a repository that extracted, compiled and
+passed its CTest execution check. These results qualify the documented original
+fixture path only; retail gameplay and DS hardware behavior remain outstanding.
