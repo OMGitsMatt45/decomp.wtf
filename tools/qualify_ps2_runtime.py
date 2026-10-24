@@ -105,9 +105,12 @@ def qualify(sdk, destination):
     shutil.copyfile(ROOT / 'tools/ps2_runtime/runner.cpp', fixture / 'runner.cpp')
     shutil.copyfile(ROOT / 'tools/ps2_runtime/Probe.cmake', fixture / 'ProbeTargets.cmake')
     shutil.copyfile(sdk / 'LICENSE', destination / 'PS2Recomp-LICENSE.txt')
+    # Archive pins avoid cloning unrelated history and test submodules, whose
+    # paths exceed Windows limits. Every dependency has an immutable revision
+    # and a verified archive checksum; no mutable tag selects build inputs.
     deps = '\n'.join('FetchContent_Declare(' + dep['name'] + '\n'
-        '  GIT_REPOSITORY https://github.com/' + dep['repo'] + '.git\n'
-        '  GIT_TAG ' + dep['sha'] + '\n  GIT_CONFIG core.autocrlf=false)'
+        '  URL "' + dep['url'] + '"\n'
+        '  URL_HASH SHA256=' + dep['archive_sha256'] + '\n  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)'
         for dep in INPUTS['dependencies'])
     hook = destination / 'pinned-dependencies.cmake'
     hook.write_text('include(FetchContent)\n' + deps + '\n'
