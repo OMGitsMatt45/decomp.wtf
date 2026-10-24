@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from contextvars import ContextVar
 
 import yaml
 
@@ -25,6 +26,13 @@ from ..rom.nds_modules import NdsImage
 BACKEND_ID = 'nds-dsr-experimental'
 SDK_COMMIT = 'b8fc609c20699ad5afe36922b7f2aa42436ec931'
 PROFILE_SCHEMA = 'decomp.wtf.nds-static-profile/v1'
+_progress = ContextVar('nds_native_progress', default=None)
+
+
+def _log(message):
+    callback = _progress.get()
+    if callback is None:print(message,file=sys.stderr)
+    else:callback(message)
 
 
 def _source(name):
@@ -40,7 +48,7 @@ def revision():
 
 def _sdk():
     try:
-        root = toolchains.ensure('dsr-sdk',log=lambda message: print(message,file=sys.stderr))
+        root = toolchains.ensure('dsr-sdk',log=_log)
     except toolchains.ToolchainError as error:
         raise pc.PCError(str(error)) from error
     name = 'decompnet._nds_dsr_recomp'
@@ -67,7 +75,7 @@ def _tool(root, name):
 
 
 def _run(command, cwd, what):
-    print(what+'...',file=sys.stderr)
+    _log(what+'...')
     try:
         result = subprocess.run(list(map(str,command)),cwd=cwd,capture_output=True,text=True,
                                 encoding='utf-8',errors='replace',timeout=3500)
@@ -81,7 +89,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     """Use the existing qualified DS decoder, without installing a matching compiler."""
     from ..forks.ds_template.tools.nds_input import finish_layout
     try:
-        dsd = toolchains.ensure('dsd',log=lambda message: print(message,file=sys.stderr))
+        dsd = toolchains.ensure('dsd',log=_log)
         dsd = toolchains.binary('dsd')
     except toolchains.ToolchainError as error:
         raise pc.PCError(str(error)) from error
@@ -430,7 +438,7 @@ build and successful boot are separate from field/battle/save compatibility.
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
 
 
-def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto'):
+def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto'):
     rom=Path(rom).resolve()
     if not rom.is_file() or not 0x200<=rom.stat().st_size<=512*1024*1024:
         raise pc.PCError('DS input must be an existing ROM no larger than 512 MiB')
@@ -443,6 +451,24 @@ def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_typ
         path=Path(profile)
         if path.stat().st_size>1024*1024:raise pc.PCError('reviewed profile is too large')
         reviewed=json.loads(path.read_text(encoding='utf-8'))
-    adapter=pc.Backend(BACKEND_ID,'nds',revision(),generate)
-    return pc.export_backend(dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
-        input_format=input_format,bios=arm7_bios,save_type=save_type),Path(output),adapter)
+    return dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
+        input_format=input_format,bios=arm7_bios,save_type=save_type)
+
+
+def _generate_project(project,root):
+    prepared=_prepare(project['rom'],input_format=project.get('input_format','auto'),
+                      arm7_bios=project.get('bios'),save_type=project.get('save_type','auto'))
+    generate(prepared,root)
+
+
+def backend():
+    return pc.Backend(BACKEND_ID,'nds',revision(),_generate_project,experimental=True)
+
+
+def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',log=None):
+    project=_prepare(rom,profile=profile,input_format=input_format,arm7_bios=arm7_bios,save_type=save_type)
+    token=_progress.set(log)
+    try:
+        return pc.export_backend(project,Path(output),pc.Backend(BACKEND_ID,'nds',revision(),generate,True))
+    finally:
+        _progress.reset(token)

@@ -15,7 +15,7 @@ the separately reviewed MIT DQ9-Decomp runtime and emitter, pinned by commit and
 archive hash. It analyzes DS inputs without matching compilers and ships native
 runtime source in generated repositories. Original guest code verifies screens,
 sound, IRQs, IPC, EEPROM reload, TCM controls, cartridge DMA and Thumb switches.
-DQV retail testing now reaches an adventure-selection menu with DS audio; later
+DQV retail testing now reaches name entry with DS audio; later
 gameplay and save compatibility remain under active validation. No DQIV code or
 mobile OBB dependency is adopted.
 
@@ -62,7 +62,8 @@ Follow the shared [repository acceptance target](../pc-output.md#generated-repos
 5. **Standalone repository generation and host execution implemented.** Generate a project from an original fixture, build it in a clean native
    Windows/Linux environment and execute it without a DS emulator process.
    Verify observable program output and deterministic save/reload state. The
-   current save check persists a reviewed RAM region, not a DS save device. A
+   small-adapter save check persists a reviewed RAM region; the hardware adapter
+   separately tests SPI EEPROM saves and reload. A
    dedicated Windows/Linux workflow exercises extraction, compilation, execution,
    save reload and clean rebuild without console tools or a DS emulator process.
 6. **Pending.** Validate one agreed DQ or Pokémon title through boot/title/menu, rendering,
@@ -80,10 +81,12 @@ source projects remain separately buildable and are not renamed as PC ports.
 Report these independently: import facts, source matching, project integrity,
 native host build, native execution and retail compatibility. PR #28 supplies
 the common contract; PR #29 begins a real static ARM/Thumb execution backend.
-It has no interpreter or runtime compiler fallback. Its small RAM/runtime model
-does not supply the graphics, audio, device behavior or compatibility needed for
-a retail PC game. A successful fixture is evidence for its tested CPU/runtime
-path, not a claim that DS retail output is complete.
+It has no interpreter or runtime compiler fallback. The hardware adapter now
+supplies graphics, audio and save-device services and is exposed experimentally
+in the application. A successful fixture is evidence for its tested CPU/runtime
+path, not a claim that DS retail output is complete. Optional owner-supplied
+mobile-remaster enhancements for DQ IV/V/VI follow native DS qualification;
+the original DS sound remains a complete choice without an OBB.
 
 Ordinary DS is first. DSi container work in PR #24 stays separate; ARM9i/ARM7i,
 TWL services and extra hardware need their own execution work after DS.

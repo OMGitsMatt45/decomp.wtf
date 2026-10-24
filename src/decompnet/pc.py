@@ -28,19 +28,30 @@ class Backend:
     platform: str
     revision: str
     generate: Callable[[dict, Path], None]
+    experimental: bool = False
 
 
 # Each platform PR adds an adapter here only after an original fixture builds
 # and executes through it. Retail/title qualification is reported separately.
-BACKENDS: dict[str, Backend] = {}
+BACKENDS: dict[str, Backend] | None = None
+
+
+def _backends():
+    # Resolve lazily: the DS adapter uses this contract and optional tools are
+    # installed only when generating, never while checking app capabilities.
+    if BACKENDS is not None:
+        return list(BACKENDS.values())
+    from .nds_native import backend
+    return [backend()]
 
 
 def status(platform: str = '') -> dict:
     platforms.require(platform, PCError)
     key = platforms.canonical(platform)
-    available = [dict(id=b.id, platform=b.platform, revision=b.revision)
-                 for b in BACKENDS.values() if not key or b.platform == key]
+    available = [dict(id=b.id, platform=b.platform, revision=b.revision, experimental=b.experimental)
+                 for b in _backends() if not key or b.platform == key]
     return dict(platform=key or None, first_platform='nds', available=bool(available), backends=available,
+        experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
         reason='' if available else 'No PC-project backend is installed for this platform. '
             'DS is the first implementation target; matching console exports remain separate.')
@@ -112,7 +123,7 @@ def verify(root: Path) -> dict:
 def export(project: dict, destination: Path, backend_id: str | None = None) -> dict:
     """Stage adapter output atomically. Never substitute a matching ROM export."""
     platform = platforms.canonical(project.get('platform', ''))
-    candidates = [b for b in BACKENDS.values() if b.platform == platform and
+    candidates = [b for b in _backends() if b.platform == platform and
                   (backend_id is None or b.id == backend_id)]
     platforms.require(platform, PCError)
     if len(candidates) != 1:

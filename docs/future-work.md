@@ -35,7 +35,8 @@ audio, timing/IRQs, input and cartridge saves. Original guest programs exercise
 those interfaces; retail DQV compatibility is being fixed and qualified. The
 [DQIV runtime assessment](future/ds-runtime-assessment.md) remains a product
 reference; no DQIV runtime or mobile OBB dependency is copied.
-The generator is explicit CLI-only while general platform export stays disabled.
+The native adapter is available experimentally through DS import and the Source
+tab as well as the CLI; it does not require a matching console compiler.
 Then validate one chosen DQ or Pokémon title through boot/title/menu, field/battle,
 audio, input and save/reload. Full playthrough remains with the user.
 

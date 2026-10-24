@@ -45,11 +45,15 @@ instructions become C++ and execute with two CPU contexts and overlay switching.
 The [native runtime path](docs/nds-native-runtime.md) also analyzes DS ROMs and
 ships graphics, audio, input, timing and cartridge services as source. Original
 programs verify rendering, sound, interrupts, IPC and real save reload. DQV
-compatibility is still being fixed; general DS PC export remains unavailable in
-the GUI until retail validation is complete.
+compatibility is still being fixed. DS import offers experimental PC generation
+directly, without a matching compiler, and existing DS projects can export the
+same native repository from the Source tab. Select the game's cartridge save
+chip; DQV Europe defaults to the verified 64 KiB EEPROM configuration.
 
 Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
-not required. BIOS and firmware are not runtime dependencies; an encrypted
+not required. Optional mobile-remaster enhancements for DQ IV/V/VI are planned,
+with per-title mappings and an original-DS-audio option; they are not implemented
+yet. BIOS and firmware are not runtime dependencies; an encrypted
 original may need an owner-supplied ARM7 BIOS during initial decoding.
 
 ## Install and run

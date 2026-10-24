@@ -119,11 +119,12 @@ Overlay extraction retains the existing BLZ decoder, but compressed overlays
 have not yet been execution-qualified in this adapter. Import support elsewhere
 in decomp.wtf does not establish execution support here.
 
-General DS PC export stays disabled in the GUI and `pc status` while this adapter
-requires explicit experimental invocation. Next work includes retail module
-decoding, CPU coverage, interrupts/timing, graphics, audio, input, cartridge/files,
-save devices and compatibility checks on a chosen DQ or Pokémon title. The
-[implementation plan](future/ds-native.md) tracks those milestones.
+This small adapter still requires explicit invocation and is not registered as
+an application backend. The separate [hardware-runtime adapter](nds-native-runtime.md)
+is available experimentally in the GUI and `pc status`; it supplies retail
+decoding, graphics, audio, input and save-device services. Compatibility checks
+on DQ or Pokémon titles remain separate from availability. The
+[implementation plan](future/ds-native.md) tracks qualification milestones.
 
 ## Validation
 

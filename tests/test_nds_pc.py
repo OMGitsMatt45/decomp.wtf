@@ -89,7 +89,7 @@ def test_original_ds_code_generates_standalone_host_repository_and_persists_save
     rom,root=source_project(tmp_path,raw,profile)
     assert all((root/p).exists() for p in ('game/arm9.cpp','game/arm7.cpp','game/arm9_ov1.cpp','native/runtime.cpp',
                                         'CMakeLists.txt','tools/extract_assets.py','reviewed-profile.json'))
-    assert not pc.status('nds')['available']  # experimental generation is explicit
+    assert 'nds-static-experimental' not in [b['id'] for b in pc.status('nds')['backends']]
     manifest=pc.verify(root)['manifest']
     assert manifest['execution_model']=='static-recompiled'
     assert manifest['fallback']==dict(interpreter=False,runtime_compilation=False)
@@ -210,7 +210,7 @@ def test_cli_generates_only_when_experimental_mode_is_explicit(tmp_path,capsys):
     assert not output.exists()
     assert main(['pc','nds-generate',str(rom),str(path),str(output),'--experimental'])==0
     assert pc.verify(output)['manifest']['backend']['id']=='nds-static-experimental'
-    assert not pc.status('nds')['available']
+    assert 'nds-static-experimental' not in [b['id'] for b in pc.status('nds')['backends']]
 
 
 def test_existing_repository_and_input_are_preserved(tmp_path):

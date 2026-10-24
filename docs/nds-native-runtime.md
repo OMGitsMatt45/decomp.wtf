@@ -11,6 +11,13 @@ still have limits; reusing it does not establish another game's compatibility.
 
 ## Generate a repository
 
+On the home screen, drop a DS ROM and choose **Native PC source project
+(experimental)**. Select its ROM format and cartridge save chip, then generate.
+This route bypasses console matching/compiler setup. It creates a fresh output
+folder and reports its path. Existing DS reconstruction projects can use
+**Export native PC project** on the Source tab. Existing output is preserved.
+Both GUI and CLI use the same source generator and integrity checks.
+
 ```sh
 uv run decomp pc nds-native original.nds output --experimental --input-format decrypted --save-type eeprom64k
 ```
@@ -109,5 +116,7 @@ DQV retail testing is ongoing. It exposed the short-DMA stall and a switch-table
 coverage defect; both fixes have original regression cases. A correct save-chip
 configuration is also required. Successful source generation, boot, rendering,
 audio, menus, field/battle behavior and save/reload are separate checks. The
-eventual full playthrough stays with the user. The general GUI export remains
-disabled until the retail execution milestones are qualified.
+eventual full playthrough stays with the user. GUI availability is explicitly
+experimental and does not establish retail compatibility. The clean standalone
+DQV output also built and ran through name entry; advancing into new-game setup
+exposed another invalid indirect call, under active investigation.

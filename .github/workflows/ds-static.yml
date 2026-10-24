@@ -12,6 +12,8 @@ on:
       - 'src/decompnet/toolchains.toml'
       - 'tests/test_nds_pc.py'
       - 'tests/test_nds_native.py'
+      - 'tests/test_nds_native_app.py'
+      - 'src/decompnet/app/**'
       - 'tests/fixtures/nds-static/**'
       - 'tests/fixtures/nds-hardware/**'
       - 'tests/fixtures/nds_static.py'
@@ -45,7 +47,7 @@ jobs:
       - name: Generate, build and execute original DS code and compare CPU oracles
         run: >-
           uv run --no-sync python -m pytest -q
-          tests/test_nds_pc.py tests/test_nds_native.py tests/test_pc_output.py
+          tests/test_nds_pc.py tests/test_nds_native.py tests/test_nds_native_app.py tests/test_pc_output.py
           --junitxml=ds-static-results.xml
       - uses: actions/upload-artifact@v4
         if: always()

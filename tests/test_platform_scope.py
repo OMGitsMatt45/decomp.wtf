@@ -107,7 +107,8 @@ def test_api_scope_and_retired_demo(tmp_path):
     client.cookies.set('decomp_live','test-secret')
     state=client.get('/api/state').json()
     assert set(state['platform_status']) == set(platforms.NAMES)
-    assert state['pc_output']['nds']['available'] is False
+    assert state['pc_output']['nds']['available'] is True
+    assert state['pc_output']['nds']['experimental'] is True
     result=client.post('/api/import?demo=1',headers={'X-Decomp':'1'})
     assert result.status_code == 400 and 'removed' in result.json()['error']
     assert client.post('/api/n64/layout',headers={'X-Decomp':'1'}).status_code == 404
