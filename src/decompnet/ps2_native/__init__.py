@@ -162,11 +162,14 @@ def generate(project,root):
             raw=_read(path,inspection,rec['path']);extract.append({**rec,'sha256':hashlib.sha256(raw).hexdigest()})
     recipe=dict(schema='decomp.wtf.ps2-assets/v1',input=inspection['input'],kind='disc' if files else 'ee-elf',
         sector_size=inspection.get('sector_size',2048),sector_data_offset=inspection.get('sector_data_offset',0),extract=extract)
+    medium=(reviewed or {}).get('disc_medium','dvd' if recipe['sector_size']==2048 else 'cd')
+    if medium not in ('cd','dvd'):raise pc.PCError('PS2 profile disc_medium must be cd or dvd')
+    recipe['disc_medium']=medium
     (root/'game/assets.json').write_text(json.dumps(recipe,indent=2)+'\n',encoding='utf-8')
     retained=dict(schema=profile.SCHEMA,input_sha256=inspection['input']['sha256'],
         modules=[dict(path=row['path'],**mapping) for row,(_,mapping) in zip(rows,prepared)],
         iop_native_modules=(reviewed or {}).get('iop_native_modules',[]),provenance=(reviewed or {}).get('provenance',{}),
-        runtime_arena_bytes=(reviewed or {}).get('runtime_arena_bytes',65536))
+        runtime_arena_bytes=(reviewed or {}).get('runtime_arena_bytes',65536),disc_medium=medium)
     (root/'game/profile.json').write_text(json.dumps(retained,indent=2)+'\n',encoding='utf-8')
     iop=(reviewed or {}).get('iop_native_modules',[])
     allowed={Path(name).name for name in inspection.get('iop_modules',[])}
@@ -199,6 +202,7 @@ def _config(root,project,boot,files,recipe,iop,arena,loaded_end):
         'inline constexpr const char *boot='+q(boot)+';',
         'inline constexpr bool has_disc='+('true' if files else 'false')+';',
         f'inline constexpr unsigned sector_size={recipe["sector_size"]},data_skip={recipe["sector_data_offset"]};',
+        f'inline constexpr unsigned disc_type={0x12 if recipe["disc_medium"]=="cd" else 0x14}u;',
         f'inline constexpr uint32_t runtime_arena_bytes={arena}u,loaded_end={loaded_end}u;',
         'inline const std::vector<decomp_ps2::disc::Entry> files={']
     lines += ['{'+q(f['path'])+f',{f["lba"]}ull,{f["size"]}ull'+'},' for f in files]

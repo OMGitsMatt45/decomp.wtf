@@ -74,6 +74,8 @@ def vu_probe(tmp_path_factory,request):
     if not shutil.which('cmake'): pytest.fail('VU qualification requires CMake and C++20')
     work = tmp_path_factory.mktemp('static VU source with spaces')
     shutil.copyfile(Path(__file__).parents[1] / 'src/decompnet/ps2_native/vu0.hpp', work / 'decomp_vu0.hpp')
+    (work/'second module').mkdir()
+    shutil.copyfile(work/'decomp_vu0.hpp',work/'second module/decomp_vu0.hpp')
     calls = []
     generated=[]
     if request.param=='emitted':
@@ -108,6 +110,7 @@ def vu_probe(tmp_path_factory,request):
         raw = 0x4A000000 | (mask << 21) | (2 << 16) | (fs << 11) | (fd << 6) | op
         if request.param=='template':calls.append(f'case {index}: decomp_ps2::vu_upper<0x{raw:08x}u>(ctx); break;')
     (work / 'main.cpp').write_text(('' if not generated else '#include "generated/ps2_recompiled_functions.h"\n')+'''#include "decomp_vu0.hpp"
+#include "second module/decomp_vu0.hpp"
 #include <cstdio>
 #include <cstdlib>
 int main(int argc,char **argv) {

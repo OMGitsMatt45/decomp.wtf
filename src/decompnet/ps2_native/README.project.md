@@ -36,6 +36,9 @@ IOP modules are extracted.
 Add --reference to the asset helper to retain the original disc at its current
 absolute path without copying it. Keep that file available when running; saves
 remain inside this source project. The default copies the disc for portability.
+Raw CD sector formats select CD medium replies automatically. For a CD converted
+to a 2048-byte ISO, set `disc_medium` to `cd` in its reviewed profile; otherwise
+2048-byte inputs use DVD replies. The original image's sector/file data is retained.
 
 Run build/ps2_pc or build/Release/ps2_pc.exe. F11 toggles native-monitor fullscreen.
 The initial window follows the active display; resizing/moving it updates its

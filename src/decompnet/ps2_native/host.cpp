@@ -216,7 +216,7 @@ int main(int argc,char **argv) {
                 paths.cdImage=fs::u8path(path);
                 if(!paths.cdImage.is_absolute())throw std::runtime_error("external disc reference must be absolute");
             }
-            decomp_ps2::disc::mount(paths.cdImage,decomp_ps2_game::files,decomp_ps2_game::sector_size,decomp_ps2_game::data_skip);
+            decomp_ps2::disc::mount(paths.cdImage,decomp_ps2_game::files,decomp_ps2_game::sector_size,decomp_ps2_game::data_skip,decomp_ps2_game::disc_type);
         }
         PS2Runtime::setIoPaths(paths);
         ps2_native_iop::setModules(*runtime,decomp_ps2_game::iop_modules);
@@ -236,6 +236,7 @@ int main(int argc,char **argv) {
            <<",\n  \"scale_limited\":"<<(host.scale_limited?"true":"false")
            <<",\n  \"guest_fields\":"<<host.fields<<",\n  \"presented_frames\":"<<host.frames<<",\n  \"gpu_primitives\":"<<stats.primitivesDrawn
            <<",\n  \"gpu_presents\":"<<stats.presents<<",\n  \"disc_read_bytes\":"<<decomp_ps2::disc::read_bytes
+           <<",\n  \"disc_type\":"<<decomp_ps2::disc::medium()
            <<",\n  \"missing_functions\":"<<(runtime?runtime->decompMissingFunctions.load():0)
            <<",\n  \"execution_failures\":"<<(runtime?runtime->decompExecutionFailures.load():0)
            <<",\n  \"ee_interpreter\":false,\n  \"iop_interpreter\":true,\n  \"vu_interpreter\":true,\n  \"runtime_compilation\":false\n}\n";

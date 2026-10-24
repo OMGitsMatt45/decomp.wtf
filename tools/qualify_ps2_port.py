@@ -54,11 +54,12 @@ def qualify(destination,*,sdk=None,execute=True):
     run(['cmake','--build',build,'--target','ps2_pc','ps2_service_probe','--config','Release','--parallel','2'],out,out/'build.log')
     native=executable(build,'ps2_pc')
     reports={}
-    services=out/'Original service state';services.mkdir()
+    services=out/'Original service state';services.mkdir();service_results={}
     image=bytearray(6*2048);image[3*2048:3*2048+3000]=bytes(n%251 for n in range(3000))
     (services/'disc.img').write_bytes(image)
     for mode in ('write','read'):
-        run([executable(build,'ps2_service_probe'),services,mode],out,out/f'services-{mode}.log',timeout=30)
+        service=run([executable(build,'ps2_service_probe'),services,mode],out,out/f'services-{mode}.log',timeout=30)
+        service_results[mode]=json.loads(service.stdout)
     if execute:
         for renderer in ('vulkan','software'):
             report=out/(renderer+'.json');capture=out/(renderer+'.ppm')
@@ -92,16 +93,17 @@ def qualify(destination,*,sdk=None,execute=True):
         raise ValueError('required GPU failure was not explicit')
     # Reuse the exact emitter built by the actual export for the original VU
     # instruction->generated C++->independent arithmetic oracle checks.
-    emitter_build=sdk.parent/'.ps2-native-builds'/ps2_native.revision()[:16]/'build'
+    integration=exported['manifest']['backend']['revision']
+    emitter_build=sdk.parent/'.ps2-native-builds'/integration[:16]/'build'
     env=dict(os.environ,DECOMP_PS2_PATCHED_EMITTER=str(executable(emitter_build,'ps2_recomp')))
     run([sys.executable,'-m','pytest','-q','tests/test_ps2_native_vu.py','--basetemp',out/'VU checks with spaces'],
         ROOT,out/'vu.log',env=env)
     if provider.verify(sdk)!=pins:raise ValueError('the exporter modified pinned source')
     verified=pc.verify(project)
     result=dict(schema='decomp.wtf.ps2-port-assessment/v1',source_sha256=pins['source_sha256'],
-        backend_revision=ps2_native.revision(),host_build=True,graphics_executed=execute,retail=False,
+        backend_revision=integration,host_build=True,graphics_executed=execute,retail=False,
         integrity_verified=verified['integrity_verified'],runs=reports,required_gpu_failure=missing,
-        native_services=[],original_input_sha256=exported['manifest']['inputs'][0]['sha256'])
+        native_services=service_results,original_input_sha256=exported['manifest']['inputs'][0]['sha256'])
     (out/'assessment.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     return result
 

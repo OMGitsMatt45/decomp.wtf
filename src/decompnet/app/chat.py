@@ -29,6 +29,9 @@ An M3U can list the whole game. The output is one C/C++ project with adaptive Op
 memory cards. PS1 uses one screen. Its optional runtime has noncommercial terms and hybrid execution;
 unknown code is interpreted, and runtime guest-code compilation is disabled. Existing imported PS1 disc
 sets can use export_project(format="pc"). DS save-chip and unified-screen options apply only to DS.
+For PS2, use generate_pc_project(path, own_copy=true, platform="ps2", renderer="vulkan").
+Exact-hash bundled maps are selected automatically; other stripped games need ps2_profile=the local
+reviewed JSON map path. PS2 outputs ship a GPL-3.0 runtime and disclose IOP/VU interpretation.
 Read the generated README for host building and controls. Report source integrity, host execution and
 gameplay acceptance separately; a successful export does not certify a full game. Gameplay acceptance
 is owner-run. Helpers are optional; start them only when the user requests them.

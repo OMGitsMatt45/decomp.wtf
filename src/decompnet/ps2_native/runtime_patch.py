@@ -112,6 +112,12 @@ def patch_host(root):
     replace(header,'        // Initialize VU0 registers',
         '        vu0_vf[0] = _mm_set_ps(1.0f,0.0f,0.0f,0.0f);\n        // Initialize VU0 registers')
     source=root/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/ps2_runtime.cpp'
+    (source.parent/'decomp_cdvd_rpc.hpp').write_bytes(Path(__file__).with_name('cdvd_rpc.hpp').read_bytes())
+    replace(source,'#include "ps2_runtime.h"','#include "ps2_runtime.h"\n#include "decomp_cdvd_rpc.hpp"')
+    replace(source,'''    auto scope = m_iopHost->enterCall(ctx, rdram);
+    request.callToken = scope.token();''','''    if (const auto response=decomp_ps2::cdvd_scmd(rdram,request)) return *response;
+    auto scope = m_iopHost->enterCall(ctx, rdram);
+    request.callToken = scope.token();''')
     replace(source,'    const bool firstReport = !m_missingFunctionReported.exchange(true, std::memory_order_acq_rel);',
         '    ++decompMissingFunctions;\n    const bool firstReport = !m_missingFunctionReported.exchange(true, std::memory_order_acq_rel);')
     replace(source,'            std::cerr << "Error during program execution: " << e.what() << std::endl;',
@@ -120,6 +126,14 @@ def patch_host(root):
         '            ++decompExecutionFailures;\n            std::cerr << "Error during program execution: unknown exception" << std::endl;')
     replace(source,'        runtime.requestStop();\n        return false;',
         '        ++runtime.decompExecutionFailures;\n        runtime.requestStop();\n        return false;')
+    cpu=root/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp'
+    replace(cpu,'    const uint32_t ztestMethod = static_cast<uint32_t>((ctx.test >> 17) & 3u);',
+        '    const bool depthEnabled = ((ctx.test >> 16) & 1u) != 0u;\n    const uint32_t ztestMethod = depthEnabled ? static_cast<uint32_t>((ctx.test >> 17) & 3u) : 1u;')
+    replace(cpu,'    if (writeMask.writeDepth && !ctx.zbuf.zmask)',
+        '    if (depthEnabled && writeMask.writeDepth && !ctx.zbuf.zmask)')
+    replace(root/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp',
+        '// SCECdPS2DVD\n        setReturnS32(ctx, 0x14);',
+        '// Selected owner medium, including raw CD images.\n        setReturnS32(ctx, decomp_ps2::disc::medium());')
     # The shared renderer is source-shipped without another project's branding.
     cmake=root/'src/gfx/CMakeLists.txt'
     replace(cmake,'''    include("${DQ8_GFX_ROOT}/cmake/Dq8Icon.cmake")

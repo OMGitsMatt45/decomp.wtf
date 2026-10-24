@@ -2,6 +2,8 @@
 // Static VU0 arithmetic uses the pinned runtime's shared VU arithmetic engine.
 // The engine retains its GPL-3.0 license in the source-shipped runtime.
 #pragma once
+#ifndef DECOMP_PS2_VU0_HPP
+#define DECOMP_PS2_VU0_HPP
 #include "ps2_runtime.h"
 #include "ps2_vu1_upper_engine.h"
 #include <cfenv>
@@ -9,16 +11,9 @@
 #include <stdexcept>
 
 namespace decomp_ps2 {
-template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
-    // VF0 is a hardwired vector, independent of a host context's zero-fill.
-    ctx.vu0_vf[0]=_mm_set_ps(1.0f,0.0f,0.0f,0.0f);
-    constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
-    float left[4], right[4], accumulator[4];
-    std::memcpy(left, &ctx.vu0_vf[fs], 16);
-    std::memcpy(right, &ctx.vu0_vf[ft], 16);
-    std::memcpy(accumulator, &ctx.vu0_acc, 16);
-    if constexpr (fs == 0) { left[0]=left[1]=left[2]=0; left[3]=1; }
-    if constexpr (ft == 0) { right[0]=right[1]=right[2]=0; right[3]=1; }
+namespace vu0_detail {
+    // Shared types instantiate the arithmetic engine once per translation
+    // unit, rather than once for every register/opcode word in a retail corpus.
     struct Inputs {
         const float *left, *right, *accumulator; float scalar_i, scalar_q;
         float fs(unsigned n) const { return left[n]; }
@@ -27,7 +22,7 @@ template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
         float i() const { return scalar_i; }
         float q() const { return scalar_q; }
         bool compiledFastPath() const { return true; }
-    } inputs{left,right,accumulator,ctx.vu0_i,ctx.vu0_q};
+    };
     struct Sink {
         R5900Context &ctx;
         void vf(unsigned reg, unsigned mask, const float *result) {
@@ -48,14 +43,29 @@ template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
         }
         void clip(uint32_t bits) { ctx.vu0_clip_flags=((ctx.vu0_clip_flags << 6) | bits) & 0xffffffu; }
         void reserved(uint32_t) { throw std::runtime_error("unsupported static VU0 operation"); }
-    } sink{ctx};
+    };
     struct Rounding {
         int previous=std::fegetround();
         Rounding() { std::fesetround(FE_TOWARDZERO); }
         ~Rounding() { std::fesetround(previous); }
-    } rounding;
-    // Word is fixed in generated C++; there is no instruction fetch, guest
-    // interpreter dispatch or runtime compilation on this path.
+    };
+}
+template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
+    // VF0 is a hardwired vector, independent of a host context's zero-fill.
+    ctx.vu0_vf[0]=_mm_set_ps(1.0f,0.0f,0.0f,0.0f);
+    constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
+    float left[4], right[4], accumulator[4];
+    std::memcpy(left, &ctx.vu0_vf[fs], 16);
+    std::memcpy(right, &ctx.vu0_vf[ft], 16);
+    std::memcpy(accumulator, &ctx.vu0_acc, 16);
+    if constexpr (fs == 0) { left[0]=left[1]=left[2]=0; left[3]=1; }
+    if constexpr (ft == 0) { right[0]=right[1]=right[2]=0; right[3]=1; }
+    vu0_detail::Inputs inputs{left,right,accumulator,ctx.vu0_i,ctx.vu0_q};
+    vu0_detail::Sink sink{ctx};
+    vu0_detail::Rounding rounding;
+    // Word is fixed in generated C++; no guest instruction is fetched and no
+    // guest-code compiler runs on this path.
     ps2_vu_detail::upper::computeUpper(Word,inputs,sink);
 }
 }
+#endif

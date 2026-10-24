@@ -1,7 +1,7 @@
 # PS2 native PC output
 
-Implementation work continues in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5),
-based on main after the DS and PS1 native output merges. The target is one
+The experimental exporter in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5)
+builds on the DS and PS1 native output work. It produces one
 standalone CMake source project with generated EE game code, source-shipped
 runtime, locally extracted assets and adaptive GPU rendering. PS2 has one
 screen. DQVIII is the first supplied retail validation input. Import, module
@@ -67,9 +67,25 @@ and the generic GS component from DQ8-Recompiled
 `f6dfd968001b492415969bb70bd5aad3bfa79abd`. Game launchers, branding, address
 hooks and menus are excluded. Archives and the resulting tree are checked by
 [runtime-inputs.json](../../src/decompnet/ps2_native/runtime-inputs.json).
-Integration fixes include FIO access flags, indexed disc lookups/reads, static
-VU0 current/sticky flags, VF0's hardwired value and serialized GPU recording
-against presentation/readback.
+Integration fixes include FIO access flags, indexed disc lookups/reads, CD/DVD
+medium and command-priority RPCs, static VU0 current/sticky flags, VF0's hardwired
+value, disabled GS depth-test semantics and serialized GPU recording against
+presentation/readback. Shared VU helper types and compact module dispatch avoid
+compiler memory exhaustion when building large retail exports.
+
+Original service programs verify bounded FIO reads/stat/seeks, original CD LBAs,
+CD/DVD RPCs, pad edges/axes, 1,024 exact SPU2 stereo PCM samples and memory-card
+write/reload across separate processes. These exercise the generated project's
+actual runtime. They do not prove every IOP service, physical audio output or
+retail save path. FFmpeg movie support is enabled in the standalone build.
+
+The supplied DQVIII USA export emits all seven mapped modules with zero emission
+errors and builds its standalone executable. A bounded 20-second native run
+reaches the initial settings prompt with GPU geometry and streamed original disc
+reads, without missing-function or execution errors. This uses the exported
+host and generated game code; no title launcher or address hooks are imported.
+It is boot evidence, not a full game or playthrough certification. Inputs, game
+source, captures and detailed retail logs remain private.
 
 ## Candidate assessment
 
@@ -198,7 +214,7 @@ stubs, skipped functions or decode failures (110 warnings). This records source
 emission only: function completeness, compilation, module switching and execution
 still need validation. No reviewed DQVIII address map was supplied to this scan.
 
-## Runtime work required before game output
+## Qualification scope and remaining compatibility work
 
 The separate GS assessment uses optional LGPLv3+ [paraLLEl-GS](https://github.com/Arntzen-Software/parallel-gs)
 at `cc6184af7e0c03da603045ca371ffa5dae9b0655`, with Granite and four required
@@ -228,28 +244,28 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
 - [x] Qualify the original EE instruction fixture through native Windows and Linux builds.
 - [x] Stream disc/module inventories and bounded direct-control-flow seeds from
   owner input, retaining exact identities and unresolved-target reports.
-- [ ] Complete stripped ELF function boundaries, indirect callbacks and jump
-  tables without promoting embedded data to EE code. Any title-specific facts
-  belong in an explicit input-hash-verified profile.
-- [ ] Add per-module original-byte guards and explicit handling of overlays,
-  unresolved dispatch, self-modifying code and all interpreter fallbacks.
-  The shared registry and generated entry guards now pass original module-switch
-  fixtures; retail loading and dirty-code/runtime-hook integration remain open.
-  IOP and VU interpreters make eventual game execution hybrid even when EE
-  functions are statically translated; the project manifest must declare this.
+- [x] Require reviewed stripped ELF maps covering code/data, indirect callbacks
+  and function boundaries; retain exact-input profiles in exported projects.
+  General automatic recovery of complete maps remains future work.
+- [x] Guard module/function entries, reject unresolved or ambiguous dispatch and
+  disclose IOP/VU interpreters in manifests. Original module-switch fixtures
+  cover overlapping addresses. Runtime self-modification is unsupported.
 - [ ] Qualify IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and scheduler/IRQ
   behavior with original programs. Do not silently replace game logic with
   `ret0`, `ret1` or skipped wrappers.
-- [ ] Implement GS GPU geometry rendering with correct texture/readback/transfer
+- [x] Implement GS GPU geometry rendering with correct texture/readback/transfer
   synchronization, automatic reported software fallback, required-GPU errors,
   current-monitor startup, drawable resize/high-DPI and native fullscreen.
-- [ ] Qualify original input, SPU2 audio, filesystem/CD/DVD reads, MPEG and memory
-  card save/reload behavior. No retail BIOS may be bundled in an output.
-- [ ] Generate a standalone repository with pinned runtime/dependency identities,
-  asset extraction, supported input hashes and honest execution reports. Build
-  and execute it from a clean Windows/Linux checkout before enabling GUI export.
-- [ ] Validate supplied DQVIII boot, modules, rendering, audio and saves. Final
-  playthrough acceptance belongs to the user.
+- [x] Qualify original input, SPU2 mixing, filesystem/CD/DVD reads and memory-card
+  save/reload. Keep BIOS out of exports and enable FFmpeg movie support.
+- [x] Generate a standalone repository with pinned runtime/dependency identities,
+  asset extraction, supported input hashes and honest execution reports.
+  Windows/Linux CI builds the output; Linux executes graphics, while Windows
+  checks explicit required-device failure without claiming GPU execution.
+- [x] Build the supplied DQVIII export and validate bounded boot/rendering/disc
+  access through the exported host.
+- [ ] Validate further DQVIII gameplay, overlays, movies, audio and retail saves.
+  Final playthrough acceptance belongs to the user.
 
 ## Preserved work
 

@@ -25,6 +25,8 @@ inline unsigned sector_size=2048, data_skip=0;
 inline std::unordered_map<std::string,Entry> files;
 inline std::unordered_map<FILE*,Slice> slices;
 inline uint64_t read_bytes=0, read_calls=0;
+inline uint32_t medium_type=0;
+inline int command_priority=0;
 
 inline std::string normalized(std::string name) {
     for(char &c:name) {
@@ -77,11 +79,12 @@ inline int64_t physical_tell(FILE *file) {
 #endif
 }
 
-inline void mount(const std::filesystem::path &path,std::span<const Entry> entries,unsigned sector=2048,unsigned skip=0) {
+inline void mount(const std::filesystem::path &path,std::span<const Entry> entries,unsigned sector=2048,unsigned skip=0,unsigned medium=0) {
     std::lock_guard lock(mutex);
     if(!slices.empty())throw std::runtime_error("cannot replace a PS2 disc with open file views");
     if((sector!=2048&&sector!=2352&&sector!=2336)||skip>sector-2048)
         throw std::runtime_error("invalid PS2 disc sector layout");
+    if(medium!=0&&medium!=0x12&&medium!=0x14)throw std::runtime_error("invalid PS2 disc medium type");
     const uint64_t length=std::filesystem::file_size(path);
     std::unordered_map<std::string,Entry> next;
     for(const auto &entry:entries) {
@@ -96,7 +99,15 @@ inline void mount(const std::filesystem::path &path,std::span<const Entry> entri
         next.emplace(name,Entry{name,entry.lba,entry.size});
     }
     image=path.string();files=std::move(next);sector_size=sector;data_skip=skip;read_bytes=read_calls=0;
+    medium_type=medium?medium:(sector==2048?0x14:0x12);
 }
+
+inline uint32_t medium() {std::lock_guard lock(mutex);return medium_type;}
+inline bool set_priority(int value) {
+    if(value<1||value>126)return false;
+    std::lock_guard lock(mutex);command_priority=value;return true;
+}
+inline int priority() {std::lock_guard lock(mutex);return command_priority;}
 
 inline FILE *open(const char *host,const char *mode,const char *guest) {
     if(!disc_path(guest))return std::fopen(host,mode);

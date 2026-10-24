@@ -106,13 +106,21 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
     base, end = min(entries), max(entries) + 4
     if end - base > 0x02000000: raise PCError('PS2 dense module registry exceeds its 32 MiB address-span bound')
     count = (end - base) // 4
+    targets,dispatches={},{}
     for address, candidates in sorted(entries.items()):
-        if len(candidates) == 1 and candidates[0][0]['guards'].get('guard_scope') == 'function':
-            function = candidates[0][1]
-            lines += [f'static void dispatch_{address:x}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
-                f'    {function}(rdram, ctx, runtime);', '}']
+        if len(candidates) == 1 and candidates[0][0].get('guards',{}).get('guard_scope') == 'function':
+            # The function already guards its exact original bytes. Resume
+            # entries can share that same pointer, avoiding thousands of
+            # identical forwarding wrappers in a retail registry.
+            targets[address]=candidates[0][1]
             continue
-        lines += [f'static void dispatch_{address:x}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
+        key=tuple((m['identity'],f) for m,f in candidates)
+        if key in dispatches:
+            targets[address]=dispatches[key]
+            continue
+        target=f'dispatch_{address:x}'
+        targets[address]=dispatches[key]=target
+        lines += [f'static void {target}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
                   '    PS2Runtime::RecompiledFunction selected = nullptr;']
         for index, (module, function) in enumerate(candidates):
             lines += [f'    bool matches_{index} = false;', '    try {',
@@ -122,15 +130,18 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
                       f'        selected = {function};', '    }']
         # Never catch a mismatch from the selected function: restarting a second
         # implementation after guest side effects would corrupt guest state.
-        lines += [f'    if (!selected) throw decomp_ps2::CodeMismatch("no known module for PC 0x{address:x}");',
+        lines += ['    if (!selected) throw decomp_ps2::CodeMismatch("no known module for resident EE entry");',
                   '    selected(rdram, ctx, runtime);', '}']
     lines += [f'extern const uint32_t g_ps2RecompiledFunctionTableBase = {base}u;',
               f'extern const uint32_t g_ps2RecompiledFunctionTableEnd = {end}u;',
               f'extern const uint32_t g_ps2RecompiledFunctionTableSlotCount = {count}u;',
               f'PS2Runtime::RecompiledFunction g_ps2RecompiledFunctionTable[{count}u] = {{}};',
-              'namespace { struct RegistryInitializer { RegistryInitializer() {']
-    lines += [f'    g_ps2RecompiledFunctionTable[{(address - base) // 4}] = dispatch_{address:x};' for address in sorted(entries)]
-    lines += ['} }; static const RegistryInitializer initialize; }']
+              'namespace { struct Entry { uint32_t slot; PS2Runtime::RecompiledFunction function; };',
+              'const Entry known_entries[] = {']
+    lines += [f'    {{{(address-base)//4}u, {targets[address]}}},' for address in sorted(entries)]
+    lines += ['}; struct RegistryInitializer { RegistryInitializer() {',
+        '    for (const auto &entry : known_entries) g_ps2RecompiledFunctionTable[entry.slot] = entry.function;',
+        '} }; static const RegistryInitializer initialize; }']
     output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     return dict(modules=len(modules), entries=len(entries), shared_entries=sum(len(v) > 1 for v in entries.values()),
         module_identities=[m['identity'] for m in modules],
