@@ -21,6 +21,13 @@ static bool decomp_fullscreen=false, decomp_require_gpu=decomp_default_require_g
 static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
 
+static void decomp_gpu_error() {
+    const char *message="OpenGL GPU rendering was required but is unavailable. Use --renderer software to select compatibility mode.";
+    std::fprintf(stderr,"%s\n",message);
+    if(!g_headless&&!g_hidden_window)
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"GPU renderer unavailable",message,sdl_window);
+}
+
 static int decomp_active_display() {
 #ifdef PSX_SDL3
     float x=0,y=0;SDL_GetGlobalMouseState(&x,&y);
@@ -166,7 +173,7 @@ static bool decomp_capture(int dw,int dh) {
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;
     if(decomp_require_gpu&&gr_backend()!=GR_BACKEND_OPENGL) {
-        std::fprintf(stderr,"OpenGL was explicitly requested but the GPU renderer is unavailable\n");std::exit(1);
+        decomp_gpu_error();std::exit(1);
     }
     if(decomp_switch_frame&&s_frame_count>=decomp_switch_frame) {
         decomp_switch_frame=0;

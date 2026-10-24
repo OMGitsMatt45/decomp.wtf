@@ -47,7 +47,15 @@ def patch(root):
             game_w,game_h,win_flags & ~(Uint32)SDL_WINDOW_OPENGL);
     }
     if (!sdl_window) {
+        if(decomp_require_gpu)decomp_gpu_error();
         std::fprintf(stderr, "SDL_CreateWindow failed: %s\\n", SDL_GetError());''')
+    text=replace(text,'    if (!sdl_renderer) {\n        std::fprintf(stderr, "SDL_CreateRenderer failed: %s\\n", SDL_GetError());',
+        '''    if(!sdl_renderer) {
+        SDL_SetHint(SDL_HINT_RENDER_DRIVER,"software");
+        sdl_renderer=SDL_CreateRenderer(sdl_window,-1,SDL_RENDERER_SOFTWARE);
+    }
+    if (!sdl_renderer) {
+        std::fprintf(stderr, "SDL_CreateRenderer failed: %s\\n", SDL_GetError());''')
     text=replace(text,'    const int h = psx_sdl_display_pixel_height(window);',
         '''    int h=0,w=0;
     if(window)SDL_GL_GetDrawableSize(window,&w,&h);
