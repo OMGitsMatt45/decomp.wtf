@@ -14,8 +14,10 @@ from tools.qualify_ps2_graphics import download, executable, fingerprint, qualif
 def test_source_identity_orders_paths_consistently_on_both_hosts(tmp_path):
     (tmp_path / 'a.cpp').write_bytes(b'lowercase')
     (tmp_path / 'Z.cpp').write_bytes(b'uppercase')
+    (tmp_path / 'a').mkdir()
+    (tmp_path / 'a' / 'nested.cpp').write_bytes(b'nested')
     digest = hashlib.sha256()
-    for name, data in (('Z.cpp', b'uppercase'), ('a.cpp', b'lowercase')):
+    for name, data in (('Z.cpp', b'uppercase'), ('a.cpp', b'lowercase'), ('a/nested.cpp', b'nested')):
         digest.update(name.encode() + b'\0' + hashlib.sha256(data).digest())
     assert fingerprint(tmp_path) == digest.hexdigest()
 
