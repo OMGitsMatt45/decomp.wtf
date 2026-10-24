@@ -53,10 +53,13 @@ game-specific output work; they do not block the common DS milestone.
 
 PS1 is now active in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
 The [native output plan](future/ps1-native.md) records the
-pinned optional runtime candidate, an original generated-C CPU proof and the
-remaining hardware, disc-set and DQVII integration. PS1 retains one project for
-the ordered disc set. Its PC backend remains unavailable until the full runtime
-is qualified. GBA and PS2 follow with separate backends; reuse existing Pokémon
+pinned optional runtime, original generated-C CPU and hardware fixtures, and
+DQVII validation. The [PS1 guide](ps1-native.md) describes the implemented native
+exporter, adaptive GPU presentation, one executable for the ordered disc set,
+shared memory cards and explicit hybrid execution. Windows/Linux CI builds and
+executes original fixtures; full retail playthrough acceptance stays with the
+user. New game adapters must satisfy the shared adaptive GPU contract.
+GBA and PS2 follow with separate backends; reuse existing Pokémon
 source projects and suitable recompiler/runtime projects.
 3DS and Switch remain planned and need import
 and runtime integration as well. GB/GBC retains its assembly workbench; native PC

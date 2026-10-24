@@ -37,7 +37,7 @@ jobs:
       - run: uv sync --locked --group dev --python 3.12
       - name: Install Linux OpenGL and SDL development libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libgl-dev libegl-dev libglx-mesa0 libegl-mesa0 libgl1-mesa-dri
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxss-dev libxtst-dev libasound2-dev libgl-dev libegl-dev libglx-mesa0 libegl-mesa0 libgl1-mesa-dri
       - name: Fetch checksum-pinned optional noncommercial runtime sources
         run: uv run --no-sync python -c "from decompnet import toolchains; toolchains.install('psxrecomp-sdk')"
       - name: Export, build and execute the original ordered two-disc game

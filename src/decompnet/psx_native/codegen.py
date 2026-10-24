@@ -12,12 +12,13 @@ EXPORTS=('psx_game_address_in_text','psx_game_text_native_ok','psx_game_text_nat
 
 def seeds(image,info):
     payload=image[2048:];low=info['load'];high=low+len(payload)
+    start=info.get('code_start',0);end=info.get('code_end',len(payload))
     found={info['entrypoint']}
-    for offset in range(0,len(payload)-3,4):
+    for offset in range(start,end-3,4):
         word=struct.unpack_from('<I',payload,offset)[0]
         if word>>26==3:
             target=((low+offset+4)&0xf0000000)|((word&0x03ffffff)<<2)
-            if low<=target<high:found.add(target)
+            if low+start<=target<low+end:found.add(target)
     return sorted(found)
 
 

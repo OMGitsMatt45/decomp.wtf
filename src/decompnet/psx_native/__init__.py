@@ -94,7 +94,11 @@ def generate(project,root):
     shutil.copyfile(vendor/'bios/OpenBIOS.LICENSE',root/'LICENSES/OpenBIOS-MIT.txt')
     modules=[]
     for disc in project['discs']:
-        modules.append(codegen.module(recompiler,disc,root/f'game/disc{disc["index"]}',_run,sdk))
+        for index,item in enumerate([disc,*disc.get('modules',[])]):
+            folder=root/f'game/disc{disc["index"]}'
+            if index:folder=folder/f'module{index}'
+            item={**item,'module_index':len(modules)+1}
+            modules.append(codegen.module(recompiler,item,folder,_run,sdk))
     codegen.registry(modules,root/'native/modules.c')
     (root/'native/defaults.hpp').write_text('#pragma once\ninline constexpr bool decomp_default_require_gpu='+
         ('true' if project['renderer']=='opengl' else 'false')+';\n',encoding='utf-8')
@@ -154,7 +158,7 @@ checks the pinned SDL3, libchdr and libwebp dependencies automatically.
 Linux desktop builds need X11/OpenGL development packages:
 
 ```sh
-sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
+sudo apt-get install build-essential libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxss-dev libxtst-dev libasound2-dev libgl-dev libegl-dev
 python tools/extract_assets.py /path/to/disc1.cue /path/to/disc2.cue
 cmake -S . -B build
 cmake --build build --config Release --parallel 2

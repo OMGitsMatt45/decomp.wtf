@@ -74,6 +74,37 @@ def test_standalone_executable_stages_a_valid_bootable_disc(tmp_path):
     assert wrapped[0]['image']==discs[0]['image']
 
 
+def test_imported_disc_retains_reviewed_module_bytes_and_rejects_changed_layout(tmp_path):
+    from decompnet.rom import detect,psx_media
+    from decompnet.rom.psx import _Disc
+    from decompnet.rom.errors import RomError
+    path=tmp_path/'original.iso';path.write_bytes(disc())
+    picked=detect.identify(path);root=tmp_path/'imported';root.mkdir()
+    psx_media.snapshot(path,picked,root)
+    layout={**picked.disc,'file':'original-disc.bin'}
+    # A small original raw module inside SAMPLE.BIN has a reviewed load address.
+    file=next(f for f in layout['files'] if f['path']=='SAMPLE.BIN')
+    import hashlib
+    raw=path.read_bytes()[file['lba']*2048:file['lba']*2048+16]
+    mapping=dict(segment='original_overlay',lba=file['lba'],size=len(raw),load=0x80030000,
+        sha256=hashlib.sha256(raw).hexdigest(),code_at=0,path='SAMPLE.BIN')
+    layout['maps'].append(mapping)
+    project=dict(root=str(root),psx_disc=layout,psx_modules={})
+    result=media.project_input(project,1)
+    assert len(result['modules'])==1 and result['modules'][0]['image'][2048:]==raw
+    assert result['modules'][0]['info']['entrypoint']==0x80030000
+    mapping['sha256']='0'*64
+    with pytest.raises(pc.PCError,match='module hash differs'):media.project_input(project,1)
+
+
+def test_existing_export_destination_preserves_authored_sources(tmp_path,monkeypatch):
+    path=tmp_path/'original.iso';path.write_bytes(disc())
+    output=tmp_path/'project';output.mkdir();(output/'user.cpp').write_text('my source')
+    monkeypatch.setattr('decompnet.psx_native._sdk',lambda:pytest.fail('existing output must precede SDK setup'))
+    with pytest.raises(pc.PCError,match='existing work'):export([path],output)
+    assert (output/'user.cpp').read_text()=='my source'
+
+
 def test_invalid_input_and_renderer_do_not_install_tools_or_publish(tmp_path,monkeypatch):
     from decompnet import toolchains
     monkeypatch.setattr(toolchains,'ensure',lambda *_a,**_k:pytest.fail('invalid input must precede tools'))

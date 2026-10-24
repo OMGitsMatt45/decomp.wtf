@@ -1,8 +1,8 @@
 # decomp.wtf
 
 A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS is first. No retail PC-output backend
-is qualified yet.** Existing console reconstruction remains available for the
+PC source repositories for Dragon Quest and Pokémon. **DS and PS1 have experimental
+native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
 [PR #27 preserves main](https://github.com/OMGitsMatt45/decomp.wtf/pull/27) exactly
@@ -15,7 +15,7 @@ of current application support.
 | Console | Source recovery / console reconstruction | Native PC output |
 | --- | --- | --- |
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
-| PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Backend required |
+| PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Backend required |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
@@ -63,12 +63,23 @@ with per-title mappings and an original-DS-audio option; they are not implemente
 yet. BIOS and firmware are not runtime dependencies; an encrypted
 original may need an owner-supplied ARM7 BIOS during initial decoding.
 
+[PS1 output](docs/ps1-native.md) builds generated game C with a complete source
+runtime: adaptive OpenGL geometry, audio, keyboard/gamepad input, CD-ROM and
+shared memory cards. Ordered discs become one repository and executable; F9/F10
+change the inserted disc. It uses bundled MIT OpenBIOS and needs no retail BIOS.
+The optional pinned PSXRecomp dependency has **PolyForm Noncommercial** terms,
+shown in the app and generated README/licenses. Execution is hybrid: recognized
+code runs natively; unresolved or modified code is interpreted. Runtime guest-code
+compilation is disabled. The shared GPU standard applies to all new game outputs;
+PS1 uses one screen and DS retains its optional unified camera.
+
 ## Install and run
 
 ```sh
 uv sync --locked --group dev
 uv run decomp
 uv run decomp pc status --platform nds
+uv run decomp pc psx-native /path/to/game.m3u /path/to/new-source --experimental
 uv run decomp pc verify /path/to/generated/pc-project
 ```
 
@@ -89,10 +100,10 @@ Install the following only for the features you choose:
 | [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
-| [Python 3.9+](https://www.python.org/downloads/) | Standalone asset extraction in generated DS PC repositories. The main application uses Python 3.12+, managed by uv. |
-| [CMake 3.20+](https://cmake.org/download/) | Building generated native PC projects and running the output-contract fixture. |
+| [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1. The main application uses Python 3.12+, managed by uv. |
+| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS, 3.24+ for PS1. Also required to generate PS1 C with its automatically built emitter. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
-| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | GPU rendering in generated DS projects requires OpenGL 3.3. Use the driver for your card, or your Linux distribution's graphics packages. Automatic mode retains software presentation if unavailable. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1 projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
@@ -116,6 +127,12 @@ sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
 Use the equivalent development packages on other distributions. Headless DS
 builds (`-DNDS_WITH_SDL=OFF`) do not need desktop graphics libraries.
 
+PS1's pinned SDL3 additionally needs X11 extension and audio development packages:
+[SDL3 Linux dependency guide](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies).
+Its generated README includes the complete Ubuntu/Debian install command.
+SDL3, libchdr, libwebp and the PSXRecomp source archive download automatically;
+they do not require separate manual downloads.
+
 ## Development and scope
 
 The [roadmap](docs/future-work.md) separates shared application work from platform
@@ -131,10 +148,10 @@ The DS workflow installs the pinned source runtime and requires SDL checks on
 Windows/Linux plus OpenGL execution on Linux. See the [native guide](docs/nds-native-runtime.md)
 for GPU qualification and conservative compatibility limits.
 
-DS native output is merged in PR #29. [PS1 native output](docs/future/ps1-native.md)
-is now active, starting with an optional noncommercial runtime candidate and an
-original generated-C CPU proof. A complete PS1 PC export is not available yet;
-the first retail target is DQVII with both discs in one source project/build.
+DS native output is merged in PR #29. [PS1 native output](docs/ps1-native.md)
+is implemented in PR #30 with an original two-disc hardware fixture and a
+Windows/Linux standalone build/execution workflow. DQVII is the first retail
+target; boot checks and full playthrough acceptance remain distinct.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

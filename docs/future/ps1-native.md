@@ -20,13 +20,14 @@ pinned to `31df2e1e0e0a6525733e68ff70e72ecbef84bb09`:
 | Emitter code-generation identifier | `115b1739` |
 | [Candidate license](https://github.com/RetroPortingToolKit/psxrecomp/blob/31df2e1e0e0a6525733e68ff70e72ecbef84bb09/LICENSE) | PolyForm Noncommercial 1.0.0; separate from this application's MIT license |
 | Candidate's default execution model | Hybrid: static C, interpreter fallback, runtime code compilation |
-| BIOS candidate | Bundled MIT OpenBIOS; its complete integration is still unqualified |
+| BIOS | Bundled MIT OpenBIOS, executed by the original hardware fixture; no retail BIOS required |
 
-The candidate is optional and is not installed by application setup or registered
-as a PC backend. Its noncommercial terms must remain visible in any integration
+The dependency is optional and is not installed by application setup. Its native
+adapter is registered as experimental. Its noncommercial terms remain visible in the integration
 and generated output. This assessment does not change decomp.wtf's MIT license
 or establish commercial use rights for the candidate. The default hybrid model
-must be reported honestly, including both fallback mechanisms.
+is reported honestly. This integration disables runtime guest-code compilation
+and retains the interpreter fallback.
 
 ## Implemented execution proof
 
@@ -43,8 +44,8 @@ external linkage and a linker reference. Actual Windows execution caught its
 removal as an unused static pointer, including with `/OPT:NOREF`; compiling the
 candidate alone had not exposed that failure. Reports record the generated
 file's before/after hashes, and execution requires the marker to initialize.
-The external candidate checkout stays unchanged. This fix still needs to be
-carried into the complete runtime integration, including its BIOS initializer.
+The external candidate checkout stays unchanged. The complete runtime integration
+also applies this fix to every game module and the BIOS initializer.
 
 The harness supplies bounded RAM, disabled interrupts and an immutable-code guard.
 It does not qualify the candidate's dirty-memory implementation, full R3000
@@ -71,7 +72,7 @@ The `PS1 native runtime candidate` workflow builds and runs this proof on Window
 and Linux, including a fresh rebuild from the retained output. No game, retail
 BIOS, proprietary SDK or recovered game source enters the workflow.
 
-## Local hardware observations awaiting final qualification
+## Hardware integration
 
 The development standalone project has executed an original two-disc ISO fixture
 against the complete runtime. Observed checks include native guest dispatch,
@@ -86,31 +87,25 @@ configuration issue: missing EVENT/TCB/STACK values remained zero. The developme
 integration initializes their documented defaults before the existing parser
 handles explicit values. A regression fixture must retain the omitted settings.
 
-These observations are development evidence, not finished backend qualification.
-The standalone exporter/application changes are still in the disconnected cloud
-workspace and are not included in this published branch. A fresh source export,
-Windows/Linux execution, resize/fallback and live disc-swap tests, application
-regressions and targeted DQVII checks remain necessary before declaring PS1 done.
+The standalone exporter and CLI/GUI/connected-agent paths are implemented in this
+branch. A fresh source export additionally passed native/interpreted guest
+comparison, a live tray change retaining the resident native module, adaptive
+OpenGL resize to 1200×900, portrait, native-monitor fullscreen and reported
+software fallback. Windows/Linux CI builds and executes original fixtures from
+the exported source. Targeted DQVII evidence and full playthrough acceptance
+remain separate from the original qualification.
 The shared GPU requirement is documented in the
 [PC output specification](../pc-output.md#shared-gpu-presentation-standard).
 
-## Remaining integration
+## Qualification scope
 
-1. Build a standalone source repository against the complete pinned hardware
-   runtime. Qualify original guest programs for GPU/GTE, audio, input, timing,
-   interrupts, CD-ROM reads and persistent memory-card save/reload. Review and
-   pin additional dependency/license requirements. Keep fallback counts visible.
-2. Prove an original ordered two-disc fixture through the existing disc-set
-   importer, one generated build and runtime disc switching. Preserve each disc's
-   identity/hash and shared save state, including both entry-point and overlay
-   dispatch. Missing or reordered media must produce a useful error.
-3. Register the PS1 adapter only after its standalone project builds and executes
-   on Windows/Linux. Add CLI, GUI and optional agent access through the shared
-   PC-project contract. Provide GPU rendering and a window/fullscreen size that
-   adapts to the user's display rather than a fixed host resolution.
-4. Adapt the reviewed DQVII boot, streamed module and archive facts to the runtime.
-   Use targeted automated boot/module/save/disc checks, fixing failures with
-   original regressions where possible. The user owns playthrough acceptance.
+The [implemented guide](../ps1-native.md) records the source export and execution
+model. Original CPU and hardware fixtures exercise different boundaries;
+neither proves all GTE operations, every peripheral, accurate timing for every
+title, all controller models or general retail compatibility. DQVII's reviewed
+archive/module facts are reused when exporting its retained project. Targeted
+automated checks should gain original regressions when they expose a runtime
+failure. The user owns full playthrough acceptance.
 
 Do not substitute reconstruction success, matching percentages or CMake
 configuration for native game execution. A generally useful translator/runtime

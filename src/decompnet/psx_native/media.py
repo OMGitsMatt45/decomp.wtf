@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
+import struct
 
 from .. import pc
 from ..rom import chd, psx, psx_media
@@ -84,11 +85,33 @@ def project_input(project,index):
     original=root/layout['file'];container=layout.get('media')
     if container:psx_media.verify_files(original,layout)
     elif sha(original)!=layout['sha256']:raise pc.PCError('the retained PS1 disc hash differs')
+    def reviewed(source):
+        from ..rom.psx_layout import read_map
+        modules=[]
+        for mapping in layout.get('maps',[]):
+            if mapping.get('load') is None:continue
+            raw=read_map(psx._Disc(source),mapping)
+            if hashlib.sha256(raw).hexdigest()!=mapping['sha256']:
+                raise pc.PCError('reviewed PS1 module hash differs: '+mapping['segment'])
+            if raw[:8]==b'PS-X EXE':image,info=psx.read_exe(raw,mapping['segment'])
+            else:
+                meta=project.get('psx_modules',{}).get(mapping['segment'],{})
+                start=meta.get('code_start',mapping.get('code_at',0));end=meta.get('code_end',len(raw))
+                if not 0<=start<end<=len(raw) or start%4 or end%4:
+                    raise pc.PCError('reviewed PS1 module code bounds differ')
+                header=bytearray(2048);header[:8]=b'PS-X EXE'
+                struct.pack_into('<4I',header,0x10,mapping['load']+start,meta.get('gp',0),mapping['load'],len(raw))
+                image,info=psx.read_exe(bytes(header)+raw,mapping['segment'])
+                info.update(code_start=start,code_end=end)
+            modules.append(dict(index=index,image=image,info=info,boot=mapping['segment']+'.EXE'))
+        return modules
     if container:
         with psx_media.decoded(original,container) as stream:
             raw,boot,platform=psx.from_disc(stream)
+            modules=reviewed(stream)
     else:
-        with original.open('rb') as stream:raw,boot,platform=psx.from_disc(stream)
+        with original.open('rb') as stream:
+            raw,boot,platform=psx.from_disc(stream);modules=reviewed(stream)
     if platform!='psx':raise pc.PCError('this is a PS2 disc, not a PS1 game')
     image,info=psx.read_exe(raw,boot)
     if container and container['kind']=='cue':
@@ -102,5 +125,5 @@ def project_input(project,index):
     else:
         path=original;files=[dict(source='',name=path.name,sha256=sha(path),size=path.stat().st_size)]
         hashes=[files[0]['sha256']]
-    return dict(index=index,path=path,files=files,kind='disc',image=image,info=info,boot=boot,
+    return dict(index=index,path=path,files=files,kind='disc',image=image,info=info,boot=boot,modules=modules,
                 identity=hashlib.sha256(json.dumps(hashes).encode()).hexdigest(),asset=f'assets/disc{index}/{path.name}')
