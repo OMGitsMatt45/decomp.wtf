@@ -13,9 +13,10 @@ from decompnet.ps2_native import media
 from decompnet.ps2_native.reports import generation_report
 from decompnet.rom.psx import _Disc
 from tests.fixtures.ps2_native import BASE, program
+from decompnet.ps2_native.modules import mwo3_elf
 
 
-def disc(path, *, nested=False, boot=b'cdrom0:\\SLUS_999.99;1'):
+def disc(path, *, nested=False, boot=b'cdrom0:\\SLUS_999.99;1', extra=None):
     image = pycdlib.PyCdlib(); image.new(interchange_level=3, vol_ident='PS2_ORIGINAL')
     if nested:
         image.add_directory('/BIN'); boot = b'cdrom0:\\BIN\\SLUS_999.99;1'
@@ -25,6 +26,7 @@ def disc(path, *, nested=False, boot=b'cdrom0:\\SLUS_999.99;1'):
     entries = {'/SYSTEM.CNF;1': b'BOOT2 = ' + boot + b'\r\nVER = 1.00\r\n',
         ('/BIN' if nested else '') + '/SLUS_999.99;1': raw,
         '/MODULES/ORIGINAL.IRX;1': irx}
+    entries.update(extra or {})
     for name, data in entries.items(): image.add_fp(BytesIO(data), len(data), iso_path=name)
     image.write(str(path)); image.close()
     return raw
@@ -128,3 +130,54 @@ def test_zero_exit_and_zero_decode_failures_do_not_hide_emission_errors():
     with pytest.raises(PCError, match='incomplete'): generation_report(summary)
     report = generation_report(summary + 'Warnings: 2, errors: 0', expected_functions=19)
     assert report['errors'] == 0 and report['warnings'] == 2
+
+
+def overlay(module_id=7, load=0x500000):
+    code = b'\x08\x00\xe0\x03\0\0\0\0'  # original JR $ra / NOP
+    data = struct.pack('<II', load + 64, 0)
+    header = struct.pack('<4s7I32s', b'MWo3', module_id, load, len(code), len(data), 32,
+        load + 64 + len(code), load + 64 + len(code) + len(data), b'original.bin')
+    return header + code + data
+
+
+def test_generic_metrowerks_overlays_share_addresses_with_independent_identities(tmp_path):
+    one, two = overlay(7), overlay(13)
+    path = tmp_path / 'original.iso'
+    disc(path, extra={'/MODULES/ONE.BIN;1': one, '/MODULES/TWO.BIN;1': two})
+    modules = media.inspect(path)['overlays']
+    assert [m['id'] for m in modules] == [7, 13]
+    assert modules[0]['load_address'] == modules[1]['load_address'] == 0x500000
+    assert modules[0]['sha256'] != modules[1]['sha256']
+    assert modules[0]['constructors'] == [0x500040, 0]
+    assert modules[0]['bss_size'] == 32 and not modules[0]['elf_reservations']
+
+
+@pytest.mark.parametrize('offset,value', [(8, 0x1FFFFFF), (12, 0x10000), (24, 0x400000), (28, 0x600000)])
+def test_mwo3_rejects_invalid_ranges_and_constructor_tables(offset, value):
+    raw = bytearray(overlay()); struct.pack_into('<I', raw, offset, value)
+    with pytest.raises(PCError): media.mwo3_info(raw)
+
+
+@pytest.mark.parametrize('load', [0x500000, 0x80040000, 0xA0120000])
+def test_mwo3_analysis_elf_preserves_load_image_and_separates_data(load):
+    from elftools.elf.elffile import ELFFile
+    original = overlay(19, load)
+    wrapped = mwo3_elf(original)
+    facts = media.elf_info(wrapped)
+    elf = ELFFile(BytesIO(wrapped))
+    segment = elf.get_segment(0)
+    assert segment.data() == original
+    assert segment['p_vaddr'] == load
+    assert segment['p_memsz'] == len(original) + 32
+    assert elf.get_section_by_name('.mwo3').data() == original[:64]
+    assert elf.get_section_by_name('.text').data() == original[64:72]
+    assert elf.get_section_by_name('.data').data() == original[72:]
+    assert elf.get_section_by_name('.bss')['sh_type'] == 'SHT_NOBITS'
+    assert not elf.get_section_by_name('.data')['sh_flags'] & 4
+    assert facts['executable_sections'] == [dict(index=2, address=load + 64, size=8, offset=0x140)]
+    assert facts['stripped'] and facts['entry'] == load + 64
+
+
+def test_mwo3_analysis_does_not_guess_an_unknown_module_layout():
+    with pytest.raises(PCError, match='MWo3'):
+        mwo3_elf(b'unknown overlay format')

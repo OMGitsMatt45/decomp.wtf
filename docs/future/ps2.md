@@ -4,8 +4,9 @@ Implementation work continues in [PR #5](https://github.com/OMGitsMatt45/decomp.
 based on main after the DS and PS1 native output merges. The target is one
 standalone CMake source project with generated EE game code, source-shipped
 runtime, locally extracted assets and adaptive GPU rendering. PS2 has one
-screen. DQVIII is the first intended retail validation input; it has not yet
-been supplied for this milestone.
+screen. DQVIII is the first supplied retail validation input. Import, module
+discovery, translation, runtime and export remain shared PS2 components; a
+title-specific profile cannot qualify other games or replace generic support.
 
 ## Candidate assessment
 
@@ -67,13 +68,23 @@ Original tests exercise nested paths, sparse DVD extents above 4 GiB, stripped
 ELFs, overlapping zero-fill BSS loads, malformed/truncated layouts and input
 changes during inspection. Unsafe or unsupported ISO layouts fail explicitly.
 
+Metrowerks MWo3 overlays are recognized from their own headers, with independent
+hashes, load/text/data/BSS extents and constructor tables. An overlay can be
+wrapped for analysis as an ELF while preserving its entire original load image
+and marking only its declared text executable. This adapter has no title table
+or fixed load address. Its synthetic ELF entry marks the start of text; it is
+not evidence of a standalone module entry or complete function recovery.
+
 The privately supplied USA DQVIII archive contained all 252 volumes and passed
 its archive CRC check. The ISO is 4,180,148,224 bytes, SHA-256
 `a38f71b7a02f1ae0fe65cc78137ee9c943b75b44473ae1cd5ed89ef0e61400e9`.
 Its boot program is `SLUS_212.07` (2,960,032 bytes), SHA-256
 `56ac18170704111c9cbf2f3a8a71ee5b708f39706649671ca1b1314451ef9c28`.
-It has no function symbols, multiple overlapping BSS loads and 16 IOP IRX
-modules. These are input facts, not boot/gameplay evidence.
+It has no function symbols, six overlapping zero-file-size ELF reservations and
+16 IOP IRX modules. The generic parser independently discovers six MWo3 overlays;
+each matches one reservation exactly. These are input facts, not boot/gameplay
+evidence. Original fixtures verify shared-address modules with different IDs,
+hashes and load addresses, including cached/uncached EE aliases.
 
 The unmodified candidate's initial function scan reported 8,314 functions and
 zero decode failures, but its separate emission report contained 7,948 errors.

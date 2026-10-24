@@ -89,6 +89,32 @@ def elf_info(data: bytes, *, boot_name: str = '') -> dict:
         executable_sections=executable_sections)
 
 
+def mwo3_info(data: bytes) -> dict:
+    """Metrowerks overlays describe their own addresses; no title table needed."""
+    if len(data) < 64 or data[:4] != b'MWo3': raise PCError('expected a complete MWo3 overlay header')
+    module_id, load, text_size, data_size, bss_size, ctor_begin, ctor_end = struct.unpack_from('<7I', data, 4)
+    if load & 3 or text_size & 3 or not text_size or len(data) != 64 + text_size + data_size:
+        raise PCError('MWo3 overlay code alignment or file size differs from its header')
+    region, physical = _ram(load, len(data) + bss_size)
+    if region != 'ee-ram': raise PCError('MWo3 overlay does not fit EE RAM')
+    constructors = []
+    if ctor_begin or ctor_end:
+        if (ctor_begin & 3 or ctor_end & 3 or not load + 64 <= ctor_begin <= ctor_end <= load + len(data)):
+            raise PCError('MWo3 constructor table exceeds its file-backed image')
+        for offset in range(ctor_begin - load, ctor_end - load, 4):
+            address = struct.unpack_from('<I', data, offset)[0]
+            if address not in (0, 0xFFFFFFFF):
+                if address & 3: raise PCError('MWo3 constructor pointer is unaligned')
+                _ram(address, 4)
+            constructors.append(address)
+    name = data[32:64].split(b'\0', 1)[0].decode('ascii')
+    if any(ord(c) < 32 for c in name): raise PCError('MWo3 overlay name contains control characters')
+    return dict(format='MWo3', id=module_id, name=name, load_address=load, physical=physical,
+        text_address=load + 64, text_size=text_size, data_size=data_size, bss_size=bss_size,
+        memory_size=len(data) + bss_size, size=len(data), sha256=hashlib.sha256(data).hexdigest(),
+        constructor_begin=ctor_begin, constructor_end=ctor_end, constructors=constructors)
+
+
 def _both(raw, offset, width, field):
     a = int.from_bytes(raw[offset:offset + width], 'little')
     b = int.from_bytes(raw[offset + width:offset + 2 * width], 'big')
@@ -158,14 +184,23 @@ def inspect(path: Path, *, hash_input: bool = True) -> dict:
                 if any(part in ('', '.', '..') for part in name.split('/')):
                     raise PCError('PS2 BOOT2 path is invalid')
                 program = elf_info(read(name, MAX_PROGRAM), boot_name=name)
+                overlays = []
                 for rec in entries:
                     if rec['directory']: continue
-                    header = disc.read(rec['lba'], min(rec['size'], 52))
+                    header = disc.read(rec['lba'], min(rec['size'], 64))
                     if header[:4] == b'\x7fELF':
                         rec['elf_type'] = int.from_bytes(header[16:18], 'little')
                         rec['role'] = 'iop-irx' if rec['elf_type'] in (0xFF80, 0xFF81) else 'ee-elf' if rec['path'] == name else 'elf-module'
+                    elif header[:4] == b'MWo3':
+                        overlay = mwo3_info(read(rec['path'], MAX_PROGRAM))
+                        overlay['path'] = rec['path']
+                        overlay['elf_reservations'] = [s['index'] for s in program['loads']
+                            if not s['file_size'] and s['region'] == 'ee-ram' and
+                            s['physical'] == overlay['physical'] and s['memory_size'] == overlay['memory_size']]
+                        overlays.append(overlay); rec['role'] = 'ee-overlay'; rec['overlay_format'] = 'MWo3'
                 result = dict(input_kind='disc', sector_size=disc.size, sector_data_offset=disc.skip,
                     volume_blocks=blocks, program=program, files=entries,
+                    overlays=overlays,
                     iop_modules=[e['path'] for e in entries if e.get('role') == 'iop-irx'])
             digest = _hash(stream) if hash_input else None
             after = os.fstat(stream.fileno())
