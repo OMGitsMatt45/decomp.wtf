@@ -26,9 +26,13 @@ loads, quadword memory operations, packed MMI operations, branch/likely delay
 slots and direct/indirect calls. The runner starts no window and uses no BIOS,
 retail code, original console compiler, instruction patches or return stubs.
 
-These checks qualify CPU translation only. The assessment host rejects changed
-fixture bytes before dispatch; upstream's generated table does not itself
-guard newly loaded overlays. Missing function dispatch is configured to stop.
+These checks qualify CPU translation only. The integration guards every emitted
+function entry against its own original executable sections, including direct
+calls that bypass runtime lookup. The assessment alters code before dispatching
+each of the 19 entries and requires a specific code-mismatch rejection. The
+original candidate's generated table has no such guards. Mutable executable
+sections and self-modification within a running function remain unsupported;
+module switching needs a separate guarded registry. Missing dispatch stops.
 No graphics, audio, IOP, vector unit, save, gameplay or general retail claim
 follows from a CPU result. The app does not register a PS2 PC backend yet.
 Logs, generated sources, expected/actual state and the candidate license remain
@@ -93,6 +97,12 @@ data as instructions. The integration now requires a complete diagnostic report
 and rejects emission errors even when exit status and decode counts say success.
 The original CPU fixture still has zero emission errors. Stripped function and
 code/data discovery needs further work before this retail output can be built.
+
+Wrapping the six discovered overlays with the shared MWo3 adapter yields 1,146
+emitted functions in the initial candidate scan, with zero emission errors,
+stubs, skipped functions or decode failures (110 warnings). This records source
+emission only: function completeness, compilation, module switching and execution
+still need validation. No reviewed DQVIII address map was supplied to this scan.
 
 ## Runtime work required before game output
 

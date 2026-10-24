@@ -153,6 +153,11 @@ is implemented in PR #30 with an original two-disc hardware fixture and a
 Windows/Linux standalone build/execution workflow. DQVII is the first retail
 target; boot checks and full playthrough acceptance remain distinct.
 
+[PS2 native output](docs/future/ps2.md) is in development in PR #5. Shared disc
+and overlay discovery, original EE execution and a separate Vulkan GS renderer
+are under qualification. PS2 PC game export is not enabled yet; its target is
+the same standalone source-project and adaptive GPU contract as DS and PS1.
+
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private
 retail sources and all failed recovery attempts are checkpointed in

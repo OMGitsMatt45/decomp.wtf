@@ -58,6 +58,9 @@ def test_generated_cpp_matches_original_ee(candidate, tmp_path):
     assert report['app_backend_registered'] is False
     assert report['interpreter_fallback'] is False
     assert report['runtime_code_generation'] is False
+    assert report['changed_code_guard'] == 'generated-function-entry'
+    assert report['code_guards']['guarded_functions'] == 19
+    assert not report['code_guards']['self_modification_within_function_qualified']
 
 
 def test_source_identity_rejects_modifications(candidate, tmp_path):

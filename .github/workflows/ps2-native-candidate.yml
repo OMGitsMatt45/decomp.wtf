@@ -10,6 +10,7 @@ on:
       - 'src/decompnet/pc_cli.py'
       - 'tests/test_ps2_native_candidate.py'
       - 'tests/test_ps2_native_media.py'
+      - 'tests/test_ps2_native_codegen.py'
       - 'tests/fixtures/ps2_native.py'
       - '.github/workflows/ps2-native-candidate.yml'
       - 'pyproject.toml'
@@ -49,7 +50,7 @@ jobs:
           "import os; from tools.qualify_ps2_runtime import download; download(os.environ['DECOMP_PS2_CANDIDATE_ROOT'])"
       - name: Generate C++, build the runtime and compare original instruction execution
         run: >-
-          uv run --no-sync python -m pytest -q tests/test_ps2_native_candidate.py tests/test_ps2_native_media.py
+          uv run --no-sync python -m pytest -q tests/test_ps2_native_candidate.py tests/test_ps2_native_media.py tests/test_ps2_native_codegen.py
           --basetemp=ps2-native-results --junitxml=ps2-native-results.xml
       - uses: actions/upload-artifact@v4
         if: always()

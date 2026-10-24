@@ -62,9 +62,15 @@ executes original fixtures; full retail playthrough acceptance stays with the
 user. New game adapters must satisfy the shared adaptive GPU contract.
 PS2 implementation is active in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).
 Its [native output plan](future/ps2.md) starts with original EE execution and a
-pinned optional PS2Recomp assessment. PS2 game output remains unavailable until
-the complete runtime and adaptive GPU renderer satisfy the shared contract.
-DQVIII is the first intended retail target. GBA follows with a separate backend;
+pinned optional PS2Recomp assessment. Native CPU tests and a separate pinned GS
+Vulkan renderer now build on Windows/Linux; Linux executes original GS packets.
+Shared streaming disc inspection discovers EE/IOP programs and Metrowerks
+overlays from their formats, preserving separate module identities. Generated
+function entries reject changed executable bytes. PS2 game output remains
+unavailable until module dispatch, the complete runtime and adaptive GPU
+presentation satisfy the shared contract. DQVIII is the first supplied retail
+input; its six overlays test the generic path without a title address map.
+GBA follows with a separate backend;
 reuse existing Pokémon source projects and suitable recompiler/runtime projects.
 3DS and Switch remain planned and need import
 and runtime integration as well. GB/GBC retains its assembly workbench; native PC

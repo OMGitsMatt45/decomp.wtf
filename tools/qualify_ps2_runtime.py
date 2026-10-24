@@ -19,6 +19,7 @@ import tempfile
 
 from tests.fixtures.ps2_native import cases, program, reference, MASK64
 from decompnet.ps2_native.reports import generation_report
+from decompnet.ps2_native.codegen import guard_generated
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUTS = json.loads((ROOT / 'tools/ps2_runtime/inputs.json').read_text())
@@ -137,6 +138,7 @@ def qualify(sdk, destination):
     generation = run([recompiler, 'config.toml'], fixture, destination / 'generation.log')
     statistics = generation_report(generation, expected_functions=len(entries))
     if not list((fixture / 'generated').glob('*.cpp')): raise ValueError('candidate emitted no source')
+    guards = guard_generated(fixture / 'generated', image, expected_functions=statistics['recompiled'])
     run(config + ['-DDECOMP_PS2_PROBE_DIR=' + fixture.as_posix()], destination, destination / 'native-configure.log')
     run(['cmake', '--build', build, '--target', 'ps2_cpu_probe', '--config', 'Release', '--parallel', '2'],
         destination, destination / 'native-build.log')
@@ -153,11 +155,12 @@ def qualify(sdk, destination):
             (fixture / f'case-{index}-expected.json').write_text(json.dumps(expected, indent=2))
             raise ValueError(f'original/native mismatch: {name}, case {index}; inspect case JSON')
         checks.append(dict(function=name, a=f'{a:032x}', b=f'{b:032x}'))
-    tampered = fixture / 'tampered.json'
-    run([native, f'{entries["word_add"]:x}', '0', '0', '0', '0', tampered, 'cpu', 'tamper'],
-        fixture, destination / 'tampered.log', timeout=30)
-    if json.loads(tampered.read_text()) != {'native_rejected': True}:
-        raise ValueError('assessment host did not reject changed original bytes')
+    for name, entry in entries.items():
+        tampered = fixture / f'tampered-{name}.json'
+        run([native, f'{entry:x}', '0', '0', '0', '0', tampered, 'cpu', 'tamper'],
+            fixture, destination / f'tampered-{name}.log', timeout=30)
+        if json.loads(tampered.read_text()) != {'native_rejected': True}:
+            raise ValueError('generated function did not reject changed module bytes: ' + name)
     if identity(sdk) != original_identity: raise ValueError('qualification changed the pinned source checkout')
     compiler_file = next((build / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake'))
     compiler_info = compiler_file.read_text(encoding='utf-8')
@@ -172,7 +175,7 @@ def qualify(sdk, destination):
         generated_sources={p.relative_to(fixture).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in sorted((fixture / 'generated').iterdir()) if p.is_file()},
         execution_model='static-recompiled', interpreter_fallback=False, runtime_code_generation=False,
-        changed_code_guard='assessment-host-only',
+        changed_code_guard='generated-function-entry', code_guards=guards,
         qualification=dict(cpu=True, graphics=False, iop=False, vu=False, audio=False, saves=False, retail=False),
         app_backend_registered=False, ffmpeg_enabled=False)
     (destination / 'assessment.json').write_text(json.dumps(report, indent=2) + '\n')
