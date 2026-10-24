@@ -153,12 +153,18 @@ OBSERVE=[0x80020000,0x80020100,0x8002000c,0x80020010,0x80020018,0x8002001c]
 def run(project,name,*args,interp=False,driver='dummy',ok=True):
     work,root,exe=project;report=work/(name+'.json');capture=work/(name+'.ppm')
     env={**os.environ,'SDL_AUDIODRIVER':'dummy','SDL_VIDEODRIVER':driver,
-         'EGL_PLATFORM':'surfaceless','LIBGL_ALWAYS_SOFTWARE':'1'}
+         'EGL_PLATFORM':'surfaceless','LIBGL_ALWAYS_SOFTWARE':'1',
+         'DECOMP_PSX_TRACE':'1','PSX_FRAME_REPORT_MS':'1000'}
     if interp:env['PSX_FORCE_INTERP']='1'
     command=[str(exe),'--frames','600','--report',str(report),'--capture',str(capture),
              '--memcard-dir',str(work/'shared-saves')]
     for address in OBSERVE:command+=['--observe',hex(address)]
-    done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=90)
+    try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=90)
+    except subprocess.TimeoutExpired as error:
+        def decoded(value):return value.decode('utf-8','replace') if isinstance(value,bytes) else value or ''
+        output=decoded(error.stdout)+decoded(error.stderr)
+        (work/(name+'.log')).write_text(output,encoding='utf-8')
+        pytest.fail('runtime timed out:\n'+output[-8000:])
     (work/(name+'.log')).write_text(done.stdout+done.stderr)
     if not ok:
         assert done.returncode!=0

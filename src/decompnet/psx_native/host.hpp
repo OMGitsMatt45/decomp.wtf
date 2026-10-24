@@ -172,6 +172,13 @@ static bool decomp_capture(int dw,int dh) {
 }
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;
+    if(s_frame_count%60==0&&std::getenv("DECOMP_PSX_TRACE")) {
+        std::fprintf(stderr,"decomp.wtf: frame=%llu pc=%08x ra=%08x native=%llu interpreted=%llu observed=",
+            (unsigned long long)s_frame_count,decomp_cpu?decomp_cpu->pc:0,decomp_cpu?decomp_cpu->gpr[31]:0,
+            (unsigned long long)decomp_native_dispatches,(unsigned long long)g_dirty_ram_insns_run);
+        for(auto address:decomp_observe)std::fprintf(stderr," %08x",psx_read_word(address));
+        std::fputc('\n',stderr);std::fflush(stderr);
+    }
     if(decomp_require_gpu&&gr_backend()!=GR_BACKEND_OPENGL) {
         decomp_gpu_error();std::exit(1);
     }
