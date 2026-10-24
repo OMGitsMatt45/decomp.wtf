@@ -181,7 +181,8 @@ struct Display::Impl {
             try {create_gl();}
             catch(const std::exception& error) {
                 cleanup();
-                if(options.renderer=="opengl"||options.screen_mode=="unified")throw;
+                if(options.renderer=="opengl")throw;
+                options.screen_mode="dual";device_name.clear();
                 std::cerr<<"OpenGL unavailable; using software screens: "<<error.what()<<'\n';
             }
         }
