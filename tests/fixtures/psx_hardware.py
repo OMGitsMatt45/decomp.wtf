@@ -47,10 +47,18 @@ def executable(index=1):
     p.li(4,2);p.emit(0x0000000c,0)
     p.call('alias_start');p.call('alias_tail')
     p.store(0x80020000,index)
-    for value in (0x00000000,0x03000000,0x08000001,0x05000000,0x06c60260,0x07040010):p.store(0x1f801814,value)
+    for value in (0x00000000,0x03000000,0x08000011 if index==2 else 0x08000001,
+                  0x05000000,0x06c60260,0x07040010):p.store(0x1f801814,value)
     for value in (0xe1000400,0xe3000000,0xe403bd3f,0xe5000000,
                   0x02004000,0,(240<<16)|320,
                   0x200000ff,0x00100010,0x00100130,0x00e00010):p.store(0x1f801810,value)
+    if index==2:
+        # Original RGB888 scanout regression: four red pixels occupy three
+        # 32-bit upload words, not four 1555 pixels in the geometry FBO.
+        for value in (0xa0000000,0,(240<<16)|480):p.store(0x1f801810,value)
+        p.li(8,0x1f801810);p.li(9,0xff0000ff);p.li(10,0x00ff0000);p.li(11,0x0000ff00);p.li(12,19200)
+        p.label('rgb888');p.emit(0xad090000,0xad0a0000,0xad0b0000,0x258cffff)
+        p.branch(5,12,0,'rgb888')
     # A looping original ADPCM block through the SPU transfer FIFO and voice 0.
     for address,value in ((0x1f801daa,0xc010),(0x1f801da6,0x0200),(0x1f801dac,4)):
         p.store(address,value,True)

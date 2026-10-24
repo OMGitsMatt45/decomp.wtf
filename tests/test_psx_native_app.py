@@ -35,6 +35,7 @@ def test_browser_routes_ordered_ps1_discs_without_ds_save_or_screen_options(tmp_
     monkeypatch.setattr(net,'generate_psx_pc',generate)
     monkeypatch.setattr(net,'generate_ds_pc',lambda *_a,**_k:pytest.fail('PS1 must not use DS generation'))
     one=tmp_path/'disc1.iso';two=tmp_path/'disc2.iso';one.write_bytes(disc());two.write_bytes(disc(2))
+    before=(one.read_bytes(),two.read_bytes())
     mcp,manager,security=build(net,tmp_path/'home',6499,'secret')
     app=mcp.streamable_http_app(transport_security=security,host='127.0.0.1')
     try:
@@ -50,7 +51,7 @@ def test_browser_routes_ordered_ps1_discs_without_ds_save_or_screen_options(tmp_
             assert 'save_type' not in calls[0][1] and 'screen_mode' not in calls[0][1]
             bad=finish(client,client.post('/api/import',params={**q,'discs':'{}'},headers=h))
             assert bad['state']=='error' and len(calls)==1
-            assert one.read_bytes()==disc() and two.read_bytes()==disc(2)
+            assert (one.read_bytes(),two.read_bytes())==before
     finally:manager.stop()
 
 

@@ -130,13 +130,19 @@ static bool decomp_event(const SDL_Event &event) {
 static bool decomp_capture(int dw,int dh) {
     if(decomp_capture_path.empty())return true;
     GpuDisplayInfo di;gpu_get_display_info(&di);
-    const int scale=gr_scale()>0?gr_scale():1;
-    int sw=(int)di.width*scale,sh=(int)di.height*scale;
+    const int scale=di.depth24?1:(gr_scale()>0?gr_scale():1);
+    int sw=(int)di.width*scale,sh=di.depth24?(int)di.screen_height:(int)di.height*scale;
     if(sw<=0||sh<=0||(uint64_t)sw*sh>96u*1024u*1024u)return false;
     std::vector<uint32_t> pixels((size_t)sw*sh,0);
     rt_acquire("decomp capture");
     int got=0;
-    if(gr_backend()==GR_BACKEND_OPENGL) {
+    if(di.depth24) {
+        // FMVs pack RGB888 bytes in the CPU VRAM mirror. The geometry FBO is
+        // deliberately not an RGB888 scanout surface; use the same decoder as
+        // normal presentation, then fit that video canvas to the drawable.
+        gpu_depth24_stage_scanout(&di,pixels.data(),(uint32_t)sw,(uint32_t)g_video_depth24_trailing_margin);
+        got=1;
+    } else if(gr_backend()==GR_BACKEND_OPENGL) {
         int w=0,h=0;
         got=gl_renderer_read_display_hires((int)di.display_x,(int)di.display_y,(int)di.width,(int)di.height,
             pixels.data(),(int)pixels.size(),&w,&h);
@@ -193,6 +199,7 @@ static void decomp_frame_end() {
     }
     if(!decomp_capture(dw,dh)){std::fprintf(stderr,"capture failed\n");std::exit(1);}
     SpuDebugInfo audio;spu_debug_info(&audio);
+    GpuDisplayInfo display;gpu_get_display_info(&display);
     const bool gl=gr_backend()==GR_BACKEND_OPENGL;
     const char *device="";
     if(gl){rt_acquire("decomp report");device=(const char*)glGetString(GL_RENDERER);}
@@ -202,6 +209,7 @@ static void decomp_frame_end() {
        <<",\"drawable_width\":"<<dw<<",\"drawable_height\":"<<dh<<",\"internal_scale\":"<<gr_scale()
        <<",\"fullscreen\":"<<(s_window_fullscreen.mode?"true":"false")
        <<",\"monitor_width\":"<<monitor.w<<",\"monitor_height\":"<<monitor.h
+       <<",\"depth24\":"<<(display.depth24?"true":"false")
        <<",\"software_fallback\":"<<(!g_headless&&!gl&&g_video_renderer==1?"true":"false")
        <<",\"native_dispatches\":"<<decomp_native_dispatches<<",\"interpreted_instructions\":"<<g_dirty_ram_insns_run
        <<",\"pc\":"<<(decomp_cpu?decomp_cpu->pc:0)<<",\"ra\":"<<(decomp_cpu?decomp_cpu->gpr[31]:0)

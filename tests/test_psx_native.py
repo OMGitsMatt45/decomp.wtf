@@ -181,6 +181,7 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     assert second['module_dispatches'][1]>0
     # The original helper bytes are identical on both discs and may safely
     # reuse the first module. Disc-specific code must produce disc 2's marker.
+    assert second['depth24']
     reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True)
     assert reference['native_dispatches']==0 and reference['interpreted_instructions']>0
     assert reference['observed'][:4]==first['observed'][:4]
@@ -218,6 +219,11 @@ def test_actual_gpu_geometry_adapts_to_resize_and_portrait(native_project):
     fullscreen,_=run(native_project,'gpu-fullscreen','--renderer','opengl','--fullscreen',driver='offscreen')
     assert fullscreen['fullscreen']
     assert (fullscreen['drawable_width'],fullscreen['drawable_height'])==(fullscreen['monitor_width'],fullscreen['monitor_height'])
+    video,capture=run(native_project,'gpu-rgb888','--hidden-window','--renderer','opengl',
+        '--resolution','960x720','--disc',str(native_project[1]/'assets/disc2/Original disc 2.iso'),driver='offscreen')
+    assert video['depth24'] and video['renderer']=='opengl'
+    pixels=capture.read_bytes().split(b'\n',3)[3]
+    assert pixels.count(b'\xff\0\0')>300000
 
 
 def test_automatic_native_platform_detection_keeps_unnamed_ds_uploads(tmp_path):
