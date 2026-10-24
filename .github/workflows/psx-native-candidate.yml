@@ -27,11 +27,13 @@ jobs:
       DECOMP_RUNTIME: native
       DECOMP_UPDATES: 'off'
       DECOMP_REQUIRE_PSX_CANDIDATE: '1'
-      DECOMP_PSX_CANDIDATE_ROOT: ${{ runner.temp }}/PS1 candidate source
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
+      - name: Isolate the optional candidate outside the checkout
+        shell: bash
+        run: echo "DECOMP_PSX_CANDIDATE_ROOT=$RUNNER_TEMP/PS1 candidate source" >> "$GITHUB_ENV"
       - name: Fetch pinned optional noncommercial candidate and verify archive
         run: uv run --no-sync python -c "import os; from pathlib import Path; from tools.qualify_psx_runtime import download; download(Path(os.environ['DECOMP_PSX_CANDIDATE_ROOT']))"
       - name: Generate native C, compare original-byte execution and reject changed code
