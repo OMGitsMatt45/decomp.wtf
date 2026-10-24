@@ -298,15 +298,15 @@ struct Display::Impl {
             gl->Uniform2f(uniform(scene_program,"scale_xy"),rw/width,rh/height);
             gl->Uniform2f(uniform(scene_program,"offset_xy"),(2*rx+rw)/width-1,(2*ry+rh)/height-1);
             std::array<dsr::Gpu3DVertex,6> vertices{};const unsigned indices[]={0,1,2,0,2,3};
-            const unsigned count=polygon.count==4?6:3;bool valid=true;
-            for(unsigned i=0;i<count;++i){const auto v=polygon.index[indices[i]];if(v>=scene.vertices.size()){valid=false;break;}vertices[i]=scene.vertices[v];}
+            const unsigned count=alpha?(polygon.count==4?6:3):polygon.count;bool valid=true;
+            for(unsigned i=0;i<count;++i){const auto v=polygon.index[alpha?indices[i]:i];if(v>=scene.vertices.size()){valid=false;break;}vertices[i]=scene.vertices[v];}
             if(!valid)continue;
             gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,count*sizeof(vertices[0]),vertices.data(),GL_STREAM_DRAW);
             for(unsigned i=0;i<3;++i)gl->EnableVertexAttribArray(i);
             gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,sizeof(vertices[0]),reinterpret_cast<void*>(offsetof(dsr::Gpu3DVertex,clip)));
             gl->VertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertices[0]),reinterpret_cast<void*>(offsetof(dsr::Gpu3DVertex,u)));
             gl->VertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertices[0]),reinterpret_cast<void*>(offsetof(dsr::Gpu3DVertex,color)));
-            gl->DrawArrays(GL_TRIANGLES,0,count);++draws;
+            gl->DrawArrays(alpha?GL_TRIANGLES:GL_LINE_LOOP,0,count);++draws;
         }
         gl->PolygonMode(GL_FRONT_AND_BACK,GL_FILL);gl->DepthMask(GL_TRUE);gl->Disable(GL_CULL_FACE);gl->Disable(GL_SCISSOR_TEST);
     }
