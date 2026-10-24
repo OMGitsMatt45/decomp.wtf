@@ -29,11 +29,20 @@ def add_parser(sub):
     native.add_argument('--renderer', choices=('auto','opengl','software'),default='auto',help='default native renderer; OpenGL draws 3D geometry at the window resolution')
     native.add_argument('--screen-mode', choices=('dual','unified'),default='dual',help='default presentation; unified extends one 3D camera across the window')
     native.add_argument('--experimental', action='store_true', required=True)
+    psx = actions.add_parser('psx-native', help='PS1 C/C++ repository for one game and its ordered disc set')
+    psx.add_argument('inputs',nargs='+',type=Path,help='disc images/CUE sheets in order, or an M3U playlist')
+    psx.add_argument('output',type=Path)
+    psx.add_argument('--title',default='')
+    psx.add_argument('--renderer',choices=('auto','opengl','software'),default='auto')
+    psx.add_argument('--experimental',action='store_true',required=True)
 
 
 def run(args):
     try:
-        if args.pc_action == 'nds-native':
+        if args.pc_action == 'psx-native':
+            from .psx_native import export
+            result = export(args.inputs,args.output,title=args.title,renderer=args.renderer)
+        elif args.pc_action == 'nds-native':
             from .nds_native import export
             result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,
                             arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer,screen_mode=args.screen_mode)

@@ -20,9 +20,10 @@ Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
 - Qualify the common contract with an original fixture that builds and executes
   on native Windows/Linux. That result does not qualify a console runtime.
 
-## Platform phase: start with DS
+## DS milestone merged; PS1 active
 
-[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) implements the first
+[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29), merged at
+`9b5440283bd90472edc029d4a1be3f8cfd1ad661`, implements the first
 experimental DS static translator and standalone CMake repository generator.
 Original ARM9/ARM7 programs execute as generated C++, communicate through RAM,
 call Thumb code, switch overlays at one address and persist a RAM checkpoint.
@@ -50,9 +51,17 @@ records conservative original-screen fallbacks and remaining per-title limits.
 Optional mobile assets and other Goldie extras are deferred to later
 game-specific output work; they do not block the common DS milestone.
 
-GBA, PS1 and PS2 follow the common contract with separate backends. Reuse existing
-Pokémon source projects and suitable recompiler/runtime projects. PS1 retains one
-project for the ordered disc set. 3DS and Switch remain planned and need import
+PS1 is now active in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
+The [native output plan](future/ps1-native.md) records the
+pinned optional runtime, original generated-C CPU and hardware fixtures, and
+DQVII validation. The [PS1 guide](ps1-native.md) describes the implemented native
+exporter, adaptive GPU presentation, one executable for the ordered disc set,
+shared memory cards and explicit hybrid execution. Windows/Linux CI builds and
+executes original fixtures; full retail playthrough acceptance stays with the
+user. New game adapters must satisfy the shared adaptive GPU contract.
+GBA and PS2 follow with separate backends; reuse existing Pokémon
+source projects and suitable recompiler/runtime projects.
+3DS and Switch remain planned and need import
 and runtime integration as well. GB/GBC retains its assembly workbench; native PC
 output is additional work. Other console plans are deferred.
 
@@ -60,7 +69,7 @@ output is additional work. Other console plans are deferred.
 
 The [PR scope audit](pr-scope-audit.md) records updates to all 26 pre-existing PRs.
 The shared redesign merged in [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
-and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) tracks DS native output.
+and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) merged DS native output.
 
 Merged PRs #1, #7 and #25 qualify DS console reconstruction, not PC output; merged
 PR #3 is historical N64 work preserved by #27. Merged PRs cannot be reopened.
