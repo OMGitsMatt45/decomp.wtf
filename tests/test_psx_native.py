@@ -150,13 +150,13 @@ def native_project(tmp_path_factory):
 OBSERVE=[0x80020000,0x80020100,0x8002000c,0x80020010,0x80020018,0x8002001c]
 
 
-def run(project,name,*args,interp=False,driver='dummy',ok=True):
+def run(project,name,*args,interp=False,driver='dummy',ok=True,frames=600):
     work,root,exe=project;report=work/(name+'.json');capture=work/(name+'.ppm')
     env={**os.environ,'SDL_AUDIODRIVER':'dummy','SDL_VIDEODRIVER':driver,
          'EGL_PLATFORM':'surfaceless','LIBGL_ALWAYS_SOFTWARE':'1',
          'DECOMP_PSX_TRACE':'1','PSX_FRAME_REPORT_MS':'1000'}
     if interp:env['PSX_FORCE_INTERP']='1'
-    command=[str(exe),'--frames','600','--report',str(report),'--capture',str(capture),
+    command=[str(exe),'--frames',str(frames),'--report',str(report),'--capture',str(capture),
              '--memcard-dir',str(work/'shared-saves')]
     for address in OBSERVE:command+=['--observe',hex(address)]
     try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=90)
@@ -174,21 +174,24 @@ def run(project,name,*args,interp=False,driver='dummy',ok=True):
 
 
 def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_project):
-    first,pixels=run(native_project,'disc1','--headless','--renderer','software')
+    # The guest finishes CD/card operations before frame 300. Compare both
+    # execution modes at 360; a longer run only interprets the busy-wait loop
+    # and approached the 90-second bound on Windows (600 frames took 85 s).
+    first,pixels=run(native_project,'disc1','--headless','--renderer','software',frames=360)
     assert first['native_dispatches']>0 and first['module_dispatches'][0]>0
     assert first['module_dispatches'][1]==0
     assert first['observed'][:4]==[1,0xd0000001,2048,0xa004]
     assert first['observed'][5]==2048
     assert first['audio_nonzero_frames']>0
     second,_=run(native_project,'disc2','--headless','--renderer','software','--disc',
-        str(native_project[1]/'assets/disc2/Original disc 2.iso'))
+        str(native_project[1]/'assets/disc2/Original disc 2.iso'),frames=360)
     assert second['disc_index']==2 and second['disc_count']==2
     assert second['observed']==[2,0xd0000002,2048,0xa004,0xd0000001,2048]
     assert second['module_dispatches'][1]>0
     # The original helper bytes are identical on both discs and may safely
     # reuse the first module. Disc-specific code must produce disc 2's marker.
     assert second['depth24']
-    reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True)
+    reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True,frames=360)
     assert reference['native_dispatches']==0 and reference['interpreted_instructions']>0
     assert reference['observed'][:4]==first['observed'][:4]
     assert pixels.read_bytes()==other.read_bytes()
