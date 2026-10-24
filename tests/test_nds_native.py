@@ -120,6 +120,30 @@ def test_cartridge_save_is_durable_before_the_process_exits(tmp_path,hardware_pr
     assert execute(exe,root,'--save',save)['observed'][3:5]==[0,1]
 
 
+def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,hardware_project):
+    _,root,_=hardware_project
+    runtime=root/'native/dsr/runtime'
+    library=next(p for p in (root/'build/libds_runtime.a',root/'build/ds_runtime.lib',
+        root/'build/Release/ds_runtime.lib') if p.is_file())
+    quoted=lambda p:json.dumps(p.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
+        'project(RuntimeChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nfind_package(Threads REQUIRED)\n'
+        f'add_executable(runtime_checks {quoted(runtime/"core/tests/core_tests.cpp")} '
+        f'{quoted(runtime/"core/tests/thread_tests.cpp")} {quoted(runtime/"core/tests/abi_config_tests.cpp")})\n'
+        f'target_include_directories(runtime_checks PRIVATE {quoted(runtime/"include")} {quoted(runtime/"core/include")} {quoted(runtime/"core/src")})\n'
+        f'target_link_libraries(runtime_checks PRIVATE {quoted(library)} Threads::Threads)\n'
+        'if(WIN32)\n target_compile_definitions(runtime_checks PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)\n'
+        ' target_link_libraries(runtime_checks PRIVATE bcrypt)\nendif()\n')
+    for cmd in (['cmake','-S',str(tmp_path),'-B',str(tmp_path/'build')],
+                ['cmake','--build',str(tmp_path/'build'),'--config','Release','--parallel','2']):
+        done=subprocess.run(cmd,capture_output=True,text=True,timeout=240)
+        assert done.returncode==0,done.stdout+done.stderr
+    exe=next(p for p in (tmp_path/'build/runtime_checks',tmp_path/'build/runtime_checks.exe',
+                        tmp_path/'build/Release/runtime_checks.exe') if p.is_file())
+    done=subprocess.run([str(exe)],capture_output=True,text=True,timeout=120)
+    assert done.returncode==0,done.stdout+done.stderr
+
+
 def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
     if os.environ.get('DECOMP_REQUIRE_DS_SDL')!='1':
         pytest.skip('SDL presentation qualification runs in the dedicated native workflow')

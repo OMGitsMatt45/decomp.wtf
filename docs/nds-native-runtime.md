@@ -92,14 +92,24 @@ alongside the enhanced path. Mobile remaster-mod archives need the same
 checks as the original Android data. This enhancement follows the native
 DS execution and save/reload milestones.
 
+The user's DQIV reference is the [Mobile Remaster thread](https://www.romhacking.net/forum/index.php?topic=34365.0).
+The author's [Nexus listing](https://www.nexusmods.com/dragonquest4/mods/1)
+describes visual upgrades and orchestral music and points back to that thread
+for current project details; the listing itself is marked out of date. This
+identifies the intended enhancement project, not a tested archive format or
+compatible asset hash. DQV and DQVI mod references still need separate review.
+
 ## Runtime corrections and qualification
 
 The source-shipped runtime records decomp.wtf's changes in its patch document:
 
 - Direct boot loads ARM7 bytes through the ARM7 bus, including private WRAM.
 - ARM946 TCM mapping uses the distinct DTCM/ITCM enable bits correctly.
-- Repeating short cartridge DMA services the full current READY block and its
+- Repeating one-word cartridge DMA services the full current READY block and its
   completion IRQ, while respecting block boundaries and disabled channels.
+  The latched count selects this path; other programmed block sizes retain the
+  pinned runtime's notification/rearm behavior and still need further hardware
+  qualification.
 
 The emitter also distinguishes a signed negative-index guard from a switch's
 upper bound. This prevents truncating a Thumb halfword jump table to its first
@@ -131,5 +141,8 @@ DQV output also built and ran through name entry. The shared-epilogue and large
 switch fixes then allowed the native build to enter the opening castle scene,
 with rendered scenery and characters matching the reference scene. Continuing
 from the cartridge save lists the saved name, level and prologue and resumes
-the scene after a restart. Player-controlled field/battle behavior and later
-retail saves remain under validation.
+the scene after a restart. A 30,000-frame run reaches the ship cabin; directional
+input moves the player and the field and Misc menus open. A fresh standalone
+repository generated from the ROM, without a prior source project, built and
+reproduced the same 22,400-frame run and screen hashes. Battle behavior and
+later retail saves remain under validation.

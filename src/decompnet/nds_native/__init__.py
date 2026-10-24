@@ -265,7 +265,8 @@ void Machine::Impl::enable_dma'''
             // requests here, stopping at block completion or DMA disable.
             for (unsigned request = 0; request < 8192; ++request) {
                 trigger_one_dma(cpu_index, channel);
-                if (mode != 5 || !card || (dma.control & 0x8200u) != 0x8200u ||
+                if (mode != 5 || !card || dma.latched_count != 1 ||
+                    (dma.control & 0x8200u) != 0x8200u ||
                     dma.current_src != 0x04100010u ||
                     (card->io_read(0x040001a4u, 32) & 0x80800000u) != 0x80800000u)
                     break;
@@ -286,11 +287,13 @@ Our original dual-CPU fixture covers this layout and its live literal loads.
 The ARM946 CP15 TCM enables use bit 16 for DTCM and bit 18 for ITCM, in both
 fast page mappings and slow bus accesses. The base source interchanges them;
 an original fixture exercises DTCM with ITCM independently disabled.
-Card DMA services repeated short transfers while READY is held for the same
+Card DMA services repeated one-word transfers while READY is held for the same
 block. It stops when the block ends, the DMA disables, or its source changes;
 the bounded loop cannot consume another card block. An original guest fixture
 reads all 128 words of one block using repeating one-word DMA and checks data
-and the cartridge completion IRQ.
+and the cartridge completion IRQ. The latched count, rather than a later
+programmed count write, limits this correction to one-word transfers. Other
+DMA block sizes retain the pinned runtime's notification/rearm behavior.
 ''',encoding='utf-8')
 
 
