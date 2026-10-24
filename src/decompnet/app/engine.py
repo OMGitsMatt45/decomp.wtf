@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
@@ -1534,14 +1535,50 @@ class RomNetwork(Network):
         configure(self, slug, projects, title)
         return self.overview(slug)
 
-    def export_rom(self, slug: str, log=print, *, format="matching") -> dict:
+    def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
+                       renderer='auto',screen_mode='dual',log=print) -> dict:
+        """Generate a PC repository directly, without a console matching project/compiler."""
+        if not confirmed:
+            raise NetworkError('confirm that this is your own legally obtained copy of the game')
+        from ..nds_native import export
+        from .. import pc
+        import uuid
+        # A fresh destination preserves earlier generated projects and edits.
+        name = _slugify(Path(game).stem)[:60] or 'ds-game'
+        output = self.workspace / (name+'-pc-'+uuid.uuid4().hex[:8])
+        try:
+            result = export(game,output,input_format=input_format,save_type=save_type,
+                            renderer=renderer,screen_mode=screen_mode,
+                            arm7_bios=os.environ.get('DECOMP_ARM7_BIOS') if input_format=='auto' else None,log=log)
+        except (pc.PCError, ValueError, OSError) as error:
+            raise NetworkError(str(error)) from error
+        log('Native PC source project: '+result['path'])
+        return result
+
+    def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',screen_mode='dual') -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
         if format == 'pc':
             from .. import pc
             proj = self._project(slug)
+            cfg = self.cfg(proj)
             try:
-                return pc.export({**self.cfg(proj), 'root': proj['root']}, Path(proj['root'])/'pc-source')
-            except pc.PCError as error:
+                if cfg.get('platform') == 'nds':
+                    from ..nds_native import export
+                    root = Path(proj['root'])
+                    if cfg.get('origin') == 'scratch':
+                        game = root/'extract/baserom.nds'
+                        meta = json.loads((root/'.decomp.wtf.json').read_text(encoding='utf-8'))
+                        input_format = meta.get('ds_input_format','auto')
+                    else:
+                        source = cfg.get('rom',{}).get('file')
+                        if not source:raise pc.PCError('this project has no retained original DS ROM; generate from your ROM on the home screen')
+                        game = root/source
+                        input_format = cfg.get('ds_input_format','auto')
+                    return export(game,root/'pc-source',input_format=input_format,save_type=save_type,
+                        renderer=renderer,screen_mode=screen_mode,
+                        arm7_bios=os.environ.get('DECOMP_ARM7_BIOS') if input_format=='auto' else None,log=log)
+                return pc.export({**cfg, 'root': proj['root']}, Path(proj['root'])/'pc-source')
+            except (pc.PCError, OSError, ValueError) as error:
                 raise NetworkError(str(error)) from error
         if format != "matching":
             raise NetworkError("choose matching console reconstruction or pc export")

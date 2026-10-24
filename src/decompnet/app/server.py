@@ -509,6 +509,14 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
         def work(log):
             try:
+                if q.get('output') == 'pc':
+                    if layout is not None or toolchain:
+                        raise NetworkError('DS PC output does not use a console compiler or PS1 layout')
+                    return net.generate_ds_pc(game,confirmed=True,input_format=q.get('ds_input_format','auto'),
+                                              save_type=q.get('save_type','auto'),renderer=q.get('renderer','auto'),
+                                              screen_mode=q.get('screen_mode','dual'),log=log)
+                if q.get('output','matching') != 'matching':
+                    raise NetworkError('choose matching console reconstruction or pc output')
                 slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name,
                                       ds_input_format=q.get("ds_input_format", "auto"), reviewed_layout=layout, log=log)
             finally:
@@ -627,7 +635,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     def p_export(slug, request, data):
         def work(log):
-            res = net.export_rom(slug, format=str(data.get("format", "matching")), log=log)
+            res = net.export_rom(slug, format=str(data.get("format", "matching")),
+                                 save_type=str(data.get('save_type','auto')),renderer=str(data.get('renderer','auto')),
+                                 screen_mode=str(data.get('screen_mode','dual')),log=log)
             return {k: v for k, v in res.items() if k != "log"} | {"log": res.get("log", "")[-1500:]}
         return {"job": jobs.start("export", work)}
 

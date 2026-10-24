@@ -17,18 +17,26 @@ from ..network import NetworkError
 from . import agents, tools
 
 CHAT_INSTRUCTIONS = """\
-You are connected to decomp.wtf on the user's computer: matching decompilation of games they own, with the game's
-original compiler, a byte-for-byte judge, free matches from machine drafts, helper agents and a live view.
+You are connected to decomp.wtf on the user's computer. Native PC source output and original-console
+reconstruction are separate workflows. Use the user's own game and keep derived code/assets private.
 
-When the user wants a game decompiled:
+For a DS native PC project, use generate_pc_project(path, own_copy=true, save_type=the game's chip,
+ds_input_format="auto" or "decrypted"). This experimental path analyzes the ROM and generates a standalone
+C++ project with a source-shipped runtime. It does not require matching every function or installing a
+console compiler. For an existing DS reconstruction, use export_project(format="pc", save_type=...).
+Read the generated README for host building and controls. Report source integrity, host execution and
+gameplay acceptance separately; a successful export does not certify a full game. Gameplay acceptance
+is owner-run. Helpers are optional; start them only when the user requests them.
+
+For matching console reconstruction:
 1. list_projects(). If it's there, open_project(it). Otherwise import_game(path) with the path to the user's file
-   (ROM, disc image or program). Ask the user to confirm it is their own legally obtained copy first, and never
-   download games: decomp.wtf only works with the user's own copy.
+   (ROM, disc image or program). Use the user's existing ownership confirmation, or obtain it if missing.
+   decomp.wtf only works with the user's own copy.
 2. open_gui() so the user can watch: the map lights up as functions match.
-3. Work: claim_function -> compile_and_diff, repeat (guide("workflow") has the loop). For a big game, also
-   start_agents(count) to add helper agents working in parallel; progress() shows everyone's work.
-4. export_project() writes an original-console reconstruction, not a PC game. PC output uses a separate backend; DS is first and no retail PC backend is qualified yet. Never describe matching progress as playable PC output.
-Report progress in terms of functions and % of code matched. The game's code is the user's: never publish it.
+3. Work: claim_function -> compile_and_diff, repeat (guide("workflow") has the loop).
+   progress() shows the matching work. start_agents(count) is available when helpers are requested.
+4. export_project() defaults to original-console reconstruction. Never describe matching progress as PC readiness.
+Report reconstruction progress in terms of functions and % of code matched. Never publish the game's code.
 """
 
 
@@ -134,6 +142,28 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
 
         return await _follow(jobs.start("import", work))
 
+    @mcp.tool(meta=tools.ALWAYS_LOAD)
+    async def generate_pc_project(ctx: Context, path: str, own_copy: bool = False,
+                                  save_type: str = "auto", ds_input_format: str = "auto",
+                                  renderer: str = "auto", screen_mode: str = "dual") -> str:
+        """Generate an experimental DS native PC source repository directly from the user's ROM.
+
+        No matching project or console compiler is needed. Select the cartridge save chip for a new game;
+        auto infers only from an existing raw save. Use decrypted for an already-decrypted ROM.
+        Set own_copy only when ownership was confirmed. The resulting README explains building/running.
+        renderer: auto, opengl or software. screen_mode: dual or unified (one extended 3D camera, requires OpenGL).
+        """
+        chat_agent(ctx)
+        if not own_copy:
+            raise ToolError("confirm this is the user's own legally obtained copy, then use own_copy=true")
+        try:
+            game = hostenv.local_path(path)
+        except ValueError as error:
+            raise ToolError(str(error)) from None
+        return await _follow(jobs.start("pc-export", lambda log: net.generate_ds_pc(game,
+            confirmed=True, input_format=ds_input_format, save_type=save_type,
+            renderer=renderer,screen_mode=screen_mode,log=log)))
+
     async def _follow(jid: str, wait: float = 55) -> str:
         job = jobs.jobs[jid]
         t0 = time.time()
@@ -141,22 +171,25 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
             await anyio.sleep(0.5)
         if job["state"] == "running":
             tail = job["log"][-1] if job["log"] else "working"
-            return f"Still importing ({tail}). Call import_status(job=\"{jid}\") to keep waiting."
+            return f"Still working ({tail}). Call import_status(job=\"{jid}\") to keep waiting."
         if job["state"] == "error":
-            raise ToolError(f"import failed: {job['error']}")
+            raise ToolError(f"{job.get('kind','import')} failed: {job['error']}")
+        if job["result"].get("format") == "pc":
+            return (f"Native PC source project: {job['result']['path']}. Source integrity verified. "
+                    "Read its README for building and controls. This backend is experimental; gameplay acceptance is separate.")
         slug = job["result"]["slug"]
         info = await anyio.to_thread.run_sync(lambda: tools.project_info(net, slug))
         ov = net.overview(slug)
         ap = " Autopilot is trying every function's machine draft in the background." if ov.get("autopilot") else ""
         return (f"Imported as {slug}.{ap}\n{info}\nNext: open_gui() so the user can watch, then claim_function(), "
-                f"and start_agents() for helpers on a big game.")
+                f"with start_agents() available if the user requests helpers.")
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
     async def import_status(ctx: Context, job: str) -> str:
-        """Keep waiting for an import that was still running."""
+        """Keep waiting for a game import or native PC generation job that was still running."""
         chat_agent(ctx)
         if job not in jobs.jobs:
-            raise ToolError("no such import")
+            raise ToolError("no such job")
         return await _follow(job)
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
@@ -239,11 +272,19 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         return f"Autopilot is trying {st['total']} functions' machine drafts in the background; progress() shows it."
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
-    async def export_project(ctx: Context) -> str:
-        """Write the project as a normal decomp source tree (matched C, the rest as assembly, a build script) and
-        check that it rebuilds the game byte for byte. Returns where it is."""
+    async def export_project(ctx: Context, format: str = "matching", save_type: str = "auto",
+                             renderer: str = "auto", screen_mode: str = "dual") -> str:
+        """Export the current project: matching console reconstruction by default, or experimental native PC
+        sources with format=pc on DS. For PC output choose the cartridge save chip. Returns the output path;
+        source integrity and matching-console verification do not certify gameplay.
+        """
         agent = chat_agent(ctx)
         slug = current(agent)
+        if format not in ("matching","pc"):
+            raise ToolError("choose matching console reconstruction or pc output")
+        if format == "pc":
+            return await _follow(jobs.start("pc-export", lambda log: net.export_rom(slug,
+                format="pc",save_type=save_type,renderer=renderer,screen_mode=screen_mode,log=log)))
         try:
             res = await anyio.to_thread.run_sync(lambda: net.export_rom(slug, log=lambda *_: None))
         except (NetworkError, RuntimeError, OSError) as e:

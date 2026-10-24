@@ -325,7 +325,7 @@ async function pickFile(file) {
   const p = info.platform;
   const facts = [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
        info.code ? ["Game ID", info.code] : ["Entry", info.entry != null ? hex8(info.entry) : "from the disc"],
-       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "ds-decomp" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
+       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "PC source or DS reconstruction" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
   $("romFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
   const level = platformStatus(p);
   $("romStatus").hidden = !level;
@@ -333,6 +333,9 @@ async function pickFile(file) {
   $("romStatus").innerHTML = level === "recommended"
     ? `<b>★ Recommended platform.</b> The most tested path to a full decomp you can port and mod.`
     : `<b>Beta.</b> ${esc(PLATFORM_NAME[p] || "This platform")} works and is tested on homemade games, less so on real ones yet. Problems are worth <a href="https://github.com/i12bp8/decomp.wtf/issues" target="_blank" rel="noopener">reporting</a>.`;
+  $("dsOutput").value = "pc";
+  $("dsInputFormat").value = "auto";
+  fillDsSaves($("dsSaveType"),info.code);
   setupCompilers(info);
   $("dropIdle").hidden = true;
   $("dropPicked").hidden = false;
@@ -344,13 +347,21 @@ function setupCompilers(info) {
   const cw = S.st?.codewarrior || { installed: false, ds_installed: false, gc: [], wii: [], ds: [] };
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
   $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
-  $("dsInputFormat").value = "auto";
+  $("dsOutputRow").hidden = p !== "nds" || !!info.bootUtility;
+  const nativeDS = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
+  $("dsSaveRow").hidden = !nativeDS;
+  $("dsVideoRows").hidden = !nativeDS;
   $("romLayoutRow").hidden = !["psx", "playstation"].includes(p);
   $("romLayoutFile").value = "";
   if (info.bootUtility) {
     select.innerHTML = `<option value="binutils-arm">GNU assembly</option>`;
     note.hidden = false;
     note.textContent = "Boot utility: review reachable assembly ranges. Unknown bytes stay in your base image.";
+  }
+  else if (nativeDS) {
+    $("compilerRow").hidden = true;
+    note.hidden = false;
+    note.textContent = "Generates a standalone Windows/Linux C++ project. No console matching compiler is needed. The pinned source tools are installed automatically.";
   }
   else if (p === "psx") fillCompilers(select, "gcc-2.7.2-psx", "PS1");
   else if (p === "ps2") fillCompilers(select, "ee-gcc-2.96", "PS2");
@@ -375,9 +386,30 @@ function setupCompilers(info) {
 
 function updateAnalyse() {
   const needsConsent = !$("mwConsent").hidden;
-  $("analyse").disabled = !$("own").checked || (needsConsent && !$("mwAccept").checked);
+  const nativeDS = !$("dsSaveRow").hidden;
+  $("analyse").textContent = nativeDS ? "Generate PC source project" : "Start decompiling";
+  $("analyse").disabled = !$("own").checked || (needsConsent && !$("mwAccept").checked) || (nativeDS && !$("dsSaveType").value);
 }
 $("mwAccept").addEventListener("change", updateAnalyse);
+$("dsOutput").onchange = () => { if (picked) setupCompilers(picked.info); updateAnalyse(); };
+$("dsSaveType").onchange = updateAnalyse;
+for (const prefix of ["ds", "pc"]) {
+  $(`${prefix}ScreenMode`).onchange = () => {
+    if ($(`${prefix}ScreenMode`).value === "unified" && $(`${prefix}Renderer`).value === "software") $(`${prefix}Renderer`).value = "auto";
+  };
+  $(`${prefix}Renderer`).onchange = () => {
+    if ($(`${prefix}Renderer`).value === "software") $(`${prefix}ScreenMode`).value = "dual";
+  };
+}
+
+function fillDsSaves(select,code) {
+  const chips = [["", "Choose the game's save chip"], ["eeprom512b", "EEPROM 512 bytes"],
+    ["eeprom8k", "EEPROM 8 KiB"], ["eeprom64k", "EEPROM 64 KiB"], ["eeprom128k", "EEPROM 128 KiB"],
+    ["flash256k", "Flash 256 KiB"], ["flash512k", "Flash 512 KiB"], ["flash1m", "Flash 1 MiB"], ["flash8m", "Flash 8 MiB"]];
+  select.innerHTML = chips.map(([value,label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+  // Verified against this owner's cartridge behavior and independent chip metadata.
+  if (code === "YV5P") select.value = "eeprom64k";
+}
 
 function fillCompilers(select, current, platform) {
   const tcs = (S.st?.toolchains || []).filter((t) => t.kind === "compiler" && (!platform || !t.platform || t.platform === platform));
@@ -414,8 +446,15 @@ async function runImport(query, file, title, name = "") {
       const last = log.filter((l) => l.trim()).pop();
       if (last) $("busyStep").textContent = last.trim().replace(/\s+/g, " ").slice(0, 120);
     });
-    loadNav();
-    location.hash = `#/p/${res.slug}`;
+    if (res.format === "pc") {
+      resetDrop();
+      dialog("Native PC source project generated", `<p>Your editable C++ project is in:</p><pre>${esc(res.path)}</pre>
+        <p>Open its README for asset extraction, building and controls. It builds independently of decomp.wtf with CMake and a C++20 compiler.</p>
+        <p class="muted small">Source integrity verified. Gameplay compatibility still needs testing. The DS ROM supplies all required assets; optional mobile enhancements are planned.</p>`);
+    } else {
+      loadNav();
+      location.hash = `#/p/${res.slug}`;
+    }
   } catch (e) {
     importFailed(name || title.replace(/^\w+ |…$/g, ""), e, $("jobLog").textContent);
   } finally { clearInterval(tick); $("busyTime").textContent = ""; }
@@ -459,6 +498,7 @@ $("analyse").onclick = async () => {
   }
   const body = picked.buf instanceof Blob ? picked.buf : new Blob([picked.buf]);
   const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
+  const pcOutput = !$("dsSaveRow").hidden ? `&output=pc&save_type=${encodeURIComponent($("dsSaveType").value)}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
   let layoutQuery = "";
   const layoutFile = !$("romLayoutRow").hidden && $("romLayoutFile").files[0];
   if (layoutFile) {
@@ -469,7 +509,7 @@ $("analyse").onclick = async () => {
       layoutQuery = `&reviewed_layout=${encodeURIComponent(pending.id)}`;
     } catch (e) { toast(esc(e.message), "err"); return; }
   }
-  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}${layoutQuery}`, body, title, picked.name);
+  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}${pcOutput}${layoutQuery}`, body, title, picked.name);
 };
 $("pathPick").onclick = (e) => {
   e.stopPropagation();
@@ -2355,7 +2395,13 @@ function renderSource(ov) {
   const ex = ov.export, fork = ov.kind === "fork";
   $("srcFormatRow").hidden = true;
   $("pcExport").disabled = !ov.outputs?.pc?.available;
-  $("pcOutputStatus").textContent = ov.outputs?.pc?.available ? "PC backend available" : "Native PC export is not available yet. Console reconstruction remains available.";
+  $("pcOutputStatus").textContent = ov.outputs?.pc?.available ? "Experimental native PC source export is available. Verify gameplay for your game." : "Native PC export is not available yet. Console reconstruction remains available.";
+  $("pcSaveRow").hidden = ov.platform !== "nds" || !ov.outputs?.pc?.available;
+  $("pcVideoRows").hidden = $("pcSaveRow").hidden;
+  if ($("pcSaveType").dataset.project !== ov.slug) {
+    fillDsSaves($("pcSaveType"),ov.rom?.game_code || ov.version);
+    $("pcSaveType").dataset.project = ov.slug;
+  }
   if ($("srcFormat").dataset.project !== ov.slug) {
     $("srcFormat").value = ex?.format || "matching";
     $("srcFormat").dataset.project = ov.slug;
@@ -2433,9 +2479,11 @@ $("srcExport").onclick = async () => {
 
 $("pcExport").onclick = async () => {
   const button = $("pcExport");
+  const saveType = $("pcSaveType").value;
+  if (!$("pcSaveRow").hidden && !saveType) return toast("Choose the cartridge save chip for this game.", "err");
   button.disabled = true;
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc" } });
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: saveType || "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value } });
     const result = await followJob(job);
     $("expLog").hidden = false;
     $("expLog").textContent = `PC project: ${result.path}\nIntegrity verified. Host build and gameplay validation are separate.`;

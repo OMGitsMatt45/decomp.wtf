@@ -10,9 +10,12 @@ are deferred without claiming new support.
   empty snapshot commit. No implementation is merged by creating that PR.
 - [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28) is the application
   redesign: remove N64/GameCube/Wii functionality and supply a shared PC-output
-  contract. It carries forward #4's shared PS1 implementation commits.
+  contract. It carries forward #4's shared PS1 implementation commits. Merged
+  into main on 2026-10-23 UTC at `acacecf517100d8bb49018d41360c0a97ed1a21b`.
 - [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) is the fresh DS native
-  backend workstream, currently a planning draft. It registers no runtime.
+  backend workstream, now an implementation draft based on main. It adds an
+  explicit experimental static translator and original-fixture runtime; it does
+  not register general DS PC export or qualify retail gameplay.
 - #4 is closed as superseded by #28; #8 is closed because its consoles are removed.
   Their branches/review history are preserved. #26 is retargeted onto #28's branch
   and retains the paused game-specific source checkpoints privately.
@@ -53,7 +56,8 @@ are deferred without claiming new support.
 | [#25](https://github.com/OMGitsMatt45/decomp.wtf/pull/25) | Merged history | Fix decrypted DS rebuilds and recover protected ARM7 C/C++ modules |
 | [#26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26) | Open | Game Specific Source Recovery |
 
-Current main remains unchanged until implementation PRs are explicitly merged.
+Main now includes the explicitly authorized PR #28 merge; PR #27 preserves the
+earlier application. PR #29 remains separate until its own merge is authorized.
 Historical qualification records apply to their tested revisions; they do not
 qualify the redesigned application's future PC backends. The native export UI
 stays unavailable on a platform until a real adapter is registered.

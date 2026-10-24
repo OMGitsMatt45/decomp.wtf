@@ -7,6 +7,9 @@ N64, GameCube and Wii are removed from application functionality in the redesign
 
 ## Shared application phase
 
+Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
+`acacecf517100d8bb49018d41360c0a97ed1a21b`:
+
 - Enforce the remaining platform scope at imports, public projects, saved
   project access, CLI, UI, setup and agent entry points without deleting data.
 - Separate console reconstruction from native PC export in capabilities and
@@ -19,13 +22,33 @@ N64, GameCube and Wii are removed from application functionality in the redesign
 
 ## Platform phase: start with DS
 
-First implement and qualify DS ARM9/ARM7 execution integration and its runtime,
-including overlays, memory, graphics, audio, timing, input, files and saves.
-Evaluate DQIV's native runtime/source as a reusable dependency after reviewing its
-interfaces and license. Do not assume its title-specific implementation supports
-another DQ or Pokémon title unchanged. Use original fixtures first, then validate
-one chosen retail title through boot/title/menu, field/battle, audio, input and
-save/reload. Full playthrough remains with the user.
+[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) implements the first
+experimental DS static translator and standalone CMake repository generator.
+Original ARM9/ARM7 programs execute as generated C++, communicate through RAM,
+call Thumb code, switch overlays at one address and persist a RAM checkpoint.
+Independent original-byte execution checks registers, flags and program output.
+See [current commands and limits](nds-pc.md) and the [DS implementation plan](future/ds-native.md).
+
+The additional [native hardware-runtime path](nds-native-runtime.md) integrates
+retail module decoding, the pinned MIT DQ9-Decomp emitter/runtime, graphics,
+audio, timing/IRQs, input and cartridge saves. Original guest programs exercise
+those interfaces; DQV smoke-test findings have original regression cases. The
+[DQIV runtime assessment](future/ds-runtime-assessment.md) remains a product
+reference; no DQIV runtime or mobile OBB dependency is copied.
+The native adapter is available experimentally through DS import and the Source
+tab as well as the CLI; it does not require a matching console compiler.
+Original fixtures validate native execution and hardware/save interfaces;
+DQV additionally has standalone build, boot/menu/field and initial save-reload
+evidence. Further gameplay acceptance, including combat and later saves, stays
+with the user. Continue implementation work through automated regressions and
+reported defects. The current DS scope also includes GPU geometry rendering at
+the user's changing drawable resolution, fullscreen at native monitor size,
+and an optional single-camera picture with accessible secondary-screen UI.
+Original guest/OpenGL fixtures verify geometry, UI, texture, touch, camera
+retention, resizing and preservation of DS execution. The [runtime guide](nds-native-runtime.md)
+records conservative original-screen fallbacks and remaining per-title limits.
+Optional mobile assets and other Goldie extras are deferred to later
+game-specific output work; they do not block the common DS milestone.
 
 GBA, PS1 and PS2 follow the common contract with separate backends. Reuse existing
 Pokémon source projects and suitable recompiler/runtime projects. PS1 retains one
@@ -36,7 +59,7 @@ output is additional work. Other console plans are deferred.
 ## PR migration
 
 The [PR scope audit](pr-scope-audit.md) records updates to all 26 pre-existing PRs.
-The shared redesign is [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
+The shared redesign merged in [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
 and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) tracks DS native output.
 
 Merged PRs #1, #7 and #25 qualify DS console reconstruction, not PC output; merged

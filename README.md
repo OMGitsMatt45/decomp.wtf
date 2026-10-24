@@ -7,14 +7,14 @@ remaining supported platforms.
 
 [PR #27 preserves main](https://github.com/OMGitsMatt45/decomp.wtf/pull/27) exactly
 at `f965c3d783415b4c0d89ea49827760b4d9cab54c`. N64, GameCube and Wii functionality
-is removed on this redesign branch. Existing project files are preserved, and
+was removed in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28). Existing project files are preserved, and
 imports, public-project registration and old project execution reject those
 platforms. Historical low-level helpers and qualification records are not claims
 of current application support.
 
 | Console | Source recovery / console reconstruction | Native PC output |
 | --- | --- | --- |
-| Nintendo DS | ARM9/ARM7, overlays and reviewed source links | First backend to implement |
+| Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Backend required |
 | PlayStation 2 | EE program/ELF recovery | Backend required |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
@@ -38,6 +38,30 @@ generic DS backend in this application.
 The target repository includes host-buildable game C/C++, a native runtime layer,
 asset-extraction tools, pinned dependencies and build/run instructions. A clean
 checkout with the documented original input should build the working PC game.
+
+[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) begins the DS backend
+with an explicit [experimental generator](docs/nds-pc.md). Reviewed ARM/Thumb
+instructions become C++ and execute with two CPU contexts and overlay switching.
+The [native runtime path](docs/nds-native-runtime.md) also analyzes DS ROMs and
+ships graphics, audio, input, timing and cartridge services as source. Original
+programs verify rendering, sound, interrupts, IPC and real save reload. Retail
+compatibility remains title-specific. DS import offers experimental PC generation
+directly, without a matching compiler, and existing DS projects can export the
+same native repository from the Source tab. Select the game's cartridge save
+chip; DQV Europe defaults to the verified 64 KiB EEPROM configuration.
+
+DS output also offers OpenGL rendering and an optional single-camera picture.
+3D geometry renders at the current window/monitor resolution, adapting to
+resizes and high-DPI changes. Fullscreen uses the active monitor's native
+resolution. F6 switches the original screens/unified camera; F7 controls the
+secondary-screen inset; F11 toggles fullscreen. The [guide](docs/nds-native-runtime.md)
+describes native-screen fallbacks and per-title camera limits.
+
+Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
+not required. Optional mobile-remaster enhancements for DQ IV/V/VI are deferred,
+with per-title mappings and an original-DS-audio option; they are not implemented
+yet. BIOS and firmware are not runtime dependencies; an encrypted
+original may need an owner-supplied ARM7 BIOS during initial decoding.
 
 ## Install and run
 
@@ -65,25 +89,47 @@ Install the following only for the features you choose:
 | [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
+| [Python 3.9+](https://www.python.org/downloads/) | Standalone asset extraction in generated DS PC repositories. The main application uses Python 3.12+, managed by uv. |
+| [CMake 3.20+](https://cmake.org/download/) | Building generated native PC projects and running the output-contract fixture. |
+| [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | GPU rendering in generated DS projects requires OpenGL 3.3. Use the driver for your card, or your Linux distribution's graphics packages. Automatic mode retains software presentation if unavailable. |
+| [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
 Older 32-bit compilers need your distribution's 32-bit runtime, such as
 [libc6-i386 on Ubuntu 24.04](https://packages.ubuntu.com/noble/libc6-i386).
 These host packages are installed through your distribution's package manager.
 Public decomp repositories can require additional build tools; follow that
-project's setup instructions.
-| [CMake 3.20+](https://cmake.org/download/) | Building generated native PC projects and running the output-contract fixture. |
-| [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
+project's setup instructions. For generated PC projects on Linux, use your
+distribution's GCC or Clang C++ package.
+
+Linux windowed DS builds also need desktop graphics development libraries before
+CMake builds SDL: [X11](https://packages.ubuntu.com/noble/libx11-dev),
+[Xext](https://packages.ubuntu.com/noble/libxext-dev),
+[OpenGL](https://packages.ubuntu.com/noble/libgl-dev) and
+[EGL](https://packages.ubuntu.com/noble/libegl-dev). On Ubuntu/Debian:
+
+```sh
+sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
+```
+
+Use the equivalent development packages on other distributions. Headless DS
+builds (`-DNDS_WITH_SDL=OFF`) do not need desktop graphics libraries.
 
 ## Development and scope
 
 The [roadmap](docs/future-work.md) separates shared application work from platform
-backends and records the PR audit. Original fixture checks exercise the PC-project
-contract with an actual host build/run; this is not DS retail execution:
+backends and records the PR audit. Original fixtures exercise the PC-project
+contract and DS static code generation with actual host builds and execution;
+this is not DS retail execution:
 
 ```sh
-uv run pytest -q tests/test_platform_scope.py tests/test_pc_output.py
+uv run pytest -q tests/test_platform_scope.py tests/test_pc_output.py tests/test_nds_pc.py tests/test_nds_native.py tests/test_nds_native_app.py tests/test_nds_native_video.py
 ```
+
+The DS workflow installs the pinned source runtime and requires SDL checks on
+Windows/Linux plus OpenGL execution on Linux. See the [native guide](docs/nds-native-runtime.md)
+for GPU qualification and conservative compatibility limits.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

@@ -30,11 +30,20 @@ def backend(monkeypatch):
     monkeypatch.setattr(pc,'BACKENDS',{'original-fixture':pc.Backend('original-fixture','nds','1',generate)})
 
 
-def test_missing_backend_never_substitutes_console_export(tmp_path):
+def test_missing_backend_never_substitutes_console_export(tmp_path,monkeypatch):
+    monkeypatch.setattr(pc,'BACKENDS',{})
     assert pc.status('nds')['available'] is False
     with pytest.raises(pc.PCError,match='No PC-project backend'):
         pc.export(dict(platform='nds'),tmp_path/'output')
     assert not (tmp_path/'output').exists()
+
+
+def test_ds_hardware_backend_is_available_as_experimental_without_installing_tools(monkeypatch):
+    monkeypatch.setattr('decompnet.toolchains.ensure',lambda *_a,**_k: pytest.fail('capabilities must not install tools'))
+    status=pc.status('nds')
+    assert status['available'] and status['experimental']
+    assert [b['id'] for b in status['backends']]==['nds-dsr-experimental']
+    assert not pc.status('psx')['available']
 
 
 def test_generated_project_builds_and_executes_on_host(tmp_path,backend):
