@@ -10,9 +10,10 @@ if(DECOMP_PS2_BUILD_RUNTIME_TESTS)
   foreach(suite IN LISTS PS2_RUNTIME_SUITES)
     list(APPEND PS2_RUNTIME_TEST_SOURCES "${PS2_TEST_ROOT}/src/${suite}_tests.cpp")
   endforeach()
-  add_executable(ps2_runtime_tests tests/runtime.cpp ${PS2_RUNTIME_TEST_SOURCES})
+  add_executable(ps2_runtime_tests tests/runtime.cpp tests/irx.cpp ${PS2_RUNTIME_TEST_SOURCES})
   target_include_directories(ps2_runtime_tests PRIVATE "${PS2_TEST_ROOT}/include"
-    "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib")
+    "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib"
+    "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xIOP/src")
   target_link_libraries(ps2_runtime_tests PRIVATE ps2_runtime ps2_recomp_lib)
   if(UNIX AND NOT APPLE)
     target_link_libraries(ps2_runtime_tests PRIVATE ${CMAKE_DL_LIBS})

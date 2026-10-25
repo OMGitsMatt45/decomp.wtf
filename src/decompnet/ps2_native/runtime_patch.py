@@ -10,6 +10,57 @@ def replace(path, old, new):
     path.write_text(text.replace(old, new), encoding='utf-8')
 
 
+def patch_irx_loader(root):
+    source=Path(root)/'thirdparty/PS2Recomp/ps2xIOP/src/lle/irx.cpp'
+    replace(source,'''        uint16_t type = 0, phentsize = 0, phnum = 0, shentsize = 0, shnum = 0;''',
+        '''        out = IrxImage{};
+        error.clear();
+        uint16_t machine = 0;
+        uint16_t type = 0, phentsize = 0, phnum = 0, shentsize = 0, shnum = 0;''')
+    replace(source,'''        if (file.size() < 0x34u || std::memcmp(file.data(), "\\x7F" "ELF", 4) != 0 ||''',
+        '''        if (file.size() < 0x34u || std::memcmp(file.data(), "\\x7F" "ELF", 4) != 0 ||
+            file[4] != 1u || file[5] != 1u || file[6] != 1u ||
+            !readAt(file, 0x12, machine) || machine != 8u ||''')
+    replace(source,'''        uint32_t loadOffset = 0, loadFileSize = 0, loadMemorySize = 0;''',
+        '''        if (phnum == 0u || phentsize < 32u ||
+            uint64_t(phoff) + uint64_t(phentsize) * phnum > file.size() ||
+            (shnum && (shentsize < 40u || uint64_t(shoff) + uint64_t(shentsize) * shnum > file.size())))
+        {
+            error = "truncated IRX header tables";
+            return false;
+        }
+        uint32_t loadOffset = 0, loadFileSize = 0, loadMemorySize = 0;''')
+    replace(source,'''                uint32_t fields[6];''',
+        '''                if (fileSize < 26u || offset > file.size() || fileSize > file.size() - offset)
+                {
+                    error = "truncated IRX module metadata";
+                    return false;
+                }
+                uint32_t fields[6]{};''')
+    replace(source,'''                        break;
+                readAt(file, offset + 24u, out.version);''',
+        '''                    {
+                        error = "truncated IRX module metadata";
+                        return false;
+                    }
+                readAt(file, offset + 24u, out.version);''')
+    replace(source,'''        out.image.assign(file.begin() + loadOffset, file.begin() + loadOffset + loadFileSize);''',
+        '''        if (out.entry >= loadFileSize || (out.entry & 3u) ||
+            uint64_t(out.textSize) + out.dataSize > loadFileSize)
+        {
+            error = "IRX entry or section sizes exceed its image";
+            return false;
+        }
+        out.image.assign(file.begin() + loadOffset, file.begin() + loadOffset + loadFileSize);''')
+    replace(source,'''            for (uint32_t entry = 0; entry + 8u <= size; entry += 8u)''',
+        '''            if (size % 8u || offset > file.size() || size > file.size() - offset)
+            {
+                error = "truncated IRX relocation table";
+                return false;
+            }
+            for (uint32_t entry = 0; entry + 8u <= size; entry += 8u)''')
+
+
 def patch_emitter(root):
     root = Path(root)
     translator = root / 'thirdparty/PS2Recomp/ps2xRecomp/src/lib/vu_translator.cpp'

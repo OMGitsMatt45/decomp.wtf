@@ -31,9 +31,11 @@ def inputs(tmp_path, monkeypatch):
 def test_only_selected_runtime_source_is_published_and_changed_source_is_rejected(tmp_path, monkeypatch):
     archives, _ = inputs(tmp_path, monkeypatch)
     output = tmp_path / 'SDK with spaces'
-    provider.download(output, archives=archives)
+    messages=[]
+    provider.download(output, archives=archives, log=messages.append)
     assert [p.relative_to(output).as_posix() for p in provider.payload(output)] == ['gfx/gs.cpp']
     assert (output / 'gfx/gs.cpp').read_bytes() == b'original GS fixture\n'
+    assert any('1/1 files' in message for message in messages)
     provider.verify(output)
     (output / 'gfx/gs.cpp').write_bytes(b'changed')
     with pytest.raises(PCError, match='differs'): provider.verify(output)

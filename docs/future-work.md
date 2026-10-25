@@ -66,6 +66,11 @@ C++/CMake exporter, source-shipped runtime, adaptive Vulkan geometry, audio,
 input and saves. CLI, GUI and connected tools use the same exporter. Original
 fixtures cover native instruction execution, module switching, disc services,
 save reloads, audio mixing, graphics, resize and explicit failure reports.
+The source-shipped suite includes 412 cases across seventeen runtime groups,
+including original IRX entry/relocation and malformed-input checks. The original
+standalone fixture also has an [owner-provided physical Vulkan pass](ps2-hardware-validation.json)
+on Windows 11 with Intel Iris Xe. The required PS2 native-output milestone is
+implemented; further retail playthrough acceptance remains with the owner.
 Shared streaming inspection discovers EE/IOP programs and Metrowerks overlays;
 generated function guards reject changed executable bytes. The DQVIII USA
 export builds and reaches its settings prompt through the generic host. Its

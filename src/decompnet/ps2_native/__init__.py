@@ -58,14 +58,24 @@ def _sdk():
     override=os.environ.get('DECOMP_PS2_PORT_SDK')
     root=Path(override).resolve() if override else toolchains.root()/'ps2-native-runtime'
     if not root.exists():provider.download(root,log=_log)
-    return root,provider.verify(root)
+    return root,provider.verify(root,log=_log)
+
+
+def emitter_directory(sdk, integration):
+    return sdk.parent/'.ps2-native-builds'/integration[:16]
+
+
+EMITTER_LONG_SOURCE = Path('build/_deps/rabbitizer-src/src/instructions/RabbitizerInstructionR4000Allegrex/RabbitizerInstructionR4000Allegrex_ProcessUniqueId.c')
 
 
 def _emitter(sdk):
     # Build outside the pinned cache. An integration revision gets a separate
     # source/build tree, so previous working installations remain reviewable.
     integration=revision()
-    work=sdk.parent/'.ps2-native-builds'/integration[:16]
+    work=emitter_directory(sdk,integration)
+    if os.name=='nt' and len(str(work/EMITTER_LONG_SOURCE))>=260:
+        raise pc.PCError('PS2 translator build paths exceed the Windows compiler limit; '
+            'use a shorter runtime-source directory, or rerun hardware validation with a short -Output folder')
     source=work/'source'
     marker=work/'integration.json'
     if not source.exists():
@@ -123,6 +133,7 @@ def generate(project,root):
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor);mpeg_patch.install(vendor)
+    runtime_patch.patch_irx_loader(vendor)
     _dependencies(root/'native/dependencies.cmake')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PS2-runtime-GPL-3.0.txt')
     records=[];emissions=[]
@@ -181,7 +192,8 @@ def generate(project,root):
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
-        ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp')):
+        ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
+        ('irx_tests.cpp','tests/irx.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')
