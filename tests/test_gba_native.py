@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware, timer_micro, PROGRAM
+from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -101,8 +101,8 @@ def test_translated_and_reference_cpu_agree_on_original_hardware(original, tmp_p
 def test_live_timer_load_phase_matches_independent_mgba(instructions, expected, tmp_path, sdk):
     project=generate(tmp_path/'timer',fixture=timer_micro(instructions))
     for mode in ('--strict-static','--interpreter'):
-        result=execute(project,mode,'--observe','0x02000000')
-        assert result['observed']==[expected]
+        result=execute(project,mode,'--observe','0x02000000','--observe','0x02000004')
+        assert result['observed']==[expected,expected]
 
 
 def test_ram_code_modified_after_export_is_never_executed_as_stale_native_code(original, tmp_path):
@@ -206,6 +206,22 @@ def test_unsupported_bios_service_stops_instead_of_returning_success(tmp_path, s
     bios.write_bytes(bytes(4096)); save=tmp_path/'untouched.sav'
     assert '16384 bytes' in execute(project, '--bios', bios, '--save', save, ok=False)
     assert not save.exists()
+
+
+def test_owner_bios_pipeline_protection_and_irq_vector_match_independent_mgba(tmp_path, sdk):
+    fixture,image=bios_pipeline()
+    project=generate(tmp_path/'bios-pipeline',fixture=fixture)
+    bios=tmp_path/'original-bios.bin';bios.write_bytes(image)
+    addresses=[*range(0x02000000,0x02000024,4),0x02000040,0x02000044]
+    observations=[v for address in addresses for v in ('--observe',hex(address))]
+    expected=[0x89abcdef,0x12345678,0x1234,0x56,0x12345678,0x5aa5,0,0x5a,0x31415926,99,77]
+    for options in ((),('--interpreter',)):
+        result=execute(project,'--bios',bios,*options,*observations)
+        assert result['observed']==expected
+        assert result['interpreted_cycles']>0
+        assert all(address>=0x02000000 for address in result['misses'])
+        if not options:
+            assert not result['misses']
 
 
 def test_multiboot_without_a_cable_returns_failure_instead_of_stopping(tmp_path, sdk):

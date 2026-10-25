@@ -10,9 +10,9 @@
   },
   "backend": {
     "id": "gba-anygba-experimental",
-    "revision": "f9e1e9e7a1162009f96a4d6adf33463f158fb5f22bcb09f0c6aa38248bac229e"
+    "revision": "d7518ef44a6ca94321712a9d340c7addd3f65e8626df63b17b5d9b69aa9edd10"
   },
-  "tested_emitted_code_revision": "f9e1e9e7a1162009f96a4d6adf33463f158fb5f22bcb09f0c6aa38248bac229e",
+  "tested_emitted_code_revision": "d7518ef44a6ca94321712a9d340c7addd3f65e8626df63b17b5d9b69aa9edd10",
   "emitted_files_identical_to_tested_export": true,
   "runtime": {
     "id": "anygba-core",
@@ -152,7 +152,8 @@
     "rtc_repeated_high_writes_do_not_clock_bits": true,
     "rtc_low_clock_chip_select_abort": true,
     "rtc_midnight_leap_day_month_and_year_rollovers": true,
-    "optional_bios_arm_thumb_and_disconnected_multiboot": true
+    "optional_bios_arm_thumb_and_disconnected_multiboot": true,
+    "optional_bios_pipeline_protection_irq_and_cartridge_callback": true
   },
   "qualification": {
     "original_fixtures": true,
@@ -178,13 +179,13 @@
     "Independent RAM views recover temporal/overlapping copies. Dispatch and each emitted body check its exact original footprint; multiple versions at one address remain distinct.",
     "The scripted retail sequence, unskipped introduction/audio and documented fresh-load clock paths execute without interpretation. Whole-game static coverage is not established.",
     "Load-phase peripheral sampling fixes the independent documented ARM timer microchecks. Timer cascades/IRQs and RTC edge/calendar checks pass.",
-    "CPU bus/prefetch timing remains approximate. A separate microprobe with a subsequent ROM-literal load differs from mGBA by two cycles; no cycle-exact claim is made.",
-    "The internal CPU/reference PPU shares the hardware core. Independent mGBA verification covers the saved-room load/picture, specified timer microchecks and listed replacement-BIOS service observations.",
+    "CPU bus/prefetch timing remains approximate. Both MOV and ROM-literal timer layouts agree with mGBA. The earlier two-cycle difference was mGBA multiboot auto-detection running a tiny fixture from EWRAM; padded cartridges remove that comparison mismatch.",
+    "The internal CPU/reference PPU shares the hardware core. Independent mGBA verification covers the saved-room load/picture, specified timer microchecks, original BIOS pipeline/IRQ/cartridge-callback fixture and listed replacement-BIOS service observations.",
     "The replacement BIOS is MIT licensed and incomplete. Its DMA FIFO destination control bits read differently in mGBA; the semantic enable/disable comparison excludes those ignored bits. Nintendo BIOS sound-driver behavior is unqualified.",
     "Daily-clock checks read the original game state without patches or injected calls. Individual planted-berry growth and a full owner playthrough remain unqualified.",
     "The product downloads no firmware. An optional owner BIOS executes in the interpreter and is rejected in strict static mode. No owner BIOS was supplied for this qualification.",
     "Physical GPU, audio and controller qualification remain owner-run.",
-    "No ROM, BIOS, extracted assets, save files, image/audio captures, runtime traces or ROM-derived C is published with this record."
+    "No owner ROM, BIOS, extracted assets, save files, captures, runtime traces or ROM-derived C is published with this record. Original test firmware is generated from CC0 fixture source."
   ],
   "intro_scenario": {
     "frames": 2400,
@@ -321,37 +322,120 @@
     },
     "nintendo_bios_sound_driver_qualified": false,
     "multiboot_without_cable_returns_failure": true,
-    "link_play": false
+    "link_play": false,
+    "original_pipeline_and_irq_validation": {
+      "fixture": "tests/fixtures/gba_native.py:bios_pipeline",
+      "license": "CC0-1.0",
+      "cartridge_sha256": "5d181bd12c4e132ae2ed574f7d8e6260e6a8b600621db360caee045bc5aa91ae",
+      "original_firmware_sha256": "bcfd63e7355e99d71ab3619d998da3ffadfa3b4251eb531db311b0ca65804091",
+      "protected_arm_word_halfword_byte": true,
+      "protected_thumb_prefetch": true,
+      "data_reads_do_not_latch": true,
+      "irq_uses_image_vector": true,
+      "irq_cartridge_callback": true,
+      "arm_exception_return": true,
+      "native_and_reference_observed": [
+        2309737967,
+        305419896,
+        4660,
+        86,
+        305419896,
+        23205,
+        0,
+        90,
+        826366246,
+        99,
+        77
+      ],
+      "mgba_0_10_5_observed": [
+        2309737967,
+        305419896,
+        4660,
+        86,
+        305419896,
+        23205,
+        0,
+        90,
+        826366246,
+        99,
+        77
+      ]
+    }
   },
   "independent_timer_microchecks": [
     {
       "arm_add_instructions": 0,
-      "rom_sha256": "bb7e1072a90bdc8e82cd64099d37f5e7e99f7e30511bfb5ec23c2c36667b2980",
-      "native_ticks": 7,
-      "reference_cpu_ticks": 7,
-      "mgba_0_10_5_ticks": 7
+      "rom_sha256": "13863fb73a86c5a6d1cf0e033872450a3d1d5c4c55ad0879a504af5c0452f699",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        7,
+        7
+      ],
+      "reference_cpu_ticks": [
+        7,
+        7
+      ],
+      "mgba_0_10_5_ticks": [
+        7,
+        7
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
     },
     {
       "arm_add_instructions": 1,
-      "rom_sha256": "7f571b70b809d6ab2ac3448d869fe6ddab1ca3135da103e9a73cb0ed5f48b5cb",
-      "native_ticks": 13,
-      "reference_cpu_ticks": 13,
-      "mgba_0_10_5_ticks": 13
+      "rom_sha256": "3c748782e983ca6d70d45f809c65bc09a4749f0a9658e2aaf8a23f167c33363e",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        13,
+        13
+      ],
+      "reference_cpu_ticks": [
+        13,
+        13
+      ],
+      "mgba_0_10_5_ticks": [
+        13,
+        13
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
     },
     {
       "arm_add_instructions": 16,
-      "rom_sha256": "109304ddab22881bb13da6d78a0e4cc40a4d26372eea6ca5929cb09d4e13fb44",
-      "native_ticks": 103,
-      "reference_cpu_ticks": 103,
-      "mgba_0_10_5_ticks": 103
+      "rom_sha256": "e135218992c8868b6706e2e3b58fbd25d2365bdbbe645119945f20f37d41f848",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        103,
+        103
+      ],
+      "reference_cpu_ticks": [
+        103,
+        103
+      ],
+      "mgba_0_10_5_ticks": [
+        103,
+        103
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
     }
   ],
   "checks": {
     "gba_native_desktop_application": {
-      "passed": 37
+      "passed": 38
     },
     "broader_regressions": {
-      "passed": 94,
+      "passed": 81,
       "optional_skipped": 18
     },
     "wheel_gba_resources_verified": 15

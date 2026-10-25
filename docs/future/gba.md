@@ -32,7 +32,8 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   reload/IRQ boundaries, acknowledgement and stopped-counter behavior are checked.
 - RTC serial transfers require rising clock edges and honor chip-select aborts.
   Original cases cover repeated GPIO writes, midnight, leap days, months and years.
-- Optional owner BIOS execution handles software interrupts and BIOS callbacks;
+- Optional owner BIOS execution handles software interrupts, its IRQ vector and
+  BIOS callbacks, including the protected ARM/Thumb instruction-prefetch latch;
   original firmware fixtures check ARM/Thumb supervisor entry and return. Built-in
   unsupported sound services fail explicitly. MultiBoot returns a disconnected-cable
   failure; link play is not implemented.
@@ -67,10 +68,12 @@ This workspace uses llvmpipe software OpenGL and SDL dummy audio; physical GPU,
 speakers and controller acceptance remain owner-run. Measured results and scope are
 in [gba-native-validation.json](../gba-native-validation.json).
 
-CPU bus/prefetch timing remains approximate. In an additional microprobe with a
-subsequent ROM-literal load, the timer sample differs from mGBA by two cycles;
-the independent agreement above applies to the documented fixture layouts. Actual
-Nintendo BIOS sound-driver execution has not been qualified with an owner BIOS.
+CPU bus/prefetch timing remains approximate. The timer probes agree with mGBA for
+both following-instruction layouts (MOV and a ROM-literal load). The earlier
+two-cycle difference came from mGBA loading a tiny fixture into multiboot EWRAM;
+the regression cartridges prevent that heuristic. Original firmware also checks
+ARM/Thumb protected reads, IRQ entry/return and a cartridge callback against mGBA.
+Nintendo BIOS sound-driver execution still needs qualification with an owner BIOS.
 
 ## Generate a desktop project
 
@@ -106,8 +109,8 @@ while its own complete byte footprint matches.
 
 For games requiring the legacy BIOS sound driver, the generated player accepts
 `--bios /path/to/your/gba-bios.bin`. It validates the owner's 16 KiB file before
-opening saves or coverage output, executes its software-interrupt vector and BIOS
-callbacks in the interpreter, and reports its SHA-256 and interpreted cycles.
+opening saves or coverage output, executes its software-interrupt/IRQ vectors and
+BIOS callbacks in the interpreter, and reports its SHA-256 and interpreted cycles.
 `--strict-static` rejects this mode. The default remains BIOS-free; no firmware is
 downloaded or shipped. The original test firmware validates the execution path,
 not the behavior of Nintendo's sound driver.
@@ -141,8 +144,8 @@ signature or remain interpreted.
 - [x] Daily-clock dispatch and game-owned day/Birch/Mirage/berry-update state checks.
 - [x] Missed indirect/RAM entry feedback, temporal overlays and per-body byte guards.
 - [x] Independent timer microchecks, timer IRQ/cascade boundaries and RTC calendar edges.
-- [x] Optional owner BIOS software-interrupt path, original ARM/Thumb firmware checks
-  and a normal disconnected MultiBoot result.
+- [x] Optional owner BIOS software-interrupt/IRQ paths, original ARM/Thumb prefetch,
+  protected-read and cartridge-callback checks, and a normal disconnected MultiBoot result.
 - [ ] Exact bus/prefetch timing, broader peripheral compatibility, individual berry
   growth events and actual owner-BIOS sound-driver qualification.
 - [ ] Optional reviewed import of matching ELF/symbol data.

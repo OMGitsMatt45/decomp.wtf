@@ -362,12 +362,14 @@ def _runtime(sdk, destination):
     text = text.replace('bool ram_code_valid(std::uint32_t entry, bool thumb) const;',
         'bool ram_code_valid(std::uint32_t entry, bool thumb) const;\n    bool ram_entry_valid(const anygba_function_entry& entry) const;')
     text = text.replace('std::set<std::uint32_t> misses_;',
-        'bool bios_image_loaded_ = false;\n    std::set<std::uint32_t> misses_;\n    std::set<std::tuple<uint32_t,bool,uint32_t,uint32_t>> logged_miss_variants_;\n'
+        'bool bios_image_loaded_ = false;\n    unsigned bios_irq_depth_ = 0;\n    std::set<std::uint32_t> misses_;\n    std::set<std::tuple<uint32_t,bool,uint32_t,uint32_t>> logged_miss_variants_;\n'
         '    std::set<std::tuple<uint32_t,bool,std::array<uint8_t,32>>> logged_ram_signatures_;')
     text = text.replace('static constexpr std::uint32_t kStateVersion = 2;',
                         'static constexpr std::uint32_t kStateVersion = 1002;')
     text = text.replace('    void set_cpsr(',
         '    void memory_load_events();\n    void set_bios_image(std::span<const uint8_t> image);\n    void bios_swi();\n    void set_cpsr(')
+    text = text.replace('    void bios_swi();',
+        '    void bios_swi();\n    void bios_irq(uint32_t return_pc);\n    void bios_prefetch(uint32_t address, bool thumb);')
     text = text.replace('ignores ROM patches and RAM contents', 'ignores ROM patches; checks RAM variants')
     header.write_text(text, encoding='utf-8')
     system = destination/'runtime/src/system.cpp'
@@ -377,6 +379,9 @@ def _runtime(sdk, destination):
     dispatch = destination/'runtime/src/dispatch.cpp'
     text = dispatch.read_text(encoding='utf-8')
     text = '#include "ram_feedback.hpp"\n'+text
+    text = text.replace('bool System::in_irq_handler() const {',
+        'bool System::in_irq_handler() const {\n    if (bios_irq_depth_) return true;')
+    text = text.replace('    cpu_.ret_depth = 0;', '    cpu_.ret_depth = 0;\n    bios_irq_depth_ = 0;')
     start = text.index('    if (fn && (addr < 0x08000000')
     end = text.index('    if (fn && cpu_.rom_patched', start)
     text = text[:start]+text[end:]
@@ -482,6 +487,18 @@ extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t 
     text = text.replace('case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 1; break;',
         'case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 0; break;')
     interp.write_text(text, encoding='utf-8')
+    fetch = destination/'runtime/src/interp/thumb_interp.cpp'
+    text = fetch.read_text(encoding='utf-8')
+    old = 'decode::Insn fetch(System& sys, std::uint32_t addr, bool thumb) {'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA BIOS instruction latch patch no longer applies')
+    fetch.write_text(text.replace(old, old+'\n    sys.bios_prefetch(addr, thumb);'), encoding='utf-8')
+    irq = destination/'runtime/src/irq.cpp'
+    text = irq.read_text(encoding='utf-8')
+    old = '    c.r[14] = resume_pc + 4;'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA BIOS interrupt vector patch no longer applies')
+    irq.write_text(text.replace(old, old+'\n    if (bios_image_loaded_) { bios_irq(resume_pc); return; }'), encoding='utf-8')
     bus = destination/'runtime/src/bus.cpp'
     text = bus.read_text(encoding='utf-8')
     for name, width in (('bus_read32', 4), ('bus_read16', 2), ('bus_read8', 1)):
