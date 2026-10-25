@@ -162,10 +162,12 @@ be mapped automatically; ambiguous code and external callbacks need a reviewed
 map. Windows/Linux qualification and retail acceptance are
 reported separately; source generation alone does not certify a working port.
 
-To validate PS2 output on your Windows GPU, first install
-[CMake](https://cmake.org/download/) and
+To validate PS2 output on your Windows GPU, use Visual Studio or
 [Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/)
-with **Desktop development with C++**. Install
+with **Desktop development with C++**, including **C++ CMake tools for Windows**.
+The wrapper finds Visual Studio's bundled CMake even when it is absent from PATH;
+a separate [CMake installation](https://cmake.org/download/) is optional.
+Install
 [uv](https://docs.astral.sh/uv/getting-started/installation/) from PowerShell:
 
 ```powershell
