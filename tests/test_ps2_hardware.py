@@ -1,5 +1,7 @@
 """Physical hardware claims require the actual selected Vulkan device class."""
 from tools.ps2_hardware import selected_device
+import json
+import pytest
 
 
 def test_vulkan_cpu_and_virtual_devices_do_not_qualify_as_physical():
@@ -14,3 +16,15 @@ def test_an_unselected_or_ambiguous_gpu_cannot_qualify_a_software_run():
     for name in ('software','unknown',''):
         assert not selected_device(inventory,dict(gpu_device=name))['physical']
     assert not selected_device(inventory+[dict(name='real GPU',device_type=4)],dict(gpu_device='real GPU'))['physical']
+
+
+def test_interruption_preserves_a_report_without_claiming_hardware_success(tmp_path,monkeypatch):
+    from tools import qualify_ps2_hardware as tool
+    monkeypatch.setattr(tool,'vulkan_devices',lambda:[dict(name='original test GPU',device_type=2)])
+    def interrupt(*args,**kwargs):raise KeyboardInterrupt
+    monkeypatch.setattr(tool,'qualify',interrupt)
+    out=tmp_path/'Interrupted validation'
+    with pytest.raises(KeyboardInterrupt):tool.assess(out)
+    report=json.loads((out/'hardware-assessment.json').read_text())
+    assert report['interrupted'] and not report['hardware_qualified'] and not report['original_fixture_passed']
+    assert 'interrupted before completion' in report['error']

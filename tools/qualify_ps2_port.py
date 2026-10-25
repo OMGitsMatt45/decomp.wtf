@@ -17,6 +17,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 def run(command,cwd,log,*,env=None,timeout=1800,success=True):
+    print(f'{log.stem}: running {Path(str(command[0])).name}; logs will be saved to {log}',flush=True)
     try:
         result=subprocess.run(list(map(str,command)),cwd=cwd,env=env,capture_output=True,text=True,
             encoding='utf-8',errors='replace',timeout=timeout)
@@ -47,8 +48,9 @@ def qualify(destination,*,sdk=None,execute=True):
     if out.exists():raise ValueError('choose a new assessment directory; existing work is preserved')
     out.mkdir(parents=True)
     sdk=Path(sdk).resolve() if sdk else out/'Pinned source runtime'
-    if not sdk.exists():provider.download(sdk)
-    pins=provider.verify(sdk);os.environ['DECOMP_PS2_PORT_SDK']=str(sdk)
+    progress=lambda message:print(message,flush=True)
+    if not sdk.exists():provider.download(sdk,log=progress)
+    pins=provider.verify(sdk,log=progress);os.environ['DECOMP_PS2_PORT_SDK']=str(sdk)
     owner=out/'original-gs.elf';owner.write_bytes(stripped_original())
     project=out/'Standalone PS2 source with spaces'
     exported=ps2_native.export(owner,project,title='Original PS2 graphics fixture',renderer='vulkan',log=print)
@@ -119,7 +121,7 @@ def qualify(destination,*,sdk=None,execute=True):
     env=dict(os.environ,DECOMP_PS2_PATCHED_EMITTER=str(executable(emitter_build,'ps2_recomp')))
     run([sys.executable,'-m','pytest','-q','tests/test_ps2_native_vu.py','--basetemp',out/'VU checks with spaces'],
         ROOT,out/'vu.log',env=env)
-    if provider.verify(sdk)!=pins:raise ValueError('the exporter modified pinned source')
+    if provider.verify(sdk,log=progress)!=pins:raise ValueError('the exporter modified pinned source')
     verified=pc.verify(project)
     result=dict(schema='decomp.wtf.ps2-port-assessment/v1',source_sha256=pins['source_sha256'],
         backend_revision=integration,host_build=True,graphics_executed=execute,retail=False,

@@ -193,6 +193,11 @@ If PowerShell reports `uv is not recognized`, the test has not started; install 
 and reopen the shell. If WinGet is unavailable, use the linked official uv installer.
 The command uses an original test program and reports the actual Vulkan device
 class; software/virtual rendering does not count as physical-GPU validation.
+The first run downloads and verifies pinned runtime sources, then compiles the
+standalone fixture. Allow these steps to finish; they can take several minutes.
+Progress messages identify verification and build stages. Completion prints the
+`hardware-assessment.json` path. Stopping with Ctrl+C records an interrupted test;
+retry with a new output folder.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

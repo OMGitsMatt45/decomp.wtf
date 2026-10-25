@@ -58,7 +58,7 @@ def _sdk():
     override=os.environ.get('DECOMP_PS2_PORT_SDK')
     root=Path(override).resolve() if override else toolchains.root()/'ps2-native-runtime'
     if not root.exists():provider.download(root,log=_log)
-    return root,provider.verify(root)
+    return root,provider.verify(root,log=_log)
 
 
 def _emitter(sdk):
