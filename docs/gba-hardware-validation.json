@@ -1,0 +1,50 @@
+{
+  "schema": "decomp.wtf.gba-hardware-validation/v1",
+  "provenance": {
+    "kind": "owner-provided command result",
+    "reported_on": "2026-10-25",
+    "command": "tools.qualify_gba_hardware",
+    "independently_reproduced_by_agent": false
+  },
+  "platform": "Windows 11",
+  "gpu_family": "Intel Iris Xe",
+  "renderer": "OpenGL",
+  "hardware_qualified": true,
+  "original_fixture_passed": true,
+  "source_integrity_verified": true,
+  "backend_revision": "2c75cfea8d088dd2886a3ab35461c2d7dd1cd90d1521cea7753bf098582e2e79",
+  "retail": false,
+  "manual_gameplay": false,
+  "physical_audio_qualified": false,
+  "physical_controller_qualified": false,
+  "scenes": {
+    "passed": true,
+    "scenes": 18,
+    "initial_drawable": [
+      240,
+      160
+    ],
+    "resized_drawable": [
+      480,
+      320
+    ],
+    "odd_drawable": [
+      481,
+      327
+    ],
+    "reference_picture_ignored": true,
+    "resize_passed": true
+  },
+  "player": {
+    "frames": 120,
+    "functions": 11,
+    "interpreted_cycles": 0,
+    "drawable": [
+      480,
+      320
+    ],
+    "misses": []
+  },
+  "physical_device_verified_by_assessment": true,
+  "scope": "Owner-reported original standalone source/build/rendering fixture. Physical audio, controllers and retail gameplay are separate."
+}

@@ -1,0 +1,57 @@
+name: GBA native desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['src/decompnet/gba_native/**', 'src/decompnet/pc*.py', 'src/decompnet/app/**', 'src/decompnet/toolchains.toml', 'tools/make_gba_native_fixture.py', 'tools/qualify*gba*', 'tests/test_gba*.py', 'tests/fixtures/gba*', 'tests/fixtures/gba-native/**', '.github/workflows/gba-native.yml']
+  push:
+    branches: [codex/future-gba]
+
+permissions:
+  contents: read
+
+jobs:
+  translated-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.os == 'windows-2022' && 30 || 20 }}
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+      DECOMP_REQUIRE_GBA_NATIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Check Windows hardware-command tool discovery
+        if: runner.os == 'Windows'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/qualify-gba-hardware.ps1 -CheckTools
+      - name: Check hardware-assessment failure handling
+        run: uv run --no-sync python -m pytest -q tests/test_gba_hardware.py
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libasound2-dev libpulse-dev libudev-dev
+      - name: Install pinned GBA source SDK
+        run: uv run --no-sync python -c "from decompnet import toolchains; toolchains.ensure('anygba-sdk')"
+      - name: Build and execute independent ARM/Thumb hardware probes
+        run: uv run --no-sync python -m pytest -q tests/test_gba_native.py --basetemp "${{ runner.temp }}/gba-native" --junitxml=gba-native-results.xml
+      - name: Build and test Windows standalone desktop and cartridge services
+        if: runner.os == 'Windows'
+        run: uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
+      - name: Build and test Linux standalone desktop, GPU scenes and cartridge services
+        if: runner.os == 'Linux'
+        env:
+          DECOMP_REQUIRE_GBA_GPU: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          SDL_AUDIODRIVER: dummy
+        run: xvfb-run -a uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gba-native-${{ matrix.os }}
+          path: |
+            gba-native-results.xml
+            gba-desktop-results.xml

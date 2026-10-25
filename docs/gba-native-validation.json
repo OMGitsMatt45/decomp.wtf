@@ -1,0 +1,505 @@
+{
+  "schema": "decomp.wtf.gba-validation/v1",
+  "input": {
+    "title": "Pokemon Emerald (USA, Europe)",
+    "game_code": "BPEE",
+    "version": 0,
+    "size": 16777216,
+    "sha1": "f3ae088181bf583e55daf962a92bb46f4f1d07b7",
+    "sha256": "a9dec84dfe7f62ab2220bafaef7479da0929d066ece16a6885f6226db19085af"
+  },
+  "backend": {
+    "id": "gba-anygba-experimental",
+    "revision": "d7518ef44a6ca94321712a9d340c7addd3f65e8626df63b17b5d9b69aa9edd10"
+  },
+  "tested_emitted_code_revision": "d7518ef44a6ca94321712a9d340c7addd3f65e8626df63b17b5d9b69aa9edd10",
+  "emitted_files_identical_to_tested_export": true,
+  "runtime": {
+    "id": "anygba-core",
+    "revision": "a3eb412f79627eaae27e2523039d893f72dada1d",
+    "license": "MIT"
+  },
+  "host_build": {
+    "platform": "Linux x86_64",
+    "compiler": "GCC 14",
+    "standalone": true,
+    "passed": true
+  },
+  "code_generation": {
+    "functions": 3847,
+    "execution_model": "hybrid",
+    "runtime_compilation": false,
+    "feedback_input_bound": true,
+    "handwritten_game_replacements": false,
+    "guarded_ram_variants": 63
+  },
+  "retail_scenario": {
+    "frames": 18800,
+    "phases": [
+      "new game and character creation",
+      "overworld movement",
+      "ground-floor save",
+      "bedroom clock setup",
+      "second save and overwrite"
+    ],
+    "input_script_sha256": "cd1b4a42a885382941fee4a507fde6df9bb188bb9cd325ce0c897fd5c127239b",
+    "cycles": 5280761046,
+    "interpreted_cycles": 0,
+    "reported_misses": [],
+    "whole_game_static_coverage_established": false,
+    "strict_static_passed": true,
+    "reference_cpu_picture_equal": true
+  },
+  "rendering": {
+    "renderer": "opengl",
+    "device": "llvmpipe (LLVM 19.1.7, 256 bits)",
+    "drawable": [
+      240,
+      160
+    ],
+    "raw_scanline_state_rasterized": true,
+    "gpu_matches_internal_reference": true,
+    "screen_sha256": "e61a69e23fef64f8c79e556c7fe39600fa9891fc5434f7c60d17b7d944dc1d0c",
+    "original_modes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "original_gpu_scenes": 18,
+    "resize_verified": [
+      480,
+      320
+    ],
+    "physical_gpu": false
+  },
+  "cartridge_save": {
+    "size": 131072,
+    "sha256": "38c2c104374acc094f0c42a8d01f73a7c47ad553d7aed1098269bee24fec678f",
+    "save_generations": [
+      1,
+      2
+    ],
+    "sections_per_generation": 14,
+    "newest_generation_reloaded_after_restart": true,
+    "first_save_location": "ground floor",
+    "second_save_location": "bedroom",
+    "previous_generation_preserved": true,
+    "native_reference_bytes_equal": true
+  },
+  "rtc": {
+    "clock_setting_persisted": true,
+    "restart_frames": 4600,
+    "baseline_epoch": 1704067600,
+    "shifted_epoch": 1704071200,
+    "epoch_difference_seconds": 3600,
+    "displayed_hour_advanced": true,
+    "picture_change_bounds": [
+      99,
+      59,
+      127,
+      87
+    ],
+    "changed_pixels": 220,
+    "gpu_matches_reference_both_runs": true,
+    "save_bytes_unchanged": true,
+    "daily_gameplay_events_verified": true,
+    "individual_berry_growth_verified": false
+  },
+  "audio": {
+    "frames": 900,
+    "sample_rate": 32768,
+    "channels": 2,
+    "format": "signed PCM16 little endian",
+    "stereo_frames": 493598,
+    "reference_stereo_frames": 493598,
+    "pcm_sha256": "3a58d750ba6cc581f1d7b04184fe007b7b254153d3055ece3e18b0ee544cdb83",
+    "native_reference_pcm_equal": true,
+    "samples_compared": 987196,
+    "peak": 15232,
+    "physical_audio_device": false,
+    "native_interpreted_cycles": 0,
+    "strict_static_passed": true
+  },
+  "independent_reference": {
+    "name": "mGBA",
+    "version": "0.10.5",
+    "source": "https://github.com/mgba-emu/mgba/releases/tag/0.10.5",
+    "source_archive_sha256": "91d6fbd32abcbdf030d58d3f562de25ebbc9d56040d513ff8e5c19bee9dacf14",
+    "bios": "HLE; no Nintendo BIOS supplied",
+    "raw_save_loaded": true,
+    "newest_saved_room_verified": true,
+    "frames": 4200,
+    "room_picture_matches_pixel_for_pixel": true,
+    "room_rgb_sha256": "e61a69e23fef64f8c79e556c7fe39600fa9891fc5434f7c60d17b7d944dc1d0c",
+    "rgb565_normalized_to_original_5_bit_components": true
+  },
+  "original_checks": {
+    "timer_observation_matches_reference": true,
+    "short_ram_leaf_recovered_without_live_stack_data": true,
+    "rejected_ram_byte_guard_included_in_feedback": true,
+    "mixed_arm_thumb_copy_keeps_whole_function_guard": true,
+    "wrong_rom_preserved_outputs": true,
+    "software_fallback_reported": true,
+    "flash128_protocol_and_rtc_serial_checks": true,
+    "temporal_and_overlapping_ram_copies": true,
+    "multiple_sources_at_one_address_logged": true,
+    "reviewed_overlapping_profiles": true,
+    "per_body_direct_entry_guard": true,
+    "timer_prescalers_cascades_reload_irq_and_acknowledgement": true,
+    "rtc_repeated_high_writes_do_not_clock_bits": true,
+    "rtc_low_clock_chip_select_abort": true,
+    "rtc_midnight_leap_day_month_and_year_rollovers": true,
+    "optional_bios_arm_thumb_and_disconnected_multiboot": true,
+    "optional_bios_pipeline_protection_irq_and_cartridge_callback": true
+  },
+  "qualification": {
+    "original_fixtures": true,
+    "desktop": true,
+    "gpu_shader": true,
+    "physical_gpu": false,
+    "physical_audio_device": false,
+    "physical_gamepad": false,
+    "retail_save_reload": true,
+    "in_game_clock_advance": true,
+    "bounded_native_reference_pcm_equal": true,
+    "independent_save_interoperability": true,
+    "full_playthrough": false,
+    "general_retail_compatibility": false,
+    "strict_static_retail_sequence": true,
+    "strict_static_unskipped_intro": true,
+    "daily_clock_dispatch": true,
+    "optional_bios_original_firmware": true,
+    "nintendo_bios_sound_driver": true,
+    "cycle_exact_bus_timing": false
+  },
+  "notes": [
+    "Independent RAM views recover temporal/overlapping copies. Dispatch and each emitted body check its exact original footprint; multiple versions at one address remain distinct.",
+    "The scripted retail sequence, unskipped introduction/audio and documented fresh-load clock paths execute without interpretation. Whole-game static coverage is not established.",
+    "Load-phase peripheral sampling fixes the independent documented ARM timer microchecks. Timer cascades/IRQs and RTC edge/calendar checks pass.",
+    "CPU bus/prefetch timing remains approximate. Both MOV and ROM-literal timer layouts agree with mGBA. The earlier two-cycle difference was mGBA multiboot auto-detection running a tiny fixture from EWRAM; padded cartridges remove that comparison mismatch.",
+    "The internal CPU/reference PPU shares the hardware core. Independent mGBA verification covers the saved-room load/picture, specified timer microchecks, original BIOS pipeline/IRQ/cartridge-callback fixture and listed replacement-BIOS service observations.",
+    "The MIT replacement BIOS remains incomplete. A supplied GBA BIOS separately passes the original fixed-rate, resampled and one-shot driver cases: selected service results and active mixer buffers agree with mGBA, while native/reference PCM agrees byte for byte. The independent comparison is scoped to mixer buffers and selected service results; final cross-core PCM is not bit-identical.",
+    "Daily-clock checks read the original game state without patches or injected calls. Individual planted-berry growth and a full owner playthrough remain unqualified.",
+    "The product downloads no firmware. A supplied BIOS was used privately for the optional sound-driver qualification; BIOS execution is interpreted and strict static mode rejects it.",
+    "Physical GPU, audio and controller qualification remain owner-run.",
+    "No owner ROM, BIOS, extracted assets, save files, captures, runtime traces or ROM-derived C is published with this record. Original test firmware is generated from CC0 fixture source."
+  ],
+  "intro_scenario": {
+    "frames": 2400,
+    "cycles": 674066646,
+    "interpreted_cycles": 0,
+    "screen_sha256": "b255ba88a3a9f7ac9d4917778864cfdda08234e03710e7ef7c1efab75e3b3109",
+    "audio_frames": 1316536,
+    "input": "no buttons; unskipped introduction",
+    "strict_static_passed": true,
+    "gpu_matches_internal_reference": true
+  },
+  "daily_clock_scenario": {
+    "frames_per_restart": 4600,
+    "strict_static_passed": true,
+    "game_ram_modified": false,
+    "observations": [
+      {
+        "epoch": 1704067600,
+        "offset_seconds": 0,
+        "days": 0,
+        "birch_state": 0,
+        "mirage_random": 0,
+        "berry_last_update": [
+          0,
+          10,
+          2,
+          48
+        ]
+      },
+      {
+        "epoch": 1704071200,
+        "offset_seconds": 3600,
+        "days": 0,
+        "birch_state": 0,
+        "mirage_random": 0,
+        "berry_last_update": [
+          0,
+          11,
+          2,
+          48
+        ]
+      },
+      {
+        "epoch": 1704154000,
+        "offset_seconds": 86400,
+        "days": 1,
+        "birch_state": 1,
+        "mirage_random": 12345,
+        "berry_last_update": [
+          1,
+          10,
+          2,
+          48
+        ]
+      },
+      {
+        "epoch": 1704240400,
+        "offset_seconds": 172800,
+        "days": 2,
+        "birch_state": 2,
+        "mirage_random": 3554416254,
+        "berry_last_update": [
+          2,
+          10,
+          2,
+          48
+        ]
+      },
+      {
+        "epoch": 1704672400,
+        "offset_seconds": 604800,
+        "days": 7,
+        "birch_state": 0,
+        "mirage_random": 1051550459,
+        "berry_last_update": [
+          7,
+          10,
+          2,
+          48
+        ]
+      },
+      {
+        "epoch": 1703981200,
+        "offset_seconds": -86400,
+        "days": 0,
+        "birch_state": 0,
+        "mirage_random": 0,
+        "berry_last_update": [
+          0,
+          10,
+          0,
+          0
+        ]
+      }
+    ],
+    "verified_fields": [
+      "day counter",
+      "Birch daily state modulo seven",
+      "Mirage Island random state",
+      "last berry-update timestamp"
+    ]
+  },
+  "optional_bios": {
+    "owner_image_bytes": 16384,
+    "image_included": false,
+    "image_downloaded_by_product": false,
+    "firmware_execution": "interpreter; included in interpreted_cycles; incompatible with strict static mode",
+    "original_arm_and_thumb_exception_return_passed": true,
+    "invalid_image_preserves_save_destination": true,
+    "replacement_bios_validation": {
+      "repository": "Cult-of-GBA/BIOS",
+      "commit": "a30e9a96df083628b650724b7d4d7112b4070b98",
+      "files": {
+        "bios.bin": {
+          "size": 16384,
+          "sha256": "61af6e8c2db6cf24aa6924e8133f6a50833158fca33ff08ea5e11e1a06e132f2"
+        },
+        "LICENSE": {
+          "size": 1068,
+          "sha256": "761675b95595be4c2e452876a9c414479da22089f7ccf5a6613ca40a1c80675d"
+        }
+      },
+      "services": [
+        "SoundDriverInit",
+        "SoundDriverVSyncOn (Thumb caller)",
+        "SoundDriverVSyncOff"
+      ],
+      "sound_area_identity": 1752395091,
+      "sound_area_pointer": 33558528,
+      "dma_enabled_native": 46592,
+      "dma_enabled_mgba": 46656,
+      "dma_disabled_both": 0,
+      "fifo_destination_control_bits_excluded_from_comparison": 96
+    },
+    "nintendo_bios_sound_driver_qualified": true,
+    "multiboot_without_cable_returns_failure": true,
+    "link_play": false,
+    "original_pipeline_and_irq_validation": {
+      "fixture": "tests/fixtures/gba_native.py:bios_pipeline",
+      "license": "CC0-1.0",
+      "cartridge_sha256": "5d181bd12c4e132ae2ed574f7d8e6260e6a8b600621db360caee045bc5aa91ae",
+      "original_firmware_sha256": "bcfd63e7355e99d71ab3619d998da3ffadfa3b4251eb531db311b0ca65804091",
+      "protected_arm_word_halfword_byte": true,
+      "protected_thumb_prefetch": true,
+      "data_reads_do_not_latch": true,
+      "irq_uses_image_vector": true,
+      "irq_cartridge_callback": true,
+      "arm_exception_return": true,
+      "native_and_reference_observed": [
+        2309737967,
+        305419896,
+        4660,
+        86,
+        305419896,
+        23205,
+        0,
+        90,
+        826366246,
+        99,
+        77
+      ],
+      "mgba_0_10_5_observed": [
+        2309737967,
+        305419896,
+        4660,
+        86,
+        305419896,
+        23205,
+        0,
+        90,
+        826366246,
+        99,
+        77
+      ]
+    },
+    "owner_bios_qualification": {
+      "fixture": "tests/fixtures/gba-native/bios-sound.s",
+      "fixture_license": "CC0-1.0",
+      "services": [
+        "SoundDriverInit",
+        "SoundDriverMode",
+        "SoundDriverMain",
+        "SoundDriverVSync",
+        "SoundChannelClear",
+        "MidiKey2Freq",
+        "SoundGetJumpList",
+        "SoundDriverVSyncOff",
+        "SoundDriverVSyncOn (Thumb caller)"
+      ],
+      "channel_modes": [
+        "fixed-rate loop",
+        "resampled loop",
+        "resampled one-shot"
+      ],
+      "simultaneous_channels": 1,
+      "mixer_frequency_hz": 10512,
+      "frames_per_case": 96,
+      "main_calls_per_case": 80,
+      "native_cartridge_callbacks": true,
+      "cartridge_misses": false,
+      "firmware_interpreted": true,
+      "native_reference_pcm_equal_all_cases": true,
+      "stereo_output_and_post_clear_silence": true,
+      "jump_list_points_inside_bios": true,
+      "independent_reference": "mGBA 0.10.5",
+      "active_mixer_buffers_match_independent_reference": true,
+      "final_pcm_bit_exact_to_mgba": false,
+      "scope": "Original samples and documented sound services at the fixture settings; broader retail audio and physical playback remain outside this qualification."
+    }
+  },
+  "independent_timer_microchecks": [
+    {
+      "arm_add_instructions": 0,
+      "rom_sha256": "13863fb73a86c5a6d1cf0e033872450a3d1d5c4c55ad0879a504af5c0452f699",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        7,
+        7
+      ],
+      "reference_cpu_ticks": [
+        7,
+        7
+      ],
+      "mgba_0_10_5_ticks": [
+        7,
+        7
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
+    },
+    {
+      "arm_add_instructions": 1,
+      "rom_sha256": "3c748782e983ca6d70d45f809c65bc09a4749f0a9658e2aaf8a23f167c33363e",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        13,
+        13
+      ],
+      "reference_cpu_ticks": [
+        13,
+        13
+      ],
+      "mgba_0_10_5_ticks": [
+        13,
+        13
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
+    },
+    {
+      "arm_add_instructions": 16,
+      "rom_sha256": "e135218992c8868b6706e2e3b58fbd25d2365bdbbe645119945f20f37d41f848",
+      "rom_size": 262148,
+      "following_instructions": [
+        "MOV",
+        "ROM literal LDR"
+      ],
+      "native_ticks": [
+        103,
+        103
+      ],
+      "reference_cpu_ticks": [
+        103,
+        103
+      ],
+      "mgba_0_10_5_ticks": [
+        103,
+        103
+      ],
+      "execution_location": "cartridge ROM; padded beyond multiboot heuristic size"
+    }
+  ],
+  "checks": {
+    "gba_native_desktop_application": {
+      "passed": 41,
+      "owner_bios_optional_cases": 3,
+      "passed_without_owner_bios": 38
+    },
+    "broader_regressions": {
+      "passed": 81,
+      "optional_skipped": 18
+    },
+    "wheel_gba_resources_verified": 15
+  },
+  "hardware_command_validation": {
+    "backend_revision": "2c75cfea8d088dd2886a3ab35461c2d7dd1cd90d1521cea7753bf098582e2e79",
+    "runtime_and_frontend_sources_identical_to_retail_validation": true,
+    "original_fixture_passed": true,
+    "physical_gpu": false,
+    "scenes": 18,
+    "drawable_sizes": [
+      [
+        240,
+        160
+      ],
+      [
+        480,
+        320
+      ],
+      [
+        481,
+        327
+      ]
+    ],
+    "strict_native_player_frames": 120,
+    "player_interpreted_cycles": 0,
+    "source_integrity_verified": true,
+    "assessment_failure_checks_passed": 9,
+    "scope": "Software OpenGL command validation. Physical hardware qualification awaits the owner-run command."
+  }
+}

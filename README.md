@@ -17,7 +17,7 @@ of current application support.
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
-| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
+| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
 
@@ -97,13 +97,14 @@ Install the following only for the features you choose:
 | [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
 | [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
 | [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+| [mGBA](https://mgba.io/downloads.html) | Optional independent GBA execution and raw-save comparisons during qualification. |
 | [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
-| [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1. The main application uses Python 3.12+, managed by uv. |
-| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS, 3.24+ for PS1. Also required to generate PS1 C with its automatically built emitter. |
+| [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1/GBA. The main application uses Python 3.12+, managed by uv. |
+| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS and GBA, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. GBA generation discovers the Visual Studio CMake component when it is absent from PATH. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
-| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1 projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1/GBA projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).
@@ -127,7 +128,7 @@ sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
 Use the equivalent development packages on other distributions. Headless DS
 builds (`-DNDS_WITH_SDL=OFF`) do not need desktop graphics libraries.
 
-PS1's pinned SDL3 additionally needs X11 extension and audio development packages:
+PS1/GBA's pinned SDL3 additionally needs X11 extension and audio development packages:
 [SDL3 Linux dependency guide](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies).
 Its generated README includes the complete Ubuntu/Debian install command.
 SDL3, libchdr, libwebp and the PSXRecomp source archive download automatically;
@@ -204,6 +205,22 @@ The original fixture has passed on a physical **Intel Iris Xe integrated GPU on
 Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validation.json)
 identifies the tested backend revision and driver. Retail playthrough validation
 remains separate.
+
+For the GBA GPU assessment, use the current [GBA branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/codex/future-gba)
+and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1
+```
+
+It builds an original standalone project, compares 18 OpenGL scenes and resized
+output, and writes `hardware-assessment.json`. No ROM or BIOS is needed. The
+wrapper reuses Visual Studio's CMake and locates uv as above. See the
+[GBA GPU test details](docs/future/gba.md#test-a-windows-gpu) for device verification
+and the distinction between software and physical GPU results.
+The owner-reported original fixture has passed on **Intel Iris Xe under Windows
+11**; the [GBA hardware summary](docs/gba-hardware-validation.json) records the
+tested backend and scope.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

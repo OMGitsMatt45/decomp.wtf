@@ -7,7 +7,9 @@ this repository structure from a ROM and builds translated ARM9/ARM7 C++ with a
 source-shipped hardware runtime. PS1 has a corresponding experimental native
 export with adaptive GPU rendering and shared multi-disc state. PS2 now exports
 a standalone C++/CMake project with a source runtime and adaptive Vulkan geometry.
-Other implemented platform workflows still target the original console.
+GBA exports an experimental C/C++ desktop project with raw-state OpenGL rendering,
+audio, controls and cartridge saves. Other implemented platform workflows still
+target the original console.
 General retail compatibility is not yet qualified.
 
 The [archived upstream](https://github.com/i12bp8/decomp.wtf#platforms) also
@@ -21,7 +23,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | --- | --- | --- |
 | DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
 | PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. Hybrid execution and noncommercial dependency terms are explicit. |
-| GBA | ARM/Thumb matching and cartridge reconstruction | Prefer an existing title decompilation where available, then integrate a PC runtime or translation backend. Pokémon source projects already exist. |
+| GBA | ARM/Thumb matching, cartridge reconstruction, and an experimental independent native desktop project | [PR6](future/gba.md) adds translated C, guarded temporal RAM variants, a source-shipped core, raw-state OpenGL rendering, audio, controls and cartridge saves. Emerald's tested save/reload and daily-clock workflows run without interpretation. Independent timer observations and an mGBA save/room check pass. Original GPU fixtures pass on the owner's [Windows/Intel Iris Xe](gba-hardware-validation.json). Broader hardware accuracy remains experimental; full gameplay acceptance remains owner-run. |
 | PS2 | EE reconstruction; shared disc/overlay inspection and experimental native PC export | Pinned PS2Recomp/SDL3 GS sources supply adaptive Vulkan geometry, audio, input, disc access and saves. The DQVIII export builds and reaches its settings prompt. Reviewed stripped-code maps and hybrid IOP/VU execution are explicit; see [qualification scope](future/ps2.md). |
 | 3DS | Planned; no qualified raw-game pipeline | Both game import/execution integration and a PC runtime are additional work. |
 | Switch | Planned; no qualified raw-game pipeline | Both program/service integration and a PC runtime are additional work. |

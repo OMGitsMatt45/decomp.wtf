@@ -356,7 +356,7 @@ function setupCompilers(info) {
   const cw = S.st?.codewarrior || { installed: false, ds_installed: false, gc: [], wii: [], ds: [] };
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
   $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
-  $("dsOutputRow").hidden = !["nds", "psx", "playstation", "ps2"].includes(p) || !!info.bootUtility;
+  $("dsOutputRow").hidden = !["nds", "psx", "playstation", "ps2", "gba"].includes(p) || !!info.bootUtility;
   const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
   $("dsSaveRow").hidden = !nativePC || p !== "nds";
   $("dsVideoRows").hidden = !nativePC;
@@ -513,7 +513,7 @@ $("analyse").onclick = async () => {
   const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
   const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
   const additionalDiscs = $("psxAdditionalDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const pcOutput = nativePC ? `&output=pc&pc_platform=${picked.info.platform === "nds" ? "nds" : picked.info.platform === "ps2" ? "ps2" : "psx"}&ps2_profile=${encodeURIComponent($("ps2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(additionalDiscs))}&save_type=${encodeURIComponent($("dsSaveType").value)}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
+  const pcOutput = nativePC ? `&output=pc&pc_platform=${picked.info.platform === "nds" ? "nds" : picked.info.platform === "ps2" ? "ps2" : picked.info.platform === "gba" ? "gba" : "psx"}&ps2_profile=${encodeURIComponent($("ps2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(additionalDiscs))}&save_type=${encodeURIComponent(picked.info.platform === "nds" ? $("dsSaveType").value : "auto")}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
   let layoutQuery = "";
   const layoutFile = !$("romLayoutRow").hidden && $("romLayoutFile").files[0];
   if (layoutFile) {
@@ -530,7 +530,7 @@ $("pathPick").onclick = (e) => {
   e.stopPropagation();
   const body = dialog("Use a file on this computer", `<p class="muted">For big disc images: decomp.wtf reads the file where it is instead of copying it through the browser.</p>
     <label class="field"><span>Path to the game file</span><input id="ppPath" class="mono" placeholder="/home/me/games/my-game.iso"></label>
-    <label class="field"><span>Output</span><select id="ppTarget"><option value="psx">PS1 native PC source project</option><option value="nds">DS native PC source project</option><option value="ps2">PS2 native PC source project (experimental)</option><option value="matching">Console reconstruction</option></select></label>
+    <label class="field"><span>Output</span><select id="ppTarget"><option value="psx">PS1 native PC source project</option><option value="nds">DS native PC source project</option><option value="ps2">PS2 native PC source project (experimental)</option><option value="gba">GBA native PC source project (experimental)</option><option value="matching">Console reconstruction</option></select></label>
     <label class="field" id="ppPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ppPS2Profile" class="mono" placeholder="Local path to profile.json"><small>Required for stripped retail code. The map must match this original input.</small></label>
     <label class="field" id="ppDiscRow"><span>Additional PS1 discs, in order</span><textarea id="ppDiscs" rows="2" placeholder="One path per line, starting with disc 2"></textarea><small>CUE tracks stay beside their CUE sheet. A single M3U playlist can list the complete game. PS1 runtime terms are noncommercial.</small></label>
     <label class="field" id="ppRenderRow"><span>PC rendering</span><select id="ppRenderer"><option value="auto">GPU when available</option><option value="opengl">Require OpenGL GPU rendering</option><option value="software">Software compatibility mode</option></select></label>
@@ -565,7 +565,7 @@ $("pathPick").onclick = (e) => {
     if (target !== "matching") {
       const discs = target === "psx" ? $("ppDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [];
       if (discs.length > 15) return toast("A game can contain up to 16 ordered discs.", "err");
-      query = `&output=pc&pc_platform=${target}&ps2_profile=${encodeURIComponent($("ppPS2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(discs))}&renderer=${encodeURIComponent($("ppRenderer").value)}&save_type=${encodeURIComponent($("ppSaveType").value || "auto")}&ds_input_format=${encodeURIComponent($("ppInputFormat").value)}&screen_mode=${encodeURIComponent($("ppScreen").value)}`;
+      query = `&output=pc&pc_platform=${target}&ps2_profile=${encodeURIComponent($("ppPS2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(discs))}&renderer=${encodeURIComponent($("ppRenderer").value)}&save_type=${encodeURIComponent(target === "nds" ? $("ppSaveType").value || "auto" : "auto")}&ds_input_format=${encodeURIComponent($("ppInputFormat").value)}&screen_mode=${encodeURIComponent($("ppScreen").value)}`;
     }
     const file = target === "matching" && $("ppLayout").files[0];
     if (file) {
@@ -2530,7 +2530,7 @@ $("pcExport").onclick = async () => {
   if (!$("pcSaveRow").hidden && !saveType) return toast("Choose the cartridge save chip for this game.", "err");
   button.disabled = true;
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: saveType || "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value, ps2_profile: $("pcPS2Profile").value.trim() } });
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: S.ov.platform === "nds" ? saveType || "auto" : "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value, ps2_profile: $("pcPS2Profile").value.trim() } });
     const result = await followJob(job);
     $("expLog").hidden = false;
     $("expLog").textContent = `PC project: ${result.path}\nIntegrity verified. Host build and gameplay validation are separate.`;
