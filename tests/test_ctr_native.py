@@ -83,6 +83,38 @@ def test_blz_backwards_references_have_an_independent_expected_result():
     with pytest.raises(pc.PCError,match='reads beyond'):media.decompress(broken,expected=30)
 
 
+def test_blz_accepts_final_data_page_padding_but_not_output_beyond_allocation(tmp_path):
+    # Independently encode ABC repeated across all three allocated pages. The
+    # final data segment uses four bytes; its remaining page is still in .code.
+    tokens=[b'C',b'B',b'A']
+    remaining=0x3000-3
+    while remaining:
+        count=min(18,remaining)
+        assert count>=3
+        tokens.append(struct.pack('<H',((count-3)<<12)|1))
+        remaining-=count
+    groups=[]
+    for at in range(0,len(tokens),8):
+        group=tokens[at:at+8]
+        flags=sum(1<<(7-i) for i,token in enumerate(group) if len(token)==2)
+        groups.append(b''.join(reversed(group))+bytes([flags]))
+    packed=b''.join(reversed(groups))
+    packed+=struct.pack('<II',0x08000000|(len(packed)+8),0x3000-(len(packed)+8))
+    assert media.decompress(packed,expected=0x3000)==b'ABC'*0x1000
+    raw=bytearray(fixture());raw[0x20d]=1
+    struct.pack_into('<I',raw,0xa0c,len(packed))
+    raw[0xbe0:0xc00]=hashlib.sha256(packed).digest()
+    raw[0xc00:0xc00+len(packed)]=packed
+    path=tmp_path/'padded.cxi';path.write_bytes(raw)
+    assert media.load(path,include_code=True)['code']==b'ABC'*0x1000
+    # A footer that requests another page remains outside the validated layout.
+    packed=packed[:-4]+struct.pack('<I',0x4000-len(packed))
+    raw[0xbe0:0xc00]=hashlib.sha256(packed).digest()
+    raw[0xc00:0xc00+len(packed)]=packed
+    path.write_bytes(raw)
+    with pytest.raises(pc.PCError,match='decompressed size is invalid'):media.load(path)
+
+
 def test_3ds_development_does_not_claim_a_registered_game_backend(monkeypatch):
     monkeypatch.setattr(provider,'download',lambda *_a,**_k:pytest.fail('status must not install'))
     status=pc.status('3ds')

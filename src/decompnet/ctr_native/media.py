@@ -196,7 +196,9 @@ def load_source(path, *, include_code=False) -> dict:
         checksum = hashlib.sha256(raw).hexdigest()
         if item['sha256'] != checksum:
             raise PCError('3DS ExeFS .code checksum differs from its header')
-        code = decompress(raw, expected=code_limit) if ex[0xd] & 1 else raw
+        # SDK BLZ output may include the padding at the end of the data page.
+        # Bound it by the complete allocation, while retaining the absolute cap.
+        code = decompress(raw, expected=min(total, MAX_CODE)) if ex[0xd] & 1 else raw
         cursor = 0
         for segment in segments:
             if cursor+segment['size'] > len(code):
