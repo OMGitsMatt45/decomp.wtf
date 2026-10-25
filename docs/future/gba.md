@@ -16,13 +16,17 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   checks prevent modified RAM code from executing stale native instructions.
 - Headless frame/PCM capture, input, RAM observations, raw save persistence and a
   reference-interpreter mode. Interpreter use is reported and strict mode rejects it.
+- Input-bound runtime coverage feedback. Re-exporting with `--feedback` translates
+  newly observed code, with ROM checksums and source-file preservation checks.
 - Unsupported BIOS sound/link services fail explicitly; they never silently return success.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
 The first probe has no desktop window or GPU renderer. Its CPU scanline PPU is a
 reference for the GPU implementation, not fulfillment of the shared presentation
 contract. Accordingly it stays outside registered PC-game backends and the GUI
-does not advertise GBA native-game output yet. No retail ROM has been qualified.
+does not advertise GBA native-game output yet. Emerald boot smoke testing is
+recorded in [gba-native-validation.json](../gba-native-validation.json); retail
+gameplay compatibility remains unqualified.
 
 ## Reproduce the development probe
 
@@ -50,6 +54,19 @@ hybrid probe reports fallback; a bounded run is not a gameplay acceptance test.
 `input_sha256`, `entries` (`address`, `mode`) and `ram_code` (`rom`, `address`,
 `size`, `mode`). Only aligned code backed by the original input is accepted.
 It does not accept patches, replacement functions or arbitrary host source files.
+
+To expand native coverage without title-specific patches:
+
+```sh
+./build/gba_probe --rom assets/game.gba --frames 900 --miss-log /new/coverage.txt
+decomp pc gba-probe /path/to/your/game.gba /new/source-with-feedback --feedback /new/coverage.txt --experimental
+```
+
+Build the new source project and compare its output with the previous run. Repeat
+`--feedback` to combine runs. Feedback is bound to the original ROM hash, never
+silently overwrites an existing log, and reports addresses that still use fallback.
+Copied RAM code retains runtime byte checks; coverage feedback is not proof that
+all gameplay paths are statically translated.
 
 ## Remaining PC-game acceptance
 

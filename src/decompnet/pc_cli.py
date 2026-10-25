@@ -21,6 +21,7 @@ def add_parser(sub):
     gba.add_argument('--profile', type=Path, help='input-bound code entries and ROM-to-RAM code mappings')
     gba.add_argument('--save-type', choices=('auto','none','sram','flash64','flash128','eeprom','eeprom512','eeprom8k'), default='auto')
     gba.add_argument('--rtc', choices=('auto','on','off'), default='auto')
+    gba.add_argument('--feedback', action='append', type=Path, default=[], help='input-bound runtime miss log; repeat to combine coverage runs')
     gba.add_argument('--experimental', action='store_true', required=True)
     ps2_inspect = actions.add_parser('ps2-inspect', help='inspect a PS2 ISO/BIN or EE ELF without running or exporting it')
     ps2_inspect.add_argument('input', type=Path)
@@ -65,7 +66,7 @@ def run(args):
             result = inspect(args.input)
         elif args.pc_action == 'gba-probe':
             from .gba_native import export
-            result = export(args.input, args.output, profile=args.profile, save_type=args.save_type, rtc=args.rtc)
+            result = export(args.input, args.output, profile=args.profile, save_type=args.save_type, rtc=args.rtc, feedback=args.feedback)
         elif args.pc_action == 'ps2-inspect':
             from .ps2_native.media import inspect
             result = inspect(args.input, hash_input=not args.quick, discover_code=args.discover_code)

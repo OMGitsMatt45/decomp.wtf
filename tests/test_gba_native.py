@@ -11,7 +11,7 @@ import sys
 import pytest
 
 from decompnet import pc, toolchains
-from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, SDK_COMMIT
+from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
 from .fixtures.gba_native import hardware
 
 
@@ -32,7 +32,7 @@ def run(command, *, ok=True, **kwargs):
     return result.stderr
 
 
-def generate(work, *, profile=True, mutate=None):
+def generate(work, *, profile=True, mutate=None, feedback=()):
     work.mkdir()
     data, document = hardware()
     if mutate:
@@ -41,7 +41,7 @@ def generate(work, *, profile=True, mutate=None):
     rom = work/'original.gba'; rom.write_bytes(data)
     mapping = work/'profile.json'; mapping.write_text(json.dumps(document))
     output = work/'Independent GBA source with spaces'
-    result = export(rom, output, profile=mapping if profile else None, save_type='sram')
+    result = export(rom, output, profile=mapping if profile else None, save_type='sram', feedback=feedback)
     assert result['integrity_verified'] and not result['host_build_verified']
     assert result['manifest']['runtime']['revision'] == SDK_COMMIT
     assert result['manifest']['fallback'] == dict(interpreter=True, runtime_compilation=False)
@@ -121,9 +121,29 @@ def test_probe_rejects_invalid_run_options(original, args):
 
 def test_missing_code_map_reports_fallback_and_strict_mode_stops(tmp_path, sdk):
     project = generate(tmp_path/'unprofiled', profile=False)
-    result = execute(project)
+    feedback = tmp_path/'coverage.txt'
+    result = execute(project, '--miss-log', feedback)
     assert result['interpreted_cycles'] > 0 and result['misses']
     assert 'static coverage miss' in execute(project, '--strict-static', ok=False)
+    recovered = generate(tmp_path/'feedback', profile=False, feedback=[feedback])
+    report = execute(recovered, '--strict-static')
+    assert report['interpreted_cycles'] == 0 and report['misses'] == []
+    assert report['screen_sha256'] == result['screen_sha256']
+    assert json.loads((recovered[1]/'analysis.json').read_text())['feedback'][0]['records'] > 0
+
+
+def test_feedback_preserves_existing_files_and_checks_input_identity(original, tmp_path):
+    path = tmp_path/'coverage.txt'
+    path.write_text('existing diagnostics')
+    assert 'existing work is preserved' in execute(original, '--miss-log', path, ok=False)
+    assert path.read_text() == 'existing diagnostics'
+    data, _ = hardware()
+    path.write_text('# decomp.wtf.gba-misses/v1 sha256='+'0'*64+'\n')
+    with pytest.raises(pc.PCError, match='SHA-256 differs'):
+        _feedback(path, hashlib.sha256(data).hexdigest(), len(data))
+    path.write_text('# decomp.wtf.gba-misses/v1 sha256='+hashlib.sha256(data).hexdigest()+'\n0x02080000 arm\n')
+    with pytest.raises(pc.PCError, match='outside the input'):
+        _feedback(path, hashlib.sha256(data).hexdigest(), len(data))
 
 
 def test_unsupported_bios_service_stops_instead_of_returning_success(tmp_path, sdk):

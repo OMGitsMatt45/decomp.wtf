@@ -10,6 +10,9 @@ PROGRAM = json.loads((Path(__file__).parent/'gba-native/program.json').read_text
 
 def hardware():
     data = bytearray.fromhex(PROGRAM['hex'])
+    # The copied routine's tail is readable in ROM, allowing the feedback recorder
+    # to identify its source with a 32-byte signature, as it does for retail code.
+    data.extend(bytes(32))
     data[0xa0:0xac] = b'ORIGINAL-GBA'
     data[0xac:0xb0] = b'TSTE'
     data[0xb2] = 0x96

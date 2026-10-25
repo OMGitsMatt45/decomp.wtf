@@ -164,6 +164,39 @@ def _regions(profile, size):
             raise pc.PCError('GBA code entry lies outside the cartridge and mapped RAM code')
 
 
+def _feedback(path, identity, size):
+    path = Path(path)
+    if path.stat().st_size > 16*1024*1024:
+        raise pc.PCError('GBA coverage feedback is too large')
+    text = path.read_text(encoding='utf-8')
+    lines = text.splitlines()
+    if not lines or lines[0] != '# decomp.wtf.gba-misses/v1 sha256='+identity:
+        raise pc.PCError('GBA feedback ROM SHA-256 differs or its identity header is missing')
+    count = 0
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        match = re.fullmatch(r'(0x[0-9a-fA-F]{8}) (arm|thumb)(?: rom=(0x[0-9a-fA-F]{8}))?', line)
+        if match is None:
+            raise pc.PCError('invalid GBA coverage feedback record')
+        address = int(match[1], 16)
+        width = 4 if match[2] == 'arm' else 2
+        in_rom = 0x08000000 <= address < 0x0e000000
+        in_ram = any(a <= address and address+width <= b for a, b in
+                     ((0x02000000, 0x02040000), (0x03000000, 0x03008000)))
+        if (address % width or not (in_rom or in_ram) or
+            (in_rom and (address & 0x1ffffff)+width > size)):
+            raise pc.PCError('GBA feedback code address is misaligned or outside the input')
+        if match[3] is not None:
+            source = int(match[3], 16)
+            if not in_ram or source % width or not 0x08000000 <= source <= 0x08000000+size-width:
+                raise pc.PCError('GBA feedback RAM source lies outside the input')
+        count += 1
+        if count > 100000:
+            raise pc.PCError('GBA coverage feedback has too many records')
+    return text, dict(sha256=hashlib.sha256(text.encode()).hexdigest(), records=count)
+
+
 def _runtime(sdk, destination):
     destination.mkdir(parents=True)
     for folder in ('runtime/include', 'common/include', 'tools/recomp/decode'):
@@ -191,6 +224,16 @@ def _runtime(sdk, destination):
         raise pc.PCError('GBA interpreter guard patch no longer applies')
     dispatch.write_text(text.replace(old, old+'\n    if (options_.strict_static) {\n'
         '        fail("static coverage miss at " + std::to_string(cpu_.r[15]));\n    }'), encoding='utf-8')
+    text = dispatch.read_text(encoding='utf-8')
+    old = 'options_.log_misses = false;\n            return;'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA feedback error patch no longer applies')
+    text = text.replace(old, 'fail("cannot append GBA coverage feedback");')
+    old = '    std::fflush(miss_file_);'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA feedback flush patch no longer applies')
+    dispatch.write_text(text.replace(old,
+        '    if (std::fflush(miss_file_) != 0 || std::ferror(miss_file_)) fail("GBA coverage feedback write failed");'), encoding='utf-8')
     bios = destination/'runtime/src/bios/swi_table.cpp'
     text = bios.read_text(encoding='utf-8')
     old = 'void System::stub_swi(std::uint32_t number, std::uint32_t call_pc) {'
@@ -201,7 +244,7 @@ def _runtime(sdk, destination):
     (destination/'DECOMP_WTF_PATCHES.md').write_text(
         'Pinned AnyGBA '+SDK_COMMIT+' (MIT).\n\n'
         'This core-only probe omits the upstream player, network control, cheats and HD packs. '
-        'Options.strict_static rejects interpreter execution. Unsupported BIOS sound/link '
+        'Options.strict_static rejects interpreter execution. Explicit coverage feedback fails on write errors. Unsupported BIOS sound/link '
         'services stop with a diagnostic instead of being ignored. GPU output is not enabled.\n', encoding='utf-8')
 
 
@@ -211,6 +254,7 @@ def generate(project, root):
     original = inspection['input']
     profile = _profile(project.get('profile'), original['sha256'])
     _regions(profile, original['size'])
+    feedback = [_feedback(p, original['sha256'], original['size']) for p in project.get('feedback', [])]
     save_type = project.get('save_type', 'auto')
     rtc = project.get('rtc', 'auto')
     if save_type not in SAVE_TYPES or rtc not in ('auto', 'on', 'off'):
@@ -230,7 +274,12 @@ def generate(project, root):
         for row in profile.get('ram_code', []):
             config += f'\n[[ram_region]]\nrom_src = {row["rom"]}\nram_dst = {row["address"]}\nsize = {row["size"]}\nmode = "{row["mode"]}"\n'
         cfg = work/'game.toml'; cfg.write_text(config, encoding='utf-8')
-        output = _run([emitter, path, '--config', cfg, '--output', work/'generated'], work,
+        command = [emitter, path, '--config', cfg, '--output', work/'generated']
+        for index, (content, _) in enumerate(feedback):
+            file = work/f'feedback{index}.txt'
+            file.write_text(content, encoding='utf-8')
+            command.extend(['--miss-log', file])
+        output = _run(command, work,
                       'Discover and translate ARM/Thumb code')
         count = re.search(r'anygba-recomp: (\d+) functions written', output)
         if count is None or int(count[1]) == 0:
@@ -244,7 +293,7 @@ def generate(project, root):
         (root/dest).write_text(_source(source), encoding='utf-8')
     (root/'assets.json').write_text(json.dumps(original, indent=2)+'\n', encoding='utf-8')
     (root/'analysis.json').write_text(json.dumps(dict(profile=profile, functions=int(count[1]),
-        diagnostics=output, save_type=save_type, rtc=rtc), indent=2)+'\n', encoding='utf-8')
+        diagnostics=output, save_type=save_type, rtc=rtc, feedback=[pin for _, pin in feedback]), indent=2)+'\n', encoding='utf-8')
     (root/'.gitignore').write_text('/build*/\n/assets/\n*.sav\n*.sav.*\n*.ppm\n*.pcm\n', encoding='utf-8')
     (root/'README.md').write_text('''# GBA native translation probe
 
@@ -266,6 +315,9 @@ Interpreter fallback is disclosed in JSON and can be forbidden with `--strict-st
 `--interpreter` selects the reference CPU for differential testing. Unsupported BIOS
 services fail explicitly. A successful bounded run does not establish retail gameplay.
 The original source project's `analysis.json` records discovered function count and notes.
+Use `--miss-log NEW_FILE` to record input-bound coverage feedback. Re-export to a new
+source folder with `decomp pc gba-probe ... --feedback NEW_FILE --experimental` to
+translate newly observed callbacks and RAM code; then build and measure again.
 Keep ROM-derived source private unless you have the necessary rights to share it.
 ''', encoding='utf-8')
     if inspect(path)['input'] != original:
@@ -286,10 +338,10 @@ def backend():
     return pc.Backend(BACKEND_ID, 'gba', revision(), generate, experimental=True)
 
 
-def export(rom, destination, *, profile=None, save_type='auto', rtc='auto', log=None):
+def export(rom, destination, *, profile=None, save_type='auto', rtc='auto', feedback=(), log=None):
     token = _progress.set(log)
     try:
         return pc.export_backend(dict(platform='gba', input=str(rom), profile=profile,
-            save_type=save_type, rtc=rtc), Path(destination), backend())
+            save_type=save_type, rtc=rtc, feedback=feedback or ()), Path(destination), backend())
     finally:
         _progress.reset(token)

@@ -31,7 +31,7 @@ void bytes(const std::filesystem::path& path, const char* data, std::size_t size
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path rom, save, capture, pcm;
+        std::filesystem::path rom, save, capture, pcm, miss_log;
         std::uint64_t frames = 8, keys = 0;
         std::vector<std::uint32_t> observe;
         bool reference = false;
@@ -42,12 +42,13 @@ int main(int argc, char** argv) {
             if (arg == "--help") {
                 std::cout << "gba_probe --rom game.gba [--frames 8] [--strict-static | --interpreter]\n"
                     "  [--save game.sav] [--keys 0x001] [--observe 0x02000000]...\n"
-                    "  [--capture screen.ppm] [--audio-pcm audio.pcm] [--rtc-start unix-seconds]\n";
+                    "  [--capture screen.ppm] [--audio-pcm audio.pcm] [--rtc-start unix-seconds]\n"
+                    "  [--miss-log NEW_FILE] (input-bound feedback for the next translation)\n";
                 return 0;
             }
             if (arg == "--strict-static") { options.strict_static = true; continue; }
             if (arg == "--interpreter") { reference = true; continue; }
-            if (arg != "--rom" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" &&
+            if (arg != "--rom" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
@@ -55,6 +56,7 @@ int main(int argc, char** argv) {
             else if (arg == "--save") save = argv[i];
             else if (arg == "--capture") capture = argv[i];
             else if (arg == "--audio-pcm") pcm = argv[i];
+            else if (arg == "--miss-log") miss_log = argv[i];
             else {
                 const auto value = number(argv[i]);
                 if (arg == "--frames") frames = value;
@@ -80,6 +82,15 @@ int main(int argc, char** argv) {
         std::vector<std::uint8_t> data{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
         if (anygba::sha256_hex(data) != anygba_game_info.rom_sha256)
             throw anygba::Error("cartridge SHA-256 differs from generated code");
+        if (!miss_log.empty()) {
+            if (std::filesystem::exists(miss_log)) throw anygba::Error("choose a new miss-log file; existing work is preserved");
+            std::ofstream header(miss_log, std::ios::binary);
+            header << "# decomp.wtf.gba-misses/v1 sha256=" << anygba_game_info.rom_sha256 << '\n';
+            header.close();
+            if (!header) throw anygba::Error("cannot create coverage feedback file");
+            options.log_misses = true;
+            options.miss_log = miss_log;
+        }
         // Validate all asset identities before opening saves or capture destinations.
         // CPU selection must preserve the cartridge hardware selected at generation.
         if (anygba_game_info.save_type) options.save_type = anygba_game_info.save_type;
