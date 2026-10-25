@@ -1,7 +1,7 @@
 # decomp.wtf
 
 A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS and PS1 have experimental
+PC source repositories for Dragon Quest and Pokémon. **DS, PS1 and PS2 have experimental
 native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
@@ -16,7 +16,7 @@ of current application support.
 | --- | --- | --- |
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
-| PlayStation 2 | EE program/ELF recovery | Backend required |
+| PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
@@ -199,6 +199,11 @@ standalone fixture. Allow these steps to finish; they can take several minutes.
 Progress messages identify verification and build stages. Completion prints the
 `hardware-assessment.json` path. Stopping with Ctrl+C records an interrupted test;
 retry with a new output folder.
+
+The original fixture has passed on a physical **Intel Iris Xe integrated GPU on
+Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validation.json)
+identifies the tested backend revision and driver. Retail playthrough validation
+remains separate.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

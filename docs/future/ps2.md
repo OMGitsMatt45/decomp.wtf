@@ -8,6 +8,11 @@ screen. DQVIII is the first supplied retail validation input. Import, module
 discovery, translation, runtime and export remain shared PS2 components; a
 title-specific profile cannot qualify other games or replace generic support.
 
+The native-output milestone is implemented. The original fixture has an
+[owner-provided physical Vulkan pass](../ps2-hardware-validation.json) on Windows
+11 with Intel Iris Xe graphics. The record identifies the exact tested backend
+revision and driver; additional retail playthrough acceptance remains with the owner.
+
 ## Standalone export
 
 The CLI and GUI share a source exporter. It ships generated EE C++, the pinned
@@ -82,20 +87,26 @@ The shared MPEG service preserves unrelated guest code/data: inherited fixed
 guest-global writes and callback addresses are removed. Original MPEG-2 input
 verifies decoded RGBA pixels, RAW8 Y/Cb/Cr macroblocks, RAW8xy padded strides,
 insufficient/out-of-RAM buffer rejection and one MiB of unchanged guest memory.
-The source-shipped optional runtime checks cover 406 cases across sixteen
+The source-shipped optional runtime checks cover 412 cases across seventeen
 IOP/SIF/DMA, scheduler/IRQ/fiber, memory, VU, GS, pad, filesystem and media suites.
 The exhaustive VU loop matrix is intentionally allotted a longer timeout.
+Six original IRX cases exercise module-entry execution and arguments, relocation,
+BSS initialization, destination bounds and malformed module rejection. Header
+checks reject foreign architectures/byte order, truncated metadata/tables,
+invalid entries and incomplete relocations before execution.
 
-On Windows, run `powershell -File .\tools\qualify-ps2-hardware.ps1` from the
-application checkout after installing uv, CMake, Desktop C++ Build Tools and a
-current Vulkan GPU driver. This builds/runs the original standalone fixture and
-saves hardware-assessment.json, native reports, captures and logs in a new
-timestamped temporary directory. It requires no game or BIOS. The report matches
+On Windows, follow the [README setup and command](../../README.md) from the
+application checkout. The wrapper finds Visual Studio's CMake component and
+uses a short, fresh temporary directory to stay below Windows compiler path limits.
+This builds/runs the original standalone fixture and saves hardware-assessment.json,
+native reports, captures and logs. Verification/build progress is reported, and
+interrupted runs remain unqualified. It requires no game or BIOS. The report matches
 the actual SDL device to Vulkan's device inventory and only marks integrated or
 discrete devices as physical hardware. CPU, virtual, missing and ambiguous
 devices remain unqualified. `--allow-software` on the Python developer tool
 permits comparison without changing that result. Physical Windows GPU execution
-is local user validation; hosted Windows CI does not establish it.
+is local user validation; hosted Windows CI does not establish it. The original
+fixture now has an owner-provided Intel Iris Xe pass, linked above.
 
 Original service programs verify bounded FIO reads/stat/seeks, original CD LBAs,
 CD/DVD RPCs, pad edges/axes, 1,024 exact SPU2 stereo PCM samples and memory-card
@@ -260,7 +271,8 @@ builds the same C++ probe and verifies required-device failure; its lack of an
 execution device is recorded as `vulkan_executed: false`. No game graphics,
 physical GPU, window/drawable adaptation or fullscreen qualification follows
 from this headless assessment. The standalone exporter above qualifies its
-window/drawable integration separately; physical-GPU coverage remains open.
+window/drawable integration separately. Its original standalone fixture now also
+has the owner-provided physical-device pass recorded above.
 
 The candidate supplies an EE runtime, R3000A IRX execution with IOP kernel/HLE
 services, VU interpreters, GS, audio and virtual filesystem code. Those are
@@ -279,8 +291,10 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
 - [x] Guard module/function entries, reject unresolved or ambiguous dispatch and
   disclose IOP/VU interpreters in manifests. Original module-switch fixtures
   cover overlapping addresses. Runtime self-modification is unsupported.
-- [ ] Qualify IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and scheduler/IRQ
-  behavior with original programs. Do not silently replace game logic with
+- [x] Qualify the original IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and
+  scheduler/IRQ regressions through the source-shipped runtime. Six additional
+  original IRX cases verify entry execution, relocation and input rejection.
+  This is bounded fixture coverage; do not silently replace game logic with
   `ret0`, `ret1` or skipped wrappers.
 - [x] Implement GS GPU geometry rendering with correct texture/readback/transfer
   synchronization, automatic reported software fallback, required-GPU errors,
@@ -291,6 +305,8 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
   asset extraction, supported input hashes and honest execution reports.
   Windows/Linux CI builds the output; Linux executes graphics, while Windows
   checks explicit required-device failure without claiming GPU execution.
+- [x] Execute the original standalone fixture on a physical Windows Vulkan GPU;
+  retain the owner-provided Intel Iris Xe result and its exact backend revision.
 - [x] Build the supplied DQVIII export and validate bounded boot/rendering/disc
   access through the exported host.
 - [ ] Validate further DQVIII gameplay, overlays, movies, audio and retail saves.

@@ -20,6 +20,7 @@ void register_ps2_native_iop_tests();
 void register_ps2_sif_rpc_tests();
 void register_ps2_sif_dma_tests();
 void register_ps2_runtime_expansion_tests();
+void register_decomp_irx_tests();
 
 int main(int argc,char **argv) {
     std::cout<<std::unitbuf;
@@ -32,7 +33,8 @@ int main(int argc,char **argv) {
         {"vu_program",register_ps2_vu1_program_tests},{"vu0",register_ps2_vu_tests},
         {"gs",register_ps2_gs_tests},{"iop",register_ps2_iop_tests},
         {"native_iop",register_ps2_native_iop_tests},{"sif_rpc",register_ps2_sif_rpc_tests},
-        {"sif_dma",register_ps2_sif_dma_tests},{"media",register_ps2_runtime_expansion_tests}};
+        {"sif_dma",register_ps2_sif_dma_tests},{"media",register_ps2_runtime_expansion_tests},
+        {"irx",register_decomp_irx_tests}};
     if(argc!=1&&(argc!=3||std::string(argv[1])!="--suite"))return 2;
     bool selected=false;
     for(const auto &[name,run]:suites)if(argc==1||std::string(argv[2])==name){run();selected=true;}

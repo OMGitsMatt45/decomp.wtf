@@ -133,6 +133,7 @@ def generate(project,root):
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor);mpeg_patch.install(vendor)
+    runtime_patch.patch_irx_loader(vendor)
     _dependencies(root/'native/dependencies.cmake')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PS2-runtime-GPL-3.0.txt')
     records=[];emissions=[]
@@ -191,7 +192,8 @@ def generate(project,root):
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
-        ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp')):
+        ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
+        ('irx_tests.cpp','tests/irx.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')

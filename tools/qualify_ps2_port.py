@@ -74,7 +74,7 @@ def qualify(destination,*,sdk=None,execute=True):
     movie=run([executable(build,'ps2_mpeg_probe')],out,out/'mpeg.log',timeout=30)
     service_results['mpeg']=json.loads(movie.stdout)
     suites={}
-    for suite in ('pad','io','kernel','interrupt','fiber','memory','vu1','vu_upper','vu_program','vu0','gs','iop','native_iop','sif_rpc','sif_dma','media'):
+    for suite in ('pad','io','kernel','interrupt','fiber','memory','vu1','vu_upper','vu_program','vu0','gs','iop','native_iop','sif_rpc','sif_dma','media','irx'):
         result=run([executable(build,'ps2_runtime_tests'),'--suite',suite],services,out/('runtime-'+suite+'.log'),
                    timeout=1200 if suite=='vu1' else 90)
         count=re.search(r'Total Tests: (\d+)\s+Passed: (\d+)\s+Failed: (\d+)',result.stdout)

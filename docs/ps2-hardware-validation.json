@@ -1,0 +1,30 @@
+{
+  "schema": "decomp.wtf.ps2-hardware-assessment/v1",
+  "provenance": {
+    "kind": "owner-provided command result",
+    "reported_on": "2026-10-25",
+    "command": "tools.qualify_ps2_hardware",
+    "independently_reproduced_by_agent": false
+  },
+  "host": "Windows-11-10.0.26300-SP0",
+  "hardware_qualified": true,
+  "original_fixture_passed": true,
+  "retail": false,
+  "manual_gameplay": false,
+  "vulkan_devices": [
+    {
+      "name": "Intel(R) Iris(R) Xe Graphics",
+      "api_version": 4211011,
+      "driver_version": 1661876,
+      "vendor_id": 32902,
+      "device_id": 39497,
+      "device_type": 1
+    }
+  ],
+  "selected_device": {
+    "physical": true,
+    "reason": "integrated/discrete Vulkan device"
+  },
+  "backend_revision": "ae946d250f6c04acfd65116b3dbe1b5206bd89e83aa0bbb1e0cac60e8b06d207",
+  "scope": "Original standalone source/build/runtime/rendering fixture on the reported integrated GPU and driver. Retail gameplay remains separate."
+}
