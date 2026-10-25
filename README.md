@@ -183,10 +183,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware
 ```
 
 The wrapper also finds uv in its standard user install folders if PATH has not
-refreshed, and chooses a new output folder for each run. For a custom folder:
+refreshed, and chooses a short, fresh `dwg-*` output folder for each run to leave
+room for Windows compiler dependency paths. For a custom folder:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\decomp-ps2-gpu-my-test"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\dg-test1"
 ```
 
 If PowerShell reports `uv is not recognized`, the test has not started; install uv

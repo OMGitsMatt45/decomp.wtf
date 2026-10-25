@@ -61,11 +61,21 @@ def _sdk():
     return root,provider.verify(root,log=_log)
 
 
+def emitter_directory(sdk, integration):
+    return sdk.parent/'.ps2-native-builds'/integration[:16]
+
+
+EMITTER_LONG_SOURCE = Path('build/_deps/rabbitizer-src/src/instructions/RabbitizerInstructionR4000Allegrex/RabbitizerInstructionR4000Allegrex_ProcessUniqueId.c')
+
+
 def _emitter(sdk):
     # Build outside the pinned cache. An integration revision gets a separate
     # source/build tree, so previous working installations remain reviewable.
     integration=revision()
-    work=sdk.parent/'.ps2-native-builds'/integration[:16]
+    work=emitter_directory(sdk,integration)
+    if os.name=='nt' and len(str(work/EMITTER_LONG_SOURCE))>=260:
+        raise pc.PCError('PS2 translator build paths exceed the Windows compiler limit; '
+            'use a shorter runtime-source directory, or rerun hardware validation with a short -Output folder')
     source=work/'source'
     marker=work/'integration.json'
     if not source.exists():

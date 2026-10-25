@@ -1,5 +1,5 @@
 param(
-    [string]$Output = (Join-Path $env:TEMP ("decomp-ps2-gpu-" + (Get-Date -Format "yyyyMMdd-HHmmss"))),
+    [string]$Output = (Join-Path $env:TEMP ("dwg-" + [guid]::NewGuid().ToString("N").Substring(0,8))),
     [switch]$CheckTools
 )
 $ErrorActionPreference = "Stop"
@@ -32,7 +32,7 @@ try {
         throw "CMake was not found on PATH or in Visual Studio. In Visual Studio Installer > Modify > Individual components, enable 'C++ CMake tools for Windows', or install https://cmake.org/download/ . A separate CMake download is unnecessary when the Visual Studio component is installed."
     }
     if ($CheckTools) {
-        [pscustomobject]@{ uv = $uvProgram; cmake = $cmakeProgram } | ConvertTo-Json -Compress
+        [pscustomobject]@{ uv = $uvProgram; cmake = $cmakeProgram; output = [IO.Path]::GetFullPath($Output) } | ConvertTo-Json -Compress
         return
     }
     $env:PATH = (Split-Path $cmakeProgram -Parent) + [IO.Path]::PathSeparator + $env:PATH

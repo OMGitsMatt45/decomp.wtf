@@ -117,7 +117,7 @@ def qualify(destination,*,sdk=None,execute=True):
     # Reuse the exact emitter built by the actual export for the original VU
     # instruction->generated C++->independent arithmetic oracle checks.
     integration=exported['manifest']['backend']['revision']
-    emitter_build=sdk.parent/'.ps2-native-builds'/integration[:16]/'build'
+    emitter_build=ps2_native.emitter_directory(sdk,integration)/'build'
     env=dict(os.environ,DECOMP_PS2_PATCHED_EMITTER=str(executable(emitter_build,'ps2_recomp')))
     run([sys.executable,'-m','pytest','-q','tests/test_ps2_native_vu.py','--basetemp',out/'VU checks with spaces'],
         ROOT,out/'vu.log',env=env)

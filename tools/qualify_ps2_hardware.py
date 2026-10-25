@@ -8,6 +8,12 @@ from tools.ps2_hardware import selected_device,vulkan_devices
 from tools.qualify_ps2_port import qualify
 
 
+def fixture_path(destination):
+    # Compiler dependencies add long names beneath this path. Keep the public
+    # hardware command compact while the standalone project still tests spaces.
+    return destination/'test'
+
+
 def assess(destination,*,sdk=None,allow_software=False):
     out=Path(destination).resolve()
     if out.exists():raise ValueError('choose a new assessment directory; existing work is preserved')
@@ -22,7 +28,7 @@ def assess(destination,*,sdk=None,allow_software=False):
         if not allow_software and not any(d['device_type'] in (1,2) for d in report['vulkan_devices']):
             raise ValueError('no integrated/discrete Vulkan GPU was found; software rendering cannot qualify physical hardware')
         print('Preparing and building the original standalone test; source verification and compilation can take several minutes.',flush=True)
-        result=qualify(out/'Original standalone fixture',sdk=sdk,execute=True)
+        result=qualify(fixture_path(out),sdk=sdk,execute=True)
         report['original_fixture_passed']=True
         report['selected_device']=selected_device(report['vulkan_devices'],result['runs']['vulkan']['run'])
         report['hardware_qualified']=report['selected_device']['physical']
