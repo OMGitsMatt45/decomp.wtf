@@ -15,3 +15,8 @@ a mode-3 picture through DMA, starts a square wave, services VBlank IRQs, polls
 buttons, and increments a real SRAM cartridge counter. Holding B changes the
 copied opcode; the runtime must reject stale native code and either interpret
 the actual bytes or fail in strict mode.
+
+A separate four-byte Thumb helper is copied beside changing RAM data. Feedback must
+recover its bounded ROM-backed body without treating adjacent data as instructions.
+The live Timer0 read after straight-line arithmetic checks that translated
+instructions advance hardware time before the next branch.

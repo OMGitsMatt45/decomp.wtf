@@ -10,8 +10,10 @@
   },
   "backend": {
     "id": "gba-anygba-experimental",
-    "revision": "be1f3ea52fcaec79ef10672eff4f69136054fd6d0442b4e1df78652345171fd5"
+    "revision": "0b5d599711d468490beac2f14ca23f2654321384d4f5761fa4d9cc8922916b31"
   },
+  "tested_emitted_code_revision": "817e5c72bf8fbe0a1894412a60ba3e1b78e1bbe9035e3b3a76c6ea3bc6db7f36",
+  "emitted_files_identical_to_tested_export": true,
   "runtime": {
     "id": "anygba-core",
     "revision": "a3eb412f79627eaae27e2523039d893f72dada1d",
@@ -23,149 +25,42 @@
     "standalone": true,
     "passed": true
   },
-  "boot_smoke": {
-    "phase": "animated intro",
-    "frames": 2400,
-    "completed": true,
-    "source_functions": 760,
-    "rtc_enabled": true,
-    "audio_captured": true,
-    "frames_are_bounded_validation_not_a_playthrough": true
+  "code_generation": {
+    "functions": 3530,
+    "execution_model": "hybrid",
+    "runtime_compilation": false,
+    "feedback_input_bound": true,
+    "handwritten_game_replacements": false
   },
-  "feedback_comparison": {
-    "initial": {
-      "frames": 900,
-      "cycles": 252722650,
-      "functions": 332,
-      "interpreted_cycles": 44493549,
-      "audio_frames": 493598,
-      "screen_sha256": "d495303c8ae7b6d35718b3555456d4f3cf27e2254eb8c631d1a2d402aee89b0c",
-      "unique_reported_misses": 296
-    },
-    "after_one_feedback_export": {
-      "frames": 900,
-      "cycles": 252722652,
-      "functions": 760,
-      "interpreted_cycles": 28813650,
-      "audio_frames": 493598,
-      "screen_sha256": "d495303c8ae7b6d35718b3555456d4f3cf27e2254eb8c631d1a2d402aee89b0c",
-      "unique_reported_misses": 4
-    },
-    "same_final_picture": true
-  },
-  "reference_comparison": {
-    "native": {
-      "frames": 2400,
-      "cycles": 674066648,
-      "functions": 760,
-      "interpreted_cycles": 85773483,
-      "audio_frames": 1316536,
-      "screen_sha256": "b255ba88a3a9f7ac9d4917778864cfdda08234e03710e7ef7c1efab75e3b3109",
-      "unique_reported_misses": 182
-    },
-    "interpreter": {
-      "frames": 2400,
-      "cycles": 674066646,
-      "functions": 760,
-      "interpreted_cycles": 766144418,
-      "audio_frames": 1316536,
-      "screen_sha256": "b255ba88a3a9f7ac9d4917778864cfdda08234e03710e7ef7c1efab75e3b3109",
-      "unique_reported_misses": 300
-    },
-    "same_final_picture": true,
-    "same_audio_frame_count": true
-  },
-  "qualification": {
-    "retail": false,
-    "desktop": true,
-    "gpu": true,
-    "physical_audio_device": false,
-    "save_reload": false,
-    "rtc_events": false,
-    "full_playthrough": false,
-    "physical_gpu": false,
-    "physical_gamepad": false,
-    "scripted_input": true,
-    "flash128_protocol_save_reload": true,
-    "rtc_protocol": true
-  },
-  "notes": [
-    "The registered experimental desktop backend emits independent editable C/C++ with source-shipped AnyGBA and SDL/OpenGL presentation.",
-    "The OpenGL shader rasterizes scanline IO/VRAM/palette/OAM state; original conformance tests deliberately supply an unrelated CPU framebuffer.",
-    "This workspace uses llvmpipe software OpenGL and SDL dummy audio. Physical GPU, audible output and physical controller acceptance are not established.",
-    "Title/menu feedback adds generic code coverage without game-specific routines or patches. RAM hints are bounded together; compatible contiguous hints are merged so whole-function byte guards remain valid.",
-    "The remaining unverified RAM entry uses interpreter fallback; strict mode rejects it. This bounded observation does not establish whole-game static coverage.",
-    "The internal CPU/reference PPU comparison shares the hardware core and is not an independent hardware or emulator oracle.",
-    "Original Flash128/RTC protocol tests do not establish Emerald retail save/reload or clock-driven gameplay events. Full playthrough acceptance belongs to the owner.",
-    "No ROM, BIOS, extracted assets, image captures, save files or ROM-derived C is published with this record."
-  ],
-  "historical_probe_comparisons": "The boot/feedback CPU comparisons below predate the desktop backend and RAM hint bounding fix.",
-  "desktop_smoke": {
-    "phase": "title screen and New Game/Option menu",
-    "frames": 2400,
-    "source_functions": 1170,
-    "cycles": 674066652,
-    "interpreted_cycles": 930515,
-    "remaining_misses": [
-      "0x3007dcc"
+  "retail_scenario": {
+    "frames": 18800,
+    "phases": [
+      "new game and character creation",
+      "overworld movement",
+      "ground-floor save",
+      "bedroom clock setup",
+      "second save and overwrite"
     ],
-    "rtc_enabled": true,
-    "audio_frames": 1316536,
-    "screen_sha256": "6e734d6879c8ca75ff0f34634c6af498411ae6a58fc50472491827ae5df8c0f2",
-    "gpu_matches_internal_reference": true,
-    "same_picture_as_previous_export": true,
+    "input_script_sha256": "cd1b4a42a885382941fee4a507fde6df9bb188bb9cd325ce0c897fd5c127239b",
+    "cycles": 5280761046,
+    "interpreted_cycles": 1397758,
+    "reported_misses": [
+      "0x03007d3c",
+      "0x03007d6c"
+    ],
+    "whole_game_static_coverage_established": false
+  },
+  "rendering": {
     "renderer": "opengl",
     "device": "llvmpipe (LLVM 19.1.7, 256 bits)",
-    "physical_gpu": false,
-    "audio_driver": "SDL dummy",
     "drawable": [
       240,
       160
     ],
-    "strict_static_passed": false,
-    "strict_stop_address": "0x03007dcc",
-    "scripted_buttons": [
-      {
-        "frame": 0,
-        "pressed_mask": 0
-      },
-      {
-        "frame": 180,
-        "pressed_mask": 8
-      },
-      {
-        "frame": 182,
-        "pressed_mask": 0
-      },
-      {
-        "frame": 600,
-        "pressed_mask": 8
-      },
-      {
-        "frame": 602,
-        "pressed_mask": 0
-      },
-      {
-        "frame": 1000,
-        "pressed_mask": 8
-      },
-      {
-        "frame": 1002,
-        "pressed_mask": 0
-      },
-      {
-        "frame": 1800,
-        "pressed_mask": 8
-      },
-      {
-        "frame": 1802,
-        "pressed_mask": 0
-      }
-    ]
-  },
-  "original_desktop_checks": {
-    "gpu_scenes": 18,
-    "gpu_modes": [
+    "raw_scanline_state_rasterized": true,
+    "gpu_matches_internal_reference": true,
+    "screen_sha256": "e61a69e23fef64f8c79e556c7fe39600fa9891fc5434f7c60d17b7d944dc1d0c",
+    "original_modes": [
       0,
       1,
       2,
@@ -173,19 +68,99 @@
       4,
       5
     ],
-    "raw_state_rasterization": true,
-    "unrelated_cpu_framebuffer_does_not_change_gpu_output": true,
-    "drawable_resize": [
+    "original_gpu_scenes": 18,
+    "resize_verified": [
       480,
       320
     ],
+    "physical_gpu": false
+  },
+  "cartridge_save": {
+    "size": 131072,
+    "sha256": "a19755193671cc42a02eb7f48dda364c9fd52b408d24b0a5db1741656b214f68",
+    "save_generations": [
+      1,
+      2
+    ],
+    "sections_per_generation": 14,
+    "newest_generation_reloaded_after_restart": true,
+    "first_save_location": "ground floor",
+    "second_save_location": "bedroom",
+    "previous_generation_preserved": true
+  },
+  "rtc": {
+    "clock_setting_persisted": true,
+    "restart_frames": 4600,
+    "baseline_epoch": 1704067600,
+    "shifted_epoch": 1704071200,
+    "epoch_difference_seconds": 3600,
+    "displayed_hour_advanced": true,
+    "picture_change_bounds": [
+      99,
+      59,
+      127,
+      87
+    ],
+    "changed_pixels": 220,
+    "gpu_matches_reference_both_runs": true,
+    "save_bytes_unchanged": true,
+    "daily_gameplay_events_verified": false
+  },
+  "audio": {
+    "frames": 900,
+    "sample_rate": 32768,
+    "channels": 2,
+    "format": "signed PCM16 little endian",
+    "stereo_frames": 493598,
+    "reference_stereo_frames": 493598,
+    "pcm_sha256": "f4ef2c0a0b4db16b047ea688d6327256446afcf9c0f065b0bbe6a29517e34e3b",
+    "native_reference_pcm_equal": true,
+    "samples_compared": 987196,
+    "peak": 13184,
+    "physical_audio_device": false
+  },
+  "independent_reference": {
+    "name": "mGBA",
+    "version": "0.10.5",
+    "source": "https://github.com/mgba-emu/mgba/releases/tag/0.10.5",
+    "source_archive_sha256": "91d6fbd32abcbdf030d58d3f562de25ebbc9d56040d513ff8e5c19bee9dacf14",
+    "bios": "HLE; no Nintendo BIOS supplied",
+    "raw_save_loaded": true,
+    "newest_saved_room_verified": true,
+    "frames": 4200,
+    "room_picture_matches_pixel_for_pixel": true,
+    "room_rgb_sha256": "e61a69e23fef64f8c79e556c7fe39600fa9891fc5434f7c60d17b7d944dc1d0c",
+    "rgb565_normalized_to_original_5_bit_components": true
+  },
+  "original_checks": {
+    "timer_observation_matches_reference": true,
+    "short_ram_leaf_recovered_without_live_stack_data": true,
+    "rejected_ram_byte_guard_included_in_feedback": true,
+    "mixed_arm_thumb_copy_keeps_whole_function_guard": true,
+    "wrong_rom_preserved_outputs": true,
     "software_fallback_reported": true,
-    "automatic_asset_discovery": true,
-    "paced_audio_queue": true,
-    "scripted_buttons": true,
-    "sram_save_reload": true,
-    "flash128_detection_banks_erase_atomic_save_reload": true,
-    "rtc_serial_bcd_time_and_cycle_advance": true,
-    "feedback_ram_regions_order_independent": true
-  }
+    "flash128_protocol_and_rtc_serial_checks": true
+  },
+  "qualification": {
+    "original_fixtures": true,
+    "desktop": true,
+    "gpu_shader": true,
+    "physical_gpu": false,
+    "physical_audio_device": false,
+    "physical_gamepad": false,
+    "retail_save_reload": true,
+    "in_game_clock_advance": true,
+    "bounded_native_reference_pcm_equal": true,
+    "independent_save_interoperability": true,
+    "full_playthrough": false,
+    "general_retail_compatibility": false
+  },
+  "notes": [
+    "Instruction-boundary scheduling fixes native timer observations and audio/DMA ordering. Basic-block batching failed those checks.",
+    "Remaining overlapping RAM copies are interpreted when their full native byte guard cannot be verified. Miss reporting includes rejected compiled entries.",
+    "The internal CPU/reference PPU uses the same hardware core. Independent mGBA verification is limited to the saved-room load and picture reported here.",
+    "Historical miss counts before guarded-entry reporting was fixed undercounted rejected RAM entries; this record replaces those counts.",
+    "Physical devices, daily clock-driven gameplay events, broader hardware accuracy and a full owner playthrough remain unqualified.",
+    "No ROM, BIOS, extracted assets, save files, image/audio captures, runtime traces or ROM-derived C is published with this record."
+  ]
 }

@@ -21,5 +21,6 @@ def hardware():
     profile = dict(schema=PROFILE_SCHEMA, input_sha256=hashlib.sha256(data).hexdigest(),
         entries=[dict(address=symbols[n], mode=m) for n,m in (('thumb_code','thumb'), ('irq','arm'))],
         ram_code=[dict(rom=symbols['ram_source'], address=0x03000000,
-                       size=symbols['ram_end']-symbols['ram_source'], mode='arm')])
+                       size=symbols['ram_end']-symbols['ram_source'], mode='arm'),
+                  dict(rom=symbols['short_source'], address=0x03000040, size=4, mode='thumb')])
     return bytes(data), profile

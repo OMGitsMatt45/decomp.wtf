@@ -93,3 +93,34 @@ def test_connected_chat_routes_gba_without_ds_screen_or_ps1_disc_options(tmp_pat
     with pytest.raises(ToolError, match='additional discs apply to PS1'):
         anyio.run(lambda: fn(ctx, str(rom), True, disc_paths=[str(rom)]))
     assert len(calls) == 1
+
+
+def test_gba_generation_finds_visual_studio_bundled_cmake(tmp_path, monkeypatch):
+    import subprocess
+    from decompnet import gba_native
+    locator = tmp_path/'Microsoft Visual Studio/Installer/vswhere.exe'
+    locator.parent.mkdir(parents=True); locator.touch()
+    cmake = tmp_path/'Visual Studio 2026/Common7/IDE/CMake/bin/cmake.exe'
+    cmake.parent.mkdir(parents=True); cmake.touch()
+    monkeypatch.setattr(gba_native.shutil, 'which', lambda name: None)
+    calls = []
+    def discover(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, str(tmp_path/'missing.exe')+'\n'+str(cmake)+'\n', '')
+    monkeypatch.setattr(gba_native.subprocess, 'run', discover)
+    assert gba_native._cmake(platform='win32', program_files=tmp_path) == str(cmake)
+    assert calls[0][0] == str(locator) and '-utf8' in calls[0]
+
+
+def test_gba_generation_missing_cmake_reports_visual_studio_component(tmp_path, monkeypatch):
+    import pytest
+    from decompnet import gba_native
+    monkeypatch.setattr(gba_native.shutil, 'which', lambda name: None)
+    with pytest.raises(pc.PCError, match='CMake tools for Windows'):
+        gba_native._cmake(platform='win32', program_files=tmp_path)
+
+
+def test_gba_generation_preserves_cmake_selected_on_path(monkeypatch):
+    from decompnet import gba_native
+    monkeypatch.setattr(gba_native.shutil, 'which', lambda name: '/chosen/cmake')
+    assert gba_native._cmake(platform='win32') == '/chosen/cmake'

@@ -18,7 +18,7 @@ file(GLOB HARDWARE CONFIGURE_DEPENDS
 add_library(gba_runtime STATIC ${CORE} ${HARDWARE}
   "${SDK}/common/src/sha256.cpp" "${SDK}/common/src/crc32.cpp")
 target_include_directories(gba_runtime PUBLIC "${SDK}/runtime/include" "${SDK}/common/include"
-  PRIVATE "${SDK}/runtime/src" "${SDK}/tools/recomp")
+  PRIVATE "${SDK}/runtime/src" "${SDK}/tools/recomp" native)
 target_compile_definitions(gba_runtime PRIVATE ANYGBA_VERSION="decomp.wtf-probe")
 file(GLOB GAME CONFIGURE_DEPENDS "game/*.c")
 add_library(gba_game STATIC ${GAME})
@@ -68,6 +68,6 @@ include(CTest)
 add_test(NAME usage COMMAND gba_probe --help)
 if(BUILD_TESTING)
   add_executable(gba_cartridge_tests tests/cartridge.cpp)
-  target_include_directories(gba_cartridge_tests PRIVATE "${SDK}/runtime/src")
+  target_include_directories(gba_cartridge_tests PRIVATE "${SDK}/runtime/src" native)
   target_link_libraries(gba_cartridge_tests PRIVATE gba_runtime)
 endif()

@@ -69,10 +69,11 @@ def execute(original, *options, ok=True):
 def test_original_native_code_drives_bios_keys_irq_dma_picture_audio_and_save(original, tmp_path):
     _, root, _ = original
     save = tmp_path/'cartridge.sav'; image = tmp_path/'image.ppm'; pcm = tmp_path/'sound.pcm'
-    args = [v for address in range(0x02000000, 0x02000020, 4) for v in ('--observe', hex(address))]
+    args = [v for address in range(0x02000000, 0x02000028, 4) for v in ('--observe', hex(address))]
     report = execute(original, '--strict-static', '--keys', '1', '--save', save, '--capture', image,
                      '--audio-pcm', pcm, *args)
-    assert report['observed'] == [255, 0, 14, 2, 42, 1022, 7, 77]
+    assert report['observed'][:9] == [255, 0, 14, 2, 42, 1022, 7, 77, 90]
+    assert report['observed'][9] > 0
     assert report['interpreted_cycles'] == 0 and report['misses'] == []
     assert not report['gpu_rendering'] and not report['retail_qualified']
     assert image.read_bytes() == b'P6\n240 160\n255\n'+b'\xff\x00\x00'*(240*160)
@@ -87,7 +88,7 @@ def test_original_native_code_drives_bios_keys_irq_dma_picture_audio_and_save(or
 
 
 def test_translated_and_reference_cpu_agree_on_original_hardware(original, tmp_path):
-    observations = [v for address in range(0x02000000, 0x02000020, 4) for v in ('--observe', hex(address))]
+    observations = [v for address in range(0x02000000, 0x02000028, 4) for v in ('--observe', hex(address))]
     compiled = execute(original, '--strict-static', '--keys', '0x301', '--save', tmp_path/'native.sav', *observations)
     reference = execute(original, '--interpreter', '--keys', '0x301', '--save', tmp_path/'reference.sav', *observations)
     assert reference['interpreted_cycles'] > 0 and compiled['interpreted_cycles'] == 0
@@ -96,9 +97,12 @@ def test_translated_and_reference_cpu_agree_on_original_hardware(original, tmp_p
     assert (tmp_path/'native.sav').read_bytes() == (tmp_path/'reference.sav').read_bytes()
 
 
-def test_ram_code_modified_after_export_is_never_executed_as_stale_native_code(original):
-    report = execute(original, '--keys', '2', '--observe', '0x0200001c')
+def test_ram_code_modified_after_export_is_never_executed_as_stale_native_code(original, tmp_path):
+    feedback = tmp_path/'modified-ram.txt'
+    report = execute(original, '--keys', '2', '--observe', '0x0200001c', '--miss-log', feedback)
     assert report['observed'] == [76] and report['interpreted_cycles'] > 0
+    assert 0x03000000 in report['misses']
+    assert '0x03000000 arm' in feedback.read_text()
     assert 'static coverage miss' in execute(original, '--keys', '2', '--strict-static', ok=False)
 
 
@@ -124,6 +128,7 @@ def test_missing_code_map_reports_fallback_and_strict_mode_stops(tmp_path, sdk):
     feedback = tmp_path/'coverage.txt'
     result = execute(project, '--miss-log', feedback)
     assert result['interpreted_cycles'] > 0 and result['misses']
+    assert '0x03000040 thumb rom=' in feedback.read_text() and 'size=0x00000004' in feedback.read_text()
     assert 'static coverage miss' in execute(project, '--strict-static', ok=False)
     recovered = generate(tmp_path/'feedback', profile=False, feedback=[feedback])
     report = execute(recovered, '--strict-static')
@@ -227,3 +232,23 @@ def test_combined_feedback_preserves_distinct_ram_copies_independent_of_log_orde
     assert rows[0]['address']+rows[0]['size'] == 0x03002000
     reviewed = dict(ram_code=[dict(address=0x03002000,rom=0x08000100,size=0x200,mode='arm')])
     assert _feedback_regions(reviewed, [a,b,c], 0x10000) == expected[:1]
+    short = ('# identity\n0x03000040 thumb rom=0x08000200 size=0x00000004\n', {})
+    assert _feedback_regions({}, [short], 0x10000) == [dict(address=0x03000040,rom=0x08000200,size=4,mode='thumb')]
+    mixed = ('# identity\n0x03000000 thumb rom=0x08001000\n0x03000010 arm rom=0x08001010\n', {})
+    # Instruction-set switches inside one copied image must not split the span
+    # used by whole-function byte guards. Both entry modes remain in the log.
+    assert _feedback_regions({}, [mixed], 0x10000) == [dict(address=0x03000000,rom=0x08001000,size=0x8000,mode='thumb')]
+
+
+def test_short_ram_feedback_requires_an_aligned_backed_signature(tmp_path):
+    data, _ = hardware(); digest = hashlib.sha256(data).hexdigest()
+    path = tmp_path/'bounded.txt'
+    header = '# decomp.wtf.gba-misses/v1 sha256='+digest+'\n'
+    row = '0x03000040 thumb rom=0x080000c0 size='
+    path.write_text(header+row+'0x00000004\n')
+    content, pin = _feedback(path, digest, len(data))
+    assert pin['records'] == 1 and 'size=0x00000004' in content
+    for size in ('0x0', '0x3', '0x40'):
+        path.write_text(header+row+size+'\n')
+        with pytest.raises(pc.PCError, match='signature size'):
+            _feedback(path, digest, len(data))

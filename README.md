@@ -17,7 +17,7 @@ of current application support.
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
-| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald qualification in progress |
+| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald save/reload and clock checks pass; full gameplay acceptance remains owner-run |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
 
@@ -97,11 +97,12 @@ Install the following only for the features you choose:
 | [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
 | [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
 | [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
+| [mGBA](https://mgba.io/downloads.html) | Optional independent GBA execution and raw-save comparisons during qualification. |
 | [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
 | [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1/GBA. The main application uses Python 3.12+, managed by uv. |
-| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS and GBA, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. |
+| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS and GBA, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. GBA generation discovers the Visual Studio CMake component when it is absent from PATH. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
 | Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1/GBA projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |

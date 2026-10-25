@@ -2,6 +2,7 @@
 // Original protocol tests: no game assets or Nintendo BIOS.
 #include "anygba/system.hpp"
 #include "save/save.h"
+#include "ram_feedback.hpp"
 #include <filesystem>
 #include <iostream>
 #include <vector>
@@ -22,6 +23,17 @@ struct Clock {
 };
 void command(anygba::System& s,unsigned value){s.write8(0x0e005555,0xaa);s.write8(0x0e002aaa,0x55);s.write8(0x0e005555,uint8_t(value));}
 int main(int argc,char** argv){try{
+    const std::array<uint8_t,4> leaf{0x00,0x78,0x70,0x47};
+    std::vector<uint8_t> sample_rom(64,0xcc),stack(32,0x55);
+    std::copy(leaf.begin(),leaf.end(),sample_rom.begin()+1); // unaligned match must be skipped
+    std::copy(leaf.begin(),leaf.end(),sample_rom.begin()+16);
+    std::copy(leaf.begin(),leaf.end(),stack.begin());
+    auto match=gba_feedback::source(sample_rom,stack,true);
+    require(match&&match->address==0x08000010&&match->size==4,"bounded RAM leaf signature ignores live stack tail");
+    require(!gba_feedback::leaf_size(std::array<uint8_t,4>{0x00,0x48,0x70,0x47},true),"PC-relative leaf cannot use short matching");
+    require(!gba_feedback::leaf_size(std::array<uint8_t,4>{0x00,0xe0,0x70,0x47},true),"branching leaf cannot use short matching");
+    require(!gba_feedback::leaf_size(std::array<uint8_t,4>{0x00,0x60,0x70,0x47},true),"writing leaf cannot use short matching");
+    require(!gba_feedback::leaf_size(stack,false),"Thumb matching must not guess ARM code");
     require(argc==2,"provide a new test save path");std::filesystem::path file=argv[1];
     require(!std::filesystem::exists(file),"test save path must not exist");
     std::vector<uint8_t> rom(1024);const char* id="FLASH1M_V103";

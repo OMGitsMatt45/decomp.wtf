@@ -18,7 +18,7 @@ def main():
         run('as', '-mcpu=arm7tdmi', '-o', work/'program.o', folder/'program.s')
         run('ld', '-Ttext=0x08000000', '-o', work/'program.elf', work/'program.o')
         run('objcopy', '-O', 'binary', work/'program.elf', work/'program.bin')
-        names = ('_start','main','thumb_code','irq','ram_source','ram_end')
+        names = ('_start','main','thumb_code','irq','ram_source','ram_end','short_source')
         symbols = {row[2]: int(row[0],16) for line in run('nm', work/'program.elf').splitlines()
                    if len(row := line.split()) == 3 and row[2] in names}
         (folder/'program.json').write_text(json.dumps(dict(hex=(work/'program.bin').read_bytes().hex(),

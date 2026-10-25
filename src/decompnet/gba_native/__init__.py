@@ -5,6 +5,7 @@ from contextvars import ContextVar
 import hashlib
 from importlib import resources
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -42,7 +43,7 @@ def _source(name):
 def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
-                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp'):
+                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -61,8 +62,36 @@ def inspect(path):
                 native_game_backend_available=True, retail_qualified=False)
 
 
+def _cmake(*, platform=None, program_files=None):
+    """Use Visual Studio's bundled CMake when it is absent from Windows PATH."""
+    if program := shutil.which('cmake'):
+        return program
+    if (platform or sys.platform) == 'win32':
+        folder = program_files or os.environ.get('ProgramFiles(x86)')
+        if folder:
+            locator = Path(folder)/'Microsoft Visual Studio/Installer/vswhere.exe'
+            if locator.is_file():
+                try:
+                    result = subprocess.run([str(locator), '-utf8', '-products', '*', '-find',
+                        r'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'],
+                        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
+                    if result.returncode == 0:
+                        for line in result.stdout.splitlines():
+                            candidate = Path(line.strip())
+                            if candidate.is_file():
+                                return str(candidate)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+    raise pc.PCError('CMake 3.20+ is required: https://cmake.org/download/ . '
+        'On Windows, enable C++ CMake tools for Windows in Visual Studio Installer; '
+        'a separate CMake download is unnecessary when that component is installed.')
+
+
 def _run(command, cwd, what):
     _log(what+'...')
+    command = list(command)
+    if command[0] == 'cmake':
+        command[0] = _cmake()
     try:
         result = subprocess.run(list(map(str, command)), cwd=cwd, capture_output=True,
             text=True, encoding='utf-8', errors='replace', timeout=600)
@@ -99,7 +128,8 @@ def _fingerprint(sdk):
 
 
 def _emitter(sdk):
-    work = sdk.parent/'.gba-emitter'/revision()[:16]
+    emitter_key = hashlib.sha256((SDK_TREE_SHA256+_source('Emitter.cmake')).encode()).hexdigest()
+    work = sdk.parent/'.gba-emitter'/emitter_key[:16]
     work.mkdir(parents=True, exist_ok=True)
     identity = dict(commit=SDK_COMMIT, sha256=_fingerprint(sdk))
     marker = work/'source.json'
@@ -174,7 +204,7 @@ def _feedback(path, identity, size):
     for line in lines[1:]:
         if not line.strip():
             continue
-        match = re.fullmatch(r'(0x[0-9a-fA-F]{8}) (arm|thumb)(?: rom=(0x[0-9a-fA-F]{8}))?', line)
+        match = re.fullmatch(r'(0x[0-9a-fA-F]{8}) (arm|thumb)(?: rom=(0x[0-9a-fA-F]{8})(?: size=(0x[0-9a-fA-F]{1,8}))?)?', line)
         if match is None:
             raise pc.PCError('invalid GBA coverage feedback record')
         address = int(match[1], 16)
@@ -189,6 +219,11 @@ def _feedback(path, identity, size):
             source = int(match[3], 16)
             if not in_ram or source % width or not 0x08000000 <= source <= 0x08000000+size-width:
                 raise pc.PCError('GBA feedback RAM source lies outside the input')
+            if match[4] is not None:
+                length = int(match[4], 16)
+                end = 0x02040000 if address < 0x03000000 else 0x03008000
+                if not 0 < length <= 32 or length % width or source+length > 0x08000000+size or address+length > end:
+                    raise pc.PCError('GBA feedback RAM signature size is misaligned or outside the input/RAM')
         count += 1
         if count > 100000:
             raise pc.PCError('GBA coverage feedback has too many records')
@@ -211,9 +246,10 @@ def _feedback_regions(profile, feedback, size):
                 continue
             address = int(fields[0], 16)
             if 0x02000000 <= address < 0x04000000:
-                sources = hints.setdefault(address, set())
-                if len(fields) == 3:
-                    sources.add((int(fields[2][4:], 16), fields[1]))
+                sources = hints.setdefault(address, {})
+                if len(fields) >= 3:
+                    lengths = sources.setdefault((int(fields[2][4:], 16), fields[1]), set())
+                    lengths.add(int(fields[3][5:], 16) if len(fields)==4 else 0)
     reviewed = profile.get('ram_code', [])
     boundaries = sorted({*hints, *[r['address'] for r in reviewed], 0x02040000, 0x03008000})
     regions = []
@@ -222,16 +258,19 @@ def _feedback_regions(profile, feedback, size):
             continue
         if any(r['address'] <= address < r['address']+r['size'] for r in reviewed):
             continue
-        source, mode = next(iter(hints[address]))
+        (source, mode), lengths = next(iter(hints[address].items()))
         end = min(boundaries[index+1], 0x02040000 if address < 0x03000000 else 0x03008000)
         width = 4 if mode == 'arm' else 2
         length = min(end-address, 0x08000000+size-source)//width*width
+        bounds = [n for n in lengths if n]
+        if bounds:
+            length = min(length, min(bounds))
         if length:
             # A function can cross an interior observed entry. Keep contiguous
             # bytes from the same ROM copy together so its whole-body byte guard
             # can resolve one original source span.
             if (regions and regions[-1]['address']+regions[-1]['size'] == address and
-                regions[-1]['rom']+regions[-1]['size'] == source and regions[-1]['mode'] == mode):
+                regions[-1]['rom']+regions[-1]['size'] == source):
                 regions[-1]['size'] += length
             else:
                 regions.append(dict(rom=source, address=address, size=length, mode=mode))
@@ -260,12 +299,38 @@ def _runtime(sdk, destination):
     header.write_text(text.replace(old, old+'\n    bool strict_static = false;'), encoding='utf-8')
     dispatch = destination/'runtime/src/dispatch.cpp'
     text = dispatch.read_text(encoding='utf-8')
+    text = '#include "ram_feedback.hpp"\n'+text
+    start = text.index('    char rom_part[24] = "";')
+    end = text.index('    std::fprintf(miss_file_', start)
+    text = text[:start]+'''    char rom_part[64] = "";
+    const bool ewram = addr >= 0x02000000 && addr < 0x02040000;
+    const bool iwram = addr >= 0x03000000 && addr < 0x03008000;
+    if (ewram || iwram) {
+        const auto& ram = ewram ? mem_.ewram : mem_.iwram;
+        const auto off = addr & 0x00ffffffu;
+        const auto hit = gba_feedback::source(std::span<const uint8_t>(mem_.rom.data(),mem_.rom_size),
+            std::span<const uint8_t>(ram.data()+off,ram.size()-off),thumb);
+        if (hit) {
+            if (hit->size) std::snprintf(rom_part,sizeof rom_part," rom=0x%08x size=0x%08x",hit->address,hit->size);
+            else std::snprintf(rom_part,sizeof rom_part," rom=0x%08x",hit->address);
+        }
+    }
+'''+text[end:]
     old = 'void System::interpret() {'
     if text.count(old) != 1:
         raise pc.PCError('GBA interpreter guard patch no longer applies')
     dispatch.write_text(text.replace(old, old+'\n    if (options_.strict_static) {\n'
         '        fail("static coverage miss at " + std::to_string(cpu_.r[15]));\n    }'), encoding='utf-8')
     text = dispatch.read_text(encoding='utf-8')
+    for old, new in (
+        ('!resuming_ && !lookup_compiled(cpu_.r[15], cpu_.t != 0)',
+         '!resuming_ && !lookup(cpu_.r[15], cpu_.t != 0)'),
+        ('call && !lookup_compiled(cpu_.r[15], cpu_.t != 0)',
+         'call && !lookup(cpu_.r[15], cpu_.t != 0)'),
+    ):
+        if text.count(old) != 1:
+            raise pc.PCError('GBA guarded-code feedback patch no longer applies')
+        text = text.replace(old, new)
     old = 'options_.log_misses = false;\n            return;'
     if text.count(old) != 1:
         raise pc.PCError('GBA feedback error patch no longer applies')
@@ -285,7 +350,7 @@ def _runtime(sdk, destination):
     (destination/'DECOMP_WTF_PATCHES.md').write_text(
         'Pinned AnyGBA '+SDK_COMMIT+' (MIT).\n\n'
         'This source-shipped core omits the upstream player, network control, cheats and HD packs. '
-        'Options.strict_static rejects interpreter execution. Explicit coverage feedback fails on write errors. Unsupported BIOS sound/link '
+        'Options.strict_static rejects interpreter execution. Guard-rejected RAM code is included in coverage misses. Explicit coverage feedback fails on write errors. Unsupported BIOS sound/link '
         'services stop with a diagnostic instead of being ignored. The independent desktop frontend renders raw scanline state with OpenGL.\n', encoding='utf-8')
 
 
@@ -323,7 +388,7 @@ def generate(project, root):
             file = work/f'feedback{index}.txt'
             # RAM copies are installed together above, rather than enlarged in
             # whichever order the upstream reader encounters source hints.
-            file.write_text(re.sub(r' rom=0x[0-9a-fA-F]{8}', '', content), encoding='utf-8')
+            file.write_text(re.sub(r' rom=0x[0-9a-fA-F]{8}(?: size=0x[0-9a-fA-F]{1,8})?', '', content), encoding='utf-8')
             command.extend(['--miss-log', file])
         output = _run(command, work,
                       'Discover and translate ARM/Thumb code')
@@ -339,6 +404,7 @@ def generate(project, root):
                          ('ppu.frag', 'native/ppu.frag'), ('shader.hpp.in', 'native/shader.hpp.in'),
                          ('graphics_tests.cpp', 'tests/graphics.cpp'),
                          ('cartridge_tests.cpp', 'tests/cartridge.cpp'),
+                         ('ram_feedback.hpp', 'native/ram_feedback.hpp'),
                          ('extract.py', 'tools/extract_assets.py')):
         content = _source(source)
         if source == 'Project.cmake' and game:

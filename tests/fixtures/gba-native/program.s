@@ -3,7 +3,7 @@
 .cpu arm7tdmi
 .arm
 .text
-.global _start, main, thumb_code, irq, ram_source, ram_end
+.global _start, main, thumb_code, irq, ram_source, ram_end, short_source
 _start:
     b main
 .org 0xc0
@@ -42,6 +42,35 @@ after_thumb:
     bx r1
 after_ram:
     str r0, [r6, #28]
+    /* A four-byte Thumb leaf lives beside changing RAM data, as in stack thunks. */
+    mov r0, #90
+    str r0, [r6, #32]
+    ldr r1, =short_source
+    bic r1, r1, #1
+    ldr r2, [r1]
+    ldr r1, =0x03000040
+    str r2, [r1]
+    ldr r2, =0x13579bdf
+    str r2, [r1, #4]
+    add r0, r6, #32
+    add r1, r1, #1
+    adr lr, after_leaf
+    bx r1
+after_leaf:
+    str r0, [r6, #32]
+    /* A running timer must observe straight-line instruction cycles before a branch. */
+    ldr r5, =0x04000100
+    mov r0, #0
+    strh r0, [r5]
+    mov r0, #0x80
+    strh r0, [r5, #2]
+    .rept 16
+    add r7, r7, #1
+    .endr
+    ldrh r0, [r5]
+    str r0, [r6, #36]
+    mov r0, #0
+    strh r0, [r5, #2]
     /* DMA3 fills the mode-3 picture red. */
     ldr r4, =0x02000100
     ldr r0, =0x001f001f
@@ -103,6 +132,13 @@ irq:
     strh r1, [r0]
     bx lr
 .ltorg
+.thumb
+.thumb_func
+short_source:
+    ldrb r0, [r0]
+    bx lr
+.align 2
+.arm
 ram_source:
     mov r0, #77
     bx lr

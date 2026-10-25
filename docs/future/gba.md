@@ -18,6 +18,11 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   reference-interpreter mode. Interpreter use is reported and strict mode rejects it.
 - Input-bound runtime coverage feedback. Re-exporting with `--feedback` translates
   newly observed code, with ROM checksums and source-file preservation checks.
+- Instruction-boundary scheduler updates keep timer, DMA and audio accesses synchronized
+  with translated instructions. The original timer fixture agrees with the reference CPU.
+- Bounded ROM signatures recover short read-only Thumb helpers placed beside changing
+  stack data. Guard-rejected code is included in miss reports; mixed ARM/Thumb entries
+  in one copied image share the same byte-guard span.
 - Unsupported BIOS sound/link services fail explicitly; they never silently return success.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
@@ -29,19 +34,27 @@ The active monitor controls the initial window; F11 uses its native fullscreen s
 Keyboard/gamepad controls, paced stereo audio and atomic raw saves are included.
 The pinned SDL 3.4.10 source downloads automatically during host configuration.
 
-Emerald reaches the title and New Game/Option menu under bounded scripted input.
-The latest bounded export generates 1,170 functions and retains one guarded RAM
-fallback at `0x03007dcc`; strict mode stops there. Its GPU images match the internal reference; this workspace uses llvmpipe software
-OpenGL, so this is not physical GPU qualification. The internal CPU reference
-shares the hardware core, rather than providing an independent accuracy oracle.
-See [gba-native-validation.json](../gba-native-validation.json) for measured results.
-Retail gameplay compatibility remains unqualified.
+Emerald's 18,800-frame scripted run creates a character, reaches the overworld,
+saves on the ground floor, sets the bedroom clock, and saves again. Fresh boots
+return to the latest saved room. Advancing the configured RTC by one hour advances
+the displayed clock hand by one hour. The feedback export contains 3,530 translated
+functions; two overlapping RAM copies retain guarded interpreter fallback.
+
+The GPU images match the internal reference. A 900-frame native audio capture is
+byte-identical to the reference CPU capture. Independently, mGBA 0.10.5 loads the
+export's raw save and produces the same saved-room picture pixel for pixel. These
+checks establish bounded compatibility, rather than a full gameplay acceptance test.
+This workspace uses llvmpipe software OpenGL and SDL dummy audio; physical GPU,
+speakers and controller acceptance remain owner-run. Measured results and scope are
+in [gba-native-validation.json](../gba-native-validation.json).
 
 ## Generate a desktop project
 
 Install a host C/C++ compiler and [CMake](https://cmake.org/download/) 3.20 or newer.
 Windows users can use [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-with **Desktop development with C++**. The source SDK and verified toml++ header
+with **Desktop development with C++**. GBA generation discovers the Visual Studio
+**C++ CMake tools for Windows** component when CMake is absent from PATH; a separate
+CMake installer is unnecessary when that component is installed. The source SDK and verified toml++ header
 download automatically on first generation. No original-game compiler is required
 for native translation.
 
@@ -76,7 +89,10 @@ Build the new source project and compare its output with the previous run. Repea
 `--feedback` to combine runs. Feedback is bound to the original ROM hash, never
 silently overwrites an existing log, and reports addresses that still use fallback.
 Copied RAM code retains runtime byte checks; coverage feedback is not proof that
-all gameplay paths are statically translated.
+all gameplay paths are statically translated. Feedback may include `size=0x...` for
+bounded short helpers; those spans must be aligned, backed by the owner ROM and no
+longer than 32 bytes. Branching, writing and PC-relative helpers keep the longer
+signature or remain interpreted.
 
 ## Remaining PC-game acceptance
 
@@ -85,11 +101,15 @@ all gameplay paths are statically translated.
   reference PPU, with drawable-resolution sizing and reported software fallback.
 - [x] Original Flash 128 KiB protocol, bank, erase, atomic save/reload and serial RTC
   time/advance execution checks. These are cartridge protocol checks, not retail save proof.
-- [ ] Retail save/reload and clock-driven gameplay events, plus broader timing accuracy checks.
+- [x] Emerald cartridge save/reload across fresh boots, including both save generations.
+- [x] In-game clock setting and hour advancement across fresh boots.
+- [x] Native/reference PCM equality and independent mGBA save/room comparison.
+- [ ] Broader timing accuracy and RTC-driven daily gameplay events.
 - [ ] Reviewed import of matching ELF/symbol data and missed indirect/RAM code discovery.
 - [x] App/GUI/CLI native-game export integration under the shared PC-output contract.
-- [ ] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
-  save/reload, fallback report; eventual full playthrough remains with the owner.
+- [x] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
+  save/reload, clock and fallback report.
+- [ ] Physical GPU/audio/controller validation and eventual owner playthrough.
 
 ## Pokémon references
 
