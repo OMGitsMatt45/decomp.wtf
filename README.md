@@ -172,18 +172,19 @@ with **Desktop development with C++**. Install
 winget install --id astral-sh.uv --exact
 ```
 
-Close and reopen PowerShell so it sees the updated PATH, then open this repository
-folder and run:
+Close and reopen PowerShell so it sees the updated PATH. In File Explorer, open
+the extracted repository folder containing `pyproject.toml` and `tools`, type
+`powershell` into the address bar, press Enter, and run:
 
 ```powershell
-.\tools\qualify-ps2-hardware.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1
 ```
 
 The wrapper also finds uv in its standard user install folders if PATH has not
 refreshed, and chooses a new output folder for each run. For a custom folder:
 
 ```powershell
-.\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\decomp-ps2-gpu-my-test"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\decomp-ps2-gpu-my-test"
 ```
 
 If PowerShell reports `uv is not recognized`, the test has not started; install uv
