@@ -5,6 +5,24 @@ drafts, compilation, matching and `.cpp` exports. Explicit
 `compiler.language = "c"` retains C. Older exported projects without a language
 field continue to compile as C.
 
+Eligible disc imports also [reconstruct the complete original image](psx-disc.md)
+from the independently rebuilt boot program and discovered overlays. Supported
+CHDs retain their original container after matching and support lossless mod
+recompression. Unsupported filesystem layouts retain program-only exports.
+
+For sequential recovery without an AI agent, use the console:
+
+```sh
+decompnet --db "work/app.db" psx recover PROJECT --workspace "work/projects" --limit 200 --max-insns 24
+```
+
+It tries integer/memory-leaf candidates and m2c drafts, saving only exact compiler and
+full-link matches. `--search-profiles` also probes installed original GCC
+versions at O0/O1/O2, G0/G8 and installed assembler profiles, retaining improved
+saved source candidates. It persists a profile only after a match. Reruns skip
+matched functions; unresolved functions remain assembly. See the
+[console recovery guide](psx-resources.md#recover-cc-without-an-ai-agent).
+
 ## Compiler identity
 
 These are the **original GNU C++ frontends for each PS1-patched GCC version**,
@@ -26,6 +44,19 @@ compatibility. Target instruction selection, optimization and register allocatio
 are unchanged. Binutils 2.6 misparses GCC 2.8.1's `%hi($LC0)` literal labels;
 the compatible assembler is selected explicitly rather than changing compilers.
 GNU assembly is not a claim of exact ASPSX/PSY-Q assembler compatibility.
+Per-function `--assembler maspsx-2.56` or `maspsx-2.86` selects the pinned maspsx
+translator between the original compiler and GNU assembler. Selecting either
+profile automatically installs its dependencies and preserves the selection in
+standalone builds. These profiles reproduce supported period scheduling and
+instruction expansion; they do not establish compatibility with every ASPSX
+release or handwritten assembly extension.
+
+Architectural GP save/restore wrappers may use a standalone global declaration
+`register unsigned int psx_gp asm("$28");` with either registered PS1 GCC.
+Only this explicit register binding is accepted; instruction assembly, other
+register bindings, initializers and custom compiler commands remain excluded.
+These hardware wrappers are architecture-specific C. Ordinary small globals
+continue to use module GP facts and normal C declarations.
 The pinned Linux binutils-mips binaries require glibc 2.38 or newer (for example,
 Ubuntu 24.04); this also applies to PS1 exported-project linking.
 

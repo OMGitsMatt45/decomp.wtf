@@ -8,13 +8,13 @@ from unittest.mock import Mock
 from decompnet import compiler, cpp, project, seeds, toolchains, wsl
 
 
-@pytest.mark.parametrize("platform,toolchain", [("n64", "gcc-2.7.2-kmc"), ("n64", "ido-7.1"), ("n64", "ido-5.3"), ("gba", "agbcc"), ("psx", "gcc-2.7.2-psx"), ("psx", "gcc-2.8.1-psx"), ("ps2", "ee-gcc-2.96")])
+@pytest.mark.parametrize("platform,toolchain", [("gba", "agbcc"), ("psx", "gcc-2.7.2-psx"), ("psx", "gcc-2.8.1-psx"), ("ps2", "ee-gcc-2.96")])
 def test_verified_roms_default_to_cpp_and_explicit_c_is_respected(platform, toolchain):
     cfg = {"kind": "rom", "platform": platform, "compiler": {"toolchain": toolchain}}
     assert cpp.language(cfg) == "c++"
     cfg["compiler"]["language"] = "c"
     assert cpp.language(cfg) == "c"
-    assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-kmc"}}) == "c"
+    assert cpp.language({"compiler": {"toolchain": "gcc-2.7.2-psx"}}) == "c"
     with pytest.raises(ValueError, match="compiler.language"):
         cpp.language({"compiler": {"language": "rust"}})
 
@@ -30,6 +30,10 @@ class Player { public: int hp; int get() const { return hp; } };
 static int helper(int value) { return value + 1; }
 namespace details { int helper(int value) { return value; } }
 extern "C++" int overloaded(int value) { return value; }
+void *operator new(unsigned int);
+extern void operator delete(void *);
+void *operator new[](unsigned int size) { return allocate(size); }
+extern "C++" { int overloaded(double); }
 int probe(int value) { return triple(value) + callback(total); }
 struct Player *identity(struct Player *value) { return value; }
 '''
@@ -74,7 +78,29 @@ def test_ido_without_a_short_temp_path_returns_an_actionable_compile_error(tmp_p
     assert not result.ok and "Set TMP and TEMP" in result.log
 
 
-@pytest.mark.parametrize("toolchain,target", [("gcc-2.7.2-kmc", "mips-gcc-c++"), ("ido-7.1", "mips-ido-c++"), ("ido-5.3", "mips-ido-c++"), ("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++"), ("ee-gcc-2.96", "mipsee-gcc-c++")])
+def test_cpp_staging_normalizes_nested_headers_without_editing_user_files(tmp_path, monkeypatch):
+    include = tmp_path / 'headers'
+    (include / 'nested').mkdir(parents=True)
+    header = include / 'nested/policy.h'
+    header.write_bytes(b'#define STEP(x) \\\r\n ((x) + 1)\r\n')
+    asset = include / 'unchanged.bin'
+    asset.write_bytes(b'\x00\r\n\xff')
+    def execute(cfg, work, argv, timeout, **kwargs):
+        assert b'\r' not in (work / 'func.cpp').read_bytes()
+        assert b'\r' not in (work / 'include/context.h').read_bytes()
+        assert b'\r' not in (work / 'include/nested/policy.h').read_bytes()
+        assert (work / 'include/unchanged.bin').read_bytes() == asset.read_bytes()
+        (work / 'func.o').write_bytes(b'object')
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+    monkeypatch.setattr(compiler, '_exec', execute)
+    cfg = compiler.CompilerConfig(['g++', '-c', '{src}', '-o', '{obj}'], language='c++',
+                                  include_dirs=[include], sandbox='none')
+    result = compiler.compile_source(cfg, '#include "nested/policy.h"\r\n', 'int probe(int x) { return STEP(x); }\r\n')
+    assert result.ok, result.log
+    assert b'\r\n' in header.read_bytes()
+
+
+@pytest.mark.parametrize("toolchain,target", [("agbcc", "gba-gcc-c++"), ("gcc-2.7.2-psx", "mipsel-gcc-c++"), ("gcc-2.8.1-psx", "mipsel-gcc-c++"), ("ee-gcc-2.96", "mipsee-gcc-c++")])
 def test_cpp_drafts_request_the_m2c_cpp_target(monkeypatch, toolchain, target):
     calls = []
     monkeypatch.setattr(seeds, "run_m2c", lambda *args: calls.append(args) or "draft")

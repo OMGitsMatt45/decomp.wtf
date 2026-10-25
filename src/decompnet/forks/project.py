@@ -63,6 +63,8 @@ class Unit:
     options: dict | None = None  # the unit's own objdiff options
     mappings: dict | None = None  # objdiff symbol mappings (target name -> base name)
     auto: bool = False  # split off by dtk because no file covers it (auto_00_80003100_text)
+    address: int | None = None
+    mode: str | None = None
 
 
 @functools.lru_cache(maxsize=64)
@@ -176,10 +178,7 @@ class ForkProject:
             return {"what": g.get("what", "your copy of the game"), "path": path, "sha1": g.get("sha1"),
                     "help": g.get("help", ""), "auto": path is not None}
         if kind == "dtk":
-            v = version or (self.versions()[0] if self.versions() else "")
-            return {"what": "your copy of the game's disc (ISO, GCM, RVZ, WIA, WBFS, CISO, NFS or GCZ)",
-                    "path": f"orig/{v}/", "sha1": None, "auto": True,
-                    "help": f"Version {v}. The build checks the disc's main executable against the project's hash."}
+            raise ForkError("GameCube/Wii project backend was removed; see PR #27")
         if kind == "configure":
             v = version or ""
             if v and (self.root / "orig" / v).is_dir():
@@ -255,18 +254,15 @@ class ForkProject:
             m = self.manifest
             cmds = m.get("setup", [])
             if m.get("created") == "from scratch" and cmds:  # point at this computer's tools, not the creator's
-                from . import scratch_dsd, scratch_dtk
+                from . import scratch_dsd
 
-                args = (scratch_dsd if m.get("platform") == "nds" else scratch_dtk).tool_args()
+                args = scratch_dsd.tool_args()
                 first = cmds[0]
                 keep = next((i for i, c in enumerate(first) if c.startswith("--")), len(first))
                 cmds = [[*first[:keep], *args], *cmds[1:]]
             return [[sys.executable if c == "python" else c for c in cmd] for cmd in cmds]
         if kind == "dtk":
-            cmd = [sys.executable, "configure.py"]
-            if version and len(self.versions()) > 1:
-                cmd += ["--version", version]
-            return [cmd, [_tool("ninja") or "ninja"]]
+            raise ForkError("GameCube/Wii project backend was removed; see PR #27")
         if kind == "configure":
             return [[sys.executable, "configure.py"], [_tool("ninja") or "ninja"]]
         if kind == "splat":
@@ -316,35 +312,7 @@ class ForkProject:
         return code == 0, "\n".join(out[-60:])
 
     def unpack_disc(self, version: str | None, log=print) -> int:
-        """A dtk project that reads an extracted disc (orig/<version>/sys/main.dol, files/...) instead of the disc
-        image: copy the files its config names out of the user's disc image with decomp.wtf's own dtk, as the README's
-        "extract the disc with Dolphin" step would. Returns how many files were copied."""
-        if self.kind() != "dtk" or not version:
-            return 0
-        cfg, orig = self.root / "config" / version / "config.yml", self.root / "orig" / version
-        if not cfg.is_file() or not orig.is_dir():
-            return 0
-        text = cfg.read_text(errors="replace", encoding="utf-8")
-        if re.search(r"^\s*object_base\s*:", text, re.M):
-            return 0  # this dtk reads the disc image itself
-        wanted = sorted({m.group(1) for m in re.finditer(rf"orig/{re.escape(version)}/([^\s'\"#,\]]+)", text)})
-        missing = [w for w in wanted if not w.endswith("/") and ".." not in w and not (orig / w).exists()]
-        if not missing:
-            return 0
-        from . import scratch_dtk
-
-        discs = [(p, scratch_dtk.disc_id(p)) for p in sorted(orig.iterdir()) if p.is_file() and p.stat().st_size > 1 << 20]
-        discs = [(p, gid) for p, gid in discs if gid]
-        disc = next((p for p, gid in discs if gid == version), None) or (discs[0][0] if len(discs) == 1 else None)
-        if disc is None:
-            return 0  # no disc image here (or only other versions): the project's own error says what's missing
-        log(f"taking the {len(missing)} files the project reads out of your disc image ({disc.name})")
-        by_dir: dict[str, list[str]] = {}
-        for w in missing:
-            by_dir.setdefault(str(Path(w).parent), []).append(w)
-        for parent, files in by_dir.items():
-            scratch_dtk.vfs_copy(disc, files, orig / parent)
-        return len(missing)
+        return 0
 
     def setup(self, version: str | None = None, log=print) -> None:
         self.unpack_disc(version, log=log)
@@ -404,7 +372,8 @@ class ForkProject:
             out.append(Unit(u.get("name") or u.get("path") or "?", self.root / t if t else None,
                             self.root / b if b else None, meta.get("source_path"),
                             bool(meta.get("complete", u.get("complete", False))), u.get("scratch"),
-                            u.get("options") or None, u.get("symbol_mappings") or None, bool(meta.get("auto_generated"))))
+                            u.get("options") or None, u.get("symbol_mappings") or None, bool(meta.get("auto_generated")),
+                            meta.get("virtual_address"), meta.get("instruction_mode")))
         return out
 
     def units(self) -> list[Unit]:
@@ -459,19 +428,34 @@ class ForkProject:
         return self.run([_tool(make) or make, *cfg.get("custom_args", []), *keep_going], log=log, failed=failed)
 
     def report(self) -> dict:
-        return objdiff.report(self.root, self.root / STATE / "report.json")
+        output = self.root / STATE / "report.json"
+        report = objdiff.report(self.root, output)
+        if self.is_generated_ds():
+            from .arm7_project import enforce_report
+
+            report = enforce_report(self.units(), report)
+            output.write_text(json.dumps(report), encoding="utf-8")
+        return report
 
     def diff(self, unit: Unit, symbol: str) -> objdiff.FunctionDiff:
-        return objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
-                            project=self.root if unit.mappings else None, unit=unit.name)
+        result = objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
+                              project=self.root if unit.mappings else None, unit=unit.name)
+        if self.is_generated_ds() and unit.name.startswith("arm7/"):
+            from .arm7_project import enforce_diff
 
-    # ------------------------------------------------------------------ linking (dtk-template projects)
-    # A file whose code and data match is linked into the game: configure.py marks it Matching, the build then
-    # uses its compiled object instead of the original's, and the project's checksum check (`ninja .../ok`) proves
-    # the whole game still comes out byte for byte. That's what decomp.dev counts as linked.
+            result = enforce_diff(unit, symbol, result)
+        return result
+
+    # ------------------------------------------------------------------ linking (dtk-template and generated DS)
+    # A finished file replaces its original object only after the complete game verifies.
 
     def check_target(self) -> str | None:
-        """dtk-template's checksum target (build/<version>/ok: the built DOL and RELs against the game's SHA-1s)."""
+        """The project's complete-image verification target (dtk checksums or the DS ROM comparison)."""
+        manifest = self.manifest or {}
+        if manifest.get("platform") == "nds" and manifest.get("created") == "from scratch":
+            version = manifest.get("version")
+            if version and (self.root / "tools/configure.py").is_file():
+                return str(Path("build") / version / "rom.ok")
         try:
             with open(self.root / "build.ninja", errors="replace", encoding="utf-8") as f:
                 for line in f:
@@ -483,9 +467,11 @@ class ForkProject:
         return None
 
     def link_states(self) -> dict[str, tuple[str, int, int]]:
-        """Source file (relative to the project root) -> (its link state in configure.py: Matching, NonMatching,
-        Equivalent or MatchingFor(...), where that word starts and ends in configure.py)."""
+        """Source path -> (link state, state span in its build configuration)."""
         try:
+            if self.is_generated_ds():
+                return {src: state for path in self.link_config_paths()
+                        for src, state in self._ds_states_in(path.read_text(encoding="utf-8")).items()}
             return self._states_in((self.root / "configure.py").read_text(errors="replace", encoding="utf-8"))
         except OSError:
             return {}
@@ -507,8 +493,34 @@ class ForkProject:
     def linkable(self) -> bool:
         return self.check_target() is not None and bool(self.link_states())
 
+    def is_generated_ds(self) -> bool:
+        manifest = self.manifest or {}
+        return manifest.get("platform") == "nds" and manifest.get("created") == "from scratch"
+
+    def link_config_paths(self) -> list[Path]:
+        if self.is_generated_ds():
+            version = self.manifest["version"]
+            return sorted((self.root / "config" / version).rglob("delinks.txt"))
+        return [self.root / "configure.py"]
+
+    @staticmethod
+    def _ds_states_in(text: str) -> dict[str, tuple[str, int, int]]:
+        # ds-decomp's source entries end at the next unindented source name.
+        states = {}
+        for match in re.finditer(r"^(\S+\.(?:c|cpp|cc|cxx)):[ \t]*\r?\n((?:[ \t].*(?:\n|$)|[ \t]*\r?\n)*)", text, re.M):
+            complete = re.search(r"^[ \t]+complete[ \t]*(?://[^\r\n]*)?\r?$", match[2], re.M)
+            states[match[1].replace("\\", "/")] = ("Matching" if complete else "NonMatching", match.start(2), match.end())
+        return states
+
     def marked_matching(self, text: str, sources: list[str], version: str | None) -> str:
-        """configure.py (`text`) with these source files (NonMatching in it) marked as linked."""
+        """Build configuration text with finished source files marked as linked."""
+        if self.is_generated_ds():
+            states = self._ds_states_in(text)
+            for offset in sorted((states[s][1] for s in sources if s in states and states[s][0] == "NonMatching"),
+                                 reverse=True):
+                newline = "\r\n" if text[max(0, offset - 2):offset] == "\r\n" else "\n"
+                text = text[:offset] + "    complete" + newline + text[offset:]
+            return text
         states = self._states_in(text)
         # a project that builds several versions links per version where it can say so
         word = (f'MatchingFor("{version}")' if version and len(self.versions()) > 1 and "def MatchingFor" in text

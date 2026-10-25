@@ -1,6 +1,10 @@
-# MIPS for N64 decompilation (R4300i, o32 ABI)
+# MIPS for PlayStation and PlayStation 2
 
-Registers
+Use the configured PS1 or PS2 ABI. PS1 has no hardware floating-point unit or
+branch-likely instructions; its floating-point operations use software helpers.
+The PS2 EE supports different instructions and calling conventions.
+
+Registers (o32 conventions; consult the PS2 guide for EE differences)
 - `$a0-$a3`: first four integer/pointer arguments. More arguments go on the stack at 0x10($sp)+.
 - `$v0` (`$v1` for the high half of 64-bit): return value.
 - `$f12`, `$f14`: first two float arguments (doubles use register pairs). `$f0`: float return.
@@ -13,7 +17,7 @@ Delay slots
 - The instruction after any branch or jump runs before the branch takes effect. Assembly shows it
   indented by one space.
 - `beql`/`bnel`/... ("likely"): the delay slot runs only if the branch is taken. Compilers emit them for
-  loops and simple if/else. GCC 2.7.2 at -O2 uses them a lot.
+  loops and simple if/else. They are not available on PS1.
 
 Addresses
 - `lui $at, %hi(sym)` + `lw $v0, %lo(sym)($at)` loads a global. `%hi`/`%lo` split one address over two
@@ -32,5 +36,5 @@ Types from instructions
   original wrote `0.5` instead of `0.5f`.
 
 Stack frame
-- `addiu $sp, $sp, -N` / `addiu $sp, $sp, N`: frame size. GCC and IDO both reserve 0x10 bytes for the
+- `addiu $sp, $sp, -N` / `addiu $sp, $sp, N`: frame size. o32 compilers reserve 0x10 bytes for the
   argument area of calls. Locals whose address is taken live on the stack (`addiu $a1, $sp, 0x10` = `&local`).

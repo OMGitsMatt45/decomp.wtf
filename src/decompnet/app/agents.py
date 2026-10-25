@@ -535,7 +535,6 @@ class Manager:
         self.sessions: dict[str, Session] = {}
         self.assignments: dict[int, str] = {}  # agent id -> project slug
         self._lock = threading.Lock()
-        self._prep: dict[str, threading.Event] = {}  # slug -> giving its code source files before agents claim
         self.on_stop = lambda: None  # set by the server: close tunnels when the app quits
         self.persist = lambda running: None  # set by the server: remember helpers to resume after a restart
 
@@ -572,38 +571,12 @@ class Manager:
         return ids
 
     def _prepare(self, slug: str) -> None:
-        """Before agents claim: free matches from identical code (twins, in the background: what they'd match is
-        left for last meanwhile), and on a GameCube/Wii decomp where code has no source file yet, files for it
-        (start_files, checked against the game's checksum), or they'd all share the few hard functions left."""
+        """Prepare shared-code matches and near-miss searches before agents claim."""
         try:
             self.net.twins.refresh(slug)
             self.net.permuter.start(slug)  # near misses agents leave, on spare CPU
         except Exception:  # agents work without them
             pass
-        with self._lock:
-            if slug in self._prep:
-                return
-            try:
-                if not self.net.fork_slug(slug):
-                    return
-                _, fp, cfg = self.net.forks.get(slug)
-                if not (self.net.forks.uncovered(slug) or {}).get("functions") or not fp.linkable():
-                    return
-            except Exception:
-                return
-            done = self._prep[slug] = threading.Event()
-
-        def run() -> None:
-            try:
-                self.net.forks.start_files(slug, log=lambda *_: None)
-            except Exception:  # the agents still work on what has files
-                pass
-            finally:
-                done.set()
-                with self._lock:
-                    self._prep.pop(slug, None)
-
-        threading.Thread(target=run, daemon=True, name=f"start-files-{slug}").start()
 
     def running(self) -> list[dict]:
         """The helpers that should keep working: resumed by the server after the app restarts."""
@@ -670,9 +643,6 @@ class Manager:
         workdir.mkdir(parents=True, exist_ok=True)
         failures = throttles = 0
         s.push("info", f"{s.label} starting on {s.slug}")
-        if (prep := self._prep.get(s.slug)) is not None:
-            s.push("info", "first giving the game's code without a source file one (about a minute)")
-            prep.wait(900)
         twins = getattr(getattr(self.net, "twins", None), "jobs", {}).get(s.slug)
         if twins is not None and not twins.ordered.is_set():
             s.push("info", "first setting hand-written assembly aside and putting the functions in order "
@@ -754,13 +724,13 @@ class Manager:
         # the know-how every session reads first, given up front (saves each session its first tool calls)
         ov = self.net.overview(s.slug)
         if ov.get("kind") == "fork":
-            # CodeWarrior's register and stack rules decide most of what's left on GameCube, Wii and DS
-            topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") in ("gc", "wii", "nds") else [])]
+            # CodeWarrior's register and stack rules decide most of what's left on DS
+            topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") == "nds" else [])]
         elif ov.get("compiler", {}).get("language") == "asm":
-            topics = ["sm83"]
+            topics = ["arm"] if ov.get("assembly_dialect") == "gnu" else ["sm83"]
         else:
             topics = ["workflow", {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
-                "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")]
+                "mips")]
         text += "\nKnow-how you'd otherwise read with guide() (more topics: guide()):\n\n" + "\n\n".join(
             tools._guide(t) for t in topics)
         if (learned := self.net.learnings(s.slug)):
@@ -778,9 +748,10 @@ class Manager:
                                             count=s.options.get("per_session", PER_SESSION),
                                             guides=", ".join(f'guide("{g}")' for g in guides))
         guide = {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
-            "ido" if ov["compiler"]["toolchain"].startswith("ido") else "gcc-kmc")
+            "mips")
         if ov.get("compiler", {}).get("language") == "asm":
-            return tools.ASSEMBLY_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
+            prompt = tools.BOOT_ASSEMBLY_PROMPT if ov.get("assembly_dialect") == "gnu" else tools.ASSEMBLY_PROMPT
+            return prompt.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
         return tools.WORK_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION), compiler_guide=guide)
 
     def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str]:
@@ -1086,10 +1057,11 @@ def api_tool_schemas(fork: bool = False) -> list[dict]:
                                                        new=st("replacement", True), message=st("why", True))),
         "file_status": ("How far a source file (or a function's file) is from being linked: functions left, its data "
                         "next to the original's, why the last link failed.", s(path=st("file or function", True))),
-        "split_file": ("Divide a source file at a function: it and the rest of the file's code (and data from the given "
-                       "offsets) go to a new file. Kept only if the game still builds identically.",
-                       s(path=st("file", True), at=st("function name or .text offset", True),
-                         new_name=st("new file path (optional)"), data=st("e.g. .rodata:0x88 .data:0x28 (optional)"))),
+        "configure_arm7_unit": ("DS ARM7: assign original data/BSS ranges or select c/c++, preserving code bounds "
+                                "and the complete ROM check. Overlaps and changed matches roll back.",
+                                s(path=st("ARM7 source file", True),
+                                  data=st("e.g. .data:0x023800A0:4:global_name .bss:0x027E1000:16:buffer"),
+                                  language=st("c or c++ (optional)"))),
     }
     if fork:
         defs["compile_and_diff"] = ("Write one complete function definition into its source file, build it and diff "

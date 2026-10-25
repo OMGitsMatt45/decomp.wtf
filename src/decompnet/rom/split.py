@@ -1,4 +1,4 @@
-"""Split an N64 ROM into functions and data with splat (MIT) and read back what it found.
+"""Split a MIPS executable into functions and data with splat (MIT) and read back what it found.
 
 splat's own create_config finds the boot entry point, the main code segment, .bss and the compiler;
 `splat split` then disassembles every function (spimdisasm, MIT) with symbols for every address it
@@ -8,6 +8,7 @@ can pair up (%hi/%lo, jal targets). We parse that output into plain records the 
 from __future__ import annotations
 
 import re
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -15,10 +16,10 @@ from pathlib import Path
 
 import rabbitizer
 
-from .n64 import RomError
+from .errors import RomError
 
 _INSN = re.compile(r"^\s*/\* ([0-9A-F]+) ([0-9A-F]{8}) ([0-9A-F]{8}) \*/\s+(\S+)\s*(.*?)\s*$")
-_LABEL = re.compile(r"^\s*(?:jlabel\s+)?(\.?L[0-9A-F]{8}):?\s*$")
+_LABEL = re.compile(r"^\s*(?:jlabel\s+)?(\.?L(?:\w+_)?[0-9A-F]{8}):?\s*$")
 _DATA = re.compile(r"^\s*/\* ([0-9A-F]+ )?([0-9A-F]{8})(?: [0-9A-F]+)? \*/\s+\.(\w+)\s*(.*?)\s*$")
 _DLABEL = re.compile(r"^\s*dlabel\s+(\S+)")
 _GLABEL = re.compile(r"^\s*glabel\s+(\S+)")
@@ -90,7 +91,7 @@ class SplitResult:
     config_path: Path
     compiler: str
     log: str
-    platform: str = "n64"
+    platform: str = "psx"
     gp: int = 0  # value of $gp for $gp-relative data (PlayStation), 0 if unused
     image: str = ""  # the flat image splat reads (the ROM itself, or one made from an ELF)
 
@@ -167,7 +168,7 @@ def _patch_config(path: Path) -> tuple[str, str, int]:
     Returns (compiler guess, platform, gp value)."""
     text = path.read_text(encoding="utf-8")
     compiler = (re.search(r"^\s*compiler:\s*(\w+)", text, re.M) or [None, "KMC"])[1]
-    platform = (re.search(r"^\s*platform:\s*(\w+)", text, re.M) or [None, "n64"])[1]
+    platform = (re.search(r"^\s*platform:\s*(\w+)", text, re.M) or [None, "psx"])[1]
     gp = re.search(r"^\s*gp_value:\s*(0x[0-9A-Fa-f]+)", text, re.M)
     out, segment = [], None
     for line in text.splitlines():
@@ -179,6 +180,11 @@ def _patch_config(path: Path) -> tuple[str, str, int]:
             line = f"{m.group(1)}{m.group(2)}, c, {segment}]"
         out.append(line)
     text = "\n".join(out) + "\n"
+    if platform == "psx":
+        # PS-X EXE padding can contain binary mastering data. Splat's header
+        # writer decodes the entire 0x4C..0x800 range as ASCII and normalizes
+        # whitespace; retain these owner-supplied bytes as an opaque segment.
+        text = re.sub(r"(^\s*type:)\s*header\s*$", r"\1 bin", text, count=1, flags=re.M)
     extra = "  disassemble_all: True\n  auto_decompile_empty_functions: False\n"
     text = text.replace("options:\n", "options:\n" + extra, 1)
     path.write_text(text, encoding="utf-8")
@@ -188,7 +194,7 @@ def _patch_config(path: Path) -> tuple[str, str, int]:
 def parse_function(path: Path, segment: str, big_endian: bool = True) -> RomFunction | None:
     """One function from a spimdisasm .s file. The 8-digit field is the instruction's bytes in file order."""
     order = "big" if big_endian else "little"
-    name, lines, labels = None, [], set()
+    name, lines, labels, local_names = None, [], set(), {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         if name is None:
             m = _GLABEL.match(raw)
@@ -202,9 +208,15 @@ def parse_function(path: Path, segment: str, big_endian: bool = True) -> RomFunc
             continue
         m = _LABEL.match(raw)
         if m:
-            labels.add(int(m.group(1).lstrip(".L"), 16))
+            address = int(m.group(1)[-8:], 16)
+            labels.add(address)
+            local_names[m.group(1)] = f".L{address:08X}"
     if name is None or not lines:
         return None
+    if local_names:
+        pattern = re.compile(r"(?<![\w.])(?:" + "|".join(map(re.escape, local_names)) + r")(?!\w)")
+        for line in lines:
+            line.operands = pattern.sub(lambda match: local_names[match[0]], line.operands)
     _trim_padding(lines)
     return RomFunction(name, lines[0].vram, lines[0].rom, segment, lines, path, labels)
 
@@ -239,7 +251,7 @@ def parse_data(path: Path) -> list[DataSymbol]:
             current.size = max(current.size, end - current.vram)
             syms.append(current)
 
-    bss = path.name.endswith(".bss.s")
+    bss = path.name.endswith((".bss.s", ".sbss.s"))
     for raw in path.read_text(encoding="utf-8").splitlines():
         m = _DLABEL.match(raw)
         if m:
@@ -292,57 +304,65 @@ def _gp_from_entry(image: bytes, entry: int, segments: list[Segment]) -> int:
     return 0
 
 
-def _add_code_segments(config: Path, workdir: Path, image: str, log=print) -> str:
-    """An N64 game's code outside the main segment (n64code.py), added to splat's config as code segments of their
-    own. Compressed code (Rare's, Yaz0) is unpacked first and appended to a working copy of the ROM, which splat then
-    reads instead (and an export rebuilds). Returns the image splat reads."""
-    import hashlib
 
-    import yaml
 
-    from .n64code import find_segments, unpack_code
 
-    original = image
-    rom = (workdir / image).read_bytes()
-    packed = unpack_code(rom)
-    if packed:
-        work = bytearray(rom)
-        for _, data in packed:  # each after a gap, so pieces of different blocks never run together
-            work += bytes(-len(work) % 0x10 + 0x2000)
-            work += data
-        work += bytes(-len(work) % 0x10)
-        image = f"{Path(image).stem}.unpacked{Path(image).suffix}"
-        (workdir / image).write_bytes(work)
-        rom = bytes(work)
-        kib = sum(len(d) for _, d in packed) // 1024
-        log(f"unpacked {len(packed)} compressed code block{'s' if len(packed) != 1 else ''} ({kib} KiB)")
-    taken = code_ranges(config)
-    found = find_segments(rom, taken) if taken else []
-    if not found:
-        return original
-    cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
-    if packed:
-        cfg.setdefault("options", {})["target_path"] = image
-        cfg["sha1"] = hashlib.sha1(rom).hexdigest()
 
-    def start_of(seg):
-        return seg[0] if isinstance(seg, list) else seg.get("start")
+def overlay_contexts(cfg: dict) -> bool:
+    """Keep mutually exclusive programs out of the resident symbol namespace."""
+    segments = [s for s in cfg.get("segments", []) if isinstance(s, dict) and s.get("type") == "code"]
+    overlays = [s for s in segments if s.get("name", "").startswith("ovl_") or s.get("exclusive_ram_id")]
+    if not overlays:
+        return False
+    for seg in overlays:
+        seg.setdefault("exclusive_ram_id", "playstation_overlays")
+        seg["symbol_name_format"] = "$SEG_$VRAM"
+        seg["symbol_name_format_no_rom"] = "$SEG_$VRAM"
+    # Some boot discs contain several alternative resident executables.
+    raw = cfg["segments"]
 
-    starts = {st for st, _, _ in found}
-    segs = [s for s in cfg["segments"] if not (isinstance(s, dict) and s.get("type") == "bin" and start_of(s) in starts)
-            and not isinstance(s, list)]  # the end marker comes back at the image's end
-    for st, en, vram in found:
-        name = f"code_{vram:08X}"
-        segs.append({"name": name, "type": "code", "start": st, "vram": vram, "subsegments": [[st, "c", name]]})
-        if en < len(rom) and not any(start_of(s) == en for s in segs if not isinstance(s, list)):
-            segs.append({"type": "bin", "start": en})
-    segs.sort(key=lambda s: start_of(s) if start_of(s) is not None else -1)
-    segs.append([len(rom)])
-    cfg["segments"] = segs
-    config.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=None), encoding="utf-8")
-    kib = sum(en - st for st, en, _ in found) // 1024
-    log(f"found {len(found)} more code segment{'s' if len(found) != 1 else ''} the game loads later ({kib} KiB)")
-    return image
+    def ram_range(seg):
+        index = next(i for i, s in enumerate(raw) if s is seg)
+        end = next((s[0] if isinstance(s, list) else s["start"] for s in raw[index + 1:]
+                    if isinstance(s, list) or s.get("start") is not None), seg["start"])
+        return int(seg["vram"]), int(seg["vram"]) + int(end) - int(seg["start"])
+
+    for seg in segments:
+        if seg in overlays:
+            continue
+        lo, hi = ram_range(seg)
+        for other in overlays:
+            other_lo, other_hi = ram_range(other)
+            if lo < other_hi and other_lo < hi:
+                seg["exclusive_ram_id"] = other["exclusive_ram_id"]
+                break
+    return True
+
+
+def namespace_overlay_labels(workdir: Path) -> None:
+    """Scope aliases that disassembly still shares between exclusive programs."""
+    from collections import defaultdict
+
+    files = list((workdir / "asm" / "nonmatchings").glob("*/*.s"))
+    files += list((workdir / "asm" / "data").glob("*/*.s"))
+    texts = {p: p.read_text(encoding="utf-8") for p in files}
+    definitions = defaultdict(list)
+    for path, text in texts.items():
+        for name in re.findall(r"^\s*(?:glabel|dlabel|jlabel|alabel|ehlabel)\s+(\w+)", text, re.M):
+            definitions[name].append((path.parent.name, path.stem == name))
+    renames = defaultdict(dict)
+    for name, owners in definitions.items():
+        if len({owner for owner, _ in owners}) < 2:
+            continue
+        keep = next((owner for owner, primary in owners if primary), sorted(owners)[0][0])
+        for owner, _ in owners:
+            if owner != keep:
+                renames[owner][name] = f"{owner}_{name}"
+    for path, text in texts.items():
+        names = renames[path.parent.name]
+        if names:
+            text = re.sub(r"\b(?:" + "|".join(map(re.escape, names)) + r")\b", lambda m: names[m[0]], text)
+            path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str, bytes, int, int]], log=print) -> str:
@@ -356,17 +376,21 @@ def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str
     cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
     segs = [s for s in cfg["segments"] if not isinstance(s, list)]
     for name, code, vram, code_at in found:
+        segs.append({"name": f"padding_{len(data):X}", "type": "bin", "start": len(data)})
         data += bytes(-len(data) % 0x10 + 0x10)
         start = len(data)
         data += code
         subs = [[start, "data", f"ovl_{name}_header"]] if code_at else []  # what comes before its code: a header
         segs.append({"name": f"ovl_{name}", "type": "code", "start": start, "vram": vram,
                      "subsegments": subs + [[start + code_at, "c", f"ovl_{name}"]]})
-    data += bytes(-len(data) % 0x10)
+    if len(data) % 0x10:
+        segs.append({"name": "overlay_padding_end", "type": "bin", "start": len(data)})
+        data += bytes(-len(data) % 0x10)
     segs.append([len(data)])
     out = f"{Path(image).stem}.overlays{Path(image).suffix}"
     (workdir / out).write_bytes(data)
     cfg["segments"] = segs
+    overlay_contexts(cfg)
     cfg.setdefault("options", {})["target_path"] = out
     cfg["sha1"] = hashlib.sha1(bytes(data)).hexdigest()
     config.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=None), encoding="utf-8")
@@ -374,8 +398,8 @@ def _add_overlays(config: Path, workdir: Path, image: str, found: list[tuple[str
     return out
 
 
-def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
-              overlays: list[tuple[str, bytes, int, int]] | None = None) -> SplitResult:
+def split_rom(workdir: Path, rom_name: str = "game.exe", log=print,
+              overlays: list[tuple[str, bytes, int, int]] | None = None, reviewed_layout=None, psx_modules=None) -> SplitResult:
     """Run splat on workdir/rom_name and return every function and data symbol it found. `overlays`: code from
     other files of a PlayStation disc, each with the address it's loaded at."""
     import yaml
@@ -395,23 +419,85 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
     config = configs[0]
     image = (yaml.safe_load(config.read_text(encoding="utf-8")).get("options") or {}).get("target_path") or rom_name
     compiler, platform, gp = _patch_config(config)
-    big_endian = platform == "n64"
-    if platform == "n64":
-        image = _add_code_segments(config, workdir, image, log)
-    elif overlays:
+    if platform == "psx":
+        from .psx_code import repair_config
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        if repair_config(cfg, (workdir / rom_name).read_bytes()):
+            config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+            log("recovered the PS1 text range from its boot entry, control flow and MIPS function frames")
+    if platform == "ps2":
+        from . import ps2
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        if ps2.bss_layout(cfg, (workdir / rom_name).read_bytes()):
+            config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    big_endian = False
+    if overlays:
         image = _add_overlays(config, workdir, image, overlays, log)
+    if platform == "psx":
+        from .psx_modules import bss_layout, facts
+        from .psx_data import classify, merge_facts
+        cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+        for seg in cfg["segments"]:
+            meta = (psx_modules or {}).get(seg.get("name")) if isinstance(seg, dict) else None
+            if meta and "code_end" in meta:
+                start, end = meta["code_start"], meta["code_end"]
+                subs = [[seg["start"], "data", seg["name"] + "_prefix"]] if start else []
+                subs.append([seg["start"] + start, "c", seg["name"]])
+                size = next(len(d) for n, d, _, _ in overlays if "ovl_" + n == seg["name"])
+                if end < size:
+                    subs.append([seg["start"] + end, "data", seg["name"] + "_suffix"])
+                seg["subsegments"] = subs
+        classify(cfg, (psx_modules or {}).get("main", {}).get("data_ranges", []))
+        bss_layout(cfg, merge_facts(facts((workdir / rom_name).read_bytes(), overlays, gp), psx_modules))
+        config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     log("disassembling every function")
     out += "\n" + _splat(["split", config.name], workdir)
+    if platform == "psx":
+        # Explicit function hints expose more leaf functions on the next pass.
+        # Use the same hints during import as export, so these targets are
+        # available to recover rather than appearing only in the final tree.
+        previous = None
+        symbol_file = workdir / "symbol_addrs.txt"
+        original_symbols = symbol_file.read_text(encoding="utf-8") if symbol_file.exists() else ""
+        for _ in range(8):
+            discovered = [fn for path in sorted((workdir / "asm/nonmatchings").glob("**/*.s"))
+                          if (fn := parse_function(path, path.parent.name, False)) is not None]
+            signature = {(f.rom, f.vram, f.name) for f in discovered}
+            if signature == previous:
+                break
+            previous = signature
+            hints = [f"{f.name} = 0x{f.vram:08X}; // type:func rom:0x{f.rom:X}" for f in discovered]
+            symbol_file.write_text(original_symbols + "\n" + "\n".join(hints) + "\n", encoding="utf-8")
+            import shutil
+            shutil.rmtree(workdir / "asm", ignore_errors=True)
+            # Generated INCLUDE_ASM stubs freeze the preceding pass's function
+            # list. Keep authored C files, remove only these generated stubs.
+            for path in (workdir / "src").glob("**/*.c"):
+                lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if lines and all(line.startswith(("#include ", "INCLUDE_ASM(", "INCLUDE_RODATA(")) for line in lines):
+                    path.unlink()
+            out += "\n" + _splat(["split", config.name], workdir)
+        else:
+            raise RomError("PS1 function discovery did not stabilize; review the text boundaries")
+    if overlays or reviewed_layout is not None:
+        namespace_overlay_labels(workdir)
+    if platform == "psx":
+        from .psx_modules import literal_gp
+        literal_gp(workdir)
 
-    functions = []
+    functions, other_assembly = [], []
     for path in sorted((workdir / "asm" / "nonmatchings").glob("*/*.s")):
         fn = parse_function(path, path.parent.name, big_endian)
         if fn is not None:
             functions.append(fn)
+        else:
+            other_assembly.append(path)
     for path in sorted((workdir / "asm" / "nonmatchings").glob("*/*/*.s")):  # per-file subfolders
         fn = parse_function(path, path.parent.parent.name, big_endian)
         if fn is not None:
             functions.append(fn)
+        else:
+            other_assembly.append(path)
     seen: dict[str, int] = {}  # name -> where it is in the image
     unique = []
     rom = (workdir / image).read_bytes()
@@ -426,8 +512,16 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", log=print,
         _complete_delay_slot(fn, rom, big_endian)
         unique.append(fn)
     data = []
-    for path in sorted((workdir / "asm" / "data").glob("**/*.s")):
+    for path in sorted((workdir / "asm" / "data").glob("**/*.s")) + other_assembly:
         data += parse_data(path)
+    if platform == "psx":
+        from .psx_data import contains, reject_control_entries
+        definitions = (psx_modules or {}).get("main", {}).get("data_ranges", [])
+        unique = [fn for fn in unique if fn.segment != "main" or not contains(definitions, fn.rom, 4)]
+        for fn in unique:
+            if fn.segment == "main" and any(fn.rom < item["offset"] + item["size"] and item["offset"] < fn.rom + fn.size for item in definitions):
+                raise RomError("a PS1 function overlaps reviewed main data; review its boundary")
+        reject_control_entries(unique, definitions, int.from_bytes((workdir / rom_name).read_bytes()[0x18:0x1C], "little"))
     if not unique:
         raise RomError("splat found no functions; the code may be compressed or use an unusual boot layout")
     segments = segments_from_config(config)

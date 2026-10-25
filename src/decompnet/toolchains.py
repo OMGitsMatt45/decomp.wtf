@@ -195,6 +195,9 @@ def path(tid: str, linux: bool | None = None) -> Path:
 
 
 def installed(tid: str, linux: bool | None = None) -> dict | None:
+    from .platforms import REMOVED_TOOLS
+    if tid in REMOVED_TOOLS or tid in ('dtk','dtk-template','gc-wii-binutils','sjiswrap'):
+        return None
     if linux is None:
         linux = get(tid).via_wsl if tid in registry() else False
     if tid == "ee-gcc-2.96" and not linux and _ee_native_root() is not None:
@@ -316,6 +319,9 @@ def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
 def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None) -> Path:
     """Install a toolchain (and what it requires). `linux`: its Linux build, to run inside WSL (default: when
     that's how it runs on this computer)."""
+    from .platforms import REMOVED_TOOLS
+    if tid in REMOVED_TOOLS or tid in ('gc-wii-binutils', 'dtk', 'dtk-template', 'sjiswrap'):
+        raise ToolchainError('This tool belongs to a console removed from this branch; see preservation PR #27')
     tc = get(tid)
     linux = tc.via_wsl if linux is None else linux
     if linux:
@@ -387,10 +393,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 shutil.rmtree(dest / "windows-host-templates")
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise ToolchainError(f"Cannot assemble the pinned native EE compiler: {error}") from error
-        if tid == "ido-5.3" and (linux or current_platform() in ("linux-x86_64", "windows-x86_64")):
-            from .ido_cfront import manifest_error
-            if error := manifest_error(dest):
-                raise ToolchainError(error)
+        pass
         if linux and "runtime-i386" in tc.dependencies(linux):  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
@@ -467,8 +470,11 @@ def java_version() -> int:
 
 
 def status() -> list[dict]:
+    from .platforms import REMOVED_TOOLS
     rows = []
     for tc in registry().values():
+        if tc.id in REMOVED_TOOLS or tc.id in ('gc-wii-binutils', 'dtk', 'dtk-template', 'sjiswrap'):
+            continue
         m = installed(tc.id)
         rows.append({"id": tc.id, "name": tc.name, "kind": tc.kind, "platform": tc.platform, "license": tc.license,
                      "installed": m is not None and tc.supported, "supported": tc.supported, "description": tc.description,

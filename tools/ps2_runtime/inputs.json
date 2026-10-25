@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "purpose": "Original PS2 CPU candidate assessment; not a game backend",
+  "candidate": {
+    "repository": "ran-j/PS2Recomp",
+    "commit": "e5636981a1c9de368f6b71e819c3dc188dfedbf4",
+    "tree": "f53888c06d1cc37e9b87e25fea3c23d3ede5ea7e",
+    "license": "GPL-3.0",
+    "license_file": "LICENSE"
+  },
+  "dependencies": [
+    {
+      "name": "elfio",
+      "repo": "serge1/ELFIO",
+      "tag": "Release_3.12",
+      "sha": "8ae6cec5d60495822ecd57d736f66149da9b1830",
+      "type": "commit",
+      "url": "https://codeload.github.com/serge1/ELFIO/tar.gz/8ae6cec5d60495822ecd57d736f66149da9b1830",
+      "archive_sha256": "71c1a72e3fac6c9db3d4126c8f9b84bbda902e8dfb563f6dfcbed454636fa1c5",
+      "bytes": 4152496
+    },
+    {
+      "name": "toml11",
+      "repo": "ToruNiina/toml11",
+      "tag": "v4.4.0",
+      "sha": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286",
+      "type": "commit",
+      "url": "https://codeload.github.com/ToruNiina/toml11/tar.gz/be08ba2be2a964edcdb3d3e3ea8d100abc26f286",
+      "archive_sha256": "5f08eaa5cd867192fa821cd0ec9b6c91629ff6247350d1f45f8d432c28b7fe5f",
+      "bytes": 357572
+    },
+    {
+      "name": "fmt",
+      "repo": "fmtlib/fmt",
+      "tag": "12.1.0",
+      "sha": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f",
+      "type": "commit",
+      "url": "https://codeload.github.com/fmtlib/fmt/tar.gz/407c905e45ad75fc29bf0f9bb7c5c2fd3475976f",
+      "archive_sha256": "2bc1fe4a5b6d5d6a614239b4ca1d520e66e152a02d3d262684d26dfd6ab3438a",
+      "bytes": 711737
+    },
+    {
+      "name": "libdwarf",
+      "repo": "davea42/libdwarf-code",
+      "tag": "v2.2.0",
+      "sha": "2e088b983562860f497b4fd789a3e61524eb857c",
+      "type": "commit",
+      "url": "https://codeload.github.com/davea42/libdwarf-code/tar.gz/2e088b983562860f497b4fd789a3e61524eb857c",
+      "archive_sha256": "0da638b1708ba0bd1a4848dc46ac018b7ffd117cd3c16d456be89cf2eae2339a",
+      "bytes": 3568609
+    },
+    {
+      "name": "rabbitizer",
+      "repo": "Decompollaborate/rabbitizer",
+      "tag": "1.14.3",
+      "sha": "d5804fa488474830a47fbf9f3693048ec1e45589",
+      "type": "commit",
+      "url": "https://codeload.github.com/Decompollaborate/rabbitizer/tar.gz/d5804fa488474830a47fbf9f3693048ec1e45589",
+      "archive_sha256": "1d444be2acb65f094faad2c6c4632b7f57e1a71c9c8114cd750d78fac3110314",
+      "bytes": 410728
+    },
+    {
+      "name": "raylib",
+      "repo": "raysan5/raylib",
+      "tag": "5.5",
+      "sha": "c1ab645ca298a2801097931d1079b10ff7eb9df8",
+      "type": "commit",
+      "url": "https://codeload.github.com/raysan5/raylib/tar.gz/c1ab645ca298a2801097931d1079b10ff7eb9df8",
+      "archive_sha256": "be3443c3fb97f7cbd18ae3f0ea2a73e6c1486128df33b639dce7e44070fc285d",
+      "bytes": 42286727
+    }
+  ]
+}

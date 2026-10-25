@@ -16,7 +16,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import cpp, wsl
+from . import cpp, linux_i386, wsl
 
 MAX_SOURCE_BYTES = 64 * 1024
 # Per-compile resource caps (address space, CPU seconds, output file size) and a global
@@ -40,13 +40,20 @@ class SourceRejected(ValueError):
     pass
 
 
-def check_source(source: str) -> None:
+def check_source(source: str, *, psx_gp_registers: bool = False, psx_bios_dispatch: bool = False) -> None:
     if len(source.encode()) > MAX_SOURCE_BYTES:
         raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
     for inc in _INCLUDE.findall(source):
         if inc.startswith("/") or ".." in inc.split("/"):
             raise SourceRejected(f"include path not allowed: {inc}")
-    code = _COMMENTS_AND_STRINGS.sub(" ", source)
+    checked = source
+    annotations = cpp.gp_register_annotations(source) if psx_gp_registers else []
+    if psx_bios_dispatch:
+        from .psx_bios import register_annotations
+        annotations += register_annotations(source)
+    for start, end in sorted(annotations, reverse=True):
+        checked = checked[:start] + re.sub(r"[^\n]", " ", checked[start:end]) + checked[end:]
+    code = _COMMENTS_AND_STRINGS.sub(" ", checked)
     for pattern, why in _FORBIDDEN:
         if pattern.search(code):
             raise SourceRejected(why)
@@ -69,6 +76,14 @@ def check_assembly(source: str) -> None:
             raise SourceRejected("assembly SECTION names must be plain quoted ASCII names")
 
 
+def check_gnu_assembly(source: str) -> None:
+    """GNU submissions cannot read files or manufacture assembler directives."""
+    if len(source.encode()) > MAX_SOURCE_BYTES:
+        raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
+    if re.search(r"\.(?:include|incbin|macro|endm|altmacro|irp|irpc|rept|purgem|mri)\b|[\\\x00]", source, re.I):
+        raise SourceRejected("GNU assembly must be self-contained: file includes, macros and escapes are not allowed")
+
+
 @dataclass
 class CompilerConfig:
     cmd: list[str]
@@ -82,6 +97,11 @@ class CompilerConfig:
     language: str = "c"
     c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     relative_paths: bool = False  # IDO's legacy driver cannot preserve absolute output paths with spaces
+    assembly_dialect: str = "rgbds"
+    qemu_i386: str | None = None  # explicit Linux compatibility runner; sandboxing is unchanged
+    toolchain_dirs: tuple[str, ...] = ()  # pinned trees whose i386 child programs need launchers
+    psx_gp_registers: bool = False  # exact GCC GP bindings, never instruction assembly
+    psx_bios_dispatch: bool = False  # complete architectural tail dispatcher, PS1 C only
 
 
 @dataclass
@@ -116,8 +136,19 @@ def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
     if mode == "docker":
         if not cfg.image:
             raise RuntimeError("sandbox = 'docker' needs compiler.image")
-        return ["docker", "run", "--rm", "--network", "none", "--memory", "512m", "--pids-limit", "64",
-                "-v", f"{work}:/work", "-w", "/work", cfg.image, *argv]
+        cmd = ["docker", "run", "--rm", "--network", "none", "--memory", "512m", "--pids-limit", "64",
+               "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
+               "--tmpfs", "/tmp:rw,nosuid,nodev", "-v", f"{work}:/work", "-w", "/work"]
+        if hasattr(os, "getuid"):
+            cmd += ["--user", f"{os.getuid()}:{os.getgid()}"]
+        # Pinned tools live outside the image, just as they do with bubblewrap.
+        for path in dict.fromkeys(cfg.ro_paths):
+            cmd += ["-v", f"{path}:{path}:ro"]
+        if cfg.runtime32:
+            cmd += ["-v", f"{cfg.runtime32}:/opt/rt32:ro",
+                    "-v", f"{cfg.runtime32}/ld-linux.so.2:/lib/ld-linux.so.2:ro",
+                    "-e", "LD_LIBRARY_PATH=/opt/rt32"]
+        return [*cmd, cfg.image, *argv]
     if mode == "bwrap":
         # /tmp first, so read-only mounts of paths that live under /tmp are not hidden by it.
         cmd = ["bwrap", "--tmpfs", "/tmp", "--ro-bind", "/usr", "/usr", "--symlink", "usr/lib64", "/lib64",
@@ -146,6 +177,16 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
     """`stage`: in WSL, run on a copy in WSL's own file system (wsl.run's outputs, inputs and stage)."""
     if _sandbox_mode(cfg) == "wsl":
         return wsl.run(argv, cwd or work, timeout, **stage)
+    if cfg.qemu_i386:
+        from dataclasses import replace
+
+        if not sys.platform.startswith("linux"):
+            raise ValueError("qemu_i386 is supported only for Linux toolchains")
+        with tempfile.TemporaryDirectory(prefix="decompnet-i386-") as tmp:
+            command = linux_i386.prepare(argv, cfg.toolchain_dirs, Path(tmp), cfg.qemu_i386, cfg.runtime32)
+            emulated = replace(cfg, qemu_i386=None,
+                               ro_paths=(*cfg.ro_paths, tmp, cfg.qemu_i386))
+            return _exec(emulated, work, command, timeout, cwd=cwd, **stage)
     # in the work folder, never in the app's own: KMC GCC's assembler (binutils 2.6) can't read its input when the
     # current directory is / ("Bad file descriptor"), which it is for decomp.wtf started by a service or in Docker
     # IDO's native MSYS programs otherwise assume /tmp exists. Give native
@@ -181,10 +222,12 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
     if not trusted:
         try:
             if cfg.language == "asm":
-                check_assembly(context_header)
-                check_assembly(source)
+                check = check_gnu_assembly if cfg.assembly_dialect == "gnu" else check_assembly
+                check(context_header)
+                check(source)
             else:
-                check_source(source)
+                check_source(source, psx_gp_registers=cfg.psx_gp_registers,
+                             psx_bios_dispatch=cfg.psx_bios_dispatch and cfg.language == "c")
         except SourceRejected as e:
             return CompileResult(False, None, f"rejected: {e}")
 
@@ -194,13 +237,25 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         inc.mkdir()
         for d in cfg.include_dirs:
             shutil.copytree(d, inc, dirs_exist_ok=True)
+        if cfg.language in ("c", "c++"):
+            # Autocrlf checkouts and edited Windows headers must not pass CR
+            # tokens to the original period preprocessors. Normalize staged
+            # copies only; leave the user's files and other assets untouched.
+            for header in inc.rglob("*"):
+                if header.is_file() and header.suffix.lower() in (".h", ".hh", ".hpp", ".hxx", ".inc", ".tcc", ".inl", ".c", ".cc", ".cpp", ".cxx"):
+                    data = header.read_bytes()
+                    if b"\r\n" in data:
+                        header.write_bytes(data.replace(b"\r\n", b"\n"))
+            context_header = context_header.replace("\r\n", "\n")
+            source = source.replace("\r\n", "\n")
         # LF on every platform: to the old GCCs a backslash before CRLF doesn't continue a line ("stray '\' in program")
         if cfg.language == "c++" and cfg.c_linkage:
             context_header, source = cpp.game_abi(context_header), cpp.game_abi(source)
         filename = "func.asm" if cfg.language == "asm" else "func.cpp" if cfg.language == "c++" else "func.c"
         context = "context.inc" if cfg.language == "asm" else "context.h"
         (inc / context).write_text(context_header, encoding="utf-8", newline="\n")
-        prefix = 'INCLUDE "context.inc"\n' if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
+        prefix = ('.include "context.inc"\n' if cfg.assembly_dialect == "gnu" else 'INCLUDE "context.inc"\n') \
+            if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
         (work / filename).write_text(prefix + source + "\n", encoding="utf-8", newline="\n")
 
         root = _root(cfg, work)

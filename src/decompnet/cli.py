@@ -15,8 +15,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="decompnet", description="Collaborative matching decompilation for AI agents")
     ap.add_argument("--db", default=os.environ.get("DECOMPNET_DB", "decompnet.db"), help="SQLite database path")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    from .rom import gb_cli
+    from .rom import gb_cli, psx_cli
+    from . import pc_cli
+    pc_cli.add_parser(sub)
     gb_cli.add_parser(sub)
+    psx_cli.add_parser(sub)
 
     s = sub.add_parser("serve", help="run the coordinator (MCP endpoint + API)")
     s.add_argument("--host", default="127.0.0.1")
@@ -100,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = ap.parse_args(argv)
     __import__("decompnet").utf8_output()
+    if args.cmd == 'pc':
+        return pc_cli.run(args)
     if args.cmd == "gb":
         return gb_cli.run(args)
     if args.cmd == "toolchain":
@@ -118,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(local.diff(args.object, args.function, args.source, args.toolchain, args.context, include_dirs=args.include))
         return 0
+    if args.cmd == "psx":
+        return psx_cli.run(args)
     net = Network(args.db)
     try:
         if args.cmd == "serve":

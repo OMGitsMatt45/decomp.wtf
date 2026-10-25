@@ -19,7 +19,7 @@ from pathlib import Path
 from . import policy, scoring
 from .compiler import compile_source
 from .elfobj import FunctionObj, Reloc, extract_function
-from .project import compiler_config
+from .project import compiler_config, function_config
 from .store import Store
 
 CLAIM_TTL = 30 * 60
@@ -120,12 +120,15 @@ class Network:
     # ---------------------------------------------------------------- helpers
 
     def _project(self, slug: str | None):
+        from . import platforms
         if slug:
             row = self.store.one("SELECT * FROM projects WHERE slug=?", slug)
             if row is None:
                 raise NetworkError(f"no project {slug!r}; call list_projects")
+            platforms.require(json.loads(row['config']).get('platform', ''), NetworkError)
             return row
-        rows = self.store.all("SELECT * FROM projects")
+        rows = [row for row in self.store.all("SELECT * FROM projects")
+                if platforms.enabled(json.loads(row['config']).get('platform', ''))]
         if len(rows) == 1:
             return rows[0]
         raise NetworkError("several projects exist; pass `project` (see list_projects)")
@@ -145,6 +148,10 @@ class Network:
             )
         if row is None:
             raise NetworkError(f"no function {name!r}" + (f" in {project!r}" if project else ""))
+        from . import platforms
+        parent = self.store.one('SELECT config FROM projects WHERE id=?', row['project_id'])
+        if parent:
+            platforms.require(json.loads(parent['config']).get('platform', ''), NetworkError)
         return row
 
     def _context(self, project_id: int, unit: str | None = ""):
@@ -191,9 +198,10 @@ class Network:
         row = self.store.one("SELECT name FROM agents WHERE id=?", agent_id) if agent_id else None
         return row["name"] if row else "?"
 
-    def _compile(self, proj, header: str, source: str):
+    def _compile(self, proj, header: str, source: str, fn=None):
         root = Path(proj["root"])
-        return compile_source(compiler_config(root, json.loads(proj["config"])), header, source)
+        cfg = function_config(json.loads(proj["config"]), fn["name"] if fn is not None else None)
+        return compile_source(compiler_config(root, cfg), header, source)
 
     def _evaluate(self, fn, proj, obj: bytes) -> tuple[FunctionObj | None, bool | None, list[str]]:
         """(candidate, verdict, problems) for a compiled object. verdict None means: decide by comparing
@@ -219,6 +227,9 @@ class Network:
             return "No projects yet."
         out = []
         for r in rows:
+            from . import platforms
+            if not platforms.enabled(json.loads(r['config']).get('platform', '')):
+                continue
             pct = 100 * (r["matched_bytes"] or 0) / (r["bytes"] or 1)
             legal = json.loads(r["config"]).get("legal", {})
             out.append(f"- {r['slug']}: {r['name']} [{r['arch']}] — {r['matched'] or 0}/{r['total']} functions "
@@ -239,6 +250,8 @@ class Network:
             ctx = self._context(proj["id"])
         if proj["arch"] == "sm83":
             return f"; context.inc for {proj['slug']} — version {ctx['version']} (included automatically)\n{ctx['header']}"
+        if json.loads(proj["config"]).get("rom", {}).get("boot_utility"):
+            return f"/* context.inc for {proj['slug']} — version {ctx['version']} (included automatically) */\n{ctx['header']}"
         return (f"// context.h for {proj['slug']} — version {ctx['version']} "
                 f"(prepended to every compile as #include \"context.h\")\n{ctx['header']}")
 
@@ -315,7 +328,8 @@ class Network:
 
     def _brief(self, fn, agent: Agent | None, header: str) -> str:
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
-        assembly = proj["arch"] == "sm83"
+        gnu = bool(json.loads(proj["config"]).get("rom", {}).get("boot_utility"))
+        assembly = proj["arch"] == "sm83" or gnu
         fence, context_name = ("```asm", "context.inc") if assembly else ("```c", "context.h")
         ctx = self._context(proj["id"], fn["unit"])
         claim = self.store.one("SELECT * FROM claims WHERE function_id=?", fn["id"])
@@ -359,6 +373,10 @@ class Network:
         if fn["unit"] and fn["unit"] in self._unit_contexts(proj["id"]):
             lines.insert(2, f"source unit {fn['unit']}: call get_context with function=\"{fn['name']}\" for its header")
         if header == "CLAIMED":
+            if gnu:
+                lines += ["", "Next: read context.inc, review the GNU assembly and submit one range with its exact label and size. "
+                          "Use compile_and_diff. File includes and macros are not permitted; this verifies assembly, not C/C++ recovery."]
+                return "\n".join(lines)
             lines += ["", ("Next: read context.inc with get_context. Submit one complete RGBDS section with the exact "
                           "exported label, bank, CPU address and size shown above. Iterate with compile_and_diff. "
                           "context.inc is included automatically; submissions must not include files, INCBIN or EQUS."
@@ -397,7 +415,7 @@ class Network:
                     db.execute("UPDATE claims SET expires_at=? WHERE function_id=?", (now + self.claim_ttl, fn["id"]))
 
         ctx = self._context(proj["id"], fn["unit"])
-        result = self._compile(proj, ctx["header"], source)
+        result = self._compile(proj, ctx["header"], source, fn)
 
         if not result.ok:
             self._record(fn, agent, None, source, ctx["version"])
@@ -472,6 +490,11 @@ class Network:
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if current is None or any(current[key] != fn[key] for key in
+                                      ("name", "size", "target", "relocs", "unit", "vram", "rom_offset")
+                                      if key in fn.keys()):
+                raise NetworkError("the function target changed during compilation; retry against its current boundaries")
             db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via))
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
@@ -519,14 +542,17 @@ class Network:
                 new_header = replace_once(header, old, new, "the header")
             else:
                 new_header = header.rstrip("\n") + "\n\n" + new.strip("\n") + "\n"
-            members = self._matched_using(proj, unit)
+            members = self._matched_using(proj, unit) if ctx["unit"] == unit else self.store.all(
+                "SELECT * FROM functions WHERE project_id=? AND unit=? AND status='matched'", proj["id"], unit)
             broken = self.regression_test(proj, new_header, only=members)
             if broken:
                 listing = "\n".join(f"- {name}: {why}" for name, why in broken[:10])
                 return (f"❌ REJECTED: the edit breaks {len(broken)} already-matched function(s), so the header "
                         f"stays at v{ctx['version']}.\n{listing}")
             with self.store.tx() as db:
-                if self._latest_version(db, proj["id"], unit) != ctx["version"]:
+                expected = ctx["version"] if ctx["unit"] == unit else None
+                if self._latest_version(db, proj["id"], unit) != expected or (expected is None and
+                        self._latest_version(db, proj["id"], "") != ctx["version"]):
                     continue  # someone else committed meanwhile: re-apply on top and re-test
                 version = self._next_version(db, proj["id"])
                 db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "
@@ -600,7 +626,7 @@ class Network:
 
         def check(fn) -> tuple[str, str] | None:
             res = self._compile(proj, header_for(fn) if header_for else header,
-                                (sources or {}).get(fn["id"], fn["matched_source"]))
+                                (sources or {}).get(fn["id"], fn["matched_source"]), fn)
             if not res.ok:
                 return fn["name"], "no longer compiles: " + res.log.strip().splitlines()[0][:200] if res.log.strip() else "compile failed"
             cand, verdict, _ = self._evaluate(fn, proj, res.obj)
@@ -628,6 +654,7 @@ class Network:
         with self.store.tx() as db:
             db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
                        (proj["id"], fn["id"] if fn else None, agent.id, text.strip()[:4000], time.time()))
+            self._event(db, proj["id"], agent.id, "note", fn["name"] if fn else "project")
         return "Noted. Other agents will see it" + (f" when they open {fn['name']}." if fn else " in their briefings.")
 
     def search_notes(self, project: str | None, query: str) -> str:
@@ -647,6 +674,9 @@ class Network:
             self._expire_claims(db)
         projects = []
         for p in self.store.all("SELECT * FROM projects ORDER BY slug"):
+            from . import platforms
+            if not platforms.enabled(json.loads(p['config']).get('platform', '')):
+                continue
             agg = self.store.one(
                 "SELECT COUNT(*) AS total, SUM(status='matched') AS matched, SUM(size) AS bytes, "
                 "SUM(CASE WHEN status='matched' THEN size ELSE 0 END) AS matched_bytes, SUM(attempts) AS attempts "

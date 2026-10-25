@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import sys
 import time
 
@@ -14,10 +13,11 @@ from decompnet import hostenv, toolchains
 from decompnet.app import agents
 from decompnet.app.engine import RomNetwork
 from decompnet.app.server import build
+from .psx_fixture import built, fixture_compiler_runtime  # noqa: F401
 
 # the tests that import the demo ROM (the rest, such as the GUI's security, run anywhere)
-needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
-                                reason="needs gcc-2.7.2-kmc")
+needs_demo = pytest.mark.skipif(any(toolchains.installed(t) is None for t in ("gcc-2.7.2-psx", "binutils-mips")),
+                                reason="needs the PS1 compiler and MIPS binutils")
 PORT, SECRET = 6499, "s3cret-for-tests"
 
 
@@ -63,11 +63,11 @@ def test_import_from_another_wsl_distribution_reports_which_path_to_use(app, mon
 
 
 @needs_demo
-def test_import_demo_and_follow_it_live(app):
+def test_import_demo_and_follow_it_live(app, built):
     client, net, _ = app
     h = {"X-Decomp": "1"}
     assert client.post("/api/import?confirmed=0", content=b"x" * 10, headers=h).status_code == 400
-    job = client.post("/api/import?demo=1", content=b"", headers=h).json()["job"]
+    job = client.post("/api/import?confirmed=1", content=built, headers=h).json()["job"]
     for _ in range(200):
         j = client.get(f"/api/job?id={job}").json()
         if j["state"] != "running":
@@ -82,7 +82,7 @@ def test_import_demo_and_follow_it_live(app):
     assert client.get(f"/api/map?slug={slug}&since={full['sig']}").json() == {"sig": full["sig"], "same": True}
     live = client.get(f"/api/live?slug={slug}").json()
     assert live["overview"]["functions"] >= 95 and live["events"][0]["kind"] == "import"
-    detail = client.get(f"/api/function?slug={slug}&name=func_80000460").json()
+    detail = client.get(f"/api/function?slug={slug}&name=func_80010410").json()
     assert "glabel" in detail["asm"]
 
 
@@ -113,9 +113,9 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
     client, net, manager = app
     slug = net.store.one("SELECT slug FROM projects")["slug"]
     script = iter([
-        {"tool_calls": [{"id": "1", "type": "function", "function": {"name": "claim_function", "arguments": json.dumps({"function": "func_800007F4"})}}]},
+        {"tool_calls": [{"id": "1", "type": "function", "function": {"name": "claim_function", "arguments": json.dumps({"function": "func_80010438"})}}]},
         {"tool_calls": [{"id": "2", "type": "function", "function": {"name": "compile_and_diff", "arguments": json.dumps(
-            {"function": "func_800007F4", "source": "s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }"})}}]},
+            {"function": "func_80010438", "source": "s32 func_80010438(s32 v) { if (v < 0) v = -v; return v; }"})}}]},
         {"content": "Matched."},
     ])
     seen = []
@@ -132,7 +132,7 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
     s = agents.Session("api-t", "api", "Test", slug, "api-test", {"base_url": "http://mock/v1", "model": "m", "api_key": "test-key"})
     agent, _ = net.local_agent("api-test")
     assert manager._run_api(s, agent) is True
-    assert net._function("func_800007F4", slug)["status"] == "matched"
+    assert net._function("func_80010438", slug)["status"] == "matched"
     assert "byte-identical" in seen[-1]["messages"][-1]["content"]
 
 

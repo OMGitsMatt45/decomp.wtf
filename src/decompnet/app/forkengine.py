@@ -21,11 +21,11 @@ import subprocess
 import threading
 import time
 from collections import defaultdict
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 
-from .. import similarity, toolchains
-from ..forks import catalog, csource, datadiff, drafts, dtksplits, ghidra, scratch_dsd, scratch_dtk
+from .. import platforms, similarity, toolchains
+from ..forks import catalog, csource, datadiff, drafts, ghidra, scratch_dsd
 from ..forks.objdiff import ObjdiffError
 from ..forks.project import EDITABLE, STATE, ForkError, ForkProject
 from ..network import Agent, Network, NetworkError
@@ -311,6 +311,7 @@ class ForkEngine:
         self._indexing: set[int] = set()
         self._ilock = threading.Lock()
         self._linking: dict[str, dict] = {}  # slug -> background link run
+        self.background_links = True  # batch commands can finalize links synchronously before exiting
 
     # ------------------------------------------------------------------ locks, builds, baselines
 
@@ -406,6 +407,7 @@ class ForkEngine:
         return {"repo": m.group(1), **policy.check(m.group(1))}
 
     def clone(self, repo: str, *, name: str = "", platform: str = "", version: str | None = None, log=print) -> str:
+        platforms.require(platform, NetworkError)
         repo = repo.strip()
         local = Path(repo).expanduser()
         if not (_REPO.match(repo) or (local.is_dir() and (local / ".git").exists())):
@@ -429,6 +431,14 @@ class ForkEngine:
         fp = ForkProject(dest)
         fp.git("checkout", "-q", "-b", "decomp-wtf")
         kind = fp.kind()
+        if kind == 'dtk':
+            shutil.rmtree(dest, ignore_errors=True)
+            platforms.require('gcwii', NetworkError)
+        try:
+            platforms.project_platform(dest, platform)
+        except ValueError as error:
+            shutil.rmtree(dest, ignore_errors=True)
+            raise NetworkError(str(error)) from error
         versions = fp.versions()
         version = version if version in versions else (versions[0] if versions else version)
         cfg = {"kind": "fork", "repo_url": url, "platform": platform, "version": version, "fork_kind": kind,
@@ -444,6 +454,7 @@ class ForkEngine:
         return slug
 
     def _register(self, slug: str, title: str, description: str, root: Path, cfg: dict, event: str) -> None:
+        platforms.require(cfg.get('platform', ''), NetworkError)
         with self.net.store.tx() as db:
             pid = db.execute("INSERT INTO projects(slug,name,description,arch,big_endian,root,config) VALUES(?,?,?,?,?,?,?)",
                              (slug, title, description, "", 0, str(root), json.dumps(cfg))).lastrowid
@@ -451,12 +462,13 @@ class ForkEngine:
                        "VALUES(?,?,?,?,?,?,?)", (pid, 1, "", None, "projects keep their headers in the tree", time.time(), ""))
             self.net._event(db, pid, None, "fork", event)
 
-    def create_scratch(self, game: Path, *, compiler: str | None = None, log=print) -> str:
-        """A GameCube, Wii or DS game, from scratch: generate the community's project layout for it (dtk-template,
-        ds-decomp) and open it like a fork."""
+    def create_scratch(self, game: Path, *, compiler: str | None = None, ds_input_format="auto", log=print) -> str:
+        """Generate a DS reconstruction project; PC output has a separate backend."""
         with open(game, "rb") as f:
             ds = scratch_dsd.is_nds(f.read(0x200))
-        maker = scratch_dsd if ds else scratch_dtk
+        if not ds:
+            platforms.require('gcwii', NetworkError)
+        maker = scratch_dsd
         info = maker.game_info(game)
         sha1 = info["sha1"] if ds else hashlib.sha1(info["dol"]).hexdigest()
         for p in self.net.store.all("SELECT slug, config FROM projects"):
@@ -466,7 +478,8 @@ class ForkEngine:
         slug = self._free_slug(_slug(f"{info['title']} {info['id']}" if info.get("kind") != "dol" else info["title"]))
         dest = self.net.workspace / slug
         try:
-            facts = maker.create(dest, game, compiler=compiler, log=log)
+            facts = maker.create(dest, game, compiler=compiler, log=log,
+                                 **({"input_format": ds_input_format} if ds else {}))
         except BaseException:
             shutil.rmtree(dest, ignore_errors=True)
             raise
@@ -511,37 +524,17 @@ class ForkEngine:
         return self.check(slug, log=log)
 
     def _match_version(self, proj, fp: ForkProject, cfg: dict, game: Path, log) -> None:
-        """A GameCube/Wii disc names its version (GP6E01, GP6P01...): use the project's matching version, or say
-        which ones the project has, instead of failing deep in the build."""
-        if fp.kind() != "dtk":
-            return
-        versions = fp.versions()
-        gid = scratch_dtk.disc_id(game)
-        if not gid or not versions or gid == cfg.get("version"):
-            return
-        if gid in versions:
-            log(f"your disc is {gid}: using the project's {gid} version")
-            cfg["version"] = gid
-            self._save_cfg(proj, cfg)
-        elif all(re.fullmatch(r"[A-Z0-9]{6}", v) for v in versions):
-            raise NetworkError(f"this disc is {gid}, but the project decompiles {', '.join(versions)}: "
-                               "pick your copy of one of those versions")
+        return
 
     def check_rom(self, slug: str, log=print) -> dict:
         """A DS game started from scratch: rebuild its ROM and compare it with the user's copy (scratch_dsd.check_rom);
         what it says is kept in the project's .decomp.wtf.json and shown on the project."""
         proj, fp, cfg = self.get(slug)
         manifest = fp.manifest or {}
-        if cfg.get("origin") != "scratch" or manifest.get("platform") not in ("nds", "gc", "wii"):
+        if cfg.get("origin") != "scratch" or manifest.get("platform") != "nds":
             raise NetworkError("only games started from scratch rebuild here")
         with self._build_locks[proj["id"]]:  # not while an agent's compile builds in the same tree
-            if manifest.get("platform") == "nds":
-                result = scratch_dsd.check_rom(fp.root, manifest["version"], log=log)
-            else:
-                ok, tail = fp.verify(log=log)
-                diff = scratch_dtk._differing(fp.root, manifest["version"], tail) or []
-                result = {"identical": ok, "detail": "identical" if ok else
-                          f"{len(diff)} files differ: {', '.join(diff[:8])}" if diff else (tail.strip().splitlines() or ["the build failed"])[-1][-300:]}
+            result = scratch_dsd.check_rom(fp.root, manifest["version"], log=log)
         manifest["rebuild"] = result | {"t": time.time()}
         (fp.root / ".decomp.wtf.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         return result
@@ -602,6 +595,8 @@ class ForkEngine:
                 size = int(f.get("size", 0))
                 n = max(1, size // 4)
                 u = units.get(uname)
+                if u and u.mode == "thumb":
+                    n = max(1, size // 2)
                 md = f.get("metadata") or {}
                 meta = {"symbol": sym, "demangled": md.get("demangled_name"), "source": u.source if u else None}
                 if k:
@@ -626,6 +621,8 @@ class ForkEngine:
                     status = "asm"  # hand-written assembly (here or in its twin elsewhere): not for agents
                 score = None if fuzzy is None else scaled(fuzzy, n)
                 vram = md.get("virtual_address")
+                if u and u.address is not None:
+                    vram = u.address
                 if old is None:
                     name = sym if counts[sym] == 1 else f"{sym}@{uname}" + (f"#{k + 1}" if k else "")
                     while name in used:
@@ -695,49 +692,62 @@ class ForkEngine:
         """Link every finished file into the game, keeping only what the project's checksum check accepts."""
         proj, fp, cfg = self.get(slug)
         if not fp.linkable():
-            return {"linked": [], "failed": {}, "note": "this project has no link step decomp.wtf knows (dtk-template)"}
+            return {"linked": [], "failed": {}, "note": "this project has no supported link step (dtk-template or generated DS)"}
         with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
             fp.build_all()
             rep = fp.report()
             todo = self.link_candidates(proj, fp, rep)
             if not todo:
                 return {"linked": [], "failed": {}}
-            conf = fp.root / "configure.py"
-            original = conf.read_text(errors="replace", encoding="utf-8")
+            originals = {path: path.read_bytes() for path in fp.link_config_paths()}
             ok, out = fp.verify()
             if not ok:
                 return {"linked": [], "failed": {}, "error": "the project's checksum check fails before linking "
                         f"anything, so nothing was linked:\n{_tail(out)}"}
 
             def build_with(sources: list[str]) -> tuple[bool, str]:
-                conf.write_text(fp.marked_matching(original, sources, cfg.get("version")), encoding="utf-8")
+                for path, original in originals.items():
+                    updated = fp.marked_matching(original.decode("utf-8"), sources, cfg.get("version")).encode("utf-8")
+                    if path.read_bytes() != updated:
+                        path.write_bytes(updated)
                 return fp.verify()
+
+            def restore() -> None:
+                for path, original in originals.items():
+                    if path.read_bytes() != original:
+                        path.write_bytes(original)
 
             log(f"linking {len(todo)} finished file(s)")
             linked: list[str] = []
             failed: dict[str, str] = {}
-            ok, out = build_with(todo)
-            if ok:
-                linked = todo
-            else:  # one at a time, so one file that doesn't link keeps none of the others out
-                for src in todo[:40]:
-                    ok, out = build_with([*linked, src])
-                    if ok:
-                        linked.append(src)
-                    else:
-                        failed[src] = _tail(out)
-                ok, out = build_with(linked)
-                if not ok:
-                    linked = []
+            try:
+                ok, out = build_with(todo)
+                if ok:
+                    linked = todo
+                else:  # one at a time, so one file that doesn't link keeps none of the others out
+                    for src in todo[:40]:
+                        ok, out = build_with([*linked, src])
+                        if ok:
+                            linked.append(src)
+                        else:
+                            failed[src] = _tail(out)
+                    ok, out = build_with(linked)
+                    if not ok:
+                        linked = []
+            except BaseException:
+                restore()
+                raise
             self._remember_link_failures(proj, linked, failed)
             if not linked:
-                conf.write_text(original, encoding="utf-8")
+                restore()
                 fp.verify()
                 return {"linked": [], "failed": failed}
             names = ", ".join(Path(s).name for s in linked[:6]) + (f" and {len(linked) - 6} more" if len(linked) > 6 else "")
             who = f"\n\nLinked by decomp.wtf after {agent.name}'s match." if agent else "\n\nLinked by decomp.wtf."
-            self._commit(proj, fp, "configure.py", f"Link {names}\n\nEvery function and all data match, and the game "
-                                                   f"still builds byte for byte from the C.{who}")
+            changed = [str(path.relative_to(fp.root)) for path, text in originals.items()
+                       if path.read_bytes() != text]
+            self._commit_paths(proj, fp, changed, f"Link {names}\n\nEvery function and all data match, and the game "
+                                                f"still builds byte for byte from the C.{who}")
             with self.net.store.tx() as db:
                 for src in linked:
                     self.net._event(db, proj["id"], agent.id if agent else None, "link", src)
@@ -800,17 +810,6 @@ class ForkEngine:
             if state != "Matching":
                 data = self._data_status(u)
                 lines.append(f"data: {'matches' if not data else 'differs'}" + (f"\n{data}" if data else ""))
-        try:
-            mods = self._modules(fp, cfg)
-            src = fp.src_dir()
-            name = rel[len(src) + 1:] if rel.startswith(src + "/") else rel
-            for module, mod in mods.items():
-                for f in dtksplits.Splits.parse(mod.splits.read_text(encoding="utf-8")).files:
-                    if f.name == name:
-                        lines.append(f"{module} sections: " + ", ".join(f"{k} 0x{a:X}-0x{b:X}" for k, (a, b) in f.sections.items())
-                                     + " (split_file divides it)")
-        except (NetworkError, OSError):
-            pass
         why = (cfg.get("link_failed") or {}).get(rel)
         if why and state != "Matching":
             lines += ["", "The last try to link it failed (the game didn't build identically):", why]
@@ -828,6 +827,8 @@ class ForkEngine:
     def link_soon(self, slug: str, agent: Agent | None = None) -> None:
         """Link in the background (one run per project at a time; another request while it runs runs it again)."""
         with self._mlock:
+            if not self.background_links:
+                return
             state = self._linking.setdefault(slug, {"running": False, "again": False})
             if state["running"]:
                 state["again"] = True
@@ -848,297 +849,67 @@ class ForkEngine:
 
         threading.Thread(target=run, daemon=True, name=f"link-{slug}").start()
 
-    # ------------------------------------------------------------------ source files for all the code
-    # Code no source file covers (dtk's auto_..._text units) can't be decompiled: there's nowhere to write it. Real
-    # projects split it into files by hand. decomp.wtf gives each such stretch of code a file of its own, the way
-    # contributors start (split_file divides one further), and keeps the change only if the game still builds byte
-    # for byte. A file listed in configure.py that doesn't exist yet gets created too.
+    def configure_arm7_unit(self, agent: Agent, slug: str, path: str, data: str = "", language: str = "") -> str:
+        """Change ARM7 data ownership/language with a verified, reversible project edit."""
+        from ..forks import arm7_project
 
-    def _modules(self, fp: ForkProject, cfg: dict) -> dict:
-        if fp.kind() not in ("dtk", "manifest") or not fp.linkable():
-            raise NetworkError("giving code source files works on dtk-template projects (GameCube, Wii)")
-        version = cfg.get("version") or (fp.versions() or [None])[0]
-        try:
-            return dtksplits.modules(fp.root, version)
-        except (OSError, ValueError) as e:
-            raise NetworkError(f"can't read the project's config for {version}: {e}") from None
-
-    @staticmethod
-    def _text_extent(unit, syms: dict) -> tuple[int, int] | None:
-        """(start, end) in .text of an auto unit's code: its first symbol's address, its object's .text size."""
-        from io import BytesIO
-
-        from elftools.elf.elffile import ELFFile
-
-        try:
-            elf = ELFFile(BytesIO(unit.target.read_bytes()))
-        except (OSError, AttributeError):
-            return None
-        sec = elf.get_section_by_name(".text")
-        tab = elf.get_section_by_name(".symtab")
-        if sec is None or tab is None or not sec["sh_size"]:
-            return None
-        idx = next(i for i, x in enumerate(elf.iter_sections()) if x.name == ".text")
-        first = min(((x["st_value"], x.name) for x in tab.iter_symbols()
-                     if x["st_shndx"] == idx and x.name and x["st_info"]["type"] == "STT_FUNC"), default=None)
-        if first is None or first[1] not in syms or syms[first[1]][0] != ".text":
-            return None
-        start = syms[first[1]][1] - first[0]
-        return start, start + sec["sh_size"]
-
-    def code_without_files(self, slug: str, rep: dict | None = None) -> dict:
-        """What start_files would do: {"create": [source paths of listed files that don't exist],
-        "split": [(module, source path, start, end, functions)]}."""
         proj, fp, cfg = self.get(slug)
-        mods = self._modules(fp, cfg)
-        src = fp.src_dir()
-        if rep is None:
-            try:
-                rep = json.loads((fp.root / STATE / "report.json").read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                rep = {}
-        rep_fns = {u["name"]: len(u.get("functions", [])) for u in rep.get("units", [])}
-        cpp = {u["name"] for u in rep.get("units", [])  # code with C++ names goes in a C++ file
-               if any((f.get("metadata") or {}).get("demangled_name") not in (None, f["name"]) for f in u.get("functions", []))}
-        create, split, taken = [], [], set()
-        listed = fp.link_states()
-        for u in fp.units():
-            module, _, rest = u.name.partition("/")
-            if u.source or module not in mods:
-                continue
-            if not u.auto:
-                for f in dtksplits.Splits.parse(mods[module].splits.read_text(encoding="utf-8")).files:
-                    if str(Path(f.name).with_suffix("")) == rest and f"{src}/{f.name}" in listed:
-                        create.append(f"{src}/{f.name}")
-                continue
-            if not rest.endswith("_text") or not rep_fns.get(u.name, 1):
-                continue
-            extent = self._text_extent(u, dtksplits.symbols(mods[module].symbols))
-            if extent is None:
-                continue
-            folder = "auto" if module == "main" else f"REL/{module}"
-            ext = ".cpp" if u.name in cpp else ".c"
-            name = f"{folder}/text_{extent[0]:08X}{ext}"
-            while name in taken or (fp.root / src / name).exists() or f"{src}/{name}" in listed:
-                name = name[:-len(ext)] + "_" + ext
-            taken.add(name)
-            split.append((module, name, extent[0], extent[1], rep_fns.get(u.name, 0)))
-        return {"create": sorted(set(create)), "split": sorted(split)}
-
-    def start_files(self, slug: str, log=print, agent: Agent | None = None) -> dict:
-        """Give all code a source file: create files configure.py lists, split off a file for every stretch of
-        code no file covers. Verified by the game's checksum, committed, measured."""
-        proj, fp, cfg = self.get(slug)
-        mods = self._modules(fp, cfg)
-        src = fp.src_dir()
-        conf = fp.root / "configure.py"
+        if self.net.links.get(slug) is not None:
+            raise NetworkError("configure ARM7 units on the project host")
+        if not fp.is_generated_ds():
+            raise NetworkError("this operation requires a generated DS project")
+        source = fp.safe_path(path, write=True).relative_to(fp.root).as_posix()
+        version = fp.manifest["version"]
+        manifest = fp.root / "config" / version / "arm7" / "units.json"
+        if not manifest.is_file():
+            raise NetworkError("this project predates ARM7 source units; re-import it to use them")
+        units = fp.units_for(source)
+        if len(units) != 1 or not units[0].name.startswith("arm7/"):
+            raise NetworkError("choose an ARM7 source file")
         with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
-            fp.build_all()
-            plan = self.code_without_files(slug, fp.report())
-            if not plan["create"] and not plan["split"]:
-                return {"created": [], "split": [], "functions": 0}
-            saved = {conf: conf.read_text(encoding="utf-8")}
-            made: list[Path] = []
+            markers = manifest.with_name("delinks.txt")
+            original = {p: p.read_bytes() for p in (manifest, markers, fp.root / source)}
+            destination = source
+            before = fp.diff(units[0], None).unit_scores
             try:
-                for path in plan["create"]:
-                    p = fp.root / path
-                    if not p.exists():
-                        p.parent.mkdir(parents=True, exist_ok=True)
-                        p.write_text("", encoding="utf-8")
-                        made.append(p)
-                by_module: dict[str, list] = defaultdict(list)
-                for item in plan["split"]:
-                    by_module[item[0]].append(item)
-                text = saved[conf]
-                for module, items in by_module.items():
-                    sp_path = mods[module].splits
-                    saved.setdefault(sp_path, sp_path.read_text(encoding="utf-8"))
-                    sp = dtksplits.Splits.parse(saved[sp_path])
-                    for _, name, start, end, _n in items:
-                        sp.files.append(dtksplits.FileSplit(name, {".text": (start, end)}))
-                        p = fp.root / src / name
-                        p.parent.mkdir(parents=True, exist_ok=True)
-                        common = '#include "common.h"\n' if (fp.root / "include" / "common.h").is_file() else ""
-                        p.write_text(f"// Code of {module} that had no source file yet: decomp.wtf gave it this one.\n"
-                                     "// split_file divides it into the game's real files (file_status shows its range).\n"
-                                     + common, encoding="utf-8")
-                        made.append(p)
-                    sp_path.write_text(sp.render(), encoding="utf-8")
-                    text = dtksplits.add_objects(text, module, [name for _, name, _, _, _ in items])
-                conf.write_text(text, encoding="utf-8")
-                log(f"giving {len(plan['split'])} stretch(es) of code a source file; the build splits the game again")
-                ok, out = fp.verify()
+                destination = arm7_project.configure(fp.root, version, source, data, language)
+                ok, out = fp.run(fp.setup_commands()[0], log=lambda *_: None)
                 if not ok:
-                    raise ForkError(f"the game didn't build identically with the new files:\n{_tail(out)}")
-            except (ForkError, OSError, ValueError) as e:
-                for path, old in saved.items():
-                    path.write_text(old, encoding="utf-8")
-                for p in made:
-                    p.unlink(missing_ok=True)
-                fp.verify()
-                raise NetworkError(f"nothing was changed: {e}") from None
-            fp.build_all()
-            rep = fp.report()
-            paths = [str(p.relative_to(fp.root)) for p in [*saved, *made]]
-            n = sum(item[4] for item in plan["split"])
-            self._commit_paths(proj, fp, paths, f"Give code without a source file one ({len(made)} files, {n} functions)\n\n"
-                               "Each stretch of code no file covered gets a file of its own, so it can be decompiled; "
-                               "the game still builds byte for byte.\n\nSplit by decomp.wtf.")
-            self._scores = {k: v for k, v in self._scores.items() if k[0] != proj["id"]}
-            self.sync(slug, log=lambda *_: None, rep=rep)
-            with self.net.store.tx() as db:
-                self.net._event(db, proj["id"], agent.id if agent else None, "files",
-                                f"{len(made)} new source files for {n} functions")
-        log(f"{len(made)} new source files; {n} more functions can be decompiled")
-        return {"created": plan["create"], "split": [i[1] for i in plan["split"]], "functions": n}
-
-    def split_file(self, agent: Agent | None, slug: str, path: str, at: str, new_name: str = "", data: str = "") -> str:
-        """Divide a source file in two at a function: it and everything after it in the file's code go to a new file
-        (with their C), and so do the parts of the data sections named in `data` (".rodata:0x88 .data:0x28": where the
-        new file's part of each section starts). Kept only if the game still builds byte for byte and every function
-        that matched still matches."""
-        if agent is not None and (link := self.net.links.get(slug)) is not None:  # the host splits it; this copy follows
-            text = link.call("/collab/split_file", agent, path=path, at=at, new_name=new_name, data=data)
-            if text.startswith("✅"):
-                link.sync()
-            return text
-        proj, fp, cfg = self.get(slug)
-        mods = self._modules(fp, cfg)
-        src = fp.src_dir()
-        rel = path.strip().lstrip("./")
-        if not fp.units_for(rel):
-            try:  # a function: its file
-                rel = fp.unit(self._fn(slug, path)["unit"]).source or ""
-            except (NetworkError, ForkError):
-                raise NetworkError(f"{path} isn't a source file (or a function) of this project") from None
-        name = rel[len(src) + 1:] if rel.startswith(src + "/") else rel
-        owners = []
-        for module, mod in mods.items():
-            sp = dtksplits.Splits.parse(mod.splits.read_text(encoding="utf-8"))
-            if any(f.name == name for f in sp.files):
-                owners.append((module, mod, sp))
-        if len(owners) != 1:
-            raise NetworkError(f"{rel} is {'not in any' if not owners else 'shared by several'} module's splits; "
-                               "split_file divides a file one module owns")
-        module, mod, sp = owners[0]
-        if fp.link_states().get(rel, ("",))[0] != "NonMatching":
-            raise NetworkError(f"{rel} is linked (or not in configure.py): a linked file is finished, don't split it")
-        f = next(x for x in sp.files if x.name == name)
-        if ".text" not in f.sections:
-            raise NetworkError(f"{rel} has no code to split")
-        syms = dtksplits.symbols(mod.symbols)
-        lo, hi = f.sections[".text"]
-        where = at.strip()
-        if where in syms and syms[where][0] == ".text":
-            addr = syms[where][1]
-        elif re.fullmatch(r"(?:0x)?[0-9A-Fa-f]+", where):
-            addr = int(where, 16)
-        else:
-            try:
-                fn_row = self._fn(slug, at)
-                addr = syms[self._meta(fn_row).get("symbol")][1]
-            except (NetworkError, KeyError):
-                raise NetworkError(f"`{at}` isn't a function of {rel}: give its name or .text offset") from None
-        starts = sorted(a for sec, a, _ in syms.values() if sec == ".text" and lo < a < hi)
-        if addr not in starts:
-            raise NetworkError(f"`{at}` (0x{addr:X}) isn't the start of a function in {rel} (after its first one); "
-                               f"its code is .text 0x{lo:X}-0x{hi:X}")
-        ext = Path(name).suffix or ".c"
-        new = (new_name.strip().lstrip("./") or f"{Path(name).parent.as_posix()}/text_{addr:08X}{ext}")
-        new = new[len(src) + 1:] if new.startswith(src + "/") else new
-        if not fp.safe_path(f"{src}/{new}", write=True) or (fp.root / src / new).exists() or \
-                any(x.name == new for x in sp.files):
-            raise NetworkError(f"{src}/{new} exists already: pick another new_name")
-        moved_sections = {".text": (addr, hi)}
-        kept = dict(f.sections, **{".text": (lo, addr)})
-        for part in data.replace(",", " ").split():
-            sec, _, start = part.partition(":")
-            if sec not in f.sections or sec == ".text":
-                raise NetworkError(f"{rel} has no {sec} part to split (it has {', '.join(f.sections)})")
-            a, b = f.sections[sec]
-            cut = int(start, 16)
-            if not a <= cut <= b:
-                raise NetworkError(f"{sec}:{start} is outside {rel}'s {sec} (0x{a:X}-0x{b:X})")
-            moved_sections[sec] = (cut, b)
-            kept[sec] = (a, cut)
-        kept = {k: v for k, v in kept.items() if v[1] > v[0]}
-
-        old_path, new_path = fp.root / src / name, fp.root / src / new
-        conf = fp.root / "configure.py"
-        unit = fp.units_for(rel)[0]
-        rows = self.net.store.all("SELECT id, name, meta FROM functions WHERE project_id=? AND unit=?", proj["id"], unit.name)
-        with self._tree(proj).exclusive():  # no other build runs meanwhile
-            text = old_path.read_text(errors="replace", encoding="utf-8") if old_path.exists() else ""
-            spans = []
-            for r in rows:
-                sym = self._meta(r).get("symbol")
-                if sym in syms and addr <= syms[sym][1] < hi:
-                    _, span = self._find(text, self._names(self._meta(r), r))
-                    if span:
-                        spans.append((syms[sym][1], span))
-            first_def = min((sp_[0] for r in rows for sp_ in [self._find(text, self._names(self._meta(r), r))[1]] if sp_),
-                            default=len(text))
-            preamble = text[:first_def].rstrip() + "\n" if text[:first_def].strip() else ""
-            moved_code = [text[a:b].strip("\n") for _, (a, b) in sorted(spans)]
-            rest = text
-            for _, (a, b) in sorted(spans, key=lambda x: -x[1][0]):
-                rest = rest[:a].rstrip("\n") + "\n\n" + rest[b:].lstrip("\n")
-            scores_before = self._baseline(proj, fp, unit, text)[0] or {}
-            saved = {conf: conf.read_text(encoding="utf-8"), mod.splits: mod.splits.read_text(encoding="utf-8"), old_path: text}
-            protected = {n for n, pct in scores_before.items() if pct is not None and pct >= 100}
-            try:
-                f.sections = kept
-                sp.files.append(dtksplits.FileSplit(new, moved_sections))
-                mod.splits.write_text(sp.render(), encoding="utf-8")
-                ctext = saved[conf]
-                states = dtksplits.libs(ctext)
-                entry = next(((s0, e0) for lib in states for p_, s0, e0 in lib.objects if p_ == name), None)
-                if entry is None:
-                    raise ForkError(f"{name} isn't in configure.py")
-                old_entry = ctext[entry[0]:entry[1]]
-                new_entry = re.sub(r'^(Object\(\s*)\w+(\s*,\s*)"[^"]+"', lambda mm: f'{mm.group(1)}NonMatching{mm.group(2)}"{new}"',
-                                   old_entry, count=1)
-                indent = dtksplits._indent_of(ctext, entry[0])
-                conf.write_text(ctext[:entry[1]] + f",\n{indent}{new_entry}" + ctext[entry[1]:], encoding="utf-8")
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-                new_path.write_text(preamble + ("\n" if preamble else "") + "\n\n".join(moved_code) + ("\n" if moved_code else ""),
-                                    encoding="utf-8")
-                old_path.write_text(rest, encoding="utf-8")
-                ok, out = fp.verify()
+                    raise ForkError(out)
+                ok, out = fp.run(["ninja", "objdiff.json"], log=lambda *_: None)
                 if not ok:
-                    raise ForkError(f"the game didn't build identically with the files divided there:\n{_tail(out)}")
-                after_units = [u for u in fp.units() if u.source in (rel, f"{src}/{new}")]
-                now: dict[str, float | None] = {}
-                for u in after_units:
-                    built, log_ = fp.build_unit(u)
-                    if not built:
-                        raise ForkError(f"{u.source} doesn't compile after the split (move the declarations it needs with "
-                                        f"edit_file first):\n{_tail(log_)}")
-                    now.update(fp.diff(u, None).unit_scores)
-                lost = sorted(n for n in protected if (now.get(n) or 0) < 100)
+                    raise ForkError(out)
+                # Rebuild only the changed unit and its reference; other WIP files
+                # may legitimately be incomplete or fail to compile.
+                unit = next(u for u in fp.units() if u.source == destination)
+                targets = [str(p.relative_to(fp.root)) for p in (unit.target, unit.base)]
+                ok, out = fp.run(["ninja", *targets], log=lambda *_: None)
+                if not ok:
+                    raise ForkError(out)
+                after = fp.diff(unit, None).unit_scores
+                lost = [name for name, percent in before.items() if percent == 100 and after.get(name) != 100]
                 if lost:
-                    raise ForkError(f"these functions would stop matching: {', '.join(lost[:8])}")
-            except (ForkError, ObjdiffError, OSError, ValueError) as e:
-                for p_, old in saved.items():
-                    p_.write_text(old, encoding="utf-8")
-                new_path.unlink(missing_ok=True)
+                    raise ForkError("matched functions would change: " + ", ".join(lost))
+                ok, out = fp.verify()
+                if not ok:
+                    raise ForkError(out)
+            except (OSError, ValueError, ForkError, ObjdiffError) as error:
+                if destination != source:
+                    (fp.root / destination).unlink(missing_ok=True)
+                for file, content in original.items():
+                    file.write_bytes(content)
+                fp.run(fp.setup_commands()[0], log=lambda *_: None)
+                fp.run(["ninja", "objdiff.json"], log=lambda *_: None)
+                fp.build_unit(units[0])
                 fp.verify()
-                for u in fp.units_for(rel):
-                    fp.build_unit(u)
-                raise NetworkError(f"not split, nothing changed: {e}") from None
-            fp.build_all()
-            rep = fp.report()
-            self._commit_paths(proj, fp, [str(p_.relative_to(fp.root)) for p_ in saved] + [str(new_path.relative_to(fp.root))],
-                               f"Split {Path(name).name} at 0x{addr:X}: {Path(new).name}\n\n"
-                               f"Divided by {agent.name if agent else 'decomp.wtf'} with decomp.wtf; the game still builds "
-                               "byte for byte.")
+                raise NetworkError(f"ARM7 unit configuration was undone: {_tail(str(error))}") from None
+            paths = [str(p.relative_to(fp.root)) for p in original]
+            if destination != source:
+                paths.append(destination)
+            self._commit_paths(proj, fp, paths, f"Configure ARM7 source unit {destination}\n\nChanged by {agent.name} with decomp.wtf; the ROM still rebuilds byte for byte.")
             self._scores = {k: v for k, v in self._scores.items() if k[0] != proj["id"]}
-            self.sync(slug, log=lambda *_: None, rep=rep)
-            with self.net.store.tx() as db:
-                self.net._event(db, proj["id"], agent.id if agent else None, "split", f"{rel} → {src}/{new}")
-        moved = ", ".join(f"{k} 0x{a:X}-0x{b:X}" for k, (a, b) in moved_sections.items())
-        return (f"✅ {rel} is divided: {src}/{new} now holds {moved} ({len(moved_code)} function definitions moved with "
-                "it); the game still builds byte for byte and every match still matches.")
+            self.sync(slug, log=lambda *_: None, rep=fp.report())
+        return f"✅ {destination} configured; the complete ROM still matches. Add its data definitions with edit_file, then match and link it."
 
     def _commit_paths(self, proj, fp: ForkProject, paths: list[str], message: str) -> None:
         with self._git_locks[proj["id"]]:
@@ -1221,10 +992,15 @@ class ForkEngine:
 
         def run():
             try:
+                guard = self._build_locks[proj["id"]] if fp.is_generated_ds() else nullcontext()
                 for n, unit in enumerate(fp.units()):
                     if self.net.store.one("SELECT 1 FROM projects WHERE id=?", proj["id"]) is None:
                         return
-                    self._unit_index(proj, fp, unit, save=False)
+                    # DS linking regenerates target objects as complete markers
+                    # change. Windows cannot rewrite an object while objdiff is
+                    # reading it, so serialize background indexing with builds.
+                    with guard:
+                        self._unit_index(proj, fp, unit, save=False)
                     if n % 50 == 49:
                         self._save_index(proj, fp)
                 self._save_index(proj, fp)
@@ -1977,6 +1753,8 @@ class ForkEngine:
             except OSError:
                 current = ""
             code = "/* machine draft (m2c), tried by autopilot */\n" + drafts.self_contained(text, span, current)
+            if cfg.get("platform") == "nds":
+                code = drafts.ds_mode_source(fp.root, unit.name, meta.get("symbol") or fn["name"], code)
             res = self.attempt(agent, proj["slug"], fn["name"], code, keep=False)
             if res["matched"]:
                 return "match"
@@ -2061,7 +1839,23 @@ class ForkEngine:
         proj, fp, _ = self.get(slug)
         name = what.strip().strip("`'\"")
         held = agent and self.net.store.one("SELECT f.unit FROM claims c JOIN functions f ON f.id=c.function_id "
-                                            "WHERE c.agent_id=?", agent.id)
+                                            "WHERE c.agent_id=? AND f.project_id=?", agent.id, proj["id"])
+        if fp.is_generated_ds():
+            from ..forks import arm7_project
+
+            preferred = None
+            if held and held["unit"].startswith("arm7/"):
+                unit = fp.unit(held["unit"])
+                manifest = fp.root / "config" / fp.manifest["version"] / "arm7" / "units.json"
+                if manifest.is_file():
+                    preferred = next((u["module"] for u in json.loads(manifest.read_text(encoding="utf-8"))["units"]
+                                      if u["source"] == unit.source), None)
+            try:
+                data = arm7_project.read_data(fp.root, fp.manifest["version"], name, length, preferred)
+            except (OSError, ValueError) as error:
+                raise NetworkError(str(error)) from None
+            if data is not None:
+                return data
         units = [held["unit"]] if held else []
         units += [u for u in self._data_index(proj, fp).get(name, []) if u not in units]
         for uname in units:

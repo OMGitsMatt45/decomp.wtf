@@ -230,7 +230,7 @@ def setup(args) -> int:
     if why := toolchains.unsupported_cpu():
         print(f"  ! {why}: the games can be imported and looked at here, not matched")
     missing = []
-    for tid in ("gcc-2.7.2-kmc", "m2c", "objdiff-cli"):
+    for tid in ("m2c", "objdiff-cli"):
         tc = toolchains.get(tid)
         if not tc.supported:
             print(f"  - {tc.unsupported_reason}; projects that need it can't be matched here yet")
@@ -244,7 +244,7 @@ def setup(args) -> int:
     if missing:
         print("Setup finished with tools unavailable: " + ", ".join(missing)
               + ". You can open the app; install missing supported tools from Setup to retry.")
-    print("  IDO (most first-party games) is proprietary: install it from the app if you accept its license.")
+    print("  Select platform compilers in the app; DS CodeWarrior requires accepting its license.")
     found = [a["name"] for a in agents.detect() if a["installed"] and a["id"] != "api"]
     print("AI agents found: " + (", ".join(found) if found else "none yet (the app helps you add one)"))
     return 0
@@ -432,6 +432,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
     sub = ap.add_subparsers(dest="cmd")
+    from .. import pc_cli
+    pc_cli.add_parser(sub)
     sub.add_parser("setup", help="install the compilers and tools this computer needs")
     sub.add_parser("stop", help="stop the running app")
     sub.add_parser("shortcut", help="add decomp.wtf to your apps menu / desktop")
@@ -472,6 +474,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="how this agent shows up in the app (e.g. claude-code; or set DECOMP_AGENT_NAME)")
     args = ap.parse_args(argv)
     __import__("decompnet").utf8_output()
+    if args.cmd == 'pc':
+        return pc_cli.run(args)
     if args.cmd == "mcp":
         from .bridge import main as bridge
         return bridge(args.name)

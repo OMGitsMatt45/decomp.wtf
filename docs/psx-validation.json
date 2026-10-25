@@ -1,0 +1,1551 @@
+{
+  "format": 1,
+  "platform": "psx",
+  "implementation_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+  "local_qualification": {
+    "tested_commit": "1600b3d3c131bdcea57c53de50de64babb86cb89",
+    "passed": 196,
+    "failed": 0,
+    "skipped": 0,
+    "compiler_execution": "Private i386 compatibility harness for original Linux PS1 compilers. These local checks do not establish native compiler qualification.",
+    "followup": "All 12 HBD tests rerun after shortening parametrized test names in 72b27dc; application source unchanged from the full local run.",
+    "scope": "Historical local run; current required native results are recorded in native_qualification."
+  },
+  "coverage": [
+    "Original compiler-version code, relocation, constant-data and genuine C++ parity",
+    "C/C++ boot program source recovery, strict matching and clean standalone exports",
+    "Complete ISO 2048, raw 2352 Mode 1/Mode 2 Form 1 and 2448-byte-frame matching reconstruction",
+    "Raw overlays with prefixes, PS-X EXE overlay headers, shared overlay addresses and partial replacement of resident RAM",
+    "Module-specific targets, claims and independent C++ recovery in two mutually exclusive overlays",
+    "Nested boot paths and same-basename programs in different directories",
+    "Different discs with identical boot code and different resources retain separate projects and independently rebuild",
+    "Clean exports in paths with spaces; original disc hashes, file extents, executable trailers, opaque sector metadata, audio and subcode preserved",
+    "Wrong source, targets, addresses and corrupted original discs rejected; stale standalone disc outputs removed",
+    "Cyclic, truncated, malformed, duplicate, unsupported and oversized filesystem extents fail or report program-only coverage",
+    "Browser security/import/export/errors and CLI inventory/import/deduplication/export",
+    "One combined multi-disc source tree and ZIP, shared independently compiled C++ and atomic aggregate outputs",
+    "CUE pregaps and separate audio, compressed/uncompressed CHD v5 matching retention",
+    "Per-module EXE GP/BSS and mixed per-function GCC profiles",
+    "Hash-bound reviewed raw/zlib/gzip archive fragments and explicit MIPS relocations",
+    "Binary EXE header mastering data and stable import/export function discovery",
+    "Separate fixed-slot and reviewed-space C/C++ mod builds, strict matching preserved, and clean regeneration from original assembly",
+    "Both compiler versions at 4-byte and 16-byte function alignment; interior aliases, unreviewed excess code and owned-data additions refused",
+    "Modified ISO/raw 2352/2448 sectors with independently checked EDC and both Reed-Solomon parity roots",
+    "Modified combined discs, independently compiled shared source, nested CUE paths, pregaps and opaque audio/subcode preservation",
+    "Module-specific GP-relative modified links and raw archive fragment updates; encoded changes require reviewed capacity/length fields and unchanged loader fixups",
+    "Embedded later-MIPS/GTE instruction/data words retained literally without enabling another CPU ISA",
+    "Larger C/C++ bodies and helpers with initialized/zero data in reviewed loaded reserves; function pointers retain original entries",
+    "Actual execution of original MIPS growth fixtures, including helper calls, new globals and pointer-return helpers",
+    "Reserve hash, alignment, loaded EXE extent, original function, BSS initializer and loader-fixup exclusions",
+    "Shared source growth across combined discs and removal of all aggregate mod outputs on second-disc exhaustion",
+    "Reviewed zlib/gzip recompression with 2-/4-byte loader lengths in either byte order, bounded capacity and unchanged runtime fixup words",
+    "Lossless decoded CD FLAC stereo audio and subcode; CD LZMA/zlib parity restoration; bounded final-hunk reads",
+    "CHD v5 mod recompression with retained track/pregap metadata, hunk/map CRC16 and raw/overall SHA-1",
+    "Combined console CHD mod builds with fixed logical geometry, independently verified decoded hashes and variable compressed sizes",
+    "MAME-generated original fixtures for all five supported codecs; corrupt maps, hunks, metadata and hashes rejected; hardlinked originals protected",
+    "Reviewed resource shrink/growth, appended first-track allocation, ISO extent/length/volume updates in both byte orders and independent pycdlib reads",
+    "Raw Mode 1/Mode 2/2448 and CUE resource authoring, preserved audio/pregaps, shifted shared-BIN audio indices and aggregate rollback",
+    "Supported CHT2 first-data-track growth, four-frame alignment, updated metadata and retained audio; moved opaque nonzero subcode refused",
+    "Heartbeat HBD inventories, disc tags 0/1, raw allocation hints, bounded LZSS extraction/repacking, guarded unknown flags and retained block positions",
+    "Reviewed scalar loader LBA/size/sector fields with original-value, overlap, replacement-conflict and overflow checks",
+    "Explicit additive R_MIPS_32/R_MIPS_26 inverse authoring at existing sites in raw, zlib and HBD-LZSS modules",
+    "Agent-free console C/C++ recovery with full exact judge, claims, interruption/resumption and installed compiler-profile search; failed probes retain settings",
+    "Copied export-helper upgrades with backups, preserved source/assets and actionable rejection of outdated asset build helpers",
+    "Pinned original protection against equal output paths and predictable temporary-name collisions",
+    "Type 1 Heartbeat raw GPU uploads: packed rectangle bounds/byte counts, high height bits, fixed-size edits and preserved metadata",
+    "Validated interleaved audio Q ADR 1 position, ADR 2 catalogue and ADR 3 ISRC retiming, preserving PCM and all P/R-W bits",
+    "Q CRC/BCD/control/track/index/relative/absolute-time checks, missing-Q preservation, stored/virtual pregaps and postgaps, CD time distinct from CHD alignment padding",
+    "Independent MAME verify/extract of three grown Q-bearing CHDs and independent bitwise Q CRC validation",
+    "Memory-leaf C/C++ recovery with load/store ordering, all-zero assembly entries retained without consuming attempt limits, and one m2c draft per console attempt",
+    "Combined exports honor a separate destination and reject project/input overlap, preserving previous edited source",
+    "Inferred o32 single-word integer/pointer signatures preserve unused argument slots; wide and reviewed signatures remain unchanged",
+    "Verified object automatic address aliases survive standalone source exports and clean complete-disc builds",
+    "Original period assembler profiles and C/C++/G0/G8 searches retain verified settings in clean standalone disc exports",
+    "Known module GP globals, conservative call-slot hints and bounded inferred pointer/word-argument alternatives require the full exact judge",
+    "Scoped overlay local jumps survive import/drafts; concurrent per-function profile updates and context guards preserve independently verified settings",
+    "Reviewed raw module copies are verified against canonical bytes, protected from resource writes and synchronized during mod builds",
+    "Architectural GP register wrappers and reviewed function split/merge boundaries retain strict matching and archived source evidence",
+    "Bounded MIPS control-flow and known-callee summaries preserve forwarded arguments without treating optional o32 register packets as mandatory parameters",
+    "Explicit architectural GNU C BIOS tail dispatch passes exact original-compiler, MIPS execution and clean-export checks; equivalent zero-selector encodings remain guarded",
+    "Autogenerated overlay global byte-address alternatives retain reviewed pointer types and pass both original compilers"
+  ],
+  "multi_disc": {
+    "scope": "One source project and build command, independently verified outputs for every ordered disc.",
+    "shared_source": "Verbatim identical recovered source is shared and compiled independently for each disc.",
+    "zip_package": true,
+    "disc_swap_gameplay_qualified": false
+  },
+  "retail_validation": {
+    "status": "passed refreshed complete two-disc source build and private ZIP export",
+    "title": "Dragon Warrior VII (USA), discs 1 and 2",
+    "archive_parts": 71,
+    "archive_crc": "all ZIP members passed",
+    "functions_per_disc": 2565,
+    "matching_cpp_per_disc": [
+      428,
+      428
+    ],
+    "m2c_examples": 3,
+    "inputs_private": true,
+    "bios_required": false,
+    "discs": [
+      {
+        "serial": "SLUS-01206",
+        "size": 711567024,
+        "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a"
+      },
+      {
+        "serial": "SLUS-01346",
+        "size": 676816224,
+        "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d"
+      }
+    ],
+    "matching_cpp_total": 856,
+    "shared_source_files": 425,
+    "assembly_fallbacks": 0,
+    "combined_disc_outputs_identical": true,
+    "cue_files_preserved": true,
+    "clean_rebuild": true,
+    "archive_bytes": 2217851187,
+    "archive_sha256": "b6e3872d6cfe61bddabfce896e857b9636b9ed709c8353b0ecc92992241fbe4d",
+    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+    "archive_scope": "Refreshed combined source project includes recovered C/C++, remaining assembly, retained original resources and both verified complete discs."
+  },
+  "not_qualified": [
+    "Runtime correctness of inferred overlay addresses without loader review",
+    "Automatic arbitrary proprietary archive/codec/relocation-table discovery and complete source recovery",
+    "Interleaved, multi-extent, multi-volume and extended-attribute ISO rebuilding",
+    "Additional PSY-Q compiler or Sony ASPSX versions",
+    "Retail playthroughs and disc-swap gameplay",
+    "Absent-track reconstruction, unknown mastering/protection, and nonstandard/protected subcode or unreviewed leading data pregaps",
+    "New loader relocation sites/tables, additive HI16/LO16 authoring, unrecognized HBD layouts and block-allocation changes requiring external address-table updates",
+    "Runtime correctness of newly declared retail mod reserves or resource-loader facts; whole-game mod playthroughs",
+    "Windows PC game export and native retail game execution",
+    "Complete high-level retail source recovery"
+  ],
+  "previous_native_qualification": {
+    "status": "passed",
+    "tested_commit": "88bd9f3bf30f24bc6b5026cce6021951e8b924da",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576185",
+    "native_hosts": {
+      "ubuntu-24.04": {
+        "job_id": 120278706748,
+        "passed": 107,
+        "failed": 0,
+        "skipped": 0
+      },
+      "windows-2022": {
+        "job_id": 120278706913,
+        "passed": 107,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+    "required_module_counts_per_host": {
+      "test_psx": 16,
+      "test_psx_cpp": 10,
+      "test_psx_disc": 22,
+      "test_psx_workflows": 12,
+      "test_psx_set": 4,
+      "test_psx_media": 11,
+      "test_psx_layout": 8,
+      "test_overlays": 4,
+      "test_export": 1,
+      "test_psx_modify": 19
+    },
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+    "additional_checks": {
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576127",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576132",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576218",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39912576107"
+    },
+    "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+  },
+  "native_qualification": {
+    "status": "passed",
+    "tested_commit": "a5b12975261eb66c52335c989ee5fd285225125f",
+    "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360723",
+    "native_hosts": {
+      "ubuntu-24.04": {
+        "job_id": 120649832631,
+        "passed": 498,
+        "failed": 0,
+        "skipped": 0
+      },
+      "windows-2022": {
+        "job_id": 120649833184,
+        "passed": 498,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+    "required_module_counts_per_host": {
+      "test_export": 1,
+      "test_overlays": 5,
+      "test_psx": 16,
+      "test_psx_abi": 29,
+      "test_psx_assembler": 15,
+      "test_psx_assets": 23,
+      "test_psx_bios": 39,
+      "test_psx_boundaries": 22,
+      "test_psx_calls": 25,
+      "test_psx_candidates": 8,
+      "test_psx_chd": 23,
+      "test_psx_config": 3,
+      "test_psx_cpp": 10,
+      "test_psx_disc": 23,
+      "test_psx_drafts": 7,
+      "test_psx_failures": 3,
+      "test_psx_growth": 10,
+      "test_psx_hbd": 15,
+      "test_psx_layout": 8,
+      "test_psx_media": 11,
+      "test_psx_modify": 20,
+      "test_psx_module_copies": 35,
+      "test_psx_pointer_candidates": 20,
+      "test_psx_profile_concurrency": 3,
+      "test_psx_recover": 19,
+      "test_psx_registers": 24,
+      "test_psx_relocation_authoring": 6,
+      "test_psx_set": 5,
+      "test_psx_storage": 8,
+      "test_psx_subcode": 18,
+      "test_psx_workflows": 12,
+      "test_psx_main_data": 17,
+      "test_psx_data_review": 15
+    },
+    "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages and pinned optional maspsx 2.56/2.86 profiles; no WSL, wibo or QEMU in native qualification.",
+    "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+    "additional_checks": {
+      "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360626",
+      "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360621",
+      "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360772",
+      "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360873",
+      "classic_ido_compiler": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360756",
+      "experimental_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40022360713"
+    },
+    "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+    "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+  },
+  "additional_retail_validation": [
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2101,
+      "matching_cpp": 189,
+      "shared_sources": 0,
+      "title": "Syphon Filter (USA) (v1.1)",
+      "archive_parts": 36,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 733506480,
+          "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+          "serial": "SCUS-94240",
+          "filesystem_entries": 109,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 5156,
+      "matching_cpp": 394,
+      "shared_sources": 195,
+      "title": "Syphon Filter 2 (USA), discs 1 and 2",
+      "archive_parts": 86,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 732723264,
+          "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+          "serial": "SCUS-94451",
+          "filesystem_entries": 73,
+          "mapped_programs": 1
+        },
+        {
+          "size": 737784768,
+          "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+          "serial": "SCUS-94492",
+          "filesystem_entries": 29,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "combined_zip": {
+        "size": 2068078167,
+        "sha256": "c3c9b730ab26d1e56fe52bc47344d896ff65d147bc7c20ce9fbc7d44a09ecc8e",
+        "all_member_crcs_valid": true,
+        "crc_verified": true
+      },
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2560,
+      "matching_cpp": 193,
+      "shared_sources": 0,
+      "title": "Syphon Filter 3 (USA)",
+      "archive_parts": 35,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 691530336,
+          "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+          "serial": "SCUS-94640",
+          "filesystem_entries": 101,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true,
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4"
+    }
+  ],
+  "modified_builds": {
+    "scope": "Fixed original function entries and program extents; larger bodies/helpers/data require reviewed loaded zero reserves. Resources can use reviewed file relocation and first-data-track growth. An exact assembly baseline precedes every build.",
+    "single_and_combined_disc": true,
+    "raw_sector_edc_ecc": true,
+    "retail_validation": {
+      "retail_title": "Syphon Filter (USA) (v1.1)",
+      "changed_lbas": [
+        51
+      ],
+      "unchanged_sectors_identical": true,
+      "original_and_modified_edc_ecc_verified": true,
+      "runtime_tested": false
+    },
+    "retail_changed_functions": 1,
+    "retail_modified_image_sha256": "e1d811ae21db5ab5f6a69f7a31b8c3554f0fd8452fad94a12005f52b275dd19f",
+    "owned_data_bss_or_helpers": "Supported only within reviewed loaded reserves, preserving original function entries and function-pointer identity.",
+    "growth_validation": {
+      "inputs": "Original fixtures compiled with both pinned GCC versions",
+      "execution": "Linked MIPS code executes in Unicorn, including larger bodies, helper calls, initialized globals, zero storage and returned function pointers across different high-half addresses.",
+      "whole_game_runtime_tested": false,
+      "combined_disc_growth": true
+    },
+    "archive_storage": {
+      "codecs": [
+        "raw",
+        "zlib",
+        "gzip",
+        "hbd-lzss"
+      ],
+      "reviewed_capacity": true,
+      "loader_length_fields": "2 or 4 bytes, little or big endian",
+      "loader_fixups": "Unchanged original fixups are restored to unrelocated storage; explicit reviewed additive bases permit inverse R_MIPS_32/R_MIPS_26 authoring at existing sites.",
+      "qualification": "Original ISO and Mode 2 raw fixtures; two exclusive compressed overlays with C++ growth."
+    },
+    "chd": {
+      "scope": "Standalone/combined CHD v5 source/resource builds; reviewed first-track growth can retime validated ordinary interleaved audio Q with CHT2 track geometry.",
+      "audio_and_subcode": "PCM, P and R-W remain unchanged. Validated Q absolute/sector timestamps and CRCs are updated; absent Q stays absent. Unknown/protected packets remain guarded.",
+      "metadata": "Original metadata tags, flags, ordering and other payloads retained; reviewed growth changes first-track FRAMES while retaining audio/pregaps.",
+      "output_codec": "Standard raw-deflate zlib, with raw hunks for incompressible content; may be larger than the original.",
+      "verification": "Every output decoded hunk compared to intended original/patched/inserted frames before publication; hunk/map CRC16, raw/metadata SHA-1, aggregate decoded SHA-256 and expected track geometry verified.",
+      "required_external_tools": [],
+      "retail_chd_or_playthrough_qualified": false
+    },
+    "resources": {
+      "guide": "docs/psx-resources.md",
+      "declaration": "psx-assets.json",
+      "whole_file_limit_bytes": 134217728,
+      "member_limit_bytes": 16777216,
+      "total_staged_limit_bytes": 268435456,
+      "scope": "Bounded resource replacement, reviewed first-track growth and HBD member edits for standalone/combined ISO/raw/CUE/supported CHD projects.",
+      "loader_fields": "Reviewed original LBA/size/sectors scalar fields; no inferred game tables.",
+      "copied_helper_upgrade": "decompnet psx upgrade PATH preserves sources/assets and backs up replaced helpers."
+    }
+  },
+  "earlier_native_qualifications": [
+    {
+      "status": "passed",
+      "tested_commit": "32a9bb922756979adc40090e3ae148cff270bc08",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531347",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120633345363,
+          "passed": 376,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120633345816,
+          "passed": 376,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 5,
+        "test_psx": 16,
+        "test_psx_assembler": 15,
+        "test_psx_assets": 23,
+        "test_psx_boundaries": 22,
+        "test_psx_calls": 9,
+        "test_psx_candidates": 8,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_drafts": 7,
+        "test_psx_failures": 3,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_module_copies": 35,
+        "test_psx_pointer_candidates": 17,
+        "test_psx_profile_concurrency": 3,
+        "test_psx_recover": 19,
+        "test_psx_registers": 24,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages and pinned optional maspsx 2.56/2.86 profiles; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531336",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531341",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531328",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531351",
+        "classic_ido_compiler": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531326",
+        "experimental_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40017531354"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "86165598c19e2764b7cd6e860922bbad2f9aaf48",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496662",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120619545122,
+          "passed": 292,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120619545465,
+          "passed": 292,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 5,
+        "test_psx": 16,
+        "test_psx_assembler": 15,
+        "test_psx_assets": 23,
+        "test_psx_calls": 9,
+        "test_psx_candidates": 8,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_drafts": 7,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_pointer_candidates": 17,
+        "test_psx_profile_concurrency": 3,
+        "test_psx_recover": 19,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages and pinned optional maspsx 2.56/2.86 profiles; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496757",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496591",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496681",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496680",
+        "classic_ido_compiler": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496589",
+        "experimental_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40013496695"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "6beb4240b30039d372bf2e0008251d71bb57b41f",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013797",
+      "native_hosts": {
+        "windows-2022": {
+          "job_id": 120239190774,
+          "passed": 60,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ubuntu-24.04": {
+          "job_id": 120239191245,
+          "passed": 60,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_psx": 16,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 19,
+        "test_psx_workflows": 10,
+        "test_overlays": 4,
+        "test_export": 1
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2 and 2.8.1 C/C++ host packages; no WSL, wibo or QEMU in native qualification.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013686",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013726",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013773",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39900013690"
+      },
+      "additional_checks_status": "All passed at the tested source commit."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "59af9043fc4f3147c7ec40750d81ff8b9df3db6c",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619734",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120259948975,
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120259949295,
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_psx": 16,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 22,
+        "test_psx_workflows": 12,
+        "test_psx_set": 4,
+        "test_psx_media": 11,
+        "test_psx_layout": 8,
+        "test_overlays": 4,
+        "test_export": 1
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619746",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619807",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619808",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39906619729"
+      },
+      "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "eaf93c02c3d23c8e291a7382331a6c251cebb409",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105672",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120292927140,
+          "passed": 125,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120292926755,
+          "passed": 125,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_psx": 16,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 22,
+        "test_psx_workflows": 12,
+        "test_psx_set": 4,
+        "test_psx_media": 11,
+        "test_psx_layout": 8,
+        "test_overlays": 4,
+        "test_export": 1,
+        "test_psx_modify": 19,
+        "test_psx_growth": 10,
+        "test_psx_storage": 8
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105704",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105674",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105680",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39917105731"
+      },
+      "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "73d338ebce43cb9124fafd65c1847691aabf5ec7",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362340",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120307108336,
+          "passed": 149,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120307110040,
+          "passed": 149,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 22,
+        "test_psx_growth": 10,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_set": 4,
+        "test_psx_storage": 8,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362178",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362211",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362053",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39921362250"
+      },
+      "additional_checks_status": "All passed at the tested source commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "72b27dc76e32f6b8d0a63a9bf56216853be89db4",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469320",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120350501237,
+          "passed": 196,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120350501564,
+          "passed": 196,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 12,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 5,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 4,
+        "test_psx_storage": 8,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469306",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469273",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469196",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39934469334"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "0b702a394b2418f7b90918e43cc345af454645c6",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39994723087",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120555156002,
+          "passed": 224,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120555156338,
+          "passed": 224,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 11,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      }
+    },
+    {
+      "status": "passed",
+      "tested_commit": "3ea5c6de511d9cc5568d88de63ad13063341b6c5",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39997605944",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120565112564,
+          "passed": 229,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120565112151,
+          "passed": 229,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 16,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      }
+    },
+    {
+      "status": "passed",
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120571133589,
+          "passed": 231,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120571133975,
+          "passed": 231,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 4,
+        "test_psx": 16,
+        "test_psx_assets": 23,
+        "test_psx_chd": 23,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_recover": 18,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362789",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362456",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362442",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362541"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    },
+    {
+      "status": "passed",
+      "tested_commit": "4c4c2bd7b0d39b1a3e7b99eaec2da45bbe1c9d61",
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434504",
+      "native_hosts": {
+        "ubuntu-24.04": {
+          "job_id": 120643287476,
+          "passed": 450,
+          "failed": 0,
+          "skipped": 0
+        },
+        "windows-2022": {
+          "job_id": 120643287314,
+          "passed": 450,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "required_suite_gate": "tools/check_operational_results.py --psx-only operational-results.xml",
+      "required_module_counts_per_host": {
+        "test_export": 1,
+        "test_overlays": 5,
+        "test_psx": 16,
+        "test_psx_abi": 29,
+        "test_psx_assembler": 15,
+        "test_psx_assets": 23,
+        "test_psx_bios": 39,
+        "test_psx_boundaries": 22,
+        "test_psx_calls": 9,
+        "test_psx_candidates": 8,
+        "test_psx_chd": 23,
+        "test_psx_config": 3,
+        "test_psx_cpp": 10,
+        "test_psx_disc": 23,
+        "test_psx_drafts": 7,
+        "test_psx_failures": 3,
+        "test_psx_growth": 10,
+        "test_psx_hbd": 15,
+        "test_psx_layout": 8,
+        "test_psx_media": 11,
+        "test_psx_modify": 20,
+        "test_psx_module_copies": 35,
+        "test_psx_pointer_candidates": 20,
+        "test_psx_profile_concurrency": 3,
+        "test_psx_recover": 19,
+        "test_psx_registers": 24,
+        "test_psx_relocation_authoring": 6,
+        "test_psx_set": 5,
+        "test_psx_storage": 8,
+        "test_psx_subcode": 18,
+        "test_psx_workflows": 12
+      },
+      "compiler_execution": "Pinned original PS1 GCC 2.7.2/2.8.1 C/C++ native host packages and pinned optional maspsx 2.56/2.86 profiles; no WSL, wibo or QEMU in native qualification.",
+      "mips_function_execution": "Locked Unicorn dev dependency executes original growth fixtures on both native hosts; this does not qualify a full PS1 runtime or retail playthrough.",
+      "additional_checks": {
+        "windows_linux_compatibility_and_ps2": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434324",
+        "n64_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434620",
+        "ds_qualification_and_execution": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434439",
+        "gameboy_qualification": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434363",
+        "classic_ido_compiler": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434434",
+        "experimental_windows_ee_host": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40020434336"
+      },
+      "additional_checks_status": "All passed at the tested source/test commit, including Windows/Linux compatibility, PS2, GB, N64 and DS qualification/execution.",
+      "independent_iso_reads": "Locked pycdlib dev dependency generates/reads original ISO fixtures and verifies nested grown-file bytes, extents and volume bounds on both native hosts."
+    }
+  ],
+  "independent_chd_qualification": {
+    "inputs": "Entirely original fixtures from tests/psx_chd_fixture.py; no retail ROM/BIOS content.",
+    "input_provenance": "tests/fixtures/psx-chd/provenance.json",
+    "tool": "MAME chdman 0.276",
+    "tool_package": "https://deb.debian.org/debian/pool/main/m/mame/mame-tools_0.276+dfsg.1-1+deb13u1_amd64.deb",
+    "package_sha256": "94df5413aaa598c973b914ef07541104006d14002d153ab8d3a3c18c70e9ac02",
+    "executable_sha256": "85f0dbb1d75ab10c64291c2481e7370103b956a9e795f4278e47421e306a6c18",
+    "output_checks": [
+      "chdman verify: raw and overall SHA-1",
+      "extractraw: every logical frame equal",
+      "extractcd BIN/TOC: both tracks, raw subcode and virtual audio pregap retained"
+    ],
+    "results": [
+      {
+        "codec": "cdfl",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "cdlz",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "cdzl",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "lzma",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      },
+      {
+        "codec": "zlib",
+        "output_size": 46382,
+        "output_sha256": "2e21463350f7fb8935f765dc3f77d57c241fd3f277b96aa1c55cac0f44e0ab7d",
+        "chdman_raw_and_overall_sha1_verified": true,
+        "chdman_extracted_frames_equal": true,
+        "chdman_bin_toc_tracks_subcode_and_pregap_verified": true
+      }
+    ],
+    "data_track_growth": {
+      "scope": "Entirely original CD FLAC fixture, with zero audio subcode before relocation.",
+      "raw_and_overall_sha1_verified": true,
+      "bin_toc_audio_and_subcode_verified": true,
+      "audio_pregap_retained": true,
+      "data_frames_before": 30,
+      "data_frames_after": 38,
+      "logical_frames_before": 68,
+      "logical_frames_after": 76,
+      "sha256": "f7cef0c6c8c89c42a437517684e8c11752adea3e9e76fc187fd50509459e580f"
+    }
+  },
+  "heartbeat_retail_validation": {
+    "scope": "Private structural and resource-authoring checks on the supplied US DQVII discs; not a runtime or whole-game source qualification.",
+    "inputs_private": true,
+    "runtime_tested": false,
+    "independent_decoder": {
+      "repository": "https://github.com/RadMageIRL/DQIV_PSX_TOOLS",
+      "path": "dq4/lzs.py",
+      "git_blob_sha": "fc12f2aa5b013b987e03dc142f1f38f01d68dd9f",
+      "bundled": false
+    },
+    "discs": [
+      {
+        "archive": "HBD1PS1D.W71",
+        "disc_tag": 0,
+        "blocks": 3729,
+        "members": 24716,
+        "standard_lzss_members_independently_verified": 5342,
+        "raw_members_verified": 19368,
+        "raw_allocation_hints": 842,
+        "errors": 0,
+        "previously_guarded_height_values": {
+          "70": 3,
+          "32": 3
+        },
+        "gpu_upload_members_newly_verified": 6,
+        "unknown_codecs_remaining": 0
+      },
+      {
+        "archive": "HBD1PS1D.W72",
+        "disc_tag": 1,
+        "blocks": 3729,
+        "members": 24716,
+        "standard_lzss_members_independently_verified": 5342,
+        "raw_members_verified": 19368,
+        "raw_allocation_hints": 842,
+        "errors": 0,
+        "previously_guarded_height_values": {
+          "70": 3,
+          "32": 3
+        },
+        "gpu_upload_members_newly_verified": 6,
+        "unknown_codecs_remaining": 0
+      }
+    ],
+    "member_edits": [
+      {
+        "disc": 1,
+        "archive": "HBD1PS1D.W71",
+        "block": 1,
+        "member": 0,
+        "disc_tag_preserved": true,
+        "changed_lbas": [
+          355,
+          356
+        ],
+        "all_other_sectors_identical": true,
+        "independent_ecc_roots_verified": true,
+        "size_preserved": true,
+        "runtime_tested": false
+      },
+      {
+        "disc": 2,
+        "archive": "HBD1PS1D.W72",
+        "block": 1,
+        "member": 0,
+        "disc_tag_preserved": true,
+        "changed_lbas": [
+          355,
+          356
+        ],
+        "all_other_sectors_identical": true,
+        "independent_ecc_roots_verified": true,
+        "size_preserved": true,
+        "runtime_tested": false
+      }
+    ]
+  },
+  "console_retail_recovery": {
+    "scope": "Historical limited-pass function checks; the later full passes and regenerated retail projects are recorded in retail_source_recovery.",
+    "candidate_matches": 165,
+    "total_new_matches_including_identical_function_reuse": 186,
+    "discs": [
+      {
+        "project": "scus-94240",
+        "tried": 200,
+        "before_matched": 18,
+        "after_matched": 56,
+        "remaining": 2045,
+        "direct_matches": 38
+      },
+      {
+        "project": "scus-94451",
+        "tried": 200,
+        "before_matched": 8,
+        "after_matched": 8,
+        "remaining": 2570,
+        "direct_matches": 0
+      },
+      {
+        "project": "scus-94492",
+        "tried": 200,
+        "before_matched": 8,
+        "after_matched": 8,
+        "remaining": 2570,
+        "direct_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "tried": 200,
+        "before_matched": 7,
+        "after_matched": 7,
+        "remaining": 2553,
+        "direct_matches": 0
+      },
+      {
+        "project": "slus-01206",
+        "tried": 200,
+        "before_matched": 96,
+        "after_matched": 169,
+        "remaining": 2396,
+        "direct_matches": 63
+      },
+      {
+        "project": "slus-01346",
+        "tried": 200,
+        "before_matched": 94,
+        "after_matched": 169,
+        "remaining": 2396,
+        "direct_matches": 64
+      }
+    ],
+    "additional_profile_probes": [
+      {
+        "project": "scus-94451",
+        "tried": 120,
+        "new_matches": 0
+      },
+      {
+        "project": "scus-94492",
+        "tried": 120,
+        "new_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "tried": 120,
+        "new_matches": 0
+      }
+    ],
+    "inputs_and_sources_private": true,
+    "runtime_tested": false
+  },
+  "independent_iso_qualification": {
+    "tool": "pycdlib 1.22.0 (locked dev dependency, installed automatically by dev sync)",
+    "scope": "Original ISO and Mode 2 raw fixtures generated/read independently; nested grown-file bytes, directory extent and volume bounds verified."
+  },
+  "guarded_case_validation": {
+    "scope": "Previously guarded storage cases; no whole-game runtime qualification.",
+    "retail_hbd": [
+      {
+        "disc": 1,
+        "gpu_upload_members": 6,
+        "unknown_codecs_remaining": 0,
+        "constructor_executed": true,
+        "constructor_address": "0x80076ad8",
+        "rectangle_unpack_address": "0x80076c78",
+        "allocator_stubbed": true,
+        "changed_lbas": [
+          146686,
+          146687,
+          146991,
+          146992,
+          147331
+        ],
+        "all_other_sectors_identical": true,
+        "independent_parity_verified": true,
+        "full_game_runtime_tested": false
+      },
+      {
+        "disc": 2,
+        "gpu_upload_members": 6,
+        "unknown_codecs_remaining": 0,
+        "constructor_executed": true,
+        "constructor_address": "0x80076ad8",
+        "rectangle_unpack_address": "0x80076c78",
+        "allocator_stubbed": true,
+        "changed_lbas": [
+          146686,
+          146687,
+          146991,
+          146992,
+          147331
+        ],
+        "all_other_sectors_identical": true,
+        "independent_parity_verified": true,
+        "full_game_runtime_tested": false
+      }
+    ],
+    "original_chd_q_fixtures": [
+      {
+        "pregap_case": "virtual",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "4ac1b1ba50744497bb12c291bbf2ec5d0911d4fd420803b918732f5c77f66af1"
+      },
+      {
+        "pregap_case": "stored",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "31bf90d59ec065fee6531cf02c89a90205572c5bda4fa1d68fce3ab91689eed9"
+      },
+      {
+        "pregap_case": "postgap",
+        "mame_verify_passed": true,
+        "mame_extracted_all_frames_equal": true,
+        "audio_and_other_subchannels_preserved": true,
+        "independent_q_crc_verified": 33,
+        "data_frames_before": 30,
+        "data_frames_after": 37,
+        "chd_inserted_frames": 8,
+        "q_absolute_shift": 7,
+        "output_sha256": "9f911f555c5e05245b3b75bdf3e0cca297bca189be9679488247093ca99b7ae8"
+      }
+    ],
+    "new_source_recovery": "Full private passes, source refinements and complete clean exports are recorded in retail_source_recovery.",
+    "native_extension": {
+      "status": "passed",
+      "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+      "required_tests_per_host": 231,
+      "workflow": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/39999362412"
+    }
+  },
+  "local_followup_checks": {
+    "original_compiler_execution": "Private i386 compatibility harness; native qualification is separate.",
+    "checks": [
+      {
+        "tested_commit": "3ea5c6de511d9cc5568d88de63ad13063341b6c5",
+        "recovery_suite": 16,
+        "shared_cpp_and_signature_guards": 20
+      },
+      {
+        "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+        "alias_clean_rebuild_cases": 2
+      }
+    ],
+    "failed": 0,
+    "skipped": 0
+  },
+  "earlier_retail_qualifications": [
+    {
+      "status": "passed complete two-disc source build and private ZIP export",
+      "title": "Dragon Warrior VII (USA), discs 1 and 2",
+      "archive_parts": 71,
+      "archive_crc": "all ZIP members passed",
+      "functions_per_disc": 2565,
+      "matching_cpp_per_disc": [
+        96,
+        94
+      ],
+      "m2c_examples": 3,
+      "inputs_private": true,
+      "bios_required": false,
+      "discs": [
+        {
+          "serial": "SLUS-01206",
+          "size": 711567024,
+          "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a"
+        },
+        {
+          "serial": "SLUS-01346",
+          "size": 676816224,
+          "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d"
+        }
+      ],
+      "matching_cpp_total": 190,
+      "shared_source_files": 92,
+      "assembly_fallbacks": 0,
+      "combined_disc_outputs_identical": true,
+      "cue_files_preserved": true,
+      "clean_rebuild": true,
+      "archive_bytes": 2217420775,
+      "archive_sha256": "000e5058f38123649e862a9732144f9578e53df7ef9446b02c8fc51287ec8150",
+      "archive_scope_at_original_export": "HBD resources retained verbatim; subsequent parsing and authoring checks are recorded separately in heartbeat_retail_validation."
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2101,
+      "matching_cpp": 18,
+      "shared_sources": 0,
+      "title": "Syphon Filter (USA) (v1.1)",
+      "archive_parts": 36,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 733506480,
+          "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+          "serial": "SCUS-94240",
+          "filesystem_entries": 109,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 5156,
+      "matching_cpp": 16,
+      "shared_sources": 8,
+      "title": "Syphon Filter 2 (USA), discs 1 and 2",
+      "archive_parts": 86,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 732723264,
+          "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+          "serial": "SCUS-94451",
+          "filesystem_entries": 73,
+          "mapped_programs": 1
+        },
+        {
+          "size": 737784768,
+          "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+          "serial": "SCUS-94492",
+          "filesystem_entries": 29,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "combined_zip": {
+        "size": 2067860236,
+        "sha256": "f0b9ed6fd97f3f4c7903f78ff39142079c3f741ba72d0d6cf15b8453d0586088",
+        "crc_verified": true
+      },
+      "console_inspect_passed": true
+    },
+    {
+      "identical": true,
+      "clean_rebuild": true,
+      "functions": 2560,
+      "matching_cpp": 7,
+      "shared_sources": 0,
+      "title": "Syphon Filter 3 (USA)",
+      "archive_parts": 35,
+      "archive_crc_verified": true,
+      "discs": [
+        {
+          "size": 691530336,
+          "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+          "serial": "SCUS-94640",
+          "filesystem_entries": 101,
+          "mapped_programs": 1
+        }
+      ],
+      "inputs_private": true,
+      "assembly_fallbacks": 0,
+      "cue_files_preserved": true,
+      "runtime_tested": false,
+      "console_inspect_passed": true
+    }
+  ],
+  "retail_source_recovery": {
+    "scope": "Full passes through the existing imported program targets, exact compiler/link acceptance and refreshed complete-disc exports. This is not full retail source recovery or whole-game runtime qualification.",
+    "tested_commit": "93e89e870b8401d0afcdca8ccb2b0552af1368f4",
+    "before_matched": 417,
+    "matched": 1632,
+    "new_exact_matches": 1215,
+    "functions": 14947,
+    "remaining_assembly": 13315,
+    "discs": [
+      {
+        "project": "slus-01206",
+        "functions": 2565,
+        "before_matched": 169,
+        "matched": 428,
+        "remaining_assembly": 2137,
+        "full_pass_attempts": 2184,
+        "assembly_fragments": 0
+      },
+      {
+        "project": "slus-01346",
+        "functions": 2565,
+        "before_matched": 169,
+        "matched": 428,
+        "remaining_assembly": 2137,
+        "full_pass_attempts": 2152,
+        "assembly_fragments": 0
+      },
+      {
+        "project": "scus-94240",
+        "functions": 2101,
+        "before_matched": 56,
+        "matched": 189,
+        "remaining_assembly": 1912,
+        "full_pass_attempts": 1874,
+        "assembly_fragments": 46
+      },
+      {
+        "project": "scus-94451",
+        "functions": 2578,
+        "before_matched": 8,
+        "matched": 197,
+        "remaining_assembly": 2381,
+        "full_pass_attempts": 2189,
+        "assembly_fragments": 309
+      },
+      {
+        "project": "scus-94492",
+        "functions": 2578,
+        "before_matched": 8,
+        "matched": 197,
+        "remaining_assembly": 2381,
+        "full_pass_attempts": 2079,
+        "assembly_fragments": 309
+      },
+      {
+        "project": "scus-94640",
+        "functions": 2560,
+        "before_matched": 7,
+        "matched": 193,
+        "remaining_assembly": 2367,
+        "full_pass_attempts": 2187,
+        "assembly_fragments": 286
+      }
+    ],
+    "refinements": [
+      {
+        "project": "slus-01206",
+        "candidates": 221,
+        "tried": 221,
+        "profile_matches": [
+          "func_80050F2C",
+          "func_80029DD8"
+        ],
+        "variants": 2396,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94240",
+        "candidates": 95,
+        "tried": 95,
+        "profile_matches": [
+          "func_800DA52C"
+        ],
+        "variants": 592,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94451",
+        "candidates": 123,
+        "tried": 123,
+        "profile_matches": [
+          "func_80023508"
+        ],
+        "variants": 0,
+        "improvements": 0,
+        "permutation_matches": 0
+      },
+      {
+        "project": "scus-94640",
+        "candidates": 124,
+        "tried": 124,
+        "profile_matches": [
+          "func_80023CAC"
+        ],
+        "variants": 0,
+        "improvements": 0,
+        "permutation_matches": 0
+      }
+    ],
+    "fresh_complete_exports": [
+      {
+        "project": "slus-01206",
+        "combined": true,
+        "matched": 856,
+        "functions": 5130,
+        "shared_sources": 425,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 711567024,
+            "sha256": "f3e755c7856882889d8357b5f22c3c28a1395b415416164e6219449912d1910a",
+            "matching_sources": 428
+          },
+          {
+            "size": 676816224,
+            "sha256": "c0c40378e44a8b9afc970e97c6552d93a2e6708afcc26e9d1b3a9a4c38533c5d",
+            "matching_sources": 428
+          }
+        ],
+        "archive": {
+          "size": 2217851187,
+          "sha256": "b6e3872d6cfe61bddabfce896e857b9636b9ed709c8353b0ecc92992241fbe4d",
+          "all_member_crcs_valid": true
+        }
+      },
+      {
+        "project": "scus-94240",
+        "combined": false,
+        "matched": 189,
+        "functions": 2101,
+        "shared_sources": 0,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 733506480,
+            "sha256": "1d910a6b2f80b3d67cd3685d794727b03314b5972cc91440c9d502f5e974572e",
+            "matching_sources": 189
+          }
+        ],
+        "archive": null
+      },
+      {
+        "project": "scus-94451",
+        "combined": true,
+        "matched": 394,
+        "functions": 5156,
+        "shared_sources": 195,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 732723264,
+            "sha256": "e52dbc28b02046a14863863d51d92f95cbf2d9e9dd36bf91246f1ac0999a69e4",
+            "matching_sources": 197
+          },
+          {
+            "size": 737784768,
+            "sha256": "673f9a41d4070952526555cccc83c0b5e6152d915c3b181c323df68dea70f06a",
+            "matching_sources": 197
+          }
+        ],
+        "archive": {
+          "size": 2068078167,
+          "sha256": "c3c9b730ab26d1e56fe52bc47344d896ff65d147bc7c20ce9fbc7d44a09ecc8e",
+          "all_member_crcs_valid": true
+        }
+      },
+      {
+        "project": "scus-94640",
+        "combined": false,
+        "matched": 193,
+        "functions": 2560,
+        "shared_sources": 0,
+        "clean_rebuild": true,
+        "assembly_fallbacks": 0,
+        "discs": [
+          {
+            "size": 691530336,
+            "sha256": "2c36429649e50036fd5c9187bdc3ff23e04039499e7cdf1aba5cfd5a3badcb38",
+            "matching_sources": 193
+          }
+        ],
+        "archive": null
+      }
+    ],
+    "all_inputs_and_derived_sources_private": true,
+    "whole_game_runtime_tested": false
+  }
+}

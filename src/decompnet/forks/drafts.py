@@ -9,6 +9,7 @@ unit under `build/<version>/asm/`. m2c turns that into a C draft for MIPS (N64, 
 from __future__ import annotations
 
 import re
+import json
 import subprocess
 import threading
 from pathlib import Path
@@ -16,8 +17,8 @@ from pathlib import Path
 from .. import seeds, toolchains
 
 # platform -> m2c target, without the language
-M2C = {"n64": "mips", "ps": "mipsel-gcc", "psp": "mipsel-gcc", "ps2": "mipsee-gcc", "gc": "ppc-mwcc",
-       "wii": "ppc-mwcc", "gba": "gba", "nds": "arm", "3ds": "arm"}
+M2C = {"ps": "mipsel-gcc", "psx": "mipsel-gcc", "psp": "mipsel-gcc", "ps2": "mipsee-gcc",
+        "gba": "gba", "nds": "arm", "3ds": "arm"}
 MAX_ASM = 2 * 1024 * 1024
 
 
@@ -75,8 +76,6 @@ def draft(root: Path, platform: str, unit_name: str, symbol: str, source_path: s
     text = asm.read_text(errors="replace", encoding="utf-8")
     if len(text) > MAX_ASM or ".fn " in text:
         text = _block(text, symbol)
-    if platform == "n64":
-        target += "-ido" if "ido" in compiler_hint.lower() else "-gcc"
     return seeds.run_m2c(text, symbol, f"{target}-{lang}", timeout=timeout, valid=valid)
 
 
@@ -104,6 +103,16 @@ def _dsd_asm(root: Path) -> Path | None:
 
 def _dsd_block(root: Path, unit_name: str, symbol: str) -> tuple[str, bool] | None:
     """(the function's assembly as m2c reads it, is Thumb) from ds-decomp's disassembly."""
+    if unit_name.startswith("arm7/"):
+        for path in root.glob("config/*/arm7/units.json"):
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            unit = next((u for u in manifest["units"] if u["name"] == unit_name), None)
+            if unit is None:
+                continue
+            assembly = root / "build" / path.parents[1].name / "arm7-asm" / Path(unit["source"]).with_suffix(".s")
+            if assembly.is_file():
+                return assembly.read_text(encoding="utf-8"), unit["mode"] == "thumb"
+        return None
     asm = _dsd_asm(root)
     path = asm / f"{unit_name}.s" if asm else None
     if path is None or not path.is_file():
@@ -116,6 +125,15 @@ def _dsd_block(root: Path, unit_name: str, symbol: str) -> tuple[str, bool] | No
     body = re.sub(r"\s*;.*$", "", m.group(2), flags=re.M)  # dsd's comments (addresses)
     lines = [ln for ln in body.splitlines() if ln.strip() and not ln.strip().startswith(f"{symbol}:")]
     return f".text\nglabel {symbol}\n" + "\n".join(lines) + "\n", m.group(1) == "thumb"
+
+
+def ds_mode_source(root: Path, unit_name: str, symbol: str, source: str) -> str:
+    """A generated DS unit can contain ARM and Thumb functions: set the original mode for this definition only."""
+    block = _dsd_block(root, unit_name, symbol)
+    if block is None:
+        return source
+    mode = "on" if block[1] else "off"
+    return f"#pragma push\n#pragma thumb {mode}\n{source.rstrip()}\n#pragma pop\n"
 
 
 def add_m2c_macros(header: Path) -> bool:

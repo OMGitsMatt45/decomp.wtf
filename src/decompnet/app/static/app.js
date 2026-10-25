@@ -6,6 +6,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const hex8 = (n) => "0x" + (n >>> 0).toString(16).toUpperCase().padStart(8, "0");
 const isAssembly = (ov) => ov?.compiler?.language === "asm" || ov?.progress_kind === "assembly";
+const isBankedAssembly = (ov) => isAssembly(ov) && ["gb", "gbc"].includes(ov?.platform);
 const bankAddress = (n) => `${(n >>> 16).toString(16).toUpperCase().padStart(2, "0")}:${(n & 0xffff).toString(16).toUpperCase().padStart(4, "0")}`;
 const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const pctOf = (best, insns) => (best == null ? null : Math.max(0, 1 - best / Math.max(1, insns * 100)));
@@ -224,38 +225,10 @@ $("file").addEventListener("change", () => { if ($("file").files[0]) pickFile($(
 $("own").addEventListener("change", updateAnalyse);
 $("cancelPick").onclick = resetDrop;
 
-/* Read the header in the browser so the user sees what they picked before anything happens. */
-function parseRom(buf) {
-  const b = new Uint8Array(buf);
-  const magic = [b[0], b[1], b[2], b[3]].map((x) => x.toString(16).padStart(2, "0")).join("");
-  const order = { "80371240": "z64", "37804012": "v64", "40123780": "n64" }[magic];
-  if (!order) throw new Error("This doesn't look like an N64 ROM (.z64, .n64 or .v64).");
-  const z = new Uint8Array(Math.min(b.length, 0x101000));
-  for (let i = 0; i < z.length; i += 4) {
-    const w = order === "z64" ? [b[i], b[i + 1], b[i + 2], b[i + 3]] : order === "v64" ? [b[i + 1], b[i], b[i + 3], b[i + 2]] : [b[i + 3], b[i + 2], b[i + 1], b[i]];
-    z.set(w, i);
-  }
-  const text = (from, to) => Array.from(z.slice(from, to)).map((c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : "")).join("").trim();
-  const dv = new DataView(z.buffer);
-  let jumps = 0, branches = 0;
-  for (let i = 0x1000; i + 4 <= z.length; i += 4) {
-    const w = dv.getUint32(i);
-    if (w >>> 26 === 2) jumps++;
-    else if ((w & 0xffff0000) >>> 0 === 0x10000000) branches++;
-  }
-  const regions = { E: "North America", J: "Japan", P: "Europe", D: "Germany", F: "France", U: "Australia", I: "Italy", S: "Spain", A: "All regions", X: "Europe", Y: "Europe" };
-  const code = text(0x3b, 0x3f);
-  return {
-    title: text(0x20, 0x34) || "Untitled", code, region: regions[code[3]] || "Unknown",
-    size: b.length, order, entry: dv.getUint32(8), compiler: branches > jumps ? "IDO" : "KMC",
-  };
-}
-
 /* What the user dropped, from its first bytes (nothing is uploaded until they confirm). */
-const PLATFORM_NAME = { n64: "Nintendo 64", psx: "PlayStation", ps2: "PlayStation 2", playstation: "PlayStation 1 or 2",
-  gc: "GameCube", wii: "Wii", gcwii: "GameCube or Wii", gba: "Game Boy Advance", gb: "Game Boy", gbc: "Game Boy Color", nds: "Nintendo DS" };
+const PLATFORM_NAME = { psx: "PlayStation", ps2: "PlayStation 2", playstation: "PlayStation 1 or 2",
+  gba: "Game Boy Advance", gb: "Game Boy", gbc: "Game Boy Color", nds: "Nintendo DS" };
 const CW_PACK = {
-  gcwii: { id: "mwcc", text: "Install CodeWarrior, the compilers GameCube and Wii games were built with (about 80 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
   nds: { id: "mwccarm", text: "Install CodeWarrior for DS, the compilers DS games were built with (about 50 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
 };
 function crc16(bytes, from, to) {
@@ -274,6 +247,7 @@ function identifyHead(head, file) {
   const ascii = (a, b) => text(a, b).split("\0")[0].replace(/[^\x20-\x7e]/g, "").trim();
   const stem = file.name.replace(/\.[^.]*$/, "");
   const base = { title: stem, size: file.size };
+  if (["\x80\x37\x12\x40", "\x37\x80\x40\x12", "\x40\x12\x37\x80"].includes(text(0, 4))) return { ...base, platform: "n64" };
   const gbLogo = "ceed6666cc0d000b03730083000c000d0008111f8889000edccc6ee6ddddd999bbbb67636e0eecccdddc999fbbb9333e";
   if (head.length >= 0x150 && Array.from(head.slice(0x104, 0x134), n => n.toString(16).padStart(2, "0")).join("") === gbLogo) {
     let checksum = 0;
@@ -294,12 +268,12 @@ function identifyHead(head, file) {
   }
   if (head.length >= 0x200 && crc16(head, 0, 0x15e) === dv.getUint16(0x15e, true)) {  // DS: the header's own checksum
     const ram = dv.getUint32(0x28, true), entry = dv.getUint32(0x24, true);
-    if (ram >= 0x02000000 && ram < 0x02400000 && entry >= ram) return { ...base, platform: "nds", order: "ROM", code: ascii(12, 16), title: ascii(0, 12) || stem, entry };
+    if (ram >= 0x02000000 && ram < 0x02400000 && entry >= ram) return { ...base, platform: "nds", order: "ROM", code: ascii(12, 16), title: ascii(0, 12) || stem, entry, bootUtility: dv.getUint32(0x44, true) === 0 };
   }
   if (text(0x8001, 0x8006) === "CD001" || text(0x9319, 0x931e) === "CD001" || text(0x9311, 0x9316) === "CD001") return { ...base, platform: "playstation", order: "disc image" };
   if (text(0, 8) === "MComprHD") return { ...base, platform: "playstation", order: "CHD disc image" };
   if (text(0, 4) === "\x7fELF" && head[5] === 1 && dv.getUint16(18, true) === 8) return { ...base, platform: "ps2", order: "ELF program", entry: dv.getUint32(24, true) };
-  if (head.length > 0x60 && dv.getUint32(0x1c) === 0xc2339f3d) return { ...base, platform: "gc", order: "disc image", code: ascii(0, 6), title: ascii(0x20, 0x80) || stem };
+  if (head.length > 0x440 && dv.getUint32(0x1c) === 0xc2339f3d) return { ...base, platform: "gc", order: "disc image", code: ascii(0, 6), title: ascii(0x20, 0x80) || stem, bootUtility: dv.getUint32(0x420) === 0 };
   if (head.length > 0x60 && dv.getUint32(0x18) === 0x5d1c9ea3) return { ...base, platform: "wii", order: "disc image", code: ascii(0, 6), title: ascii(0x20, 0x80) || stem };
   const packed = { "RVZ\x01": "RVZ", "WIA\x01": "WIA", WBFS: "WBFS", CISO: "CISO" }[text(0, 4)] || (dv.getUint32(0, true) === 0xb10bc001 ? "GCZ" : null);
   if (packed) return { ...base, platform: "gcwii", order: `${packed} disc image` };
@@ -321,13 +295,13 @@ function identifyHead(head, file) {
 function notSupported(head, file) {
   const text = (a, b) => String.fromCharCode(...head.slice(a, b));
   const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
-  if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf starts from N64, PlayStation 1 and 2, GameCube, Wii, Game Boy Advance and DS games.";
+  if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA, GB/GBC and PlayStation 1/2 games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
   if (["gb", "gbc"].includes(ext)) return "This Game Boy cartridge has an invalid header or ROM size. Use a complete .gb or .gbc image with its original header.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
-  if (ext === "cue") return "That's the .cue sheet: pick the .bin file next to it (the track with the game's data, usually Track 1).";
+  if (ext === "cue") return "Use ‘file on this computer’ below and enter the .cue path so the app can read all referenced tracks together.";
   if (["zip", "7z", "rar"].includes(ext)) return "That's an archive: unpack it first, then drop the game file inside.";
   if (ext === "apk") return "Android apps aren't supported yet.";
   if (ext === "pbp" || ext === "cso") return "That's a PSP file. PSP games aren't supported yet.";
@@ -338,25 +312,20 @@ const NOT_A_GAME = "That isn't a game file decomp.wtf can start from scratch (ye
 async function pickFile(file) {
   const head = new Uint8Array(await file.slice(0, 0x9400).arrayBuffer());
   let info = identifyHead(head, file), buf = file;
+  if (info && ["n64", "gc", "wii", "gcwii"].includes(info.platform)) return toast("This console was removed from this branch. Use the preserved main branch in PR #27.", "err");
   if (!info) {
     const why = notSupported(head, file);
     if (why || file.size > 64 * 1024 * 1024) return toast(esc(why || NOT_A_GAME), "err");
-    buf = await file.arrayBuffer();
-    try { info = parseRom(buf); info.platform = "n64"; } catch (e) {
-      return toast(esc(NOT_A_GAME), "err");
-    }
+    return toast(esc(NOT_A_GAME), "err");
   }
   picked = { buf, info, name: file.name };
   if (!S.st) await loadState().catch(() => {});  // dropped before the page finished loading: the compiler lists
   $("romFile").textContent = file.name;
   $("romTitle").textContent = info.title;
   const p = info.platform;
-  const facts = p === "n64"
-    ? [["Game code", info.code || "—"], ["Region", info.region], ["Size", MB(info.size)], ["Format", info.order],
-       ["Entry", hex8(info.entry)], ["Looks like", info.compiler === "IDO" ? "IDO" : "GCC (KMC)"]]
-    : [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
+  const facts = [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
        info.code ? ["Game ID", info.code] : ["Entry", info.entry != null ? hex8(info.entry) : "from the disc"],
-       ["Project", ["gc", "wii", "gcwii"].includes(p) ? "dtk-template" : p === "nds" ? "ds-decomp" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
+       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "PC source or DS reconstruction" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
   $("romFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
   const level = platformStatus(p);
   $("romStatus").hidden = !level;
@@ -364,17 +333,49 @@ async function pickFile(file) {
   $("romStatus").innerHTML = level === "recommended"
     ? `<b>★ Recommended platform.</b> The most tested path to a full decomp you can port and mod.`
     : `<b>Beta.</b> ${esc(PLATFORM_NAME[p] || "This platform")} works and is tested on homemade games, less so on real ones yet. Problems are worth <a href="https://github.com/i12bp8/decomp.wtf/issues" target="_blank" rel="noopener">reporting</a>.`;
+  $("dsOutput").value = "pc";
+  $("psxAdditionalDiscs").value = "";
+  $("dsInputFormat").value = "auto";
+  fillDsSaves($("dsSaveType"),info.code);
   setupCompilers(info);
   $("dropIdle").hidden = true;
   $("dropPicked").hidden = false;
   updateAnalyse();
 }
 
+function nativeRenderers(select, platform) {
+  const gpu = platform === "ps2" ? "vulkan" : "opengl", previous = select.value;
+  if (select.dataset.gpu !== gpu) {
+    select.innerHTML = `<option value="auto">GPU when available (${gpu === "vulkan" ? "Vulkan" : "OpenGL 3.3"})</option><option value="${gpu}">Require GPU rendering</option><option value="software">Software compatibility mode</option>`;
+    select.value = ["auto", gpu, "software"].includes(previous) ? previous : "auto";
+    select.dataset.gpu = gpu;
+  }
+}
 function setupCompilers(info) {
   const p = info.platform, select = $("compilerPick"), note = $("compilerNote");
   const cw = S.st?.codewarrior || { installed: false, ds_installed: false, gc: [], wii: [], ds: [] };
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
-  if (p === "n64") fillCompilers(select, info.compiler === "IDO" ? "ido-7.1" : "gcc-2.7.2-kmc", "N64");
+  $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
+  $("dsOutputRow").hidden = !["nds", "psx", "playstation", "ps2"].includes(p) || !!info.bootUtility;
+  const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
+  $("dsSaveRow").hidden = !nativePC || p !== "nds";
+  $("dsVideoRows").hidden = !nativePC;
+  $("dsScreenRow").hidden = p !== "nds";
+  $("psxAdditionalDiscsRow").hidden = !nativePC || !["psx", "playstation"].includes(p);
+  $("ps2ProfileRow").hidden = !nativePC || p !== "ps2";
+  nativeRenderers($("dsRenderer"), p);
+  $("romLayoutRow").hidden = nativePC || !["psx", "playstation"].includes(p);
+  $("romLayoutFile").value = "";
+  if (info.bootUtility) {
+    select.innerHTML = `<option value="binutils-arm">GNU assembly</option>`;
+    note.hidden = false;
+    note.textContent = "Boot utility: review reachable assembly ranges. Unknown bytes stay in your base image.";
+  }
+  else if (nativePC) {
+    $("compilerRow").hidden = true;
+    note.hidden = false;
+    note.textContent = "Generates a standalone Windows/Linux C++ project. No console matching compiler is needed. The pinned source tools are installed automatically.";
+  }
   else if (p === "psx") fillCompilers(select, "gcc-2.7.2-psx", "PS1");
   else if (p === "ps2") fillCompilers(select, "ee-gcc-2.96", "PS2");
   else if (p === "gba") fillCompilers(select, "agbcc", "GBA");
@@ -392,21 +393,36 @@ function setupCompilers(info) {
     note.textContent = "Not sure? Keep the default; you can change it later in tools/configure.py if functions don't match.";
     $("mwText").textContent = CW_PACK.nds.text;
     $("mwConsent").hidden = cw.ds_installed;
-  } else {
-    $("mwText").textContent = CW_PACK.gcwii.text;
-    const group = (label, list, dflt) => `<optgroup label="${label}">${list.map((v) => `<option value="${esc(v)}" ${v === dflt ? "selected" : ""}>CodeWarrior ${esc(v)}</option>`).join("")}</optgroup>`;
-    select.innerHTML = (p !== "wii" ? group("GameCube", cw.gc, "GC/1.3.2") : "") + (p !== "gc" ? group("Wii", cw.wii, p === "wii" ? "Wii/1.0" : "") : "");
-    note.hidden = false;
-    note.textContent = "Not sure? Keep the default; you can change it later in configure.py if functions don't match.";
-    $("mwConsent").hidden = cw.installed;
   }
+
 }
 
 function updateAnalyse() {
   const needsConsent = !$("mwConsent").hidden;
-  $("analyse").disabled = !$("own").checked || (needsConsent && !$("mwAccept").checked);
+  const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
+  $("analyse").textContent = nativePC ? "Generate PC source project" : "Start decompiling";
+  $("analyse").disabled = !$("own").checked || (needsConsent && !$("mwAccept").checked) || (!$("dsSaveRow").hidden && !$("dsSaveType").value);
 }
 $("mwAccept").addEventListener("change", updateAnalyse);
+$("dsOutput").onchange = () => { if (picked) setupCompilers(picked.info); updateAnalyse(); };
+$("dsSaveType").onchange = updateAnalyse;
+for (const prefix of ["ds", "pc"]) {
+  $(`${prefix}ScreenMode`).onchange = () => {
+    if ($(`${prefix}ScreenMode`).value === "unified" && $(`${prefix}Renderer`).value === "software") $(`${prefix}Renderer`).value = "auto";
+  };
+  $(`${prefix}Renderer`).onchange = () => {
+    if ($(`${prefix}Renderer`).value === "software") $(`${prefix}ScreenMode`).value = "dual";
+  };
+}
+
+function fillDsSaves(select,code) {
+  const chips = [["", "Choose the game's save chip"], ["eeprom512b", "EEPROM 512 bytes"],
+    ["eeprom8k", "EEPROM 8 KiB"], ["eeprom64k", "EEPROM 64 KiB"], ["eeprom128k", "EEPROM 128 KiB"],
+    ["flash256k", "Flash 256 KiB"], ["flash512k", "Flash 512 KiB"], ["flash1m", "Flash 1 MiB"], ["flash8m", "Flash 8 MiB"]];
+  select.innerHTML = chips.map(([value,label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+  // Verified against this owner's cartridge behavior and independent chip metadata.
+  if (code === "YV5P") select.value = "eeprom64k";
+}
 
 function fillCompilers(select, current, platform) {
   const tcs = (S.st?.toolchains || []).filter((t) => t.kind === "compiler" && (!platform || !t.platform || t.platform === platform));
@@ -417,6 +433,7 @@ function fillCompilers(select, current, platform) {
 }
 
 async function runImport(query, file, title, name = "") {
+
   $("dropIdle").hidden = true;
   $("dropPicked").hidden = true;
   $("dropBusy").hidden = false;
@@ -442,8 +459,15 @@ async function runImport(query, file, title, name = "") {
       const last = log.filter((l) => l.trim()).pop();
       if (last) $("busyStep").textContent = last.trim().replace(/\s+/g, " ").slice(0, 120);
     });
-    loadNav();
-    location.hash = `#/p/${res.slug}`;
+    if (res.format === "pc") {
+      resetDrop();
+      dialog("Native PC source project generated", `<p>Your editable C++ project is in:</p><pre>${esc(res.path)}</pre>
+        <p>Open its README for asset extraction, building and controls. It builds independently of decomp.wtf with CMake and a native C/C++ compiler.</p>
+        <p class="muted small">Source integrity verified. Your original game supplies the assets; runtime licenses and compatibility limits are in the README. Gameplay acceptance remains separate.</p>`);
+    } else {
+      loadNav();
+      location.hash = `#/p/${res.slug}`;
+    }
   } catch (e) {
     importFailed(name || title.replace(/^\w+ |…$/g, ""), e, $("jobLog").textContent);
   } finally { clearInterval(tick); $("busyTime").textContent = ""; }
@@ -486,23 +510,76 @@ $("analyse").onclick = async () => {
     try { await ensureCodeWarrior(); } catch (e) { importFailed("CodeWarrior", e, $("jobLog").textContent); return; }
   }
   const body = picked.buf instanceof Blob ? picked.buf : new Blob([picked.buf]);
-  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}`, body, title, picked.name);
+  const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
+  const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
+  const additionalDiscs = $("psxAdditionalDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const pcOutput = nativePC ? `&output=pc&pc_platform=${picked.info.platform === "nds" ? "nds" : picked.info.platform === "ps2" ? "ps2" : "psx"}&ps2_profile=${encodeURIComponent($("ps2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(additionalDiscs))}&save_type=${encodeURIComponent($("dsSaveType").value)}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
+  let layoutQuery = "";
+  const layoutFile = !$("romLayoutRow").hidden && $("romLayoutFile").files[0];
+  if (layoutFile) {
+    try {
+      if (layoutFile.size > 1024 * 1024) throw new Error("The reviewed layout must be smaller than 1 MiB.");
+      const layout = JSON.parse(await layoutFile.text());
+      const pending = await api("/api/rom/layout", { method: "POST", body: { layout } });
+      layoutQuery = `&reviewed_layout=${encodeURIComponent(pending.id)}`;
+    } catch (e) { toast(esc(e.message), "err"); return; }
+  }
+  runImport(`confirmed=1${tc ? `&toolchain=${encodeURIComponent(tc)}` : ""}${dsFormat}${pcOutput}${layoutQuery}`, body, title, picked.name);
 };
 $("pathPick").onclick = (e) => {
   e.stopPropagation();
   const body = dialog("Use a file on this computer", `<p class="muted">For big disc images: decomp.wtf reads the file where it is instead of copying it through the browser.</p>
     <label class="field"><span>Path to the game file</span><input id="ppPath" class="mono" placeholder="/home/me/games/my-game.iso"></label>
+    <label class="field"><span>Output</span><select id="ppTarget"><option value="psx">PS1 native PC source project</option><option value="nds">DS native PC source project</option><option value="ps2">PS2 native PC source project (experimental)</option><option value="matching">Console reconstruction</option></select></label>
+    <label class="field" id="ppPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ppPS2Profile" class="mono" placeholder="Local path to profile.json"><small>Required for stripped retail code. The map must match this original input.</small></label>
+    <label class="field" id="ppDiscRow"><span>Additional PS1 discs, in order</span><textarea id="ppDiscs" rows="2" placeholder="One path per line, starting with disc 2"></textarea><small>CUE tracks stay beside their CUE sheet. A single M3U playlist can list the complete game. PS1 runtime terms are noncommercial.</small></label>
+    <label class="field" id="ppRenderRow"><span>PC rendering</span><select id="ppRenderer"><option value="auto">GPU when available</option><option value="opengl">Require OpenGL GPU rendering</option><option value="software">Software compatibility mode</option></select></label>
+    <div id="ppDS" hidden>
+      <label class="field"><span>Cartridge save chip</span><select id="ppSaveType"></select></label>
+      <label class="field"><span>DS input format</span><select id="ppInputFormat"><option value="auto">Detect automatically</option><option value="decrypted">Already decrypted</option></select></label>
+      <label class="field"><span>DS picture</span><select id="ppScreen"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera</option></select></label>
+    </div>
+    <label class="field" id="ppLayoutRow" hidden><span>Reviewed PS1 layout (optional)</span><input id="ppLayout" type="file" accept=".json,application/json"></label>
     <label class="check"><input type="checkbox" id="ppOwn"><span>This is my own copy of this game, obtained legally. The results stay with me for my own use.</span></label>
-    <div class="row"><button class="primary" id="ppGo" type="button" disabled>Start decompiling</button><button class="ghost" data-close type="button">Cancel</button></div>`);
-  body.querySelector("#ppOwn").onchange = () => { $("ppGo").disabled = !$("ppOwn").checked; };
-  body.querySelector("#ppGo").onclick = () => {
+    <div class="row"><button class="primary" id="ppGo" type="button" disabled>Generate PC source project</button><button class="ghost" data-close type="button">Cancel</button></div>`);
+  fillDsSaves($("ppSaveType"),"");
+  const updatePathOptions = () => {
+    const target = $("ppTarget").value;
+    $("ppDiscRow").hidden = target !== "psx";
+    $("ppDS").hidden = target !== "nds";
+    $("ppRenderRow").hidden = target === "matching";
+    $("ppLayoutRow").hidden = target !== "matching";
+    $("ppPS2ProfileRow").hidden = target !== "ps2";
+    nativeRenderers($("ppRenderer"), target);
+    $("ppGo").textContent = target === "matching" ? "Start decompiling" : "Generate PC source project";
+    $("ppGo").disabled = !$("ppOwn").checked || (target === "nds" && !$("ppSaveType").value);
+  };
+  for (const id of ["ppTarget", "ppOwn", "ppSaveType"]) $(id).onchange = updatePathOptions;
+  $("ppScreen").onchange = () => { if ($("ppScreen").value === "unified" && $("ppRenderer").value === "software") $("ppRenderer").value = "auto"; };
+  $("ppRenderer").onchange = () => { if ($("ppRenderer").value === "software") $("ppScreen").value = "dual"; };
+  body.querySelector("#ppGo").onclick = async () => {
     const path = $("ppPath").value.trim();
     if (!path) return;
+    let query = "";
+    const target = $("ppTarget").value;
+    if (target !== "matching") {
+      const discs = target === "psx" ? $("ppDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [];
+      if (discs.length > 15) return toast("A game can contain up to 16 ordered discs.", "err");
+      query = `&output=pc&pc_platform=${target}&ps2_profile=${encodeURIComponent($("ppPS2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(discs))}&renderer=${encodeURIComponent($("ppRenderer").value)}&save_type=${encodeURIComponent($("ppSaveType").value || "auto")}&ds_input_format=${encodeURIComponent($("ppInputFormat").value)}&screen_mode=${encodeURIComponent($("ppScreen").value)}`;
+    }
+    const file = target === "matching" && $("ppLayout").files[0];
+    if (file) {
+      try {
+        if (file.size > 1024 * 1024) throw new Error("The reviewed layout must be smaller than 1 MiB.");
+        const pending = await api("/api/rom/layout", { method: "POST", body: { layout: JSON.parse(await file.text()) } });
+        query = `&reviewed_layout=${encodeURIComponent(pending.id)}`;
+      } catch (e) { toast(esc(e.message), "err"); return; }
+    }
     $("dialog").hidden = true;
-    runImport(`confirmed=1&path=${encodeURIComponent(path)}`, undefined, "Analysing your game…");
+    runImport(`confirmed=1&path=${encodeURIComponent(path)}${query}`, undefined, "Analysing your game…");
   };
 };
-$("demoBtn").onclick = () => runImport("demo=1", undefined, "Opening Demo Quest 64…");
+
 
 /* ------------------------------------------------------------------ project */
 async function openProject(slug, tab = "overview") {
@@ -521,7 +598,7 @@ async function openProject(slug, tab = "overview") {
   document.querySelectorAll("#ptabs [data-ptab]").forEach((a) => { a.href = `#/p/${slug}/${a.dataset.ptab}`; });
   const fork = S.ov.kind === "fork";
   $("mapTitle").textContent = fork ? "Function map" : "ROM map";
-  $("mapHint").textContent = isAssembly(S.ov) ? "Each square is a discovered assembly range, in storage bank order. Unknown code and data stay in the base ROM." : fork ? "Every square is a function, grouped by source file. Click one to see it." : "Every square is a function, in ROM order. Click one to see it.";
+  $("mapHint").textContent = isAssembly(S.ov) ? "Each square is a discovered assembly range, in image order. Unknown code and data stay in the base image." : fork ? "Every square is a function, grouped by source file. Click one to see it." : "Every square is a function, in ROM order. Click one to see it.";
   $("thAddr").textContent = fork ? "File" : isAssembly(S.ov) ? "Bank:CPU" : "Address";
   groups.clear(); S.claimSig = "";
   L.q = ""; L.filter = "all"; L.limit = 200; $("fnSearch").value = "";
@@ -791,18 +868,7 @@ function renderCompilerNotice(ov) {
   if (unc && unc.functions) {
     n.hidden = false;
     n.className = "notice";
-    n.innerHTML = `<span><b>${unc.functions.toLocaleString()} functions</b> are in code no source file covers yet, so agents can't decompile them. decomp.wtf can give each stretch of code a file (checked against the game's checksum, committed to git).</span><span class="grow"></span><button class="primary small-btn" id="startFiles" type="button"${S.startingFiles ? " disabled" : ""}>${S.startingFiles ? "Splitting the game…" : "Give them source files"}</button>`;
-    $("startFiles").onclick = async () => {
-      S.startingFiles = true;
-      renderCompilerNotice(ov);
-      try {
-        const { job } = await api("/api/fork/start-files", { method: "POST", body: { slug: S.slug } });
-        const res = await followJob(job);
-        toast(`${(res && res.functions || 0).toLocaleString()} more functions can be decompiled now.`, "match");
-        await refreshMap();
-      } catch (e) { toast(esc(e.message), "err"); }
-      S.startingFiles = false;
-    };
+    n.innerHTML = `<span><b>${unc.functions.toLocaleString()} functions</b> have no source file. Add their source-file layout using this project's build-system conventions before submitting them to an agent.</span>`;
     return;
   }
   if (ov.kind === "fork" || ov.compiler.installed) { n.hidden = true; return; }
@@ -871,7 +937,7 @@ function renderNext(ov) {
   const compilerOk = ov.kind === "fork" || ov.compiler.installed;
   if (done) {
     box.hidden = false;
-    box.innerHTML = `<div class="next-text"><b>${isAssembly(ov) ? "Every discovered range is verified." : "Every function matches."}</b><span class="muted small">${isAssembly(ov) ? "Unknown code and data remain in the base ROM. Export a verified RGBDS rebuild, or add known bank entries." : "Export the project: a source tree that rebuilds your game byte for byte."}</span></div><a class="primary small-btn as-btn" href="#/p/${esc(S.slug)}/source">Export</a>`;
+    box.innerHTML = `<div class="next-text"><b>${isAssembly(ov) ? "Every discovered range is verified." : "Every function matches."}</b><span class="muted small">${isAssembly(ov) ? "Unknown code and data remain in the base image. Export an assembly rebuild; review coverage before adding more entries." : "Export the project: a source tree that rebuilds your game byte for byte."}</span></div><a class="primary small-btn as-btn" href="#/p/${esc(S.slug)}/source">Export</a>`;
     return;
   }
   if (ov.kind === "fork" && ov.ready && !ov.functions) {
@@ -1056,9 +1122,9 @@ function openJoin() {
     <label class="field"><span>Invite link</span><input id="jLink" class="mono" placeholder="https://….trycloudflare.com/join/…"></label>
     <label class="field"><span>Your name in the room</span><input id="jName" maxlength="24" placeholder="e.g. alex"></label>
     <label class="field"><span>Your copy of the game</span><input id="jRom" type="file"></label>
-    <label class="field"><span>…or its path on this computer (best for a GameCube or Wii disc: it's read where it is)</span><input id="jPath" class="mono" placeholder="${S.st && S.st.host_os === "windows" ? "C:\\Games\\game.rvz" : "/home/you/games/game.iso"}"></label>
+    <label class="field"><span>…or its path on this computer (read directly without uploading)</span><input id="jPath" class="mono" placeholder="${S.st && S.st.host_os === "windows" ? "C:\\Games\\game.rvz" : "/home/you/games/game.iso"}"></label>
     <label class="check"><input type="checkbox" id="jOwn"><span>This is my own copy of this game, obtained legally. I'll keep what the room makes private.</span></label>
-    <p class="muted small">A GameCube, Wii or DS project comes with its whole source tree from the host, and is then built here with your copy and your compilers: the first time takes a few minutes.</p>
+    <p class="muted small">A DS project comes with its whole source tree from the host, and is then built here with your copy and your compilers: the first time takes a few minutes.</p>
     <div class="row"><button class="primary" id="jGo" type="button">Join</button></div><pre class="joblog" id="jLog" hidden></pre>`);
   body.querySelector("#jGo").onclick = async () => {
     const file = $("jRom").files[0], path = $("jPath").value.trim();
@@ -1094,8 +1160,8 @@ async function installToolchain(id, proprietary) {
 }
 
 /* ------------------------------------------------------------------ public decomps */
-const PLAT_ORDER = ["gc", "wii", "ps", "ps2", "n64", "gba", "nds", "switch", "win32", "xbox360", "3ds", "xbox", "psp"];
-const PLAT_SHORT = { gb: "GB", gbc: "GBC", gc: "GameCube", wii: "Wii", ps: "PS1", psx: "PS1", ps2: "PS2", n64: "N64", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
+const PLAT_ORDER = ["nds", "gba", "ps", "ps2", "gb", "gbc", "switch", "win32", "xbox360", "3ds", "xbox", "psp"];
+const PLAT_SHORT = { gb: "GB", gbc: "GBC", ps: "PS1", psx: "PS1", ps2: "PS2", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
 const cat = { list: null, downloaded: null, plat: "", q: "", done: false };
 
 /* The list decomp.dev had, as this install downloaded it before the directory was retired (none on a new one). */
@@ -1424,7 +1490,7 @@ $("map").addEventListener("mousemove", (ev) => {
   const f = S.map[i];
   const p = pctOf(f.best, f.insns);
   const status = f.status === "matched" ? `matched${f.matched_by ? " by " + esc(f.matched_by) : ""}` : f.status === "working" ? `${esc(f.agent)} is on it` : f.best != null ? `best ${pctText(p)}` : "not started";
-  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram);
+  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram);
   tip.innerHTML = `<b>${esc(f.name)}</b><br>${where} · ${f.insns} instructions<br>${status}`;
   tip.hidden = false;
   const wrap = $("mapWrap").getBoundingClientRect();
@@ -1877,7 +1943,7 @@ async function refreshFn(first) {
     S.fnDetail = d;
     $("fnAddr").textContent = S.ov.kind === "fork"
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
-      : `${isAssembly(S.ov) ? bankAddress(d.vram) : hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
+      : `${isBankedAssembly(S.ov) ? bankAddress(d.vram) : hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     $("fnName").textContent = d.name;
     fnBadge(d);
     const pinned = (S.ov.priority || []).includes(d.name);
@@ -1896,7 +1962,7 @@ async function refreshFn(first) {
       } catch (e) { toast(esc(e.message), "err"); }
     };
     $("fnAsm").innerHTML = highlightAsm(d.asm);
-    const kinds = { matched: isAssembly(S.ov) ? "Verified RGBDS assembly" : "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)", assembly: "Generated assembly · review before verifying" };
+    const kinds = { matched: isAssembly(S.ov) ? "Verified assembly" : "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)", assembly: "Generated assembly · review before verifying" };
     $("fnSrcKind").textContent = kinds[d.source_kind] || (isAssembly(S.ov) ? "No assembly yet" : "No C yet");
     if (!S.editDirty || first) setEditor(d.source || "", d);
     $("copySrc").onclick = () => navigator.clipboard.writeText($("fnEdit").value).then(() => toast("Copied."));
@@ -2100,7 +2166,7 @@ function renderList() {
   $("fnFilter").innerHTML = FILTERS.map(([k, label]) => `<button type="button" role="radio" aria-checked="${L.filter === k}" class="${L.filter === k ? "on" : ""}" data-filter="${k}">${label}<span>${counts[k].toLocaleString()}</span></button>`).join("");
   const q = L.q.trim().toLowerCase();
   let rows = S.map.filter((f) => (L.filter === "all" || fnState(f) === L.filter)
-    && (!q || f.name.toLowerCase().includes(q) || (isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
+    && (!q || f.name.toLowerCase().includes(q) || (isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
   const key = {
     i: (f) => f.i, name: (f) => f.name.toLowerCase(), insns: (f) => f.insns, attempts: (f) => f.attempts || 0,
     best: (f) => (f.status === "matched" ? 2 : f.best == null ? -1 : pctOf(f.best, f.insns)), status: (f) => STATE_RANK[fnState(f)],
@@ -2113,7 +2179,7 @@ function renderList() {
     const best = st === "matched" ? `<span class="ok">100%</span>` : p == null ? `<span class="dim">–</span>` : pctText(p);
     const status = st === "matched" ? `<span class="st matched" title="${esc(f.matched_by ? "by " + f.matched_by : "")}">matched</span>` : st === "asm" ? `<span class="st" title="hand-written assembly: no C compiles to it">assembly</span>` : st === "working" ? `<span class="st working">${esc(f.agent || "working")}</span>`
       : st === "tried" ? `<span class="st tried">tried</span>` : `<span class="st">to do</span>`;
-    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : isAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)}</td>
+    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)}</td>
       <td class="mono name">${(S.ov && (S.ov.priority || []).includes(f.name)) ? `<span class="star" title="agents take it next">★</span>` : ""}${esc(f.name)}</td><td class="r mono">${f.insns.toLocaleString()}</td><td class="r mono">${best}</td>
       <td class="r mono">${f.attempts || `<span class="dim">0</span>`}</td><td>${status}</td></tr>`;
   }).join("") || `<tr class="none"><td colspan="6">No function matches${q ? ` “${esc(L.q)}”` : ""}.</td></tr>`;
@@ -2229,7 +2295,7 @@ const HOST_NAMES = { windows: "Windows", macos: "your Mac", linux: "this compute
 async function openConnect() {
   if (S.st && S.st.runtime && S.st.runtime !== "native") return openHostConnect();
   const body = dialog("Use decomp.wtf from your AI agent", `<p>Connect the agent you already use, once. Then ask it in your terminal, for example:</p>
-    ${cmdBox("decompile my game at ~/roms/game.z64")}
+    ${cmdBox("decompile my game at ~/roms/game.nds")}
     <p class="muted small">It confirms the game is your own copy, imports it, opens this live view and works with every tool here: the byte-for-byte judge, the autopilot, helper agents, export. Anything it does shows up here as it happens.</p>
     <div class="setup-group" id="connectRows"><p class="muted small">Looking for your agents…</p></div>
     <div class="setup-group"><h3>Any other MCP client (Cursor, Claude Desktop, Windsurf, your own)</h3><pre class="code" id="bridgeJson"></pre>
@@ -2246,7 +2312,7 @@ async function openHostConnect() {
   const body = dialog("Use decomp.wtf from your AI agent", `<p>Run this once in ${esc(shell)} on ${esc(host)}: it connects Claude Code, Codex, Antigravity CLI and opencode there.</p>
     ${cmdBox("decomp connect")}
     <p>Then ask your agent, for example:</p>
-    ${cmdBox(S.st.host_os === "windows" ? "decompile my game at C:\\Games\\game.z64" : "decompile my game at ~/roms/game.z64")}
+    ${cmdBox(S.st.host_os === "windows" ? "decompile my game at C:\\Games\\game.nds" : "decompile my game at ~/roms/game.nds")}
     <p class="muted small">decomp.wtf runs in ${S.st.runtime === "wsl" ? "its own WSL 2 Linux on Windows" : "Docker"}; your agent reaches it through the command below. Anything it does shows up here as it happens.</p>
     <div class="setup-group"><h3>Any other MCP client (Cursor, Claude Desktop, Windsurf, your own)</h3><pre class="code" id="bridgeJson"></pre></div>`);
   try {
@@ -2338,12 +2404,55 @@ function renderAutopilot(ov) {
   };
 }
 
-const LAYOUT = { gc: "dtk-template", wii: "dtk-template", nds: "ds-decomp" };
+const LAYOUT = { nds: "ds-decomp" };
 const cwName = (c) => (c.startsWith("DS/") ? `CodeWarrior for DS ${c.slice(3)}` : `CodeWarrior ${c}`);
 
 /* ------------------------------------------------------------------ source: the base for ports and mods */
+function renderPSXDiscSet(ov) {
+  const box = $("psxDiscSet");
+  box.hidden = ov.platform !== "psx" || !ov.disc?.supported;
+  if (box.hidden) return;
+  const members = ov.disc_set?.discs || [];
+  const choices = S.projects.filter(p => p.platform === "psx");
+  box.innerHTML = `<details><summary>${ov.disc_set ? "Combined game: " + esc(ov.disc_set.title) : "Combine discs into one source project"}</summary>
+    <p class="small muted">Import each disc first. Enter 1, 2, 3… beside its project to set disc order; leave other games blank.</p>
+    <label class="field"><span>Game title</span><input id="psxSetTitle" value="${esc(ov.disc_set?.title || ov.title)}" maxlength="200"></label>
+    ${choices.map(p => { const number = members.findIndex(d => d.slug === p.slug); return `<label class="field"><span>${esc(p.title)} · ${esc(p.slug)}</span><input class="psx-disc-order" data-slug="${esc(p.slug)}" type="number" min="1" max="16" value="${number >= 0 ? number + 1 : !members.length && p.slug === ov.slug ? 1 : ""}"></label>`; }).join("")}
+    <div class="row"><button id="psxSetSave" class="ghost small-btn" type="button">Combine game</button>${members.length ? '<button id="psxSetClear" class="ghost small-btn" type="button">Ungroup discs</button>' : ""}</div></details>`;
+  const save = async (projects) => {
+    try {
+      S.ov = await api("/api/psx/disc-set", {method: "POST", body: {slug: S.slug, projects, title: $("psxSetTitle").value}});
+      renderSource(S.ov);
+      toast(projects ? "One source project will build all selected discs." : "Discs now export independently.");
+    } catch (error) { toast(esc(error.message), "err"); }
+  };
+  $("psxSetSave").onclick = () => {
+    const ordered = [...box.querySelectorAll(".psx-disc-order")].filter(e => e.value).sort((a,b) => Number(a.value) - Number(b.value));
+    if (ordered.some((e,i) => Number(e.value) !== i + 1)) return toast("Disc order must be 1, 2, 3… with no duplicates or gaps.", "err");
+    save(ordered.map(e => e.dataset.slug));
+  };
+  if ($("psxSetClear")) $("psxSetClear").onclick = () => save(null);
+}
+
 function renderSource(ov) {
+  renderPSXDiscSet(ov);
   const ex = ov.export, fork = ov.kind === "fork";
+  $("srcFormatRow").hidden = true;
+  $("pcExport").disabled = !ov.outputs?.pc?.available;
+  $("pcOutputStatus").textContent = ov.outputs?.pc?.available ? "Experimental native PC source export is available. Verify gameplay for your game." : "Native PC export is not available yet. Console reconstruction remains available.";
+  $("pcSaveRow").hidden = ov.platform !== "nds" || !ov.outputs?.pc?.available;
+  $("pcVideoRows").hidden = !ov.outputs?.pc?.available;
+  $("pcPS2ProfileRow").hidden = ov.platform !== "ps2" || !ov.outputs?.pc?.available;
+  nativeRenderers($("pcRenderer"), ov.platform);
+  $("pcScreenRow").hidden = ov.platform !== "nds";
+  if ($("pcSaveType").dataset.project !== ov.slug) {
+    fillDsSaves($("pcSaveType"),ov.rom?.game_code || ov.version);
+    $("pcSaveType").dataset.project = ov.slug;
+  }
+  if ($("srcFormat").dataset.project !== ov.slug) {
+    $("srcFormat").value = ex?.format || "matching";
+    $("srcFormat").dataset.project = ov.slug;
+  }
   $("srcExport").hidden = fork || !ov.exportable;
   $("srcWhen").textContent = !fork && ex ? `exported ${since(ex.t)}` : "";
   if (fork) {
@@ -2378,12 +2487,17 @@ function renderSource(ov) {
     return;
   }
   $("srcText").innerHTML = `decomp.wtf writes a complete decompilation project: the matched functions as ${ov.compiler?.language === "c++" ? "C++" : "C"}, everything else as assembly, a linker script and <code>build.py</code>. Then it builds it to prove it rebuilds your game <b>byte for byte</b>. It's the base for ports and mods; game code and data stay out of git, so the tree is safe to put in a repository.`;
-  if (isAssembly(ov)) $("srcText").textContent = `Export editable RGBDS assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base ROM. Every saved match is checked again, then the complete ROM must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.`;
+  if (ov.disc) $("srcText").innerHTML += ov.disc.supported
+    ? ` The complete PlayStation disc is checked too, including ${ov.disc.programs} rebuilt program files. Disc layout, other files and audio are preserved from your copy.`
+    : ` Program payload export only: ${esc(ov.disc.reason)}.`;
+  if (ov.disc_set) $("srcText").innerHTML += ` Export creates one source project for all ${ov.disc_set.discs.length} discs of ${esc(ov.disc_set.title)}, with shared recovered source and one build command.`;
+  if (isAssembly(ov)) $("srcText").textContent = `Export editable ${isBankedAssembly(ov) ? "RGBDS" : "GNU"} assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base image. Every saved match is checked again, then the ${ov.scope === "apploader" ? "executable apploader" : "complete ROM"} must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.${ov.scope === "apploader" ? " The disc container is not rebuilt." : ""}`;
   const stale = ex && ex.matched != null && ex.matched < ov.matched;
   $("srcState").innerHTML = !ex ? `<span class="muted small">Not exported yet.</span>`
     : `<div class="src-line ${ex.identical === false ? "bad" : "ok"}">${ex.identical === false ? "✕ the last rebuild differed" : "✓ rebuilds byte for byte"}</div>
        <div class="src-line">${ex.matched != null ? `${ex.matched.toLocaleString()} of ${ex.functions.toLocaleString()} ${isAssembly(ov) ? "ranges in verified assembly" : `functions in ${ex.language === "c++" ? "C++" : "C"}`}` : ""}${stale ? ` · <b>${ov.matched - ex.matched} new matches since</b>` : ""}</div>
-       ${ex.path ? `<div class="src-line">${esc(ex.path)}</div>` : ""}`;
+       ${ex.path ? `<div class="src-line">${esc(ex.path)}</div>` : ""}
+       ${ex.archive && ex.identical ? `<a class="button" href="/api/export/archive?slug=${encodeURIComponent(S.slug)}">Download combined ZIP</a>` : ""}`;
   $("srcExport").textContent = ex ? "Export again" : "Export project";
 }
 $("srcOpen").onclick = () => openFolder();
@@ -2392,15 +2506,37 @@ $("srcExport").onclick = async () => {
   $("expLog").hidden = false;
   $("expResult").innerHTML = "";
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug } });
+    const format = $("srcFormatRow").hidden ? "matching" : $("srcFormat").value;
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format } });
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
-      : `<div class="notice room"><span><b>Rebuilds byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+      : `<div class="notice room"><span><b>${r.scope === "disc-set" ? "All discs rebuild" : r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+    if (r.archive && r.identical) $("expResult").innerHTML += `<a class="button" href="/api/export/archive?slug=${encodeURIComponent(S.slug)}">Download combined ZIP</a>`;
+    if (r.shiftable) {
+      $("expResult").innerHTML += r.shiftable.ready
+        ? `<div class="notice room"><span>Shiftable code window verified. Use <code>python build.py mod</code> for source changes.</span></div>`
+        : `<div class="notice"><span>Original reconstruction verified; shiftable builds need review: ${esc(r.shiftable.detail.split("\n").filter(Boolean).pop() || "See the export log.")}</span></div>`;
+    }
     wireCopies($("expResult"));
     S.ov = await api(`/api/project?slug=${S.slug}`);
     renderSource(S.ov);
   } catch (e) { toast(esc(e.message), "err"); } finally { $("srcExport").disabled = false; }
+};
+
+$("pcExport").onclick = async () => {
+  const button = $("pcExport");
+  const saveType = $("pcSaveType").value;
+  if (!$("pcSaveRow").hidden && !saveType) return toast("Choose the cartridge save chip for this game.", "err");
+  button.disabled = true;
+  try {
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: saveType || "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value, ps2_profile: $("pcPS2Profile").value.trim() } });
+    const result = await followJob(job);
+    $("expLog").hidden = false;
+    $("expLog").textContent = `PC project: ${result.path}\nIntegrity verified. Host build and gameplay validation are separate.`;
+    toast("Native PC source project generated.");
+  } catch (error) { toast(esc(error.message), "err"); }
+  finally { button.disabled = !S.ov?.outputs?.pc?.available; }
 };
 
 /* ------------------------------------------------------------------ project settings */
@@ -2411,7 +2547,7 @@ async function renderProjectSettings() {
   $("compilerPanel").hidden = fork || isAssembly(ov);
   if (!fork && !isAssembly(ov)) {
     if (!S.st) await loadState();
-    fillCompilers($("setTc"), ov.compiler.toolchain, { n64: "N64", psx: "PS1", ps2: "PS2", gba: "GBA" }[ov.platform]);
+    fillCompilers($("setTc"), ov.compiler.toolchain, { psx: "PS1", ps2: "PS2", gba: "GBA" }[ov.platform]);
     $("setFlags").value = ov.compiler.flags.join(" ");
   }
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
@@ -2506,7 +2642,7 @@ function renderAgentsPage() {
     if (cancel) cancel.onclick = () => { S.addingEndpoint = false; renderAgentsPage(); };
   });
   if ($("epAdd")) $("epAdd").onclick = () => { S.addingEndpoint = true; renderAgentsPage(); };
-  $("mcpBox").innerHTML = `<p class="muted small">Connect the agent you talk to, once. Then ask it in your terminal: <i>“decompile my game at ~/roms/game.z64”</i>. It imports it, opens this view and works with every tool here.</p>
+  $("mcpBox").innerHTML = `<p class="muted small">Connect the agent you talk to, once. Then ask it in your terminal: <i>“decompile my game at ~/roms/game.nds”</i>. It imports it, opens this view and works with every tool here.</p>
     <div class="setup-group" id="mcpRows"><p class="muted small">Looking…</p></div>
     <p class="col-title">Any other MCP client (Cursor, Claude Desktop, Windsurf…)</p><pre class="code" id="mcpJson"></pre>
     <p class="col-title">A client that connects by URL (HTTP MCP)</p>
@@ -2525,7 +2661,7 @@ function renderAgentsPage() {
 $("agRefresh").onclick = showAgentsPage;
 
 /* ------------------------------------------------------------------ compilers & tools page */
-const TOOL_GROUPS = [["", "All"], ["N64", "N64"], ["PS1", "PS1"], ["PS2", "PS2"], ["GBA", "GBA"], ["cw", "GameCube, Wii, DS"], ["tool", "Tools"]];
+const TOOL_GROUPS = [["", "All"], ["PS1", "PS1"], ["PS2", "PS2"], ["GBA", "GBA"], ["cw", "DS"], ["tool", "Tools"]];
 let toolFilter = "";
 async function showToolsPage() {
   show("toolsPage");

@@ -1,4 +1,4 @@
-"""Work out what the user picked: an N64 ROM, a PlayStation executable, or a PlayStation disc image."""
+"""Identify supported cartridges, PlayStation executables and disc images."""
 
 from __future__ import annotations
 
@@ -7,22 +7,23 @@ from dataclasses import dataclass, field
 import struct
 from pathlib import Path
 
-from . import chd, gb, gba, n64, overlays, ps2, psx
-from .n64 import RomError
+from . import chd, gb, gba, overlays, ps2, psx
+from .. import platforms
+from .errors import RomError
 
-PLATFORMS = {"n64": "Nintendo 64", "psx": "PlayStation", "ps2": "PlayStation 2", "gba": "Game Boy Advance",
-             "gb": "Game Boy", "gbc": "Game Boy Color"}
+PLATFORMS = platforms.NAMES
 SMALL = 64 * 1024 * 1024  # ROMs and programs are read whole; disc images are read from disk
 
 
 @dataclass
 class Picked:
-    platform: str  # n64 | psx | ps2
-    data: bytes  # what we split: a z64 ROM, a PS-X EXE or a PS2 ELF
+    platform: str
+    data: bytes  # the supported cartridge image, PS-X EXE or PS2 ELF to split
     filename: str  # name to store it under in the project folder
     info: dict
     big_endian: bool
     overlays: list = field(default_factory=list)  # (name, bytes, load address): code in other files on the disc
+    disc: dict | None = None  # PS1 full-disc reconstruction provenance, or an explicit unsupported reason
 
 
 def _program(data: bytes, name: str = "") -> Picked | None:
@@ -37,9 +38,7 @@ def _program(data: bytes, name: str = "") -> Picked | None:
         return Picked(info["platform"], data, "rom." + info["platform"], info, False)
     if gba.is_gba(data):
         return Picked("gba", data, "rom.gba", gba.read_info(data), False)
-    if data[:4] in n64.MAGIC:
-        rom, info = n64.read_info(data)
-        return Picked("n64", rom, "rom.z64", info.to_dict() | {"platform": "n64", "gp": 0}, True)
+    platforms.require(platforms.removed_input(data[:0x440], len(data)), RomError)
     if data[:8] == b"PS-X EXE":
         exe, info = psx.read_exe(data, name)
         return Picked("psx", exe, "game.exe", info, False)
@@ -54,15 +53,34 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
     if isinstance(src, (str, Path)):
         path = Path(src)
         name = name or path.name
-        if path.stat().st_size <= SMALL:
-            return identify(path.read_bytes(), name)
+        with path.open('rb') as source:
+            platforms.require(platforms.removed_input(source.read(0x440), path.stat().st_size), RomError)
+        if path.suffix.lower() == ".cue":
+            from . import psx_media
+            media = psx_media.cue(path)
+            primary = psx_media.inside(path.parent, media["primary"])
+            with psx_media.decoded(primary, media) as source:
+                picked = _from_disc(source)
+            if picked.platform != "psx":
+                raise RomError("CUE track-set matching currently requires a PS1 disc")
+            if picked.disc.get("supported") and (picked.disc["sector_size"] != media["sector_size"] or
+                    picked.disc["skip"] != {"MODE1/2048": 0, "MODE1/2352": 16, "MODE2/2352": 24}[media["mode"]]):
+                raise RomError("the CUE data-track mode disagrees with its disc sectors")
+            picked.disc = psx_media.wrap(picked.disc, primary, media)
+            return picked
         with open(path, "rb") as f:
             head = f.read(8)
         if chd.is_chd(head):  # a compressed disc image: read in place, a hunk at a time
             with chd.Chd(path) as disc:
                 if psx.is_disc(disc):
-                    return _from_disc(disc)
+                    picked = _from_disc(disc)
+                    if picked.platform == "psx":
+                        from .psx_media import wrap
+                        picked.disc = wrap(picked.disc, path, {"kind": "chd", "companions": []})
+                    return picked
             raise RomError("this CHD doesn't hold a PlayStation disc this app can read")
+        if path.stat().st_size <= SMALL:
+            return identify(path.read_bytes(), name)
         with open(path, "rb") as f:
             if psx.is_disc(f):
                 return _from_disc(f)
@@ -74,13 +92,13 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
         return _from_disc(src)
     if src[:4] == b"\x7fELF":
         raise RomError("this ELF program isn't for a console decomp.wtf can split from scratch yet")
-    raise RomError("this isn't a ROM, disc or game program this app can read: pick an N64 ROM (.z64, .n64, .v64), "
-                   "a PlayStation 1 or 2 disc image (.bin, .iso, .chd) or its program file (e.g. SLUS_200.00)")
+    raise RomError("pick a supported DS/GBA/GB/GBC ROM, a PlayStation 1 or 2 disc image "
+                   "(.bin, .iso, .chd) or its program file")
 
 
 def _from_disc(src) -> Picked:
     raw, boot, platform = psx.from_disc(src)
-    picked = _program(raw, boot)
+    picked = _program(raw, boot.rsplit("/", 1)[-1])
     if picked is None:
         raise RomError(f"the disc's program {boot} isn't a PlayStation executable this app can read")
     if picked.platform == "psx":
@@ -88,8 +106,15 @@ def _from_disc(src) -> Picked:
     else:
         segs = overlays._elf_segments(raw) or []
         main = (min((a for a, _ in segs), default=0), max((a + len(d) for a, d in segs), default=0))
+    sources, warning = {}, None
     try:
-        picked.overlays = overlays.find(psx._Disc(src), boot, picked.platform, main)
+        picked.overlays = overlays.find(psx._Disc(src), boot, picked.platform, main, sources=sources)
     except (RomError, struct.error, IndexError):  # an odd disc: the program alone still works
         picked.overlays = []
+        warning = "the disc filesystem could not be fully inventoried; only the boot program was imported"
+    if picked.platform == "psx":
+        from .psx_disc import describe
+        picked.disc = describe(src, boot, picked.data, picked.overlays, sources)
+        if warning:
+            picked.disc.update(supported=False, reason=warning)
     return picked

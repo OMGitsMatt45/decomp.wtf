@@ -25,15 +25,15 @@ def main():
         command = archive.read(prefix + "windows.cmd")
         assert b"\r\n" in command and b"\n" not in command.replace(b"\r\n", b""), "Windows launcher needs CRLF"
         assert archive.read(prefix + "site/public/install.ps1")
-        assert archive.read(prefix + "native/n64/n64.cpp")
+        assert archive.read(prefix + "src/decompnet/pc.py")
     with tempfile.TemporaryDirectory(prefix="decomp-release-") as temporary:
         work = Path(temporary)
         environment = {**os.environ, "DECOMP_HOME": str(work / "home"), "DECOMP_UPDATES": "off", "DECOMP_RUNTIME": "native"}
         # Preserve the virtualenv executable: resolving its symlink runs base Python.
         python = str(args.python.absolute())
-        code = ("import decompnet; from decompnet.rom import n64; "
+        code = ("import decompnet; from decompnet import pc; "
                 f"assert decompnet.__version__ == {args.version!r}; "
-                "assert n64.to_z64(bytes.fromhex('80371240'))[1] == 'z64'; "
+                "assert pc.status('nds')['first_platform'] == 'nds'; "
                 "from decompnet.app import cli; from decompnet import toolchains; "
                 "assert toolchains.current_platform() in ('windows-x86_64','linux-x86_64'); print('installed package and native analyzer OK')")
         subprocess.run([python, "-I", "-c", code], cwd=work, env=environment, check=True, timeout=30)

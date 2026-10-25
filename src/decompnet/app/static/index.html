@@ -53,9 +53,9 @@
 <main id="home" class="view" hidden>
   <section class="hero">
     <div class="hero-text">
-      <p class="eyebrow">Matching decompilation</p>
+      <p class="eyebrow">DS-first PC-output development</p>
       <h1>Pick your game.<br>Your agents turn it into C.</h1>
-      <p class="lede">N64, PlayStation 1 and 2, GameCube, Wii, Game Boy Advance and DS from scratch, or any public decomp. Every function is checked against your copy, byte for byte, and the result rebuilds your game: the base for ports and mods.</p>
+      <p class="lede">Generate native DS and PS1 PC source projects with adaptive GPU rendering, or import games for source recovery and console reconstruction.</p>
       <ol class="how">
         <li><b>Drop your game</b><span>decomp.wtf finds every function and the compiler</span></li>
         <li><b>Free matches first</b><span>the autopilot tries a machine draft of each one</span></li>
@@ -68,7 +68,7 @@
         <div class="cart" aria-hidden="true"><span></span></div>
         <p class="drop-title">Drop a game here</p>
         <p class="muted small">ROM, disc image or program file · or <span class="link">choose a file</span></p>
-        <div class="plat-row" id="platRow"><span data-p="gc">GameCube</span><span data-p="wii">Wii</span><span data-p="n64">N64</span><span data-p="psx">PS1</span><span data-p="ps2">PS2</span><span data-p="gba">GBA</span><span data-p="nds">DS</span></div>
+        <div class="plat-row" id="platRow"><span data-p="psx">PS1</span><span data-p="ps2">PS2</span><span data-p="gba">GBA</span><span data-p="nds">DS</span></div>
         <p class="plat-legend muted small" id="platLegend" hidden><span class="rec-mark">★</span> recommended: the most tested path to a full decomp you can port and mod · the rest are beta</p>
         <button class="link-btn" id="pathPick" type="button">Big disc? Use its path instead</button>
       </div>
@@ -84,6 +84,16 @@
           <label class="field grow"><span>Compiler</span><select id="compilerPick"></select></label>
         </div>
         <p class="muted small" id="compilerNote" hidden></p>
+        <label class="field" id="dsOutputRow" hidden><span>Output</span><select id="dsOutput"><option value="pc">Native PC source project (experimental)</option><option value="matching">Matching console reconstruction</option></select><small>PC output creates an editable C/C++ project with GPU graphics, audio and saves. PS1 runtime terms are noncommercial. PS2 runtime sources use GPL-3.0.</small></label>
+        <label class="field" id="ps2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ps2Profile" class="mono" placeholder="Optional local path to the game's profile.json"><small>Needed when automatic recovery cannot resolve the game. Bundled maps are selected automatically; custom maps must match your original input.</small></label>
+        <label class="field" id="psxAdditionalDiscsRow" hidden><span>Additional PS1 discs, in order</span><textarea id="psxAdditionalDiscs" rows="2" placeholder="One local path per line, starting with disc 2"></textarea><small>All discs share one PC project and memory cards. Use the path option for CUE sheets, companion tracks or M3U playlists.</small></label>
+        <label class="field" id="dsInputRow" hidden><span>DS ROM format</span><select id="dsInputFormat"><option value="auto">Detect automatically</option><option value="decrypted">Already decrypted for an emulator</option></select></label>
+        <label class="field" id="dsSaveRow" hidden><span>Cartridge save chip</span><select id="dsSaveType"></select><small>Use the chip for this game. A wrong size can prevent saving; existing emulator saves often reveal the size.</small></label>
+        <div id="dsVideoRows" hidden>
+          <label class="field"><span>PC rendering</span><select id="dsRenderer"><option value="auto">GPU when available (OpenGL 3.3)</option><option value="opengl">Require GPU rendering</option><option value="software">Original software rendering</option></select><small>3D geometry renders at the window or fullscreen resolution; text and sprites retain their pixels.</small></label>
+          <label class="field" id="dsScreenRow"><span>PC picture</span><select id="dsScreenMode"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera (experimental)</option></select><small>Extends one scene across the picture. Menus and unsupported scenes retain both screens. F6 switches views in the PC build.</small></label>
+        </div>
+        <label class="field" id="romLayoutRow" hidden><span>Reviewed PS1 layout (optional)</span><input id="romLayoutFile" type="file" accept=".json,application/json"><small>Use known load addresses and module boundaries from your analysis.</small></label>
         <label class="check" id="mwConsent" hidden><input type="checkbox" id="mwAccept"><span id="mwText"></span></label>
         <div class="row">
           <button class="primary" id="analyse" type="button" disabled>Start decompiling</button>
@@ -118,11 +128,7 @@
       <b>Continue a public decomp</b>
       <span>Paste a community decomp's repository, add your copy, your agents carry on.</span>
     </a>
-    <button class="start-card" id="demoBtn" type="button">
-      <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg></span>
-      <b>Try the demo</b>
-      <span>Demo Quest 64: a small N64 ROM made for this app. Watch it work in a minute.</span>
-    </button>
+
     <button class="start-card" id="askBtn" type="button">
       <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v8H6l-3 2.5V11H2z"/></svg></span>
       <b>Use your own agent</b>
@@ -339,6 +345,16 @@
       <div class="pad">
         <p id="srcText"></p>
         <div class="src-state" id="srcState"></div>
+        <div id="psxDiscSet" hidden></div>
+        <p id="pcOutputStatus" class="muted small"></p>
+        <label class="field" id="pcPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="pcPS2Profile" class="mono" placeholder="Optional local path to profile.json"><small>Needed for unresolved code or callbacks; tied to your original input.</small></label>
+        <label class="field" id="pcSaveRow" hidden><span>PC project's cartridge save chip</span><select id="pcSaveType"></select></label>
+        <div id="pcVideoRows" hidden>
+          <label class="field"><span>PC rendering</span><select id="pcRenderer"><option value="auto">GPU when available (OpenGL 3.3)</option><option value="opengl">Require GPU rendering</option><option value="software">Original software rendering</option></select></label>
+          <label class="field" id="pcScreenRow"><span>PC picture</span><select id="pcScreenMode"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera (experimental)</option></select></label>
+        </div>
+        <label class="field" id="srcFormatRow" hidden><span>Console export format</span><select id="srcFormat"><option value="matching">Matching reconstruction</option></select></label>
+        <button class="ghost" id="pcExport" type="button" disabled>Export native PC project</button>
         <div class="row"><button class="primary" id="srcExport" type="button">Export project</button><button class="ghost" id="srcOpen" type="button">Open folder</button></div>
         <pre class="joblog tall" id="expLog" hidden></pre>
         <div id="expResult"></div>

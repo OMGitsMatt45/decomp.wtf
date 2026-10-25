@@ -28,11 +28,11 @@ import anyio
 from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import __version__, hostenv, toolchains
 from ..network import NetworkError
-from ..rom.n64 import RomError
+from ..rom.errors import RomError
 from . import agents, chat, collab, connect, tools, updates
 from .engine import COMPILERS, MW_VERSIONS, PLATFORM_STATUS, SHORT_NAMES, TOOLS, RomNetwork
 
@@ -261,6 +261,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     build_id = (updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
     manager = agents.Manager(net, home, mcp_url)
     jobs = Jobs(home / "logs" / "decomp.log")
+    reviewed_layouts = {}  # short-lived reviewed metadata, consumed by one import
     settings = Settings(home / "settings.json")
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
 
@@ -384,7 +385,10 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         """(slug, overview or None, why not) for every project. One that can't be read is still listed, with the
         reason: before, one odd project emptied the whole sidebar, or quietly went missing from it."""
         out = []
-        for p in net.store.all("SELECT slug, name FROM projects ORDER BY id DESC"):
+        for p in net.store.all("SELECT slug, name, config FROM projects ORDER BY id DESC"):
+            from .. import platforms
+            if not platforms.enabled(json.loads(p["config"]).get("platform", "")):
+                continue
             try:
                 out.append((p["slug"], net.overview(p["slug"]), ""))
             except Exception as e:  # noqa: BLE001
@@ -404,7 +408,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                 "projects": projects, "toolchains": tcs, "agents": agents.detect(),
                 "api_presets": agents.API_PRESETS, "settings": settings.public(), "mcp_url": mcp_url,
                 "platform_status": PLATFORM_STATUS,
-                "codewarrior": {"installed": toolchains.installed("mwcc") is not None,
+                "pc_output": {p: __import__("decompnet.pc", fromlist=["status"]).status(p) for p in PLATFORM_STATUS},
+                "codewarrior": {"installed": False,
                                 "ds_installed": toolchains.installed("mwccarm") is not None, **MW_VERSIONS}}
 
     def autopilot(slug: str) -> None:
@@ -438,6 +443,24 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     async def api_state(request: Request) -> Response:
         return guard(request) or JSONResponse(await call(state))
 
+    @mcp.custom_route("/api/rom/layout", methods=["POST"])
+    async def api_rom_layout(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        layout = data.get("layout")
+        if not isinstance(layout, dict) or len(json.dumps(layout)) > 1024 * 1024:
+            return fail(ValueError("choose a reviewed PS1 layout JSON file smaller than 1 MiB"))
+        now = time.monotonic()
+        for key, (created, _) in list(reviewed_layouts.items()):
+            if now - created > 900:
+                del reviewed_layouts[key]
+        if len(reviewed_layouts) >= 32:
+            del reviewed_layouts[next(iter(reviewed_layouts))]
+        token = uuid.uuid4().hex
+        reviewed_layouts[token] = (now, layout)
+        return JSONResponse({"id": token})
+
     @mcp.custom_route("/api/import", methods=["POST"])
     async def api_import(request: Request) -> Response:
         """A game the user owns: the demo, an upload streamed to disk (discs are gigabytes), or a local path."""
@@ -445,11 +468,15 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return bad
         q = request.query_params
         toolchain = q.get("toolchain") or None
+        layout = None
+        layout_token = q.get("reviewed_layout")
+        if layout_token:
+            pending = reviewed_layouts.pop(layout_token, None)
+            if pending is None or time.monotonic() - pending[0] > 900:
+                return fail(ValueError("the reviewed layout expired; select it again"))
+            layout = pending[1]
         if q.get("demo") == "1":
-            game: bytes | Path | None = _static("demo/demo-quest-64.z64")
-            if game is None:
-                return fail(ValueError("the demo ROM is missing from this install"))
-            name = "demo-quest-64.z64"
+            return fail(ValueError("The N64 demo was removed. Use the preserved main branch in PR #27."))
         else:
             if q.get("confirmed") != "1":
                 return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
@@ -482,7 +509,29 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
         def work(log):
             try:
-                slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name, log=log)
+                if q.get('output') == 'pc':
+                    if layout is not None or toolchain:
+                        raise NetworkError('Native PC output does not use a matching console compiler or reconstruction layout')
+                    from .. import pc
+                    target=q.get('pc_platform') or pc.input_platform(game)
+                    if target=='ps2':
+                        profile=hostenv.local_path(q['ps2_profile']) if q.get('ps2_profile') else None
+                        return net.generate_ps2_pc(game,confirmed=True,profile=profile,renderer=q.get('renderer','auto'),log=log)
+                    if target=='psx':
+                        try:extra=json.loads(q.get('discs','[]'))
+                        except (TypeError,ValueError):raise NetworkError('additional discs must be an ordered list of paths')
+                        if not isinstance(extra,list) or len(extra)>15 or any(not isinstance(path,str) for path in extra):
+                            raise NetworkError('provide up to fifteen additional disc paths in order')
+                        paths=[game,*[hostenv.local_path(path) for path in extra]]
+                        return net.generate_psx_pc(paths,confirmed=True,renderer=q.get('renderer','auto'),log=log)
+                    if target!='nds':raise NetworkError('native PC generation is available for DS, PS1 and experimental PS2 projects')
+                    return net.generate_ds_pc(game,confirmed=True,input_format=q.get('ds_input_format','auto'),
+                                              save_type=q.get('save_type','auto'),renderer=q.get('renderer','auto'),
+                                              screen_mode=q.get('screen_mode','dual'),log=log)
+                if q.get('output','matching') != 'matching':
+                    raise NetworkError('choose matching console reconstruction or pc output')
+                slug = net.import_rom(game, toolchain=toolchain, confirmed=True, name=name,
+                                      ds_input_format=q.get("ds_input_format", "auto"), reviewed_layout=layout, log=log)
             finally:
                 if uploaded:
                     shutil.rmtree(game.parent, ignore_errors=True)
@@ -545,6 +594,24 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     # ------------------------------------------------------------------ projects
 
+    @mcp.custom_route("/api/export/archive", methods=["GET"])
+    async def export_archive(request: Request) -> Response:
+        if bad := guard(request):
+            return bad
+        try:
+            proj = net.project_row(request.query_params.get("slug", ""))
+            cfg = net.cfg(proj)
+            from ..rom.psx_set import members
+            rows = members(net, cfg.get("psx_disc_set") or {})
+            expected = Path(rows[0][0]["root"]) / "source-set.zip"
+            saved = cfg.get("export") or {}
+            if not saved.get("identical") or saved.get("disc_set_id") != cfg["psx_disc_set"]["id"] or \
+                    saved.get("archive") != str(expected) or not expected.is_file() or expected.is_symlink():
+                return fail(ValueError("export and verify this combined game before downloading its ZIP"), 404)
+            return FileResponse(expected, media_type="application/zip", filename="ps1-source-project.zip")
+        except (NetworkError, ValueError, KeyError, OSError) as error:
+            return fail(error)
+
     def with_project(fn):
         async def handler(request: Request) -> Response:
             if (bad := guard(request, write=request.method == "POST")):
@@ -573,12 +640,18 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return out
 
     def p_compiler(slug, request, data):
-        net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None)
+        if data.get("function"):
+            net.set_function_compiler(slug, str(data["function"]), data.get("profile"))
+        else:
+            net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None)
         return net.overview(slug)
 
     def p_export(slug, request, data):
         def work(log):
-            res = net.export_rom(slug, log=log)
+            res = net.export_rom(slug, format=str(data.get("format", "matching")),
+                                 save_type=str(data.get('save_type','auto')),renderer=str(data.get('renderer','auto')),
+                                 screen_mode=str(data.get('screen_mode','dual')),
+                                 ps2_profile=hostenv.local_path(str(data['ps2_profile'])) if data.get('ps2_profile') else None,log=log)
             return {k: v for k, v in res.items() if k != "log"} | {"log": res.get("log", "")[-1500:]}
         return {"job": jobs.start("export", work)}
 
@@ -649,6 +722,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
         "/api/compiler": (p_compiler, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
+        "/api/psx/disc-set": (lambda s, r, d: net.set_psx_disc_set(s, d.get("projects"), d.get("title", "")), ["POST"]),
         "/api/delete": (p_delete, ["POST"]), "/api/agents/manual": (p_manual, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]),
@@ -781,18 +855,6 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         except NetworkError as e:
             return fail(e)
         return JSONResponse({"job": jobs.start("rom-check", lambda log: net.forks.check_rom(slug, log=log))})
-
-    @mcp.custom_route("/api/fork/start-files", methods=["POST"])
-    async def api_fork_start_files(request: Request) -> Response:
-        """Give the code no source file covers source files (dtk-template projects), verified by the game's checksum."""
-        if (bad := guard(request, write=True)):
-            return bad
-        slug = str((await body(request)).get("slug", ""))
-        try:
-            fork_of(slug)
-        except NetworkError as e:
-            return fail(e)
-        return JSONResponse({"job": jobs.start("fork-start-files", lambda log: net.forks.start_files(slug, log=log))})
 
     mcp.custom_route("/api/fork/needs", methods=["GET"])(with_project(lambda s, r, d: net.forks.needs(fork_of(s)["slug"])))
 

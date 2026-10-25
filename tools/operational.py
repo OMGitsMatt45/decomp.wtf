@@ -1,27 +1,37 @@
 """Prepare the real toolchains and original homebrew fixtures used by the full CI suite."""
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
 
 from decompnet import toolchains
 
-TOOLS = ("gcc-2.7.2-kmc", "gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96", "ido-5.3", "ido-7.1",
-         "arm-gnu", "agbcc", "m2c", "luvdis", "binutils-mips", "gc-wii-binutils", "objdiff-cli", "dtk",
-         "sjiswrap", "dtk-template", "mwcc", "mwccarm", "dsd", "cloudflared", "coddog", "maspsx", "ghidra")
+TOOLS = ("gcc-2.7.2-psx", "gcc-2.8.1-psx", "ee-gcc-2.96",
+         "arm-gnu", "binutils-arm", "agbcc", "m2c", "luvdis", "binutils-mips", "objdiff-cli",
+         "mwccarm", "dsd", "cloudflared", "coddog", "maspsx", "ghidra")
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--ds-only", action="store_true", help="prepare the native Nintendo DS qualification")
+    scope.add_argument("--psx-only", action="store_true", help="prepare native PS1 C/C++ and disc qualification")
+    args = parser.parse_args()
+    selected = (("gcc-2.7.2-psx", "gcc-2.8.1-psx", "binutils-mips", "m2c", "maspsx") if args.psx_only else
+                ("arm-gnu", "mwccarm", "dsd", "objdiff-cli", "m2c") if args.ds_only else TOOLS)
+    fixtures = ("zlib-n64/prepare.py", "demo-psx/build.py") if args.psx_only else ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
+        "zlib-n64/prepare.py", "demo-psx/build.py", "demo-ps2/build.py",
+        "demo-gba/build.py", "demo-ds/build.py")
     try:
-        for tid in TOOLS:
+        for tid in selected:
             toolchains.install(tid, accept_license=True)
             if sys.platform == "win32" and toolchains.get(tid).via_wsl:
                 raise RuntimeError(f"{tid} unexpectedly selected WSL")
-        if toolchains.get("wibo").supported:
+        if not args.psx_only and toolchains.get("wibo").supported:
             toolchains.install("wibo")
         root = Path(__file__).resolve().parents[1]
-        for script in ("zlib-n64/prepare.py", "demo-rom/build.py", "demo-psx/build.py", "demo-ps2/build.py",
-                       "demo-gba/build.py", "demo-ds/build.py", "demo-gc/build.py"):
+        for script in fixtures:
             result = subprocess.run([sys.executable, str(root / "projects" / script)], capture_output=True,
                                     text=True, encoding="utf-8", errors="replace", timeout=600)
             if result.returncode:

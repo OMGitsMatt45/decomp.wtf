@@ -1,0 +1,39 @@
+name: PC-output foundation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['src/**', 'tests/**', 'pyproject.toml', 'uv.lock', '.github/workflows/pc-foundation.yml']
+  push:
+    branches: [codex/pc-output-foundation]
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      DECOMP_RUNTIME: native
+      DECOMP_UPDATES: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Check remaining platform gates and build/execute the host output fixture
+        run: >-
+          uv run --no-sync python -m pytest -q
+          tests/test_platform_scope.py tests/test_pc_output.py tests/test_native_threads.py tests/test_input_layouts.py
+          --junitxml=pc-foundation-results.xml
+      - name: Check browser JavaScript syntax
+        run: node --check src/decompnet/app/static/app.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pc-foundation-${{ matrix.os }}
+          path: pc-foundation-results.xml

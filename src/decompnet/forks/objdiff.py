@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -40,8 +41,13 @@ def judge_options(project_options: dict | None = None, unit_options: dict | None
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 600) -> str:
-    res = subprocess.run([_exe(), "--no-color", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                         encoding="utf-8", errors="replace")
+    env = dict(os.environ)
+    env.setdefault("RAYON_NUM_THREADS", str(min(8, os.cpu_count() or 2)))
+    try:
+        res = subprocess.run([_exe(), "--no-color", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                             encoding="utf-8", errors="replace", env=env)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ObjdiffError(f"could not run objdiff-cli: {e}") from e
     if res.returncode != 0:
         raise ObjdiffError((res.stderr or res.stdout).strip()[-1500:] or f"objdiff-cli exited with {res.returncode}")
     return res.stdout
@@ -83,12 +89,15 @@ class FunctionDiff:
     # them, but the game's link resolves names, so they're worth fixing before the code goes upstream
     renamed: list[tuple[str, str]] = field(default_factory=list)
     literals: list = field(default_factory=list)  # literals.Mismatch: constants that differ although the code matches
+    raw_difference: str = ""
 
     @property
     def matched(self) -> bool:
-        return self.match_percent is not None and self.match_percent >= 100.0 and not self.literals
+        return self.match_percent is not None and self.match_percent >= 100.0 and not self.literals and not self.raw_difference
 
     def literals_note(self) -> str:
+        if self.raw_difference:
+            return self.raw_difference
         if not self.literals:
             return ""
         listing = "\n".join(f"- {m.describe()}" for m in self.literals[:6])
@@ -101,8 +110,9 @@ class FunctionDiff:
     def render(self, context: int = 2, max_rows: int = 60) -> str:
         from ..scoring import render_rows
 
-        return render_rows(self.rows, context, max_rows, legend="markers: |=different instruction i=operand differs "
+        text = render_rows(self.rows, context, max_rows, legend="markers: |=different instruction i=operand differs "
                            "<=missing (target only) >=extra (yours only)")
+        return text + ("\n" + self.raw_difference if self.raw_difference else "")
 
 
 def _sym(obj: dict | None, name: str) -> dict | None:
@@ -176,7 +186,12 @@ def diff(target: Path | None, base: Path | None, symbol: str | None, cwd: Path, 
     if right is not None and pct is None:
         pct = 100.0 if all(m == " " for m, _, _ in rows) else 0.0
     built = {s.get("name") for s in (data.get("right") or {}).get("symbols", [])}
-    funcs = [s for s in (data.get("left") or {}).get("symbols", []) if s.get("kind") == "SYMBOL_FUNCTION"]
+    # PSY-Q objects can carry code symbols as OBJECT/NOTYPE. objdiff still
+    # disassembles them, and its progress report counts them as functions.
+    # Include that code so ordering and matched-source guards use the same facts.
+    funcs = [s for s in (data.get("left") or {}).get("symbols", [])
+             if s.get("kind") == "SYMBOL_FUNCTION" or
+             (s.get("kind") != "SYMBOL_SECTION" and s.get("instructions"))]
     scores = {s["name"]: (float(s["match_percent"]) if s.get("match_percent") is not None and s["name"] in built else None)
               for s in funcs}
     order = [s["name"] for s in sorted(funcs, key=lambda s: int(s.get("address") or 0))]
