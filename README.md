@@ -162,12 +162,32 @@ be mapped automatically; ambiguous code and external callbacks need a reviewed
 map. Windows/Linux qualification and retail acceptance are
 reported separately; source generation alone does not certify a working port.
 
-To validate PS2 output on your Windows GPU, run
-`uv run --locked --group dev --python 3.12 python -m tools.qualify_ps2_hardware "$env:TEMP\decomp-ps2-gpu"`
-in PowerShell from this repository, choosing a new output folder for each run. Install
-[uv](https://docs.astral.sh/uv/getting-started/installation/),
+To validate PS2 output on your Windows GPU, first install
 [CMake](https://cmake.org/download/) and
-[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/).
+[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/)
+with **Desktop development with C++**. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) from PowerShell:
+
+```powershell
+winget install --id astral-sh.uv --exact
+```
+
+Close and reopen PowerShell so it sees the updated PATH, then open this repository
+folder and run:
+
+```powershell
+.\tools\qualify-ps2-hardware.ps1
+```
+
+The wrapper also finds uv in its standard user install folders if PATH has not
+refreshed, and chooses a new output folder for each run. For a custom folder:
+
+```powershell
+.\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\decomp-ps2-gpu-my-test"
+```
+
+If PowerShell reports `uv is not recognized`, the test has not started; install uv
+and reopen the shell. If WinGet is unavailable, use the linked official uv installer.
 The command uses an original test program and reports the actual Vulkan device
 class; software/virtual rendering does not count as physical-GPU validation.
 
