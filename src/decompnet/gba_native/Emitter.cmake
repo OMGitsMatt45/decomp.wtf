@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.20)
+project(GbaEmitter VERSION 0.3.0 LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+  add_compile_options(/utf-8 /Zc:__cplusplus /permissive-)
+endif()
+include(FetchContent)
+FetchContent_Declare(tomlplusplus
+  URL https://raw.githubusercontent.com/marzer/tomlplusplus/v3.4.0/toml.hpp
+  URL_HASH SHA256=6b5172ad4dd6519aec67b919181fa7a38a2234131e5b2afa232dfe444819783e
+  DOWNLOAD_NO_EXTRACT TRUE)
+FetchContent_MakeAvailable(tomlplusplus)
+add_library(tomlplusplus INTERFACE)
+target_include_directories(tomlplusplus SYSTEM INTERFACE "${tomlplusplus_SOURCE_DIR}")
+add_library(tomlplusplus::tomlplusplus ALIAS tomlplusplus)
+function(anygba_configure_target target)
+endfunction()
+add_subdirectory("${GBA_SDK}/common" common)
+add_subdirectory("${GBA_SDK}/tools/recomp" recomp)

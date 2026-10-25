@@ -13,6 +13,15 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    gba_inspect = actions.add_parser('gba-inspect', help='validate a GBA cartridge and identify its exact revision')
+    gba_inspect.add_argument('input', type=Path)
+    gba = actions.add_parser('gba-probe', help='headless GBA native C/C++ development probe; GPU/game output is pending')
+    gba.add_argument('input', type=Path)
+    gba.add_argument('output', type=Path)
+    gba.add_argument('--profile', type=Path, help='input-bound code entries and ROM-to-RAM code mappings')
+    gba.add_argument('--save-type', choices=('auto','none','sram','flash64','flash128','eeprom','eeprom512','eeprom8k'), default='auto')
+    gba.add_argument('--rtc', choices=('auto','on','off'), default='auto')
+    gba.add_argument('--experimental', action='store_true', required=True)
     ps2_inspect = actions.add_parser('ps2-inspect', help='inspect a PS2 ISO/BIN or EE ELF without running or exporting it')
     ps2_inspect.add_argument('input', type=Path)
     ps2_inspect.add_argument('--quick', action='store_true', help='skip whole-image SHA-256; does not verify full input identity')
@@ -51,7 +60,13 @@ def add_parser(sub):
 
 def run(args):
     try:
-        if args.pc_action == 'ps2-inspect':
+        if args.pc_action == 'gba-inspect':
+            from .gba_native import inspect
+            result = inspect(args.input)
+        elif args.pc_action == 'gba-probe':
+            from .gba_native import export
+            result = export(args.input, args.output, profile=args.profile, save_type=args.save_type, rtc=args.rtc)
+        elif args.pc_action == 'ps2-inspect':
             from .ps2_native.media import inspect
             result = inspect(args.input, hash_input=not args.quick, discover_code=args.discover_code)
         elif args.pc_action == 'ps2-native':

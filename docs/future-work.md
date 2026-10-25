@@ -72,8 +72,10 @@ export builds and reaches its settings prompt through the generic host. Its
 optional exact-hash profile contains code maps and SDK bindings, with no game
 instructions or assets. Full playthrough acceptance remains with the user;
 untested games still need reviewed maps and compatibility validation.
-GBA follows with a separate backend;
-reuse existing Pokémon source projects and suitable recompiler/runtime projects.
+GBA work is active in [PR6](future/gba.md): a pinned ARM/Thumb translator and
+source-shipped hardware probe build independent C/C++ projects. Desktop/GPU
+presentation, app game-export registration and retail qualification remain pending;
+matching Pokémon source projects supply optional analysis references.
 3DS and Switch remain planned and need import
 and runtime integration as well. GB/GBC retains its assembly workbench; native PC
 output is additional work. Other console plans are deferred.

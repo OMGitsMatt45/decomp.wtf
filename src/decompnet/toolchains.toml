@@ -381,6 +381,18 @@ sha256 = "3376c1bf0509ca7045e92d0673ecbc9245084e017ffaa66d954c77519972d171"
 subdir = "psxrecomp-31df2e1e0e0a6525733e68ff70e72ecbef84bb09"
 platforms = ["linux-x86_64", "windows-x86_64"]
 
+[anygba-sdk]
+name = "GBA static translator and hardware core sources"
+kind = "tool"
+license = "MIT"
+source = "hoanglt1223/anygba a3eb412f79627eaae27e2523039d893f72dada1d"
+description = "Experimental ARMv4T C emitter and GBA hardware core. Current integration emits headless development probes; GPU PC-game output is not qualified. No ROM or Nintendo BIOS."
+[[anygba-sdk.parts]]
+url = "https://codeload.github.com/hoanglt1223/anygba/tar.gz/a3eb412f79627eaae27e2523039d893f72dada1d"
+sha256 = "4d5e525a054502f68dd4d9f0654927af81c8732e9972f80d76e5c87a7a04f159"
+subdir = "anygba-a3eb412f79627eaae27e2523039d893f72dada1d"
+platforms = ["linux-x86_64", "windows-x86_64"]
+
 [dsr-sdk]
 name = "DS static runtime and recompiler sources"
 kind = "tool"

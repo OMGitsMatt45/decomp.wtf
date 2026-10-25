@@ -1,47 +1,82 @@
-# Future work: Game Boy Advance: integrate the distinct ARM compiler path
+# GBA native PC output — PR6
 
-Status: **draft work plan; implementation is not complete**. Baseline: v0.19.0.
+Status: **implementation in progress; not a finished PC game backend**.
+The goal is the same independent editable repository as DS/PS1/PS2: translated
+game code, source-shipped hardware runtime, a desktop CMake build, adaptive GPU
+presentation, audio, controllers, cartridge saves and explicit compatibility reports.
 
-This PR adds a reviewable work plan. It does not add platform or compiler support.
-Keep it in draft while implementation and the checks below remain unfinished.
+## Implemented foundation
 
-## Current coverage
+- An input-validating `pc gba-inspect` command and experimental `pc gba-probe` exporter.
+- ARMv4T ARM/Thumb discovery and native C translation through pinned MIT
+  [AnyGBA](https://github.com/hoanglt1223/anygba/tree/a3eb412f79627eaae27e2523039d893f72dada1d).
+- An independent C11/C++20 project containing translated code and the hardware core;
+  the user's cartridge is staged privately by a SHA-256-verifying extraction script.
+- Input-bound code profiles for callbacks and ROM-to-RAM code copies. Runtime byte
+  checks prevent modified RAM code from executing stale native instructions.
+- Headless frame/PCM capture, input, RAM observations, raw save persistence and a
+  reference-interpreter mode. Interpreter use is reported and strict mode rejects it.
+- Unsupported BIOS sound/link services fail explicitly; they never silently return success.
+- Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
-Normal and old agbcc Thumb C/C++ backends are implemented and verified on native Windows and Linux. The separate 2.9-arm-000512 compiler is not an integrated application variant.
+The first probe has no desktop window or GPU renderer. Its CPU scanline PPU is a
+reference for the GPU implementation, not fulfillment of the shared presentation
+contract. Accordingly it stays outside registered PC-game backends and the GUI
+does not advertise GBA native-game output yet. No retail ROM has been qualified.
 
-## Existing programs to reuse or qualify
+## Reproduce the development probe
 
-Reuse installed Thumb compilers, Arm GNU preprocessing/assembly, luvdis and m2c. Upstream supplies a Linux ARM C executable; native Windows ARM hosting and an ARM C++ frontend require separate qualification and likely porting.
+Install a host C/C++ compiler and [CMake](https://cmake.org/download/) 3.20 or newer.
+Windows users can use [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
+with **Desktop development with C++**. The source SDK and verified toml++ header
+download automatically on first generation. No original-game compiler is required
+for native translation.
 
-## Work that remains
+```sh
+decomp pc gba-inspect /path/to/your/game.gba
+decomp pc gba-probe /path/to/your/game.gba /new/source-folder --experimental
+cd /new/source-folder
+python tools/extract_assets.py /path/to/your/game.gba
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel 2
+./build/gba_probe --rom assets/game.gba --frames 8 --strict-static
+```
 
-- [ ] Add explicit ARM-mode compiler identity and variant selection without routing it through either Thumb backend.
-- [ ] Qualify a native Windows host of that exact ARM compiler and its corresponding frontend sources before promising C++.
-- [ ] Handle ARM/Thumb transitions, literal pools and branch veneers in analysis, matching and exported layouts.
+Visual Studio puts the executable in `build/Release/gba_probe.exe`. An unprofiled
+retail cartridge can have unresolved callbacks or RAM-installed routines. The
+hybrid probe reports fallback; a bounded run is not a gameplay acceptance test.
 
-## Acceptance checks
+`--profile reviewed.json` accepts schema `decomp.wtf.gba-profile/v1`, the exact
+`input_sha256`, `entries` (`address`, `mode`) and `ram_code` (`rom`, `address`,
+`size`, `mode`). Only aligned code backed by the original input is accepted.
+It does not accept patches, replacement functions or arbitrary host source files.
 
-- [ ] Compare ARM-mode code/data/relocations against the exact original compiler on Linux and Windows.
-- [ ] Cover interworking, halfword-aligned Thumb functions and invalid variant selection.
-- [ ] Keep both existing Thumb C++ pipelines and byte-identical clean ROM exports passing.
-- [ ] Add browser/CLI, claim, failure-reporting and standalone export coverage for any newly enabled workflow.
-- [ ] Keep current required operational suites passing; new platform checks must fail rather than silently skip missing required tools.
+## Remaining PC-game acceptance
 
-## Starting points
+- [ ] Adaptive desktop window, gamepad/keyboard input and paced audio.
+- [ ] Actual GPU rasterization of GBA backgrounds/sprites/effects, compared with the
+  reference PPU, with drawable-resolution sizing and reported software fallback.
+- [ ] Broader timing, save-chip and RTC execution qualification, including Emerald's
+  Flash 128 KiB cartridge and clock. Core presence is not retail proof.
+- [ ] Reviewed import of matching ELF/symbol data and missed indirect/RAM code discovery.
+- [ ] App/GUI/CLI native-game export integration under the shared PC-output contract.
+- [ ] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
+  save/reload, fallback report; eventual full playthrough remains with the owner.
 
-- `src/decompnet/rom/gba.py`
-- `src/decompnet/project.py`
-- `tools/gba_cpp/`
-- `docs/gba-cpp.md`
+## Pokémon references
 
-## References
+[pret/pokeemerald](https://github.com/pret/pokeemerald) reconstructs the original
+Emerald cartridge (documented SHA-1 `f3ae088181bf583e55daf962a92bb46f4f1d07b7`).
+Its function names, code layout and matching ELF can help analysis for that exact
+revision. It builds a GBA ROM; a host runtime is still needed for PC output.
+[pokefirered](https://github.com/pret/pokefirered) offers the same kind of reference
+for its own verified revisions. These title projects are optional references;
+the backend remains a general GBA translator.
 
-- [agbcc](https://github.com/pret/agbcc)
-- [luvdis](https://github.com/aarant/luvdis)
+Gamma Emerald is an Unreal Engine remake. The public
+[Gamma toolkit](https://github.com/StonedModder/gammaEmerald-toolkit) identifies
+Unreal 5.3/5.6 and works with that game's `.pak` files. It can inform presentation
+ideas, but does not provide an original-cartridge ARM/Thumb runtime or general
+GBA decompiler. No Gamma installation or assets are required here.
 
-Upstream links are research and reuse candidates, not a claim that current release
-binaries support both hosts or reproduce a game's original compiler. Verify version,
-license, checksums and actual native execution before registering a tool.
-
-No commercial ROMs, SDK payloads, BIOS files or keys belong in the work-plan branch.
-See the [main roadmap](https://github.com/OMGitsMatt45/decomp.wtf/blob/main/docs/future-work.md).
+Historical agbcc matching/C++ work remains separate in [gba-cpp.md](../gba-cpp.md).

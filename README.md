@@ -1,7 +1,7 @@
 # decomp.wtf
 
 A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS and PS1 have experimental
+PC source repositories for Dragon Quest and Pokémon. **DS, PS1 and PS2 have experimental
 native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
@@ -16,8 +16,8 @@ of current application support.
 | --- | --- | --- |
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
-| PlayStation 2 | EE program/ELF recovery | Backend required |
-| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
+| PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
+| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Native translation/hardware probe](docs/future/gba.md); desktop GPU game output in progress |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
 
@@ -101,7 +101,7 @@ Install the following only for the features you choose:
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
 | [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1. The main application uses Python 3.12+, managed by uv. |
-| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS, 3.24+ for PS1. Also required to generate PS1 C with its automatically built emitter. |
+| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS and GBA probes, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
 | Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1 projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
