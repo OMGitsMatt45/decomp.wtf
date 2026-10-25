@@ -1,7 +1,7 @@
 # decomp.wtf
 
 A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS and PS1 have experimental
+PC source repositories for Dragon Quest and Pokémon. **DS, PS1 and PS2 have experimental
 native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
@@ -16,7 +16,7 @@ of current application support.
 | --- | --- | --- |
 | Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
-| PlayStation 2 | EE program/ELF recovery | Backend required |
+| PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | Backend required; reuse existing Pokémon sources |
 | Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
@@ -162,14 +162,48 @@ be mapped automatically; ambiguous code and external callbacks need a reviewed
 map. Windows/Linux qualification and retail acceptance are
 reported separately; source generation alone does not certify a working port.
 
-To validate PS2 output on your Windows GPU, run
-`uv run --locked --group dev --python 3.12 python -m tools.qualify_ps2_hardware "$env:TEMP\decomp-ps2-gpu"`
-in PowerShell from this repository, choosing a new output folder for each run. Install
-[uv](https://docs.astral.sh/uv/getting-started/installation/),
-[CMake](https://cmake.org/download/) and
-[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/).
+To validate PS2 output on your Windows GPU, use Visual Studio or
+[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/)
+with **Desktop development with C++**, including **C++ CMake tools for Windows**.
+The wrapper finds Visual Studio's bundled CMake even when it is absent from PATH;
+a separate [CMake installation](https://cmake.org/download/) is optional.
+Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) from PowerShell:
+
+```powershell
+winget install --id astral-sh.uv --exact
+```
+
+Close and reopen PowerShell so it sees the updated PATH. In File Explorer, open
+the extracted repository folder containing `pyproject.toml` and `tools`, type
+`powershell` into the address bar, press Enter, and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1
+```
+
+The wrapper also finds uv in its standard user install folders if PATH has not
+refreshed, and chooses a short, fresh `dwg-*` output folder for each run to leave
+room for Windows compiler dependency paths. For a custom folder:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\dg-test1"
+```
+
+If PowerShell reports `uv is not recognized`, the test has not started; install uv
+and reopen the shell. If WinGet is unavailable, use the linked official uv installer.
 The command uses an original test program and reports the actual Vulkan device
 class; software/virtual rendering does not count as physical-GPU validation.
+The first run downloads and verifies pinned runtime sources, then compiles the
+standalone fixture. Allow these steps to finish; they can take several minutes.
+Progress messages identify verification and build stages. Completion prints the
+`hardware-assessment.json` path. Stopping with Ctrl+C records an interrupted test;
+retry with a new output folder.
+
+The original fixture has passed on a physical **Intel Iris Xe integrated GPU on
+Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validation.json)
+identifies the tested backend revision and driver. Retail playthrough validation
+remains separate.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

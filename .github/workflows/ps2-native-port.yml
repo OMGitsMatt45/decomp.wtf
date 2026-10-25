@@ -62,6 +62,19 @@ jobs:
           $errors = $null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'tools/qualify-ps2-hardware.ps1'), [ref]$tokens, [ref]$errors)
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          $originalPath = $env:PATH
+          $originalTemp = $env:TEMP
+          try {
+            # A regular PowerShell shell need not expose Visual Studio's CMake.
+            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and -not (Test-Path (Join-Path $_ 'cmake.exe')) }) -join ';'
+            $env:TEMP = 'C:\Users\Windows Validation User\AppData\Local\Temp'
+            $found = & .\tools\qualify-ps2-hardware.ps1 -CheckTools | ConvertFrom-Json
+            if (-not (Test-Path -LiteralPath $found.uv)) { throw 'uv discovery failed' }
+            if ($found.cmake -notlike '*Microsoft Visual Studio*' -or -not (Test-Path -LiteralPath $found.cmake)) { throw 'Visual Studio bundled CMake discovery failed' }
+            $env:DECOMP_PS2_CHECK_OUTPUT = $found.output
+          } finally { $env:PATH = $originalPath; $env:TEMP = $originalTemp }
+          uv run --no-sync python -c "import os; from pathlib import Path; from tools.qualify_ps2_hardware import fixture_path; from decompnet.ps2_native import emitter_directory, EMITTER_LONG_SOURCE; sdk=fixture_path(Path(os.environ['DECOMP_PS2_CHECK_OUTPUT']))/'Pinned source runtime'; source=emitter_directory(sdk,'0'*64)/EMITTER_LONG_SOURCE; assert len(str(source))<240, str(source)"
+          if ($LASTEXITCODE -ne 0) { throw 'default hardware build exceeds the Windows path budget' }
       - name: Linux standalone build, geometry rendering, resize and failure checks
         if: runner.os == 'Linux'
         shell: bash

@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import tarfile
 import tempfile
+import time
 import urllib.request
 
 from ..pc import PCError
@@ -25,11 +26,20 @@ def payload(root):
                   key=lambda p: p.relative_to(root).as_posix())
 
 
-def fingerprint(root):
+def fingerprint(root, *, log=None):
     root = Path(root); digest = hashlib.sha256()
-    for path in payload(root):
+    if log: log('Listing pinned PS2 runtime source files...')
+    files = payload(root)
+    if log: log(f'Verifying pinned PS2 runtime sources: 0/{len(files)} files')
+    last = time.monotonic()
+    for index, path in enumerate(files, 1):
         if path.is_symlink(): raise PCError('PS2 runtime source contains a symbolic link')
-        digest.update(path.relative_to(root).as_posix().encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
+        with path.open('rb') as stream:
+            checksum = hashlib.file_digest(stream, 'sha256').digest()
+        digest.update(path.relative_to(root).as_posix().encode() + b'\0' + checksum)
+        if log and (index == len(files) or time.monotonic()-last >= 2):
+            log(f'Verifying pinned PS2 runtime sources: {index}/{len(files)} files')
+            last = time.monotonic()
     return digest.hexdigest()
 
 
@@ -63,15 +73,15 @@ def download(destination: Path, *, log=None, archives: Path | None = None):
                 if original.is_dir(): shutil.copytree(original, target, dirs_exist_ok=True)
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(original, target)
-        actual = fingerprint(source)
+        actual = fingerprint(source, log=log)
         if not pins['source_sha256'] or actual != pins['source_sha256']:
             raise PCError('PS2 runtime sources differ from the pinned package')
         source.rename(destination)
     return dict(path=str(destination), source_sha256=actual)
 
 
-def verify(source):
+def verify(source, *, log=None):
     pins = json.loads(INPUTS.read_text(encoding='utf-8'))
-    if not pins['source_sha256'] or fingerprint(source) != pins['source_sha256']:
+    if not pins['source_sha256'] or fingerprint(source, log=log) != pins['source_sha256']:
         raise PCError('PS2 runtime source differs from the pinned package; restore its source')
     return pins
