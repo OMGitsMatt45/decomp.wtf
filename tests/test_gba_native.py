@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware
+from .fixtures.gba_native import hardware, timer_micro, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -32,9 +32,9 @@ def run(command, *, ok=True, **kwargs):
     return result.stderr
 
 
-def generate(work, *, profile=True, mutate=None, feedback=()):
+def generate(work, *, profile=True, mutate=None, feedback=(), fixture=None):
     work.mkdir()
-    data, document = hardware()
+    data, document = hardware() if fixture is None else fixture
     if mutate:
         data = mutate(data)
         document['input_sha256'] = hashlib.sha256(data).hexdigest()
@@ -97,6 +97,14 @@ def test_translated_and_reference_cpu_agree_on_original_hardware(original, tmp_p
     assert (tmp_path/'native.sav').read_bytes() == (tmp_path/'reference.sav').read_bytes()
 
 
+@pytest.mark.parametrize('instructions,expected', [(0,7),(1,13),(16,103)])
+def test_live_timer_load_phase_matches_independent_mgba(instructions, expected, tmp_path, sdk):
+    project=generate(tmp_path/'timer',fixture=timer_micro(instructions))
+    for mode in ('--strict-static','--interpreter'):
+        result=execute(project,mode,'--observe','0x02000000')
+        assert result['observed']==[expected]
+
+
 def test_ram_code_modified_after_export_is_never_executed_as_stale_native_code(original, tmp_path):
     feedback = tmp_path/'modified-ram.txt'
     report = execute(original, '--keys', '2', '--observe', '0x0200001c', '--miss-log', feedback)
@@ -151,14 +159,63 @@ def test_feedback_preserves_existing_files_and_checks_input_identity(original, t
         _feedback(path, hashlib.sha256(data).hexdigest(), len(data))
 
 
+def test_feedback_recovers_temporal_and_overlapping_ram_copies(original, tmp_path, sdk):
+    feedback = tmp_path/'overlays.txt'
+    observations = [v for a in range(0x02000028, 0x02000038, 4) for v in ('--observe', hex(a))]
+    native = execute(original, '--keys', '0x40', '--miss-log', feedback, *observations)
+    assert native['observed'] == [91, 92, 8, 9]
+    # Both versions at one address must survive the miss recorder's deduplication.
+    records = [line for line in feedback.read_text().splitlines() if line.startswith('0x03000080 arm rom=')]
+    assert len(records) == 2 and records[0] != records[1]
+    recovered = generate(tmp_path/'overlays', feedback=[feedback])
+    result = execute(recovered, '--keys', '0x40', '--strict-static', *observations)
+    reference = execute(recovered, '--keys', '0x40', '--interpreter', *observations)
+    assert result['observed'] == reference['observed'] == native['observed']
+    assert result['interpreted_cycles'] == 0 and not result['misses']
+    # An independent mutation must still use fallback, even with alternate versions.
+    assert execute(recovered, '--keys', '2', '--observe', '0x0200001c')['observed'] == [76]
+    # Reviewed profiles can also describe simultaneous/temporal overlapping views.
+    from decompnet.gba_native import _overlay_regions
+    data,profile=hardware()
+    profile['ram_code']=_overlay_regions(profile,[(feedback.read_text(),{})],len(data))
+    reviewed=generate(tmp_path/'reviewed-overlays',fixture=(data,profile))
+    assert execute(reviewed,'--keys','0x40','--strict-static',*observations)['observed']==native['observed']
+
+
 def test_unsupported_bios_service_stops_instead_of_returning_success(tmp_path, sdk):
     def patched(data):
         data = bytearray(data)
         index = data.index(struct.pack('<I', 0xef060000))
         struct.pack_into('<I', data, index, 0xef1a0000)
+        struct.pack_into('<H', data, PROGRAM['symbols']['thumb_code']-0x08000000, 0xdf1a)
         return bytes(data)
     project = generate(tmp_path/'bios-guard', mutate=patched)
     assert 'unsupported GBA BIOS service 26' in execute(project, ok=False)
+    # Original 16 KiB test firmware: supervisor stack save/restore, r0=123,
+    # exception return using SPSR. No console BIOS bytes or external firmware.
+    bios = tmp_path/'original-bios.bin'; image = bytearray(16384)
+    struct.pack_into('<4I', image, 8, 0xe92d4010, 0xe3a0007b, 0xe8bd4010, 0xe1b0f00e)
+    bios.write_bytes(image)
+    report = execute(project, '--bios', bios, '--observe', '0x02000008', '--observe', '0x02000010')
+    assert report['observed'] == [123,246] and report['interpreted_cycles'] > 0
+    reference=execute(project,'--bios',bios,'--interpreter','--observe','0x02000008','--observe','0x02000010')
+    assert reference['observed']==report['observed']
+    assert report['bios_sha256'] == hashlib.sha256(image).hexdigest()
+    assert not report['misses']  # Firmware addresses must not pollute cartridge feedback.
+    assert 'strict static mode rejects' in execute(project, '--bios', bios, '--strict-static', ok=False)
+    bios.write_bytes(bytes(4096)); save=tmp_path/'untouched.sav'
+    assert '16384 bytes' in execute(project, '--bios', bios, '--save', save, ok=False)
+    assert not save.exists()
+
+
+def test_multiboot_without_a_cable_returns_failure_instead_of_stopping(tmp_path, sdk):
+    def patched(data):
+        data=bytearray(data);index=data.index(struct.pack('<I',0xef060000))
+        struct.pack_into('<I',data,index,0xef250000)
+        return bytes(data)
+    project=generate(tmp_path/'no-cable',mutate=patched)
+    report=execute(project,'--strict-static','--observe','0x02000008')
+    assert report['observed']==[1] and report['interpreted_cycles']==0
 
 
 def test_wrong_profile_identity_and_output_reuse_preserve_existing_work(original, tmp_path):

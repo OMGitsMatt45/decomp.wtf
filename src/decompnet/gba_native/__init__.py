@@ -43,7 +43,7 @@ def _source(name):
 def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
-                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp'):
+                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -128,7 +128,7 @@ def _fingerprint(sdk):
 
 
 def _emitter(sdk):
-    emitter_key = hashlib.sha256((SDK_TREE_SHA256+_source('Emitter.cmake')).encode()).hexdigest()
+    emitter_key = hashlib.sha256((SDK_TREE_SHA256+_source('Emitter.cmake')+_source('overlay_emitter.cpp')).encode()).hexdigest()
     work = sdk.parent/'.gba-emitter'/emitter_key[:16]
     work.mkdir(parents=True, exist_ok=True)
     identity = dict(commit=SDK_COMMIT, sha256=_fingerprint(sdk))
@@ -136,9 +136,10 @@ def _emitter(sdk):
     if marker.exists() and json.loads(marker.read_text(encoding='utf-8')) != identity:
         raise pc.PCError('GBA cached sources changed; preserve edits and choose a clean toolchain cache')
     (work/'CMakeLists.txt').write_text(_source('Emitter.cmake'), encoding='utf-8')
+    (work/'overlay_emitter.cpp').write_text(_source('overlay_emitter.cpp'), encoding='utf-8')
     _run(['cmake', '-S', work, '-B', work/'build', '-DGBA_SDK='+sdk.as_posix(),
           '-DCMAKE_BUILD_TYPE=Release'], work, 'Configure GBA static translator')
-    _run(['cmake', '--build', work/'build', '--target', 'anygba-recomp', '--config', 'Release',
+    _run(['cmake', '--build', work/'build', '--target', 'anygba-recomp', 'gba-overlays', '--config', 'Release',
           '--parallel', '2'], work, 'Build GBA static translator')
     marker.write_text(json.dumps(identity)+'\n', encoding='utf-8')
     executable = next((p for p in (work/'build/recomp/anygba-recomp',
@@ -146,6 +147,68 @@ def _emitter(sdk):
     if executable is None:
         raise pc.PCError('GBA static translator was not built')
     return executable
+
+
+def _overlay_regions(profile, feedback, size):
+    """Independent views retain temporal copies instead of clipping at other entries."""
+    copies = {(r['address'], r['mode'], r['rom']): r['size'] for r in profile.get('ram_code', [])}
+    reviewed = set(copies)
+    for content, _ in feedback:
+        for line in content.splitlines()[1:]:
+            fields = line.split()
+            if len(fields) < 3:
+                continue
+            address, mode, source = int(fields[0], 16), fields[1], int(fields[2][4:], 16)
+            end = 0x02040000 if address < 0x03000000 else 0x03008000
+            width = 4 if mode == 'arm' else 2
+            length = min(end-address, 0x08000000+size-source)//width*width
+            if len(fields) == 4:
+                length = min(length, int(fields[3][5:], 16))
+            key = address, mode, source
+            if key in reviewed:
+                continue
+            copies[key] = min(copies.get(key, length), length)
+    if len(copies) > 4096:
+        raise pc.PCError('GBA feedback contains too many distinct RAM copies (maximum 4096)')
+    return [dict(address=a, mode=m, rom=r, size=n) for (a,m,r),n in sorted(copies.items()) if n]
+
+
+def _overlays(emitter, path, work, root, copies, profile, feedback):
+    config = ''
+    for row in copies:
+        config += f'\n[[ram_region]]\nrom_src = {row["rom"]}\nram_dst = {row["address"]}\nsize = {row["size"]}\nmode = "{row["mode"]}"\n'
+    entries = {(r['address'],r['mode']) for r in profile.get('entries', []) if r['address'] < 0x08000000}
+    for content, _ in feedback:
+        for line in content.splitlines()[1:]:
+            fields=line.split()
+            if fields and int(fields[0],16)<0x08000000:
+                entries.add((int(fields[0],16),fields[1]))
+    for address, mode in sorted(entries):
+        config += f'\n[[entry]]\naddr = {address}\nmode = "{mode}"\n'
+    cfg = work/'overlays.toml'; cfg.write_text(config, encoding='utf-8')
+    name = 'gba-overlays.exe' if emitter.suffix == '.exe' else 'gba-overlays'
+    # The overlay executable belongs to the root CMake project; the original emitter
+    # belongs to its recomp/ subdirectory (both have Release/ with Visual Studio).
+    program = emitter.parent.parent/name
+    if emitter.parent.name == 'Release':
+        program = emitter.parent.parent.parent/'Release'/name
+    rows = json.loads(_run([program, path, cfg, root/'game/overlays.c'], work, 'Translate independent guarded RAM copies'))
+    header = root/'game/game.h'
+    header.write_text(header.read_text(encoding='utf-8')+'\n'+''.join(
+        f'void {r[2]}(anygba_cpu* c);\n' for r in rows), encoding='utf-8')
+    dispatch = root/'game/dispatch.c'
+    text = dispatch.read_text(encoding='utf-8')
+    begin = text.index('static const anygba_function_entry functions[] = {\n') + len('static const anygba_function_entry functions[] = {\n')
+    # Complete, independently analyzed copies take precedence over a clipped base
+    # view. The runtime stable-sorts by address, then checks every candidate's bytes.
+    text = text[:begin]+''.join(f'    {{{a}u, {t}, {n}, {b}u, {e}u, {s}u}},\n' for a,t,n,b,e,s in rows)+text[begin:]
+    old_count = len(re.findall(r'^    \{0x[0-9a-f]{8}u,', text[begin:], re.M))
+    pattern = r'(    functions,\n    )\d+u,'
+    text, count = re.subn(pattern, lambda m: m[1]+str(old_count+len(rows))+'u,', text)
+    if count != 1:
+        raise pc.PCError('GBA guarded dispatch table patch no longer applies')
+    dispatch.write_text(text, encoding='utf-8')
+    return len(rows)
 
 
 def _profile(path, identity):
@@ -182,8 +245,6 @@ def _regions(profile, size):
             not any(begin <= address < address+length <= end for begin, end in
                     ((0x02000000, 0x02040000), (0x03000000, 0x03008000)))):
             raise pc.PCError('GBA RAM code must copy aligned original ROM bytes into EWRAM/IWRAM')
-        if any(address < end and address+length > begin for begin, end in ranges):
-            raise pc.PCError('overlapping GBA RAM code needs a reviewed overlay implementation')
         ranges.append((address, address+length))
     for row in profile.get('entries', []):
         width = 4 if row['mode'] == 'arm' else 2
@@ -296,25 +357,72 @@ def _runtime(sdk, destination):
     old = 'struct Options {'
     if text.count(old) != 1:
         raise pc.PCError('GBA runtime option patch no longer applies')
-    header.write_text(text.replace(old, old+'\n    bool strict_static = false;'), encoding='utf-8')
+    text = text.replace(old, old+'\n    bool strict_static = false;')
+    text = text.replace('#include <vector>', '#include <vector>\n#include <tuple>')
+    text = text.replace('bool ram_code_valid(std::uint32_t entry, bool thumb) const;',
+        'bool ram_code_valid(std::uint32_t entry, bool thumb) const;\n    bool ram_entry_valid(const anygba_function_entry& entry) const;')
+    text = text.replace('std::set<std::uint32_t> misses_;',
+        'bool bios_image_loaded_ = false;\n    std::set<std::uint32_t> misses_;\n    std::set<std::tuple<uint32_t,bool,uint32_t,uint32_t>> logged_miss_variants_;\n'
+        '    std::set<std::tuple<uint32_t,bool,std::array<uint8_t,32>>> logged_ram_signatures_;')
+    text = text.replace('static constexpr std::uint32_t kStateVersion = 2;',
+                        'static constexpr std::uint32_t kStateVersion = 1002;')
+    text = text.replace('    void set_cpsr(',
+        '    void memory_load_events();\n    void set_bios_image(std::span<const uint8_t> image);\n    void bios_swi();\n    void set_cpsr(')
+    text = text.replace('ignores ROM patches and RAM contents', 'ignores ROM patches; checks RAM variants')
+    header.write_text(text, encoding='utf-8')
+    system = destination/'runtime/src/system.cpp'
+    text = system.read_text(encoding='utf-8')
+    system.write_text(text.replace('std::sort(ram_functions_.begin(), ram_functions_.end(),',
+        'std::stable_sort(ram_functions_.begin(), ram_functions_.end(),'), encoding='utf-8')
     dispatch = destination/'runtime/src/dispatch.cpp'
     text = dispatch.read_text(encoding='utf-8')
     text = '#include "ram_feedback.hpp"\n'+text
+    start = text.index('    if (fn && (addr < 0x08000000')
+    end = text.index('    if (fn && cpu_.rom_patched', start)
+    text = text[:start]+text[end:]
+    start = text.index('    if (it != ram_functions_.end()')
+    end = text.index('    return nullptr;', start)
+    text = text[:start]+'''    for (auto candidate=it; candidate!=ram_functions_.end() && candidate->addr==addr; ++candidate) {
+        if ((candidate->thumb!=0)==thumb && ram_entry_valid(*candidate)) return &*candidate;
+    }
+'''+text[end:]
+    old = '''bool System::ram_code_valid(std::uint32_t entry, bool thumb) const {
+    const anygba_function_entry* e = ram_function(entry, thumb);'''
+    if text.count(old) != 1:
+        raise pc.PCError('GBA overlay byte guard patch no longer applies')
+    text = text.replace(old, '''bool System::ram_code_valid(std::uint32_t entry, bool thumb) const {
+    return ram_function(entry,thumb)!=nullptr;
+}
+
+bool System::ram_entry_valid(const anygba_function_entry& entry) const {
+    const anygba_function_entry* e = &entry;''')
+    text = text.replace('if (!misses_.insert(addr).second || !options_.log_misses) {',
+        'misses_.insert(addr);\n    if (!options_.log_misses) {')
+    text = text.replace('void System::log_miss(std::uint32_t addr, bool thumb) {',
+        'void System::log_miss(std::uint32_t addr, bool thumb) {\n    if (addr < 0x02000000) return; // BIOS code is not cartridge coverage feedback')
     start = text.index('    char rom_part[24] = "";')
     end = text.index('    std::fprintf(miss_file_', start)
     text = text[:start]+'''    char rom_part[64] = "";
+    uint32_t source=0, length=0;
     const bool ewram = addr >= 0x02000000 && addr < 0x02040000;
     const bool iwram = addr >= 0x03000000 && addr < 0x03008000;
     if (ewram || iwram) {
         const auto& ram = ewram ? mem_.ewram : mem_.iwram;
         const auto off = addr & 0x00ffffffu;
+        const auto view=std::span<const uint8_t>(ram.data()+off,ram.size()-off);
+        const auto leaf=gba_feedback::leaf_size(view,thumb);
+        std::array<uint8_t,32> signature{};
+        std::copy_n(view.begin(),leaf?leaf:std::min<size_t>(32,view.size()),signature.begin());
+        if (!logged_ram_signatures_.emplace(addr,thumb,signature).second) return;
         const auto hit = gba_feedback::source(std::span<const uint8_t>(mem_.rom.data(),mem_.rom_size),
-            std::span<const uint8_t>(ram.data()+off,ram.size()-off),thumb);
+            view,thumb);
         if (hit) {
+            source=hit->address; length=hit->size;
             if (hit->size) std::snprintf(rom_part,sizeof rom_part," rom=0x%08x size=0x%08x",hit->address,hit->size);
             else std::snprintf(rom_part,sizeof rom_part," rom=0x%08x",hit->address);
         }
     }
+    if (!logged_miss_variants_.emplace(addr,thumb,source,length).second) return;
 '''+text[end:]
     old = 'void System::interpret() {'
     if text.count(old) != 1:
@@ -342,16 +450,100 @@ def _runtime(sdk, destination):
         '    if (std::fflush(miss_file_) != 0 || std::ferror(miss_file_)) fail("GBA coverage feedback write failed");'), encoding='utf-8')
     bios = destination/'runtime/src/bios/swi_table.cpp'
     text = bios.read_text(encoding='utf-8')
+    text = text.replace('void System::swi(std::uint32_t number) {',
+        'void System::swi(std::uint32_t number) {\n    if (bios_image_loaded_) { bios_swi(); return; }')
+    text = text.replace('    case 0x25:\n        stub_swi(number, call_pc);',
+        '    case 0x25:')  # A disconnected cable is a normal MultiBoot failure.
     old = 'void System::stub_swi(std::uint32_t number, std::uint32_t call_pc) {'
     if text.count(old) != 1:
         raise pc.PCError('GBA BIOS guard patch no longer applies')
     bios.write_text(text.replace(old, old+'\n    fail("unsupported GBA BIOS service " + std::to_string(number) +'
-        ' " at " + std::to_string(call_pc));'), encoding='utf-8')
+        ' " at " + std::to_string(call_pc) + "; provide your own GBA BIOS with --bios for this service");'), encoding='utf-8')
+    (destination/'runtime/src/bios_image.cpp').write_text(_source('bios_image.cpp'), encoding='utf-8')
+    (destination/'runtime/src/timing.cpp').write_text(_source('timing.cpp'), encoding='utf-8')
+    cpu_header = destination/'runtime/include/anygba/cpu.h'
+    text = cpu_header.read_text(encoding='utf-8')
+    cpu_header.write_text(text.replace('void anygba_tick(anygba_cpu* c);',
+        'void anygba_tick(anygba_cpu* c);\nvoid anygba_load_events(anygba_cpu* c);\n'
+        'int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t end, uint32_t source);'), encoding='utf-8')
+    rom_patch = destination/'runtime/src/rom_patch.cpp'
+    text = rom_patch.read_text(encoding='utf-8')
+    text += '''
+extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t end, uint32_t source) {
+    const anygba_function_entry entry{0,0,nullptr,begin,end,source};
+    return anygba::system_of(c).ram_entry_valid(entry) ? 1 : 0;
+}
+'''
+    rom_patch.write_text(text, encoding='utf-8')
+    interp = destination/'runtime/src/interp/arm_interp.cpp'
+    text = interp.read_text(encoding='utf-8')
+    text = text.replace('        if (load) {\n            std::uint32_t v = 0;',
+        '        if (load) {\n            if (--c_.cycles <= 0) sys_.memory_load_events();\n            std::uint32_t v = 0;')
+    text = text.replace('case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 1; break;',
+        'case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 0; break;')
+    interp.write_text(text, encoding='utf-8')
+    bus = destination/'runtime/src/bus.cpp'
+    text = bus.read_text(encoding='utf-8')
+    for name, width in (('bus_read32', 4), ('bus_read16', 2), ('bus_read8', 1)):
+        start = text.index('std::uint32_t System::'+name+'(')
+        case = text.index('    case 0x00:\n', start)+len('    case 0x00:\n')
+        text = text[:case]+f'        if (bios_image_loaded_ && addr < Memory::kBiosSize && cpu_.r[15] < Memory::kBiosSize) return load(mem_.bios, addr, {width});\n'+text[case:]
+    bus.write_text(text, encoding='utf-8')
+    state = destination/'runtime/src/state/state.cpp'
+    text = state.read_text(encoding='utf-8')
+    state.write_text(text.replace('    ar.fixed(mem_.bios, "BIOS area");',
+        '    ar.pod(bios_image_loaded_);\n    ar.fixed(mem_.bios, "BIOS area");'), encoding='utf-8')
+    rtc = destination/'runtime/src/rtc.cpp'
+    text = rtc.read_text(encoding='utf-8')
+    text = text.replace('    case 0xC4:\n', '    case 0xC4: {\n        const auto previous=pins_;\n')
+    text = text.replace('        clock_pins();\n        break;', '        clock_pins(previous);\n        break;\n    }')
+    start = text.index('void Rtc::clock_pins() {')
+    end = text.index('\nvoid Rtc::command_byte()', start)
+    text = text[:start]+'''void Rtc::clock_pins(std::uint16_t previous) {
+    if (step_==0) {
+        if ((pins_ & (kSck|kCs))==kSck) step_=1;
+        return;
+    }
+    if (step_==1) {
+        if ((pins_ & (kSck|kCs))==(kSck|kCs)) step_=2;
+        else if ((pins_ & (kSck|kCs))!=kSck) step_=0;
+        return;
+    }
+    // CS terminates even when the clock is low. Only a rising clock edge
+    // transfers a bit; repeated high GPIO writes must not advance the chip.
+    if (!(pins_ & kCs)) {
+        bits_=bit_count_=remaining_=command_=0;
+        step_=pins_ & kSck;
+        return;
+    }
+    if ((previous & kSck) || !(pins_ & kSck)) return;
+    if (is_read(command_)) {
+        const auto output=kSck|kCs|(output_bit()<<1);
+        pins_=std::uint16_t((pins_ & direction_) | (output & ~direction_ & 0xf));
+        if (++bit_count_==8) {
+            bit_count_=0;
+            if (remaining_<=1) remaining_=command_=0;
+            else --remaining_;
+        }
+    } else {
+        bits_=std::uint8_t((bits_ & ~(1u<<bit_count_)) | (((pins_ & kSio)>>1)<<bit_count_));
+        if (++bit_count_==8) command_byte();
+    }
+}
+'''+text[end:]
+    rtc.write_text(text, encoding='utf-8')
+    rtc_header = destination/'runtime/src/rtc.h'
+    rtc_header.write_text(rtc_header.read_text(encoding='utf-8').replace('void clock_pins();',
+        'void clock_pins(std::uint16_t previous);'), encoding='utf-8')
     (destination/'DECOMP_WTF_PATCHES.md').write_text(
         'Pinned AnyGBA '+SDK_COMMIT+' (MIT).\n\n'
         'This source-shipped core omits the upstream player, network control, cheats and HD packs. '
-        'Options.strict_static rejects interpreter execution. Guard-rejected RAM code is included in coverage misses. Explicit coverage feedback fails on write errors. Unsupported BIOS sound/link '
-        'services stop with a diagnostic instead of being ignored. The independent desktop frontend renders raw scanline state with OpenGL.\n', encoding='utf-8')
+        'Options.strict_static rejects interpreter execution. Independent temporal RAM copies have whole-body guards, including on direct entry. '
+        'Coverage records retain multiple bodies at one address and cache repeated signatures. '
+        'Instruction and load phases synchronize peripheral events. RTC GPIO transfers require clock edges and honor chip-select aborts. '
+        'An optional owner BIOS executes software-interrupt vectors with supervisor/Thumb state and protected reads; firmware execution remains reported interpretation. '
+        'Without that image, unsupported sound services stop with an actionable diagnostic; disconnected MultiBoot returns failure. '
+        'Internal snapshots use format 1002 to record BIOS selection. The independent desktop frontend renders raw scanline state with OpenGL.\n', encoding='utf-8')
 
 
 def generate(project, root):
@@ -362,6 +554,7 @@ def generate(project, root):
     _regions(profile, original['size'])
     feedback = [_feedback(p, original['sha256'], original['size']) for p in project.get('feedback', [])]
     inferred = _feedback_regions(profile, feedback, original['size'])
+    copies = _overlay_regions(profile, feedback, original['size'])
     game = project.get('output_kind') == 'game'
     display = pc.presentation(project.get('renderer', 'auto')) if game else None
     save_type = project.get('save_type', 'auto')
@@ -398,6 +591,7 @@ def generate(project, root):
         for source in (work/'generated').iterdir():
             if source.suffix in ('.c', '.h'):
                 shutil.copyfile(source, root/'game'/source.name)
+        overlay_count = _overlays(emitter, path, work, root, copies, profile, feedback)
     _runtime(sdk, root/'runtime/anygba')
     for source, dest in (('Project.cmake', 'CMakeLists.txt'), ('main.cpp', 'native/main.cpp'),
                          ('video.hpp', 'native/video.hpp'), ('video.cpp', 'native/video.cpp'),
@@ -414,9 +608,9 @@ def generate(project, root):
                 'set(GBA_DEFAULT_RENDERER \"auto\")', 'set(GBA_DEFAULT_RENDERER '+json.dumps(display['renderer'])+')')
         (root/dest).write_text(content, encoding='utf-8')
     (root/'assets.json').write_text(json.dumps(original, indent=2)+'\n', encoding='utf-8')
-    (root/'analysis.json').write_text(json.dumps(dict(profile=profile, functions=int(count[1]),
+    (root/'analysis.json').write_text(json.dumps(dict(profile=profile, functions=int(count[1])+overlay_count,
         diagnostics=output, save_type=save_type, rtc=rtc, feedback=[pin for _, pin in feedback],
-        inferred_ram_code=inferred), indent=2)+'\n', encoding='utf-8')
+        inferred_ram_code=inferred, independent_ram_code=copies, guarded_ram_functions=overlay_count), indent=2)+'\n', encoding='utf-8')
     (root/'.gitignore').write_text('/build*/\n/assets/\n*.sav\n*.sav.*\n*.ppm\n*.pcm\n', encoding='utf-8')
     (root/'README.md').write_text('''# GBA native translation probe
 
@@ -532,8 +726,18 @@ This is experimental hybrid static recompilation. Discovered functions are C;
 uncovered callbacks and modified RAM code use the shipped interpreter, with exact
 misses disclosed. No runtime compiler is used. `--strict-static` stops on a miss;
 `--interpreter` selects the CPU reference for differential testing. Unsupported BIOS
-services stop with diagnostics. `analysis.json` records the discovered functions.
+services stop with diagnostics. `analysis.json` records the discovered functions
+and independently guarded RAM variants. Multiple code copies may overlap or reuse
+one address; dispatch and each native body verify the exact original bytes.
 A bounded passing test does not establish complete retail compatibility.
+
+Most games use the built-in BIOS services. For games requiring the original BIOS
+sound driver, `--bios /path/to/your/gba-bios.bin` selects your own 16 KiB image.
+Software interrupts and BIOS callbacks then execute that image in the interpreter;
+the exit report records its SHA-256 and interpreted cycles. This option cannot be
+combined with `--strict-static`. No BIOS image is downloaded or included. The
+BIOS-free MultiBoot service returns a disconnected-cable failure; link play is not
+implemented.
 
 For coverage, run `--miss-log NEW_FILE`, then re-export with `decomp pc gba-native
 ... --feedback NEW_FILE --experimental` into a new source folder. This binds feedback

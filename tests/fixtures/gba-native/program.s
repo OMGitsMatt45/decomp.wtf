@@ -58,6 +58,51 @@ after_ram:
     bx r1
 after_leaf:
     str r0, [r6, #32]
+    /* UP exercises temporal overlays: the same RAM address holds two routines,
+       then two overlapping destinations hold the same longer Thumb routine. */
+    ldr r0, =0x04000130
+    ldrh r0, [r0]
+    tst r0, #0x40
+    bne after_overlays
+    ldr r0, =overlay_a
+    ldr r1, =0x03000080
+    ldmia r0, {r2-r5,r7-r10}
+    stmia r1, {r2-r5,r7-r10}
+    adr lr, overlay_first_return
+    bx r1
+overlay_first_return:
+    str r0, [r6, #40]
+    ldr r0, =overlay_b
+    ldr r1, =0x03000080
+    ldmia r0, {r2-r5,r7-r10}
+    stmia r1, {r2-r5,r7-r10}
+    adr lr, overlay_second_return
+    bx r1
+overlay_second_return:
+    str r0, [r6, #44]
+    ldr r0, =overlay_thumb
+    bic r0, r0, #1
+    ldr r1, =0x03000100
+    ldmia r0, {r2-r5,r7-r10}
+    stmia r1, {r2-r5,r7-r10}
+    mov r0, #1
+    add r1, r1, #1
+    adr lr, overlay_third_return
+    bx r1
+overlay_third_return:
+    str r0, [r6, #48]
+    ldr r0, =overlay_thumb
+    bic r0, r0, #1
+    ldr r1, =0x0300010c
+    ldmia r0, {r2-r5,r7-r10}
+    stmia r1, {r2-r5,r7-r10}
+    mov r0, #2
+    add r1, r1, #1
+    adr lr, overlay_fourth_return
+    bx r1
+overlay_fourth_return:
+    str r0, [r6, #52]
+after_overlays:
     /* A running timer must observe straight-line instruction cycles before a branch. */
     ldr r5, =0x04000100
     mov r0, #0
@@ -143,3 +188,26 @@ ram_source:
     mov r0, #77
     bx lr
 ram_end:
+    .space 32
+.align 2
+overlay_a:
+    mov r0, #91
+    bx lr
+    .space 24
+overlay_b:
+    mov r0, #92
+    bx lr
+    .space 24
+.thumb
+.thumb_func
+overlay_thumb:
+    push {r4, lr}
+    movs r4, #7
+overlay_loop:
+    adds r0, #1
+    subs r4, #1
+    bne overlay_loop
+    pop {r4}
+    pop {r1}
+    bx r1
+    .space 16

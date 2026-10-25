@@ -37,7 +37,7 @@ void bytes(const std::filesystem::path& path, const char* data, std::size_t size
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path rom, save, capture, pcm, miss_log, input_script, display_capture;
+        std::filesystem::path rom, save, capture, pcm, miss_log, input_script, display_capture, bios;
         std::uint64_t frames = 8, keys = 0;
         std::uint64_t present_every=1,resize_frame=0;
         int resize_width=0,resize_height=0,width=0,height=0;
@@ -56,6 +56,7 @@ int main(int argc, char** argv) {
                 std::cout << "gba_probe --rom game.gba [--frames 8] [--strict-static | --interpreter]\n"
                     "  [--save game.sav] [--keys 0x001] [--observe 0x02000000]...\n"
                     "  [--capture screen.ppm] [--audio-pcm audio.pcm] [--rtc-start unix-seconds]\n"
+                    "  [--bios owner-gba-bios.bin] (optional 16 KiB BIOS, interpreted; incompatible with strict static)\n"
                     "  [--miss-log NEW_FILE] (input-bound feedback for the next translation)\n"
                     "  [--window] [--renderer auto|opengl|software] [--fullscreen]\n"
                     "  [--resolution WIDTHxHEIGHT] [--display-capture output.ppm]\n"
@@ -69,13 +70,14 @@ int main(int argc, char** argv) {
             if (arg == "--headless") { window=false;continue; }
             if (arg == "--unpaced") { unpaced=true;continue; }
             if (arg == "--fullscreen") { fullscreen=true;window=true;continue; }
-            if (arg != "--rom" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
+            if (arg != "--rom" && arg != "--bios" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start" &&
                 arg != "--renderer" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
                 arg != "--input-script" && arg != "--display-capture")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
             if (arg == "--rom") rom = argv[i];
+            else if (arg == "--bios") bios = argv[i];
             else if (arg == "--save") save = argv[i];
             else if (arg == "--capture") capture = argv[i];
             else if (arg == "--audio-pcm") pcm = argv[i];
@@ -147,6 +149,14 @@ int main(int argc, char** argv) {
         std::vector<std::uint8_t> data{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
         if (anygba::sha256_hex(data) != anygba_game_info.rom_sha256)
             throw anygba::Error("cartridge SHA-256 differs from generated code");
+        std::vector<uint8_t> bios_data;
+        if (!bios.empty()) {
+            std::ifstream file(bios,std::ios::binary);
+            if (!file || std::filesystem::file_size(bios)!=16384) throw anygba::Error("GBA BIOS must contain exactly 16384 bytes");
+            bios_data.assign(std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>());
+            if(file.bad()||bios_data.size()!=16384)throw anygba::Error("GBA BIOS must contain exactly 16384 readable bytes");
+            if(options.strict_static)throw anygba::Error("strict static mode rejects interpreted BIOS execution");
+        }
 #ifdef GBA_GAME_DEFAULT
         if(save.empty())save=(asset_root.empty()?std::filesystem::current_path():asset_root)/"saves"/(std::string(anygba_game_info.rom_sha256).substr(0,16)+".sav");
 #endif
@@ -164,6 +174,7 @@ int main(int argc, char** argv) {
         if (anygba_game_info.save_type) options.save_type = anygba_game_info.save_type;
         if (anygba_game_info.rtc >= 0) options.rtc = anygba_game_info.rtc ? "on" : "off";
         auto system = std::make_unique<anygba::System>(std::move(data), reference ? nullptr : &anygba_game_info, options);
+        if(!bios_data.empty())system->set_bios_image(bios_data);
         uint16_t scripted=script.contains(0)?script.at(0):0;
         system->set_keys(static_cast<std::uint16_t>(keys)|scripted);
 #ifdef GBA_WITH_DESKTOP
@@ -245,6 +256,7 @@ int main(int argc, char** argv) {
             << ",\"functions\":" << anygba_game_info.function_count
             << ",\"reference_interpreter\":" << (reference ? "true" : "false")
             << ",\"interpreted_cycles\":" << system->interpreted_cycles()
+            << ",\"bios_sha256\":" << std::quoted(bios_data.empty()?std::string():anygba::sha256_hex(bios_data))
             << ",\"rtc\":" << (system->has_rtc() ? "true" : "false")
             << ",\"audio_frames\":" << audio_frames << ",\"screen_sha256\":\"" << image_hash
             << "\",\"gpu_rendering\":"<<(gpu?"true":"false")<<",\"renderer\":"<<std::quoted(selected)

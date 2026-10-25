@@ -20,3 +20,17 @@ A separate four-byte Thumb helper is copied beside changing RAM data. Feedback m
 recover its bounded ROM-backed body without treating adjacent data as instructions.
 The live Timer0 read after straight-line arithmetic checks that translated
 instructions advance hardware time before the next branch.
+
+Holding Up additionally replaces an ARM routine at one RAM address, then installs
+one longer Thumb routine at two overlapping destinations. Coverage must retain both
+ARM versions and recover all four calls in strict static mode. Independently
+reviewed profiles exercise the same overlapping views. A direct-entry guard also
+rejects the wrong body even when another valid variant exists at that address.
+
+`timer_micro()` in `../gba_native.py` builds three original ARM programs with zero,
+one and sixteen additions between timer enable and its read. Independent mGBA
+0.10.5 runs produce 7, 13 and 103 ticks. Both native and reference execution must
+match these observations. Peripheral tests cover all timer prescalers, cascading,
+overflow/reload, interrupt acknowledgement, RTC repeated GPIO writes, aborted
+transfers, leap days and calendar rollovers. An original miniature 16 KiB firmware
+fixture checks optional BIOS exception entry/return in ARM and Thumb states.

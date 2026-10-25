@@ -27,6 +27,15 @@ string(REPLACE "        emit_instruction(in);"
 if(EMITTER_PRECISE STREQUAL EMITTER_SOURCE)
   message(FATAL_ERROR "GBA instruction timing patch no longer applies")
 endif()
+# A load's additional bus phase precedes the sampled value. Charging it after
+# the read made live timer observations one cycle early (independently checked
+# against mGBA with zero, one and sixteen intervening ARM instructions).
+string(REPLACE "case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: return 1;"
+  "case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: return 0;"
+  EMITTER_PRECISE "${EMITTER_PRECISE}")
+string(REPLACE "        line(\"AG_ENTER_RAM(c, %s, %d);\", hex(fn_.entry).c_str(), fn_.mode == analysis::Mode::Thumb ? 1 : 0);"
+  "        const auto footprint = code_footprint(fn_, options_.image);\n        const auto source = options_.image ? options_.image->rom_offset(footprint.begin, footprint.end-footprint.begin) : std::nullopt;\n        line(\"if (!anygba_ram_variant_valid(c, %s, %s, %s)) { c->r[15]=%s; return; }\", hex(footprint.begin).c_str(), hex(footprint.end).c_str(), hex(source ? analysis::kRomBase+*source : 0).c_str(), hex(fn_.entry).c_str());"
+  EMITTER_PRECISE "${EMITTER_PRECISE}")
 set(PRECISE_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/precise_emitter.cpp")
 file(CONFIGURE OUTPUT "${PRECISE_SOURCE}" CONTENT "${EMITTER_PRECISE}" @ONLY)
 get_target_property(RECOMP_SOURCES anygba_recomp_lib SOURCES)
@@ -39,3 +48,20 @@ foreach(source IN LISTS RECOMP_SOURCES)
   endif()
 endforeach()
 set_property(TARGET anygba_recomp_lib PROPERTY SOURCES "${PRECISE_SOURCES}")
+# Direct calls into mutable RAM must pass the byte guard for each invocation.
+file(READ "${GBA_SDK}/tools/recomp/codegen/arm_ops.cpp" ARM_OPS_SOURCE)
+string(REPLACE "direct = callee != functions->end() && callee->second.mode == fn_.mode;"
+  "direct = analysis::Image::is_rom(in.imm_value) && callee != functions->end() && callee->second.mode == fn_.mode;"
+  GUARDED_ARM_OPS "${ARM_OPS_SOURCE}")
+if(GUARDED_ARM_OPS STREQUAL ARM_OPS_SOURCE)
+  message(FATAL_ERROR "GBA mutable call patch no longer applies")
+endif()
+string(REPLACE "    // A PC-relative word load from ROM reads a constant: fold it."
+  "    if (load) line(\"if (--c->cycles <= 0) anygba_load_events(c);\");\n    // A PC-relative word load from ROM reads a constant: fold it."
+  GUARDED_ARM_OPS "${GUARDED_ARM_OPS}")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/guarded_arm_ops.cpp" CONTENT "${GUARDED_ARM_OPS}" @ONLY)
+list(REMOVE_ITEM PRECISE_SOURCES "${GBA_SDK}/tools/recomp/codegen/arm_ops.cpp")
+list(APPEND PRECISE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/guarded_arm_ops.cpp")
+set_property(TARGET anygba_recomp_lib PROPERTY SOURCES "${PRECISE_SOURCES}")
+add_executable(gba-overlays overlay_emitter.cpp)
+target_link_libraries(gba-overlays PRIVATE anygba_recomp_lib)

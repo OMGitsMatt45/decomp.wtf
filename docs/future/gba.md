@@ -23,7 +23,19 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Bounded ROM signatures recover short read-only Thumb helpers placed beside changing
   stack data. Guard-rejected code is included in miss reports; mixed ARM/Thumb entries
   in one copied image share the same byte-guard span.
-- Unsupported BIOS sound/link services fail explicitly; they never silently return success.
+- Independent translation views recover temporal and overlapping RAM copies, including
+  multiple bodies at one address. Dispatch and each emitted native body check its own
+  full ROM-backed footprint; direct calls into RAM use guarded runtime dispatch.
+- Coverage retains distinct address/mode/source variants and caches repeated signatures.
+- Load bus phases precede peripheral sampling. Three original ARM timer programs
+  match independent mGBA observations (7, 13 and 103 ticks). Timer prescalers, cascades,
+  reload/IRQ boundaries, acknowledgement and stopped-counter behavior are checked.
+- RTC serial transfers require rising clock edges and honor chip-select aborts.
+  Original cases cover repeated GPIO writes, midnight, leap days, months and years.
+- Optional owner BIOS execution handles software interrupts and BIOS callbacks;
+  original firmware fixtures check ARM/Thumb supervisor entry and return. Built-in
+  unsupported sound services fail explicitly. MultiBoot returns a disconnected-cable
+  failure; link play is not implemented.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
 The desktop export is registered in the GUI, application API and chat tool. OpenGL
@@ -37,8 +49,15 @@ The pinned SDL 3.4.10 source downloads automatically during host configuration.
 Emerald's 18,800-frame scripted run creates a character, reaches the overworld,
 saves on the ground floor, sets the bedroom clock, and saves again. Fresh boots
 return to the latest saved room. Advancing the configured RTC by one hour advances
-the displayed clock hand by one hour. The feedback export contains 3,530 translated
-functions; two overlapping RAM copies retain guarded interpreter fallback.
+the displayed clock hand by one hour. The feedback export contains 3,847 dispatch
+entries, including 63 independently guarded RAM bodies. The complete scripted run
+and the tested fresh-load clock paths pass strict static mode with zero interpreted
+cycles. The two previously interpreted overlapping copies now execute native code.
+
+Fresh-load date-change checks observe the game's own day counter, Birch daily state,
+Mirage Island random value and berry-update timestamp. They advance when the date
+advances. These are read-only observations of the generated game, with no game
+hooks or RAM patches. Every result is bound to the exact owner-supplied revision.
 
 The GPU images match the internal reference. A 900-frame native audio capture is
 byte-identical to the reference CPU capture. Independently, mGBA 0.10.5 loads the
@@ -47,6 +66,11 @@ checks establish bounded compatibility, rather than a full gameplay acceptance t
 This workspace uses llvmpipe software OpenGL and SDL dummy audio; physical GPU,
 speakers and controller acceptance remain owner-run. Measured results and scope are
 in [gba-native-validation.json](../gba-native-validation.json).
+
+CPU bus/prefetch timing remains approximate. In an additional microprobe with a
+subsequent ROM-literal load, the timer sample differs from mGBA by two cycles;
+the independent agreement above applies to the documented fixture layouts. Actual
+Nintendo BIOS sound-driver execution has not been qualified with an owner BIOS.
 
 ## Generate a desktop project
 
@@ -77,6 +101,16 @@ hybrid runtime reports fallback; a bounded run is not a gameplay acceptance test
 `input_sha256`, `entries` (`address`, `mode`) and `ram_code` (`rom`, `address`,
 `size`, `mode`). Only aligned code backed by the original input is accepted.
 It does not accept patches, replacement functions or arbitrary host source files.
+RAM mappings may overlap: each copy is analyzed independently and executes only
+while its own complete byte footprint matches.
+
+For games requiring the legacy BIOS sound driver, the generated player accepts
+`--bios /path/to/your/gba-bios.bin`. It validates the owner's 16 KiB file before
+opening saves or coverage output, executes its software-interrupt vector and BIOS
+callbacks in the interpreter, and reports its SHA-256 and interpreted cycles.
+`--strict-static` rejects this mode. The default remains BIOS-free; no firmware is
+downloaded or shipped. The original test firmware validates the execution path,
+not the behavior of Nintendo's sound driver.
 
 To expand native coverage without title-specific patches:
 
@@ -104,8 +138,14 @@ signature or remain interpreted.
 - [x] Emerald cartridge save/reload across fresh boots, including both save generations.
 - [x] In-game clock setting and hour advancement across fresh boots.
 - [x] Native/reference PCM equality and independent mGBA save/room comparison.
-- [ ] Broader timing accuracy and RTC-driven daily gameplay events.
-- [ ] Reviewed import of matching ELF/symbol data and missed indirect/RAM code discovery.
+- [x] Daily-clock dispatch and game-owned day/Birch/Mirage/berry-update state checks.
+- [x] Missed indirect/RAM entry feedback, temporal overlays and per-body byte guards.
+- [x] Independent timer microchecks, timer IRQ/cascade boundaries and RTC calendar edges.
+- [x] Optional owner BIOS software-interrupt path, original ARM/Thumb firmware checks
+  and a normal disconnected MultiBoot result.
+- [ ] Exact bus/prefetch timing, broader peripheral compatibility, individual berry
+  growth events and actual owner-BIOS sound-driver qualification.
+- [ ] Optional reviewed import of matching ELF/symbol data.
 - [x] App/GUI/CLI native-game export integration under the shared PC-output contract.
 - [x] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
   save/reload, clock and fallback report.
