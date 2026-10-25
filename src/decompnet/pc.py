@@ -41,6 +41,11 @@ BACKENDS: dict[str, Backend] | None = None
 def input_platform(path: Path) -> str:
     """Select direct native generation, retaining support for unnamed DS uploads."""
     path=Path(path)
+    if path.suffix.lower() in ('.gb','.gbc'):
+        platforms.require(path.suffix.lower()[1:], PCError)
+    if path.is_file():
+        with path.open('rb') as stream:
+            platforms.require(platforms.removed_input(stream.read(0x440),path.stat().st_size),PCError)
     if path.suffix.lower() == '.gba':return 'gba'
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
     if path.suffix.lower() in ('.elf','.iso','.bin'):

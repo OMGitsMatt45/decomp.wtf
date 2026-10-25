@@ -77,16 +77,14 @@ export builds and reaches its settings prompt through the generic host. Its
 optional exact-hash profile contains code maps and SDK bindings, with no game
 instructions or assets. Full playthrough acceptance remains with the user;
 untested games still need reviewed maps and compatibility validation.
-GBA work is active in [PR6](future/gba.md): a pinned ARM/Thumb translator and
-source-shipped hardware probe build independent C/C++ projects. Desktop/GPU
-presentation, app game-export registration and retail qualification remain pending;
-matching Pokémon source projects supply optional analysis references.
-Emerald USA/Europe now has a clean Linux native build and bounded intro/audio
-smoke run; input-bound runtime feedback improves translated coverage without
-game-specific patches. This does not qualify a desktop port or a full playthrough.
-3DS and Switch remain planned and need import
-and runtime integration as well. GB/GBC retains its assembly workbench; native PC
-output is additional work. Other console plans are deferred.
+GBA native PC output merged through [PR6](future/gba.md), including translated
+ARM/Thumb C, guarded RAM variants, adaptive GPU rendering, audio, controls and
+cartridge saves. Emerald's documented save/reload and daily-clock paths execute
+without interpretation, and the owner reports the original GPU fixtures passing
+on Intel Iris Xe. Broader compatibility and the owner's playthrough remain separate.
+3DS and Switch remain planned and need import and runtime integration. GB/GBC
+support has been removed; the previous assembly implementation remains in Git
+history. Other console plans are deferred.
 
 ## PR migration
 

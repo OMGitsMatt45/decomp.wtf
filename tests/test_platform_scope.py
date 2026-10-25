@@ -23,10 +23,16 @@ def retired_images():
     dol = bytearray(0x120)
     for at, value in ((0, 0x100), (72, 0x80003100), (144, 0x20), (0xe0, 0x80003100)):
         struct.pack_into('>I', dol, at, value)
+    for flag in (0,0x80,0xc0):
+        raw=bytearray(0x8000)
+        raw[0x104:0x10c]=bytes.fromhex('ceed6666cc0d000b')
+        raw[0x143]=flag
+        images.append(bytes(raw))
     return images+[bytes(dol)]
 
 
-@pytest.mark.parametrize('raw', retired_images())
+@pytest.mark.parametrize('raw', retired_images(),
+                         ids=lambda raw: platforms.removed_input(raw[:0x440],len(raw)))
 def test_retired_inputs_rejected_before_writing_or_starting_tools(tmp_path, raw, monkeypatch):
     net = RomNetwork(tmp_path/'app.db', tmp_path/'projects')
     monkeypatch.setattr(net, '_community_layout', lambda *_: pytest.fail('must reject before generation'))
@@ -42,22 +48,24 @@ def test_retired_inputs_rejected_before_writing_or_starting_tools(tmp_path, raw,
     assert not (tmp_path/'projects').exists()
 
 
-def test_old_projects_stay_on_disk_but_cannot_resume(tmp_path):
+@pytest.mark.parametrize('platform',['n64','gb','gbc'])
+def test_old_projects_stay_on_disk_but_cannot_resume(tmp_path,platform):
     net = RomNetwork(tmp_path/'app.db', tmp_path)
     original = tmp_path/'retained.txt'
     original.write_text('user edits')
     with net.store.tx() as db:
         db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
-                   ('old-n64','Old',str(tmp_path),json.dumps({'platform':'n64','kind':'rom'})))
-    for action in (lambda: net.overview('old-n64'), lambda: net.start_autopilot('old-n64'),
-                   lambda: net.export_rom('old-n64')):
+                   ('old-project','Old',str(tmp_path),json.dumps({'platform':platform,'kind':'rom'})))
+    for action in (lambda: net.overview('old-project'), lambda: net.start_autopilot('old-project'),
+                   lambda: net.export_rom('old-project')):
         with pytest.raises(NetworkError, match='removed'):
             action()
     assert original.read_text() == 'user edits'
     assert len(net.store.all('SELECT * FROM projects')) == 1
 
 
-@pytest.mark.parametrize('platform', ['n64','Nintendo 64','gc','GameCube','wii','gcwii'])
+@pytest.mark.parametrize('platform', ['n64','Nintendo 64','gc','GameCube','wii','gcwii',
+                                     'gb','gbc','Game Boy','Game Boy Color','GameBoyColor','cgb'])
 def test_public_project_target_rejected_before_clone(tmp_path, platform, monkeypatch):
     net = RomNetwork(tmp_path/'app.db',tmp_path)
     monkeypatch.setattr('subprocess.run', lambda *_a, **_k: pytest.fail('must not clone'))
@@ -67,11 +75,14 @@ def test_public_project_target_rejected_before_clone(tmp_path, platform, monkeyp
 
 def test_catalog_and_tool_setup_do_not_offer_retired_platforms():
     rows = catalog.normalize({'projects': [dict(owner='a',repo=p,platform=p) for p in
-        ('nds','n64','gc','wii','gba','ps')]})
+        ('nds','n64','gc','wii','gba','ps','gb','gbc','Game Boy')]})
     assert {r['platform'] for r in rows} == {'nds','gba','ps'}
     assert not platforms.REMOVED_TOOLS.intersection(r['id'] for r in toolchains.status())
     with pytest.raises(toolchains.ToolchainError, match='removed'):
         toolchains.install('gcc-2.7.2-kmc')
+    with pytest.raises(toolchains.ToolchainError, match='removed'):
+        toolchains.install('rgbds')
+    assert 'rgbds' not in toolchains.registry()
 
 
 def test_project_cannot_hide_n64_behind_another_platform(tmp_path):
@@ -86,6 +97,69 @@ def test_n64_cli_is_not_registered(capsys):
         main(['n64','scan','input.z64'])
     assert error.value.code == 2
     assert 'invalid choice' in capsys.readouterr().err
+
+
+def test_gb_cli_and_implementation_are_not_registered(capsys):
+    import importlib.util
+    from decompnet.cli import main
+    with pytest.raises(SystemExit) as error:
+        main(['gb','inspect','input.gb'])
+    assert error.value.code==2 and 'invalid choice' in capsys.readouterr().err
+    for name in ['rom.gb','rom.gb_cli','rom.sm83','rom.match_gb','rom.export_gb','rom.export_gb_build','app.gbengine']:
+        assert importlib.util.find_spec('decompnet.'+name) is None
+
+
+@pytest.mark.parametrize('extension',['.gb','.gbc','.bin'])
+def test_native_output_rejects_retired_cartridges_before_inspecting_other_platforms(tmp_path,extension,monkeypatch):
+    from decompnet import pc
+    raw=bytearray(0x8000);raw[0x104:0x10c]=bytes.fromhex('ceed6666cc0d000b')
+    path=tmp_path/('original'+extension);path.write_bytes(raw)
+    monkeypatch.setattr('decompnet.ps2_native.media.inspect',lambda *_a,**_k:pytest.fail('must reject before media inspection'))
+    with pytest.raises(pc.PCError,match='removed'):
+        pc.input_platform(path)
+    assert path.read_bytes()==raw
+
+
+@pytest.mark.parametrize('trusted',[False,True])
+def test_retired_assembler_dialect_cannot_run_a_compiler(trusted,monkeypatch):
+    from decompnet import compiler
+    monkeypatch.setattr(compiler,'_exec',lambda *_a,**_k:pytest.fail('retired assembler must not run'))
+    cfg=compiler.CompilerConfig(cmd=['rgbasm'],language='asm',assembly_dialect='rgbds')
+    result=compiler.compile_source(cfg,'','ret',trusted=trusted)
+    assert not result.ok and 'only GNU assembly' in result.log
+
+
+def test_browser_rejects_retired_cartridges_and_keeps_gba():
+    import shutil
+    import subprocess
+    node=shutil.which('node')
+    if not node:
+        pytest.skip('browser behavior check requires Node.js')
+    script=Path(__file__).resolve().parents[1]/'src/decompnet/app/static/app.js'
+    subprocess.run([node,'-e',r'''
+const fs = require('node:fs'), assert = require('node:assert/strict');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const start = source.indexOf('const PLATFORM_NAME =');
+const stop = source.indexOf('async function pickFile(', start);
+assert(start >= 0 && stop > start);
+eval(source.slice(start, stop) + `
+assert.deepEqual(Object.keys(PLATFORM_NAME).sort(), ['gba','nds','playstation','ps2','psx']);
+for (const flag of [0, 0x80, 0xc0]) {
+  const raw = new Uint8Array(0x8000);
+  raw.set([0xce,0xed,0x66,0x66,0xcc,0x0d,0x00,0x0b], 0x104);
+  raw[0x143] = flag;
+  for (const name of ['game.gb','game.gbc','unnamed.bin']) {
+    const file = {name, size:raw.length};
+    assert.equal(identifyHead(raw, file), null);
+    assert.match(notSupported(raw, file), /support has been removed/);
+  }
+}
+const gba = new Uint8Array(0x8000);
+gba[3] = 0xea; gba[0xb2] = 0x96; gba[0xbd] = (-(0x96 + 0x19)) & 0xff;
+assert.equal(identifyHead(gba, {name:'game.gba',size:gba.length}).platform, 'gba');
+assert.equal(notSupported(gba, {name:'game.gba'}), null);
+`);
+''',str(script)],check=True)
 
 
 def test_retired_boot_utility_cannot_bypass_import(tmp_path):

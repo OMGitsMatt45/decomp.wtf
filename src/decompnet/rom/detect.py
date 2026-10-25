@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import struct
 from pathlib import Path
 
-from . import chd, gb, gba, overlays, ps2, psx
+from . import chd, gba, overlays, ps2, psx
 from .. import platforms
 from .errors import RomError
 
@@ -27,18 +27,9 @@ class Picked:
 
 
 def _program(data: bytes, name: str = "") -> Picked | None:
-    if len(data) >= 0x134 and data[0x104:0x134] == gb.LOGO:
-        try:
-            info = gb.read_info(data)
-        except gb.CartridgeError as error:
-            raise RomError(str(error)) from error
-        import hashlib
-        info.update(sha1=hashlib.sha1(data).hexdigest(), game_code="", region="Cartridge",
-                    compiler_guess="RGBDS assembly workflow", byte_order="little")
-        return Picked(info["platform"], data, "rom." + info["platform"], info, False)
+    platforms.require(platforms.removed_input(data[:0x440], len(data)), RomError)
     if gba.is_gba(data):
         return Picked("gba", data, "rom.gba", gba.read_info(data), False)
-    platforms.require(platforms.removed_input(data[:0x440], len(data)), RomError)
     if data[:8] == b"PS-X EXE":
         exe, info = psx.read_exe(data, name)
         return Picked("psx", exe, "game.exe", info, False)
@@ -92,7 +83,7 @@ def identify(src: bytes | Path, name: str = "") -> Picked:
         return _from_disc(src)
     if src[:4] == b"\x7fELF":
         raise RomError("this ELF program isn't for a console decomp.wtf can split from scratch yet")
-    raise RomError("pick a supported DS/GBA/GB/GBC ROM, a PlayStation 1 or 2 disc image "
+    raise RomError("pick a supported DS/GBA ROM, a PlayStation 1 or 2 disc image "
                    "(.bin, .iso, .chd) or its program file")
 
 

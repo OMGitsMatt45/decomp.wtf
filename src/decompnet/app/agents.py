@@ -727,7 +727,7 @@ class Manager:
             # CodeWarrior's register and stack rules decide most of what's left on DS
             topics = ["fork", "objdiff", *(["mwcc"] if ov.get("platform") == "nds" else [])]
         elif ov.get("compiler", {}).get("language") == "asm":
-            topics = ["arm"] if ov.get("assembly_dialect") == "gnu" else ["sm83"]
+            topics = ["arm"]
         else:
             topics = ["workflow", {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
                 "mips")]
@@ -750,7 +750,7 @@ class Manager:
         guide = {"psx": "psx", "ps2": "ps2", "gba": "agbcc"}.get(ov.get("platform")) or (
             "mips")
         if ov.get("compiler", {}).get("language") == "asm":
-            prompt = tools.BOOT_ASSEMBLY_PROMPT if ov.get("assembly_dialect") == "gnu" else tools.ASSEMBLY_PROMPT
+            prompt = tools.BOOT_ASSEMBLY_PROMPT
             return prompt.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION))
         return tools.WORK_PROMPT.format(title=ov["title"], count=s.options.get("per_session", PER_SESSION), compiler_guide=guide)
 

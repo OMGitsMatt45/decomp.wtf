@@ -62,14 +62,6 @@ IDO, CodeWarrior and CodeWarrior for DS are proprietary and keep their existing 
 | CodeWarrior for GameCube/Wii/DS | Existing upstream Windows builds; explicit license acceptance required |
 | objdiff, decomp-toolkit, DS toolkit, MIPS/PPC/ARM binutils | Existing upstream Windows builds |
 | EE-GCC 2.96 | Pinned downloadable Win32 hosts of the original C/C++ compiler; no WSL or local build required |
-| RGBDS 1.0.4 / Game Boy and Game Boy Color | Upstream Win64 assembler/linker; browser import, assembly editor, agent claims and exact rebuilds |
-
-Game Boy and Game Boy Color have an [assembly workflow](gameboy-assembly.md):
-`decompnet toolchain install rgbds`, then drop a `.gb` or `.gbc` file into the app.
-The CLI remains available with `decompnet gb export game.gb output`.
-The RGBDS programs are upstream C++20 Windows executables. The game sources they
-assemble use SM83 assembly; the new cartridge reader and disassembler use Python.
-No WSL, MSYS2 installation, shell or compiler build is needed for this path.
 
 EE-GCC 2.96 now also has a native Windows x86 host that executes the original
 `2.96-ee-001003-1` compiler instructions with Windows libc/process adapters.

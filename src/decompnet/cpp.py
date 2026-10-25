@@ -40,16 +40,13 @@ def gp_register_annotations(source: str) -> list[tuple[int, int]]:
 
 
 def language(config: dict) -> str:
+    from . import platforms
+    platforms.require(config.get("platform", ""))
     compiler = config.get("compiler", {})
     platform, toolchain = config.get("platform", ""), compiler.get("toolchain")
     if config.get("rom", {}).get("boot_utility") and compiler.get("language") == "asm" \
             and compiler.get("assembly_dialect") == "gnu" \
-            and ((platform == "nds" and toolchain == "binutils-arm")
-):
-        return "asm"
-    if platform in ("gb", "gbc") or compiler.get("language") == "asm":
-        if platform not in ("gb", "gbc") or toolchain != "rgbds" or compiler.get("language", "asm") != "asm":
-            raise ValueError("GB/GBC assembly projects require RGBDS and compiler.language = 'asm'")
+            and platform == "nds" and toolchain == "binutils-arm":
         return "asm"
     supported = (platform == "gba" and toolchain == "agbcc") \
         or (platform == "psx" and toolchain in ("gcc-2.7.2-psx", "gcc-2.8.1-psx")) \
