@@ -172,7 +172,7 @@
     "strict_static_unskipped_intro": true,
     "daily_clock_dispatch": true,
     "optional_bios_original_firmware": true,
-    "nintendo_bios_sound_driver": false,
+    "nintendo_bios_sound_driver": true,
     "cycle_exact_bus_timing": false
   },
   "notes": [
@@ -181,9 +181,9 @@
     "Load-phase peripheral sampling fixes the independent documented ARM timer microchecks. Timer cascades/IRQs and RTC edge/calendar checks pass.",
     "CPU bus/prefetch timing remains approximate. Both MOV and ROM-literal timer layouts agree with mGBA. The earlier two-cycle difference was mGBA multiboot auto-detection running a tiny fixture from EWRAM; padded cartridges remove that comparison mismatch.",
     "The internal CPU/reference PPU shares the hardware core. Independent mGBA verification covers the saved-room load/picture, specified timer microchecks, original BIOS pipeline/IRQ/cartridge-callback fixture and listed replacement-BIOS service observations.",
-    "The replacement BIOS is MIT licensed and incomplete. Its DMA FIFO destination control bits read differently in mGBA; the semantic enable/disable comparison excludes those ignored bits. Nintendo BIOS sound-driver behavior is unqualified.",
+    "The MIT replacement BIOS remains incomplete. A supplied GBA BIOS separately passes the original fixed-rate, resampled and one-shot driver cases: selected service results and active mixer buffers agree with mGBA, while native/reference PCM agrees byte for byte. The independent comparison is scoped to mixer buffers and selected service results; final cross-core PCM is not bit-identical.",
     "Daily-clock checks read the original game state without patches or injected calls. Individual planted-berry growth and a full owner playthrough remain unqualified.",
-    "The product downloads no firmware. An optional owner BIOS executes in the interpreter and is rejected in strict static mode. No owner BIOS was supplied for this qualification.",
+    "The product downloads no firmware. A supplied BIOS was used privately for the optional sound-driver qualification; BIOS execution is interpreted and strict static mode rejects it.",
     "Physical GPU, audio and controller qualification remain owner-run.",
     "No owner ROM, BIOS, extracted assets, save files, captures, runtime traces or ROM-derived C is published with this record. Original test firmware is generated from CC0 fixture source."
   ],
@@ -320,7 +320,7 @@
       "dma_disabled_both": 0,
       "fifo_destination_control_bits_excluded_from_comparison": 96
     },
-    "nintendo_bios_sound_driver_qualified": false,
+    "nintendo_bios_sound_driver_qualified": true,
     "multiboot_without_cable_returns_failure": true,
     "link_play": false,
     "original_pipeline_and_irq_validation": {
@@ -360,6 +360,40 @@
         99,
         77
       ]
+    },
+    "owner_bios_qualification": {
+      "fixture": "tests/fixtures/gba-native/bios-sound.s",
+      "fixture_license": "CC0-1.0",
+      "services": [
+        "SoundDriverInit",
+        "SoundDriverMode",
+        "SoundDriverMain",
+        "SoundDriverVSync",
+        "SoundChannelClear",
+        "MidiKey2Freq",
+        "SoundGetJumpList",
+        "SoundDriverVSyncOff",
+        "SoundDriverVSyncOn (Thumb caller)"
+      ],
+      "channel_modes": [
+        "fixed-rate loop",
+        "resampled loop",
+        "resampled one-shot"
+      ],
+      "simultaneous_channels": 1,
+      "mixer_frequency_hz": 10512,
+      "frames_per_case": 96,
+      "main_calls_per_case": 80,
+      "native_cartridge_callbacks": true,
+      "cartridge_misses": false,
+      "firmware_interpreted": true,
+      "native_reference_pcm_equal_all_cases": true,
+      "stereo_output_and_post_clear_silence": true,
+      "jump_list_points_inside_bios": true,
+      "independent_reference": "mGBA 0.10.5",
+      "active_mixer_buffers_match_independent_reference": true,
+      "final_pcm_bit_exact_to_mgba": false,
+      "scope": "Original samples and documented sound services at the fixture settings; broader retail audio and physical playback remain outside this qualification."
     }
   },
   "independent_timer_microchecks": [
@@ -432,7 +466,9 @@
   ],
   "checks": {
     "gba_native_desktop_application": {
-      "passed": 38
+      "passed": 41,
+      "owner_bios_optional_cases": 3,
+      "passed_without_owner_bios": 38
     },
     "broader_regressions": {
       "passed": 81,

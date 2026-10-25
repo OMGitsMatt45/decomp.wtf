@@ -9,6 +9,27 @@ from decompnet.gba_native import PROFILE_SCHEMA
 PROGRAM = json.loads((Path(__file__).parent/'gba-native/program.json').read_text())
 
 
+def bios_sound(mode="fixed-loop"):
+    """Original service/mixer cartridge; requires a separately supplied BIOS."""
+    program=json.loads((Path(__file__).parent/'gba-native/bios-sound.json').read_text())
+    data=bytearray.fromhex(program['hex'])
+    if mode not in ('fixed-loop','resampled-loop','one-shot'):
+        raise ValueError('unknown original sound fixture')
+    if mode!='fixed-loop':
+        offset=data.index(struct.pack('<I',0x607f0880))
+        struct.pack_into('<I',data,offset,0x607f0080)
+    if mode=='one-shot':
+        struct.pack_into('<H',data,program['symbols']['wave']-0x08000000+2,0)
+    data[0xa0:0xac]=b'BIOS-SOUND!!';data[0xac:0xb0]=b'TSTE';data[0xb2]=0x96
+    data[0xbd]=(-(sum(data[0xa0:0xbd])+0x19))&255
+    data.extend(bytes(262148-len(data)))
+    symbols=program['symbols']
+    profile=dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest(),
+        entries=[dict(address=symbols[name]&~1,mode=mode) for name,mode in
+            (('irq','arm'),('music_callback','arm'),('thumb_on','thumb'))])
+    return bytes(data),profile
+
+
 def hardware():
     data = bytearray.fromhex(PROGRAM['hex'])
     # The copied routine's tail is readable in ROM, allowing the feedback recorder

@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, PROGRAM
+from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_sound, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -60,9 +60,9 @@ def original(tmp_path_factory, sdk):
     return generate(tmp_path_factory.mktemp('gba-source')/'fixture')
 
 
-def execute(original, *options, ok=True):
+def execute(original, *options, ok=True, frames=8):
     rom, root, exe = original
-    output = run([exe, '--rom', root/'assets/game.gba', '--frames', '8', *options], ok=ok)
+    output = run([exe, '--rom', root/'assets/game.gba', '--frames', str(frames), *options], ok=ok)
     return json.loads(output) if ok else output
 
 
@@ -222,6 +222,45 @@ def test_owner_bios_pipeline_protection_and_irq_vector_match_independent_mgba(tm
         assert all(address>=0x02000000 for address in result['misses'])
         if not options:
             assert not result['misses']
+
+
+@pytest.mark.parametrize('mode,active_bytes,checksum',[
+    ('fixed-loop',3168,434383957),
+    ('resampled-loop',3162,2270628090),
+    ('one-shot',0,2543690053),
+])
+def test_optional_owner_bios_sound_driver_mixes_and_clears_original_pcm(mode, active_bytes, checksum, tmp_path, sdk):
+    image=os.environ.get('DECOMP_GBA_TEST_BIOS')
+    if not image:
+        pytest.skip('owner-run BIOS sound qualification; set DECOMP_GBA_TEST_BIOS to a 16 KiB image')
+    bios=Path(image).resolve()
+    assert bios.is_file() and bios.stat().st_size==16384
+    project=generate(tmp_path/'sound',fixture=bios_sound(mode))
+    addresses=[*range(0x02000000,0x02000054,4),*range(0x02003000,0x02003090,4)]
+    observations=[v for address in addresses for v in ('--observe',hex(address))]
+    reports=[];pcm=[]
+    for name,options in (('native',()),('reference',('--interpreter',))):
+        capture=tmp_path/(name+'.pcm')
+        result=execute(project,'--bios',bios,*options,'--audio-pcm',capture,*observations,frames=96)
+        assert result['interpreted_cycles']>0
+        if not options:
+            assert not result['misses']  # All cartridge callbacks are native; firmware is interpreted.
+        values=result['observed'][:21]
+        assert all(0<address<16384 and address&1 for address in result['observed'][21:])
+        assert values[0]==0x68736d53  # BIOS SoundInfo identity
+        assert values[1]&0xffffff00==0x0f010000  # no reverb, one channel, master volume 15
+        assert values[3:6]==[176,10512,8192]  # samples/VBlank, mixer Hz, MIDI frequency
+        assert bool(values[6]&0xff)==(mode!='one-shot') and values[8]&0xff==0
+        assert values[9]==0 and values[10]&~0x60==0xb600 and values[11]==1
+        assert values[16]>=80 and values[17]==80  # IRQ and music callbacks
+        assert values[18:21]==[active_bytes,checksum,0]  # independent mGBA buffer FNV-1a, then silence
+        samples=struct.unpack('<'+'h'*(capture.stat().st_size//2),capture.read_bytes())
+        assert max(samples)>1000 and min(samples)<-1000
+        assert any(left!=right for left,right in zip(samples[::2],samples[1::2]))
+        assert not any(samples[-4096:])
+        reports.append(result);pcm.append(capture.read_bytes())
+    assert reports[0]['observed']==reports[1]['observed']
+    assert pcm[0]==pcm[1]
 
 
 def test_multiboot_without_a_cable_returns_failure_instead_of_stopping(tmp_path, sdk):

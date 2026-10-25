@@ -37,6 +37,11 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   original firmware fixtures check ARM/Thumb supervisor entry and return. Built-in
   unsupported sound services fail explicitly. MultiBoot returns a disconnected-cable
   failure; link play is not implemented.
+- An owner-supplied BIOS passes original fixed-rate, resampled and one-shot sound
+  cases through generated native cartridge code. Checks cover sound mode, pitch,
+  jump tables, IRQ/music callbacks, stereo mixing, clearing and VSync off/on.
+  Native/reference PCM is identical; independent mGBA agrees on the active mixer
+  buffers and selected service results. No BIOS image is included in the output.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
 The desktop export is registered in the GUI, application API and chat tool. OpenGL
@@ -73,7 +78,8 @@ both following-instruction layouts (MOV and a ROM-literal load). The earlier
 two-cycle difference came from mGBA loading a tiny fixture into multiboot EWRAM;
 the regression cartridges prevent that heuristic. Original firmware also checks
 ARM/Thumb protected reads, IRQ entry/return and a cartridge callback against mGBA.
-Nintendo BIOS sound-driver execution still needs qualification with an owner BIOS.
+BIOS sound-driver qualification uses an owner-supplied image and original samples;
+it covers the documented fixture modes, rather than every game's audio behavior.
 
 ## Generate a desktop project
 
@@ -113,7 +119,10 @@ opening saves or coverage output, executes its software-interrupt/IRQ vectors an
 BIOS callbacks in the interpreter, and reports its SHA-256 and interpreted cycles.
 `--strict-static` rejects this mode. The default remains BIOS-free; no firmware is
 downloaded or shipped. The original test firmware validates the execution path,
-not the behavior of Nintendo's sound driver.
+and a separate original cartridge validates the supplied BIOS's sound services.
+To repeat the latter with your own BIOS, see the [fixture commands](../../tests/fixtures/gba-native/README.md).
+The independent comparison checks the BIOS mixer buffers; mGBA's final filtered
+and resampled PCM is not expected to match this runtime's final PCM byte for byte.
 
 To expand native coverage without title-specific patches:
 
@@ -146,8 +155,10 @@ signature or remain interpreted.
 - [x] Independent timer microchecks, timer IRQ/cascade boundaries and RTC calendar edges.
 - [x] Optional owner BIOS software-interrupt/IRQ paths, original ARM/Thumb prefetch,
   protected-read and cartridge-callback checks, and a normal disconnected MultiBoot result.
+- [x] Supplied-BIOS fixed-rate/resampled/one-shot mixing, stereo output, callbacks,
+  channel clearing and native/reference PCM equality, with independent mixer checks.
 - [ ] Exact bus/prefetch timing, broader peripheral compatibility, individual berry
-  growth events and actual owner-BIOS sound-driver qualification.
+  growth events and broader retail audio coverage.
 - [ ] Optional reviewed import of matching ELF/symbol data.
 - [x] App/GUI/CLI native-game export integration under the shared PC-output contract.
 - [x] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
