@@ -475,5 +475,31 @@
       "optional_skipped": 18
     },
     "wheel_gba_resources_verified": 15
+  },
+  "hardware_command_validation": {
+    "backend_revision": "2c75cfea8d088dd2886a3ab35461c2d7dd1cd90d1521cea7753bf098582e2e79",
+    "runtime_and_frontend_sources_identical_to_retail_validation": true,
+    "original_fixture_passed": true,
+    "physical_gpu": false,
+    "scenes": 18,
+    "drawable_sizes": [
+      [
+        240,
+        160
+      ],
+      [
+        480,
+        320
+      ],
+      [
+        481,
+        327
+      ]
+    ],
+    "strict_native_player_frames": 120,
+    "player_interpreted_cycles": 0,
+    "source_integrity_verified": true,
+    "assessment_failure_checks_passed": 9,
+    "scope": "Software OpenGL command validation. Physical hardware qualification awaits the owner-run command."
   }
 }

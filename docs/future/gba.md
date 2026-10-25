@@ -81,6 +81,32 @@ ARM/Thumb protected reads, IRQ entry/return and a cartridge callback against mGB
 BIOS sound-driver qualification uses an owner-supplied image and original samples;
 it covers the documented fixture modes, rather than every game's audio behavior.
 
+## Test a Windows GPU
+
+Use the current GBA branch, `codex/future-gba`, then run from its extracted folder:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1
+```
+
+The script finds `uv` and Visual Studio's bundled CMake, downloads the pinned source
+dependencies as needed, and builds an original standalone GBA project. No ROM or
+BIOS is needed. It checks all 18 raw-state GPU scenes, pixel comparison, DPI-aware
+resizing and letterboxing, then runs the generated native player for two seconds.
+Do not close PowerShell during the initial build; it can take several minutes.
+
+The final `hardware-assessment.json` is saved under the printed temporary output
+folder, alongside logs and a GPU image. `hardware_qualified: true` requires both
+graphics tests to pass and their actual OpenGL device names to match integrated or
+discrete devices in the graphics driver's Vulkan inventory. Vulkan is used only
+for this hardware identity check; the GBA renderer uses OpenGL. Unmatched devices
+remain unverified. This assessment does not qualify physical audio or controllers.
+
+`-CheckTools` checks tool discovery without building. The cross-platform developer
+command is `python -m tools.qualify_gba_hardware /new/output-folder`; adding
+`--allow-software` permits software-driver comparison while preserving a false
+physical-hardware result for that driver. Existing output folders are preserved.
+
 ## Generate a desktop project
 
 Install a host C/C++ compiler and [CMake](https://cmake.org/download/) 3.20 or newer.

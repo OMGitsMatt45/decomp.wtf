@@ -62,12 +62,19 @@ def test_desktop_finds_assets_persists_save_and_reports_software_fallback(deskto
     assert error and save.read_bytes()[0] == 1
 
 
-def test_original_gpu_modes_effects_sprites_scanline_changes_and_resize(desktop):
+def test_original_gpu_modes_effects_sprites_scanline_changes_and_resize(desktop, tmp_path):
     if os.environ.get('DECOMP_REQUIRE_GBA_GPU') != '1':
         pytest.skip('requires a desktop OpenGL 3.3 context; mandatory in Linux GPU CI')
     root, _ = desktop
-    result = run([binary(root, 'gba_gpu_tests')], env={**os.environ, 'SDL_AUDIODRIVER': 'dummy'})
+    report=tmp_path/'gpu-scenes.json'
+    result = run([binary(root, 'gba_gpu_tests'),'--report',report], env={**os.environ, 'SDL_AUDIODRIVER': 'dummy'})
     assert '18 GPU/reference scenes and drawable resize passed' in result
+    data=json.loads(report.read_text())
+    assert data['passed'] and data['scenes']==18 and data['reference_picture_ignored']
+    assert data['resize_passed'] and data['device'] and data['renderer']=='opengl'
+    assert data['resized_drawable'][0]>data['initial_drawable'][0]
+    assert data['resized_drawable'][1]>data['initial_drawable'][1]
+    assert all(value>0 for value in data['odd_drawable'])
 
 
 def test_desktop_rejects_ambiguous_input_script_before_opening_save(desktop, tmp_path):

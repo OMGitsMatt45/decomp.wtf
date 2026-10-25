@@ -206,6 +206,19 @@ Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validatio
 identifies the tested backend revision and driver. Retail playthrough validation
 remains separate.
 
+For the GBA GPU assessment, use the current [GBA branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/codex/future-gba)
+and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1
+```
+
+It builds an original standalone project, compares 18 OpenGL scenes and resized
+output, and writes `hardware-assessment.json`. No ROM or BIOS is needed. The
+wrapper reuses Visual Studio's CMake and locates uv as above. See the
+[GBA GPU test details](docs/future/gba.md#test-a-windows-gpu) for device verification
+and the distinction between software and physical GPU results.
+
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private
 retail sources and all failed recovery attempts are checkpointed in

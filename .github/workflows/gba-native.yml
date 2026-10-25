@@ -3,7 +3,7 @@ name: GBA native desktop
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['src/decompnet/gba_native/**', 'src/decompnet/pc*.py', 'src/decompnet/app/**', 'src/decompnet/toolchains.toml', 'tools/make_gba_native_fixture.py', 'tests/test_gba*.py', 'tests/fixtures/gba*', 'tests/fixtures/gba-native/**', '.github/workflows/gba-native.yml']
+    paths: ['src/decompnet/gba_native/**', 'src/decompnet/pc*.py', 'src/decompnet/app/**', 'src/decompnet/toolchains.toml', 'tools/make_gba_native_fixture.py', 'tools/qualify*gba*', 'tests/test_gba*.py', 'tests/fixtures/gba*', 'tests/fixtures/gba-native/**', '.github/workflows/gba-native.yml']
   push:
     branches: [codex/future-gba]
 
@@ -26,6 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
+      - name: Check Windows hardware-command tool discovery
+        if: runner.os == 'Windows'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/qualify-gba-hardware.ps1 -CheckTools
+      - name: Check hardware-assessment failure handling
+        run: uv run --no-sync python -m pytest -q tests/test_gba_hardware.py
       - name: Install Linux desktop build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libasound2-dev libpulse-dev libudev-dev
