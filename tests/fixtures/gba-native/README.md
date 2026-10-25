@@ -34,3 +34,6 @@ match these observations. Peripheral tests cover all timer prescalers, cascading
 overflow/reload, interrupt acknowledgement, RTC repeated GPIO writes, aborted
 transfers, leap days and calendar rollovers. An original miniature 16 KiB firmware
 fixture checks optional BIOS exception entry/return in ARM and Thumb states.
+
+CI uses short temporary roots to keep Visual Studio's compiler-probe tracking logs
+within MSBuild's path limit. Exported fixture folders still contain spaces.
