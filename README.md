@@ -218,6 +218,9 @@ output, and writes `hardware-assessment.json`. No ROM or BIOS is needed. The
 wrapper reuses Visual Studio's CMake and locates uv as above. See the
 [GBA GPU test details](docs/future/gba.md#test-a-windows-gpu) for device verification
 and the distinction between software and physical GPU results.
+The owner-reported original fixture has passed on **Intel Iris Xe under Windows
+11**; the [GBA hardware summary](docs/gba-hardware-validation.json) records the
+tested backend and scope.
 
 Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private

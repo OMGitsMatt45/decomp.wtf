@@ -69,9 +69,12 @@ The GPU images match the internal reference. A 900-frame native audio capture is
 byte-identical to the reference CPU capture. Independently, mGBA 0.10.5 loads the
 export's raw save and produces the same saved-room picture pixel for pixel. These
 checks establish bounded compatibility, rather than a full gameplay acceptance test.
-This workspace uses llvmpipe software OpenGL and SDL dummy audio; physical GPU,
-speakers and controller acceptance remain owner-run. Measured results and scope are
-in [gba-native-validation.json](../gba-native-validation.json).
+The owner reports all 18 original GPU scenes, resize/letterboxing checks and a
+120-frame strict-native player run passing on an Intel Iris Xe GPU under Windows
+11. The [physical-GPU summary](../gba-hardware-validation.json) records the
+tested backend and scope. The retail tests in this workspace used llvmpipe and
+SDL dummy audio; physical speakers, controllers and retail gameplay remain
+owner-run. Retail measurements are in [gba-native-validation.json](../gba-native-validation.json).
 
 CPU bus/prefetch timing remains approximate. The timer probes agree with mGBA for
 both following-instruction layouts (MOV and a ROM-literal load). The earlier
@@ -189,7 +192,9 @@ signature or remain interpreted.
 - [x] App/GUI/CLI native-game export integration under the shared PC-output contract.
 - [x] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
   save/reload, clock and fallback report.
-- [ ] Physical GPU/audio/controller validation and eventual owner playthrough.
+- [x] Owner-reported Windows 11/Intel Iris Xe qualification of original GPU scenes,
+  resizing/letterboxing and the strict-native standalone player.
+- [ ] Physical audio/controller validation and eventual owner playthrough.
 
 ## Pokémon references
 
