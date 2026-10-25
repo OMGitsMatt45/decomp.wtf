@@ -89,7 +89,7 @@ def status(platform: str = '') -> dict:
     return dict(platform=key or None, first_platform='nds', available=bool(available), backends=available,
         experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
-        reason='' if available else ('3DS game output is in development. Use pc ctr-inspect or the explicit experimental pc ctr-probe CPU project; graphics and retail gameplay are not qualified.'
+        reason='' if available else ('3DS game output is in development. Use pc ctr-inspect, the experimental pc ctr-probe CPU project, or pc ctr-runtime with bundled services and adaptive Vulkan presentation; retail gameplay is not qualified.'
             if key=='3ds' else 'No PC-project backend is installed for this platform. '
             'Matching console exports remain separate from native PC projects.'))
 

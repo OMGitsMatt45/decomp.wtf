@@ -43,7 +43,7 @@ def _program(data: bytes, name: str = "") -> Picked | None:
 def _development_input(head):
     from ..ctr_native.media import recognizable
     if recognizable(head):
-        raise RomError('3DS support is in development. Use decomp pc ctr-inspect or the explicit experimental pc ctr-probe; a playable 3DS game export is not available yet.')
+        raise RomError('3DS support is in development. Use decomp pc ctr-inspect, or the experimental pc ctr-probe/ctr-runtime projects; a playable 3DS game export is not available yet.')
 
 
 def identify(src: bytes | Path, name: str = "") -> Picked:

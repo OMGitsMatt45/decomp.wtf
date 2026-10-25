@@ -125,11 +125,16 @@ def test_output_into_a_pipe_is_utf8():
     assert res.returncode == 0 and res.stdout.decode("utf-8").strip() == "→ ✓ 🎉"
 
 
-def test_the_guides_reach_agents_intact():
+def test_the_guides_reach_agents_intact(tmp_path, monkeypatch):
     from decompnet.app import tools
 
-    text = tools._guide("fork")
-    assert "…" in text and "â€" not in text
+    # Guide prose can be entirely ASCII after an editorial update. Use a
+    # positive Unicode fixture so this still catches a Windows locale decode.
+    expected = "Source → C/C++ … ✓ français 日本語\n"
+    (tmp_path/"guide").mkdir()
+    (tmp_path/"guide/fork.md").write_bytes(expected.encode("utf-8"))
+    monkeypatch.setattr(tools.resources,"files",lambda _package:tmp_path)
+    assert tools._guide("fork") == expected
 
 
 @windows

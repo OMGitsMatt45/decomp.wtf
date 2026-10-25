@@ -18,8 +18,8 @@ of current application support.
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
-| Nintendo 3DS | [In development](docs/3ds-native.md): decrypted-image inspection and original ARM/Thumb/VFP C execution | Independent CPU source projects; GPU/services and playable game output are still in progress |
-| Nintendo Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
+| Nintendo 3DS | [In development](docs/3ds-native.md): decrypted-image inspection, ARM/Thumb/VFP C, bundled kernel/services and Vulkan window | Independent source runtime with adaptive dual/unified composition; retail gameplay, CRO coverage and audio playback are still in progress |
+| Nintendo Switch | Deferred; console additions are paused after 3DS | No qualified raw-game pipeline |
 
 ## What the output means
 
@@ -102,9 +102,10 @@ Install the following only for the features you choose:
 | [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
 | [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
 | [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1/GBA. The main application uses Python 3.12+, managed by uv. |
-| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS and GBA, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. GBA generation discovers the Visual Studio CMake component when it is absent from PATH. |
+| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS, GBA and 3DS, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. GBA generation discovers the Visual Studio CMake component when it is absent from PATH. |
+| [Rust](https://www.rust-lang.org/tools/install) | 3DS translator export needs 1.88+; the source-shipped 3DS runtime needs 1.95+. Use the MSVC toolchain on Windows. Pinned source and locked build crates download automatically; see [3DS output](docs/3ds-native.md). |
 | [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
-| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL GPU rendering in generated DS/PS1/GBA projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; explicit OpenGL requires a working GPU context. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL in generated DS/PS1/GBA projects; Vulkan in PS2/3DS projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; an explicit GPU backend requires a working context/device. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
 
 On Linux, the installer also expects [curl](https://curl.se/download.html).

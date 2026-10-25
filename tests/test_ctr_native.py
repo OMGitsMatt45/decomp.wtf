@@ -158,7 +158,7 @@ def build_original(tmp_path, kind, cmake):
     return out,binary
 
 
-@pytest.mark.parametrize(('kind','expected'), [('arm',12),('thumb',42),('vfp',0x40000000),('bss',0)])
+@pytest.mark.parametrize(('kind','expected'), [('arm',12),('thumb',42),('vfp',0x40000000),('bss',0),('data-callback',42)])
 def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_tools,kind,expected):
     out,binary=build_original(tmp_path,kind,native_tools)
     result=subprocess.run([str(binary),str(out/'assets')],capture_output=True,text=True,timeout=15)

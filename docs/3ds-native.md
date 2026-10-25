@@ -1,96 +1,119 @@
 # Nintendo 3DS native source work
 
-Status: **initial CPU source milestone; playable game output is not available**.
+Status: **source runtime development; playable retail output is not qualified**.
 The goal remains an independent editable game C/C++ repository with a source
 runtime, adaptive GPU rendering, dual-screen presentation, audio, controls and
-saves, like the other console outputs. The DS runtime cannot supply the 3DS
-ARM11 kernel, services and PICA200 GPU.
+saves. The 3DS stays marked in development in the application; `pc status
+--platform 3ds` does not advertise a game backend yet.
 
-## What works now
+## Implemented foundation
 
-- Read-only, bounded inspection of decrypted NCCH/CXI and NCSD/CCI/`.3ds` images.
-  The loader checks partition and ExeFS ranges, executable segment mappings,
-  BSS bounds, the `.code` checksum and bounded backwards LZSS decompression.
+- Bounded read-only inspection of decrypted NCCH/CXI and NCSD/CCI/`.3ds` images:
+  partition/ExeFS ranges, executable mappings, BSS, code checksums and backwards
+  LZSS decompression, including final data-page padding.
 - ARM/Thumb/VFP C generation through MIT
   [3dsrecomp at cec1270](https://github.com/fearkov/3dsrecomp/tree/cec1270db38411f9c02d3f356fc3ed6c3f007424).
-  Both the downloaded archive and extracted source have pinned SHA-256 values.
-  A dependency-free adapter builds the emitter without fetching its optional
-  emulator or Rust package dependencies. Original upstream sources are preserved.
-- A separate `ctr-probe` export produces `game/`, `runtime/`, `assets/`, CMake,
-  source/input identities and build instructions. Its generated C builds with
-  the host C/C++ compiler; the exported project needs neither Rust nor decomp.wtf.
-- Original CC0 ARM, Thumb-interworking and VFP fixtures execute natively and
-  agree with independent Unicorn execution. Editing generated C changes the
-  executable's result. BSS initialization, asset identity, read-only code,
-  unknown targets/opcodes, unsupported SVCs and execution budgets are checked.
-- The only implemented kernel call is `svcExitProcess`. The harness has no
-  interpreter or JIT, and unsupported execution fails explicitly. It does not
-  implement a kernel scheduler or claim CPU timing accuracy.
+  Data/rodata callback pointers provide additional discovery roots. Archive and
+  source SHA-256 pins are checked before building the dependency-free translator.
+- `ctr-probe` exports a small independent C/C++ CPU harness. It needs no Rust
+  after export and implements ExitProcess only. Original ARM, Thumb, VFP, BSS
+  and data-table callback fixtures execute natively. Source edits change the
+  result; malformed inputs, unknown instructions/targets, read-only memory,
+  modified assets and instruction budgets are checked.
+- `ctr-runtime` exports generated C plus a pinned MIT
+  [Zakuro source runtime at e174910](https://github.com/fearkov/zakuro/tree/e174910de5e7285581b153cbce05543efb135cd5),
+  matching recompiler ABI, independent host, CMake and locked Rust dependencies.
+  It does not depend on an installed emulator or decomp.wtf after export.
+- An original ARM11 program exercises real memory allocation, event signaling
+  and waits, srv:/configuration IPC and an asynchronous ExeFS read. Its expected
+  result takes 168 native instructions with zero interpreted instructions.
+  One-instruction budgets resume without interpretation. Missing dispatch
+  targets and inline unsupported instructions both stop in strict mode;
+  compatibility fallback requires an explicit option and is counted separately.
+  Unknown SVCs/IPC commands stop with an unsupported-service report.
+- Vulkan PICA geometry scenes render original triangles at changing resolutions,
+  compare independent software PICA results and preserve dirty guest framebuffer
+  data across renderer resize. Software Vulkan is valid development evidence,
+  not physical GPU qualification.
+- The optional desktop host presents both pictures with adaptive geometry render
+  scale, window resize/high DPI, monitor fullscreen and keyboard/touch input.
+  `stacked` keeps the console arrangement. `unified` fits a primary picture to
+  the current drawable and keeps the other as an inset, with either screen
+  selectable as primary. Screen aspects and touch mapping are preserved, even
+  when the top inset overlaps a primary lower screen. F6 changes layout,
+  F7 swaps primary and F11 changes fullscreen. This compositor does **not** yet
+  turn two game cameras into a continuous widescreen scene or expand field of
+  view. No fixed display resolution or forced 16:9 shape is assumed.
 
-## Commands and prerequisites
+## Commands and downloads
 
-From the repository root, inspect your decrypted executable:
+From the repository root:
 
 ```powershell
 uv run --locked python -m decompnet.cli pc ctr-inspect "game.3ds"
-```
-
-Use the installed `decomp pc ctr-inspect` command instead if preferred. To export
-an explicit CPU development project:
-
-```powershell
-decomp pc ctr-probe "game.3ds" "New 3DS source" --experimental
+uv run --locked python -m decompnet.cli pc ctr-runtime "game.3ds" "New 3DS source" --experimental --screen-mode unified
 cmake -S "New 3DS source" -B "New 3DS source/build"
 cmake --build "New 3DS source/build" --config Release
 ```
 
-Required downloads that are not installed automatically:
+The installed `decomp pc` command also works. Inside the exported directory:
 
-- [Rust 1.88 or newer](https://www.rust-lang.org/tools/install), used to build
-  the translator during export. Windows CI uses the MSVC Rust toolchain.
-- [Visual Studio C++ tools](https://visualstudio.microsoft.com/downloads/) on
-  Windows. Include **C++ CMake tools for Windows**, or install
-  [CMake](https://cmake.org/download/) separately and put it on PATH. Linux needs
-  a host C/C++ compiler and CMake.
+```powershell
+.\build\host\debug\ctr_runtime.exe "PATH_TO_ORIGINAL_IMAGE" --window --screens unified
+```
+
+On Linux use `build/host/debug/ctr_runtime`. For a bounded headless run, replace
+`--window --screens unified` with `--cycles 1000000`. Add `--gpu` for headless
+Vulkan geometry. CMake defaults to the desktop build; `-DCTR_DESKTOP=OFF` omits
+window dependencies. `-DCTR_CARGO_PROFILE=release` selects an optimized Rust
+build and puts the executable under `build/host/release/`.
+
+Downloads not installed automatically:
+
+- [Rust 1.95+](https://www.rust-lang.org/tools/install) for source runtime builds;
+  the smaller `ctr-probe` only needs Rust 1.88+ during export. Use MSVC Rust on
+  Windows.
+- [Visual Studio C++ tools](https://visualstudio.microsoft.com/downloads/).
+  Include **C++ CMake tools for Windows**, or install
+  [CMake](https://cmake.org/download/) separately. Linux needs a host C/C++
+  compiler, CMake and desktop X11 libraries for the window.
+- A Vulkan-capable graphics driver from
+  [Intel](https://www.intel.com/content/www/us/en/download-center/home.html),
+  [AMD](https://www.amd.com/en/support/download/drivers.html) or
+  [NVIDIA](https://www.nvidia.com/en-us/drivers/), or the system's Mesa packages
+  on Linux. The Vulkan SDK is not required by this Rust host.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) for repository
   commands; an installed application can use `decomp` directly.
 
-The pinned emitter sources download automatically. `DECOMP_3DS_SDK` can select
-an existing **unmodified, pinned** source tree. `DECOMP_3DS_RUSTC` can select a
-Rust compiler executable. No 3DS BIOS, system firmware, keys or title database
-are required for this CPU milestone. Encrypted inputs fail with a decrypted-dump
-message. This phase does not decrypt, install CIA files or relocate 3DSX homebrew.
+Pinned sources and locked build crates download automatically. `DECOMP_3DS_SDK`
+and `DECOMP_3DS_RUNTIME_SDK` select existing **unmodified, pinned** source trees;
+`DECOMP_3DS_RUSTC` selects the export compiler. Integration changes apply to the
+exported copy, preserving the immutable source caches and owner edits.
 
-For an original input with no retail data:
+For a non-retail input:
 
 ```powershell
-uv run --locked python -m tools.ctr_fixture original.cxi --kind thumb
-decomp pc ctr-probe original.cxi "Original 3DS source" --experimental
+uv run --locked python -m tools.ctr_fixture original.cxi --kind services
+uv run --locked python -m decompnet.cli pc ctr-runtime original.cxi "Original 3DS source" --experimental
 ```
 
-After building, run `build/Release/ctr_probe.exe assets 100000` on Visual Studio,
-or `build/ctr_probe assets 100000` on Linux, from inside the generated project.
-Exit status 0 means the original program reached ExitProcess, 1 means unsupported
-execution or an integrity failure, and 2 means the instruction budget expired.
-The JSON report explicitly disclaims graphics and retail qualification.
+The original image is bound to its full SHA-256 at launch. No BIOS, boot ROM,
+system firmware, keys or title database is needed by these original fixtures.
+Encrypted inputs fail with a decrypted-dump message. CIA installation and 3DSX
+relocation are not implemented by this importer. Some retail services can need
+additional owner-provided files; no system/game data is downloaded automatically.
 
-## Work needed for game output
+## Remaining game-output work
 
-1. Integrate a source-shipped kernel and service runtime: threads, synchronization,
-   memory allocation, IPC, FS/RomFS and CRO loading/relocation. Keep executable
-   identities and modified-code guards valid across module loads and updates.
-2. Integrate PICA200 command/shader/texture handling and adaptive hardware
-   rasterization. Support both screens at the current drawable size, resize,
-   high DPI, active-monitor fullscreen and reported software compatibility mode.
-   A framebuffer presented by OpenGL alone does not qualify as GPU rendering.
-3. Add input/touch, audio/DSP services, persistent saves, title/update handling,
-   failure reports and a desktop executable that includes its runtime sources.
-4. Qualify original fixtures on Linux and Windows, then owner-supplied Pokémon
-   and Dragon Quest revisions. Publish actual fallback and compatibility evidence.
-   A successful probe or an upstream compatibility claim is not retail acceptance.
-
-The MIT [Zakuro runtime](https://github.com/fearkov/zakuro) is a candidate for
-the next stage because it implements the emitter ABI and already offers static
-ports. It still needs independent pinning, integration, source packaging and
-validation here; no installed emulator is substituted by this milestone.
-`pc status --platform 3ds` therefore continues to report **no game backend**.
+1. Export and qualify RomFS CRO/CRS discovery, module C generation, loading,
+   relocation and provenance guards together. The bundled core has a module
+   loader; that alone does not establish complete translated module coverage.
+2. Extend the combined presentation from composition into continuous scenes
+   where game camera/UI behavior supports it, with honest per-title evidence.
+   Qualify textures/effects, high DPI/fullscreen and physical GPUs on Windows.
+3. Connect and qualify audio playback/DSP, controllers and persistent game saves.
+   The development window currently drains audio samples without playing them.
+4. Add title/update integration, coverage feedback and owner-supplied Pokémon
+   and Dragon Quest retail acceptance. Interpreter use must remain explicit in
+   both the project manifest and execution reports. A passing fixture, bounded
+   run or upstream compatibility claim does not establish a playable retail port.
