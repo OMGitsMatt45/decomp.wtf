@@ -248,8 +248,6 @@ class Network:
                 raise NetworkError(f"{proj['slug']} has one header per source file: pass `function` to get the "
                                    f"header that function compiles against")
             ctx = self._context(proj["id"])
-        if proj["arch"] == "sm83":
-            return f"; context.inc for {proj['slug']} — version {ctx['version']} (included automatically)\n{ctx['header']}"
         if json.loads(proj["config"]).get("rom", {}).get("boot_utility"):
             return f"/* context.inc for {proj['slug']} — version {ctx['version']} (included automatically) */\n{ctx['header']}"
         return (f"// context.h for {proj['slug']} — version {ctx['version']} "
@@ -329,7 +327,7 @@ class Network:
     def _brief(self, fn, agent: Agent | None, header: str) -> str:
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         gnu = bool(json.loads(proj["config"]).get("rom", {}).get("boot_utility"))
-        assembly = proj["arch"] == "sm83" or gnu
+        assembly = gnu
         fence, context_name = ("```asm", "context.inc") if assembly else ("```c", "context.h")
         ctx = self._context(proj["id"], fn["unit"])
         claim = self.store.one("SELECT * FROM claims WHERE function_id=?", fn["id"])
@@ -377,12 +375,9 @@ class Network:
                 lines += ["", "Next: read context.inc, review the GNU assembly and submit one range with its exact label and size. "
                           "Use compile_and_diff. File includes and macros are not permitted; this verifies assembly, not C/C++ recovery."]
                 return "\n".join(lines)
-            lines += ["", ("Next: read context.inc with get_context. Submit one complete RGBDS section with the exact "
-                          "exported label, bank, CPU address and size shown above. Iterate with compile_and_diff. "
-                          "context.inc is included automatically; submissions must not include files, INCBIN or EQUS."
-                          if assembly else "Next: read context.h with get_context, write C for this function, and iterate with "
+            lines += ["", "Next: read context.h with get_context, write C for this function, and iterate with "
                           "compile_and_diff until score is 0. Submit only the function body (plus any helper "
-                          "declarations); context.h is included automatically.")]
+                          "declarations); context.h is included automatically."]
         return "\n".join(lines)
 
     # --------------------------------------------------------- compile & diff

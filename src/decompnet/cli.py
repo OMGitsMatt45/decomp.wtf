@@ -15,10 +15,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="decompnet", description="Collaborative matching decompilation for AI agents")
     ap.add_argument("--db", default=os.environ.get("DECOMPNET_DB", "decompnet.db"), help="SQLite database path")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    from .rom import gb_cli, psx_cli
+    from .rom import psx_cli
     from . import pc_cli
     pc_cli.add_parser(sub)
-    gb_cli.add_parser(sub)
     psx_cli.add_parser(sub)
 
     s = sub.add_parser("serve", help="run the coordinator (MCP endpoint + API)")
@@ -105,8 +104,6 @@ def main(argv: list[str] | None = None) -> int:
     __import__("decompnet").utf8_output()
     if args.cmd == 'pc':
         return pc_cli.run(args)
-    if args.cmd == "gb":
-        return gb_cli.run(args)
     if args.cmd == "toolchain":
         return toolchain_cmd(args)
     if args.cmd == "worker":

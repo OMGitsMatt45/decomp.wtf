@@ -35,8 +35,8 @@ Use their supported revisions and contribution rules rather than recovering
 the same source again. For DS, DQIV's existing `game/` source, `native/` runtime
 and Windows build are a concrete reference, not proof of a generic DS backend.
 
-GB/GBC currently provides an assembly workflow; a native PC adapter remains
-additional work. N64, GameCube and Wii are outside the redesigned product scope.
+GB/GBC, N64, GameCube and Wii are outside the current product scope. Their
+implementation history remains in Git; existing project files are preserved.
 
 ## Generated repository acceptance target
 

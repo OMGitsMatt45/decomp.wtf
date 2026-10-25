@@ -31,7 +31,6 @@ GUIDES = {
     "ps2": "matching PlayStation 2 (EE-GCC, MWCC PS2) code",
     "arm": "ARM and Thumb (GBA, DS, 3DS): registers, conditional code, literal pools",
     "agbcc": "matching Game Boy Advance code built with agbcc",
-    "sm83": "Game Boy / Game Boy Color bank-aware RGBDS assembly and strict byte verification",
     "x86": "x86 and MSVC (PC, Xbox): calling conventions, SEH, matching MSVC output",
     "aarch64": "AArch64 and Clang (Switch): registers, matching Clang output",
     "similarity": "finding similar functions and reusing matched code",
@@ -41,15 +40,14 @@ GUIDES = {
 PLATFORM_GUIDES = {
     "ps": ["mips", "psx"], "psx": ["mips", "psx"], "ps2": ["mips", "ps2"], "psp": ["mips"],
     "nds": ["arm", "mwcc"], "3ds": ["arm", "cpp"],
-    "gba": ["arm", "agbcc"], "gb": ["sm83"], "gbc": ["sm83"], "switch": ["aarch64", "cpp"], "win32": ["x86", "cpp"], "xbox": ["x86", "cpp"],
+    "gba": ["arm", "agbcc"], "switch": ["aarch64", "cpp"], "win32": ["x86", "cpp"], "xbox": ["x86", "cpp"],
     "xbox360": ["ppc", "cpp"],
 }
 
 INSTRUCTIONS = """\
 decomp.wtf: work on the user's own game in the source language reported by project_info.
-C/C++ projects use the game's compiler. GB/GBC assembly projects use RGBDS SM83 assembly, one fixed-bank
-section per attempt, with context.inc; do not use C, m2c or combined multi-section submissions for those.
-Boot utilities may instead report GNU ARM/PowerPC assembly: submit one instruction range with its exact label and size.
+C/C++ projects use the game's compiler. Boot utilities use GNU ARM assembly:
+submit one instruction range with its exact label and size; context.inc is included automatically.
 Candidates are linked at their recorded addresses and compared with the ROM: score 0 means byte-identical.
 Start with project_info, then claim_function -> compile_and_diff (repeat). guide(topic) has know-how.
 Everything runs on the user's computer. The game's code is the user's: never publish it anywhere.
@@ -78,21 +76,6 @@ Use only the decomp tools. Repeat for up to {count} claims (a batch is one), the
    then release_function with precise notes (what you tried, what is left) and claim the next one.
 
 Write plausible original code, C/C++ (no inline asm). Be brief in your messages: work, don't narrate.
-"""
-
-ASSEMBLY_PROMPT = """\
-You are reviewing GB/GBC assembly for {title} in decomp.wtf. Use only the decomp tools.
-Read project_info and guide(sm83). Repeat up to {count} single claims, then stop:
-claim_function(count=1), get_context, review and improve the RGBDS starting point,
-then compile_and_diff with one complete SECTION and the exact exported function label.
-Keep its storage bank, CPU address and byte size. External labels and BANK(label)
-resolve against the project; context.inc is included automatically. No file includes,
-INCBIN, macros or EQUS are permitted in submissions. A match verifies assembly bytes;
-it does not recover C/C++ or prove routine boundaries. Rename understood symbols and
-leave notes about bank state or unknown code. split_function at bank:CPU can add a
-known bank entry or split a range at an instruction boundary. Do not manufacture a
-completion percentage by automatically verifying every generated listing.
-Release a claim with notes when blocked. Be brief; never publish the owner's code.
 """
 
 BOOT_ASSEMBLY_PROMPT = """\
@@ -167,16 +150,10 @@ def _project_info(net: RomNetwork, slug: str) -> str:
     ov = net.overview(slug)
     pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
     if ov["compiler"].get("language") == "asm":
-        if ov.get("assembly_dialect") == "gnu":
-            return (f"{ov['title']} ({ov['platform_name']})\nsource language: GNU assembly; scope: {ov['scope']}\n"
-                    f"{ov['assembly_bytes']} instruction bytes; {ov['base_bytes']} bytes retained from the base image.\n"
-                    "One range per attempt; context.inc is included automatically. Review with claim_function(count=1).\n"
-                    "Assembly verification, not C/C++ recovery. Apploader projects do not rebuild the entire disc.")
-        return (f"{ov['title']} ({ov['platform_name']})\nsource language: RGBDS SM83 assembly\n"
-                f"progress: {ov['matched']}/{ov['functions']} discovered ranges verified; {pct:.2f}% of cartridge bytes.\n"
-                f"Disassembly coverage: {ov['assembly_bytes']} bytes; {ov['base_bytes']} bytes still retained from the base ROM.\n"
-                f"context.inc v{ov['context_version']}; one fixed-bank section per attempt.\n"
-                "Next: guide(sm83), claim_function(count=1). This is assembly verification, not C/C++ recovery.")
+        return (f"{ov['title']} ({ov['platform_name']})\nsource language: GNU assembly; scope: {ov['scope']}\n"
+                f"{ov['assembly_bytes']} instruction bytes; {ov['base_bytes']} bytes retained from the base image.\n"
+                "One range per attempt; context.inc is included automatically. Review with claim_function(count=1).\n"
+                "Assembly verification, not C/C++ recovery.")
     return (f"{ov['title']} ({ov['rom']['game_code']}, {ov['rom']['region']})\n"
             f"compiler: {ov['compiler']['name']} {' '.join(ov['compiler']['flags'])}\n"
             f"source language: {'C++' if ov['compiler'].get('language') == 'c++' else 'C'}\n"
@@ -321,9 +298,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
         """Compile your code for `function` and diff it against the original; score 0 = byte-identical.
 
         C/C++ ROM projects: compiled with the game's compiler (context.h included), linked at the
-        function's address and compared with the ROM. GB/GBC assembly: submit exactly one complete
-        RGBDS section, with context.inc included automatically; bank, CPU address, extent and every
-        byte are checked. Forks: send the complete definition (plus any #include "...",
+        function's address and compared with the ROM. GNU boot assembly: submit one complete
+        instruction range with context.inc included automatically. Forks: send the complete definition (plus any #include "...",
         prototypes, externs or #pragma lines it needs); it replaces the function in its source file, which is
         built with the project's build system and diffed with objdiff. Several functions ("a, b, c"): send all
         their definitions in one source; each is judged on its own."""
@@ -355,8 +331,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
     @mcp.tool(meta=ALWAYS_LOAD)
     async def split_function(ctx: Context, function: str, at: str, new_name: str = "") -> str:
         """Split a function the disassembler merged with the next one (e.g. after a function that never
-        returns). `at` is the address where the second function starts. GB/GBC accepts bank:CPU
-        (e.g. 02:4000) to split at an instruction boundary or add an explicit code entry in another bank."""
+        returns). `at` is the address where the second function starts, at an instruction boundary."""
         return await run(ctx, "split_function", function=function, at=at, new_name=new_name)
 
     @mcp.tool(meta=ALWAYS_LOAD)

@@ -18,7 +18,6 @@ of current application support.
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
-| Game Boy / Game Boy Color | Assembly workflow | Backend required |
 | Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
 
 ## What the output means
@@ -222,7 +221,7 @@ The owner-reported original fixture has passed on **Intel Iris Xe under Windows
 11**; the [GBA hardware summary](docs/gba-hardware-validation.json) records the
 tested backend and scope.
 
-Existing DS, PS1, GBA and GB/GBC qualification workflows retain their own scope.
+Existing DS, PS1, PS2 and GBA qualification workflows retain their own scope.
 The preserved branch contains previous N64/GameCube/Wii workflows. Private
 retail sources and all failed recovery attempts are checkpointed in
 [PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26); only layouts and hashes

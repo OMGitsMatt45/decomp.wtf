@@ -79,8 +79,6 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     dirs = []
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
-        if tc.id == "rgbds" and language != "asm":
-            raise toolchains.ToolchainError("RGBDS assembles GB/GBC sources; it is not a C/C++ compiler")
         if why := tc.unsupported_reason:
             raise toolchains.ToolchainError(why)
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
@@ -181,7 +179,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         language=language,
         c_linkage=language == "c++" and cfg.get("kind") == "rom",
         relative_paths=relative_paths,
-        assembly_dialect=c.get("assembly_dialect", "rgbds"),
+        assembly_dialect=c.get("assembly_dialect", "gnu"),
         timeout=float(c.get("timeout", 15)),
         sandbox=sandbox,
         image=c.get("image", os.environ.get("DECOMP_COMPILER_IMAGE") if linux_host else None),

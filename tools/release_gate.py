@@ -32,11 +32,6 @@ def main():
         if required <= passed:
             notes = args.notes.read_text(encoding="utf-8")
             notes += f"\n\nOperational verification: {run['html_url']}\n\nTested commit: `{args.sha}`.\n"
-            gameboy = [job for job in jobs if job["name"].startswith("gameboy (")]
-            if len(gameboy) == 2 and all(job["conclusion"] == "success" for job in gameboy):
-                notes += "GB/GBC checks also passed on Windows and Linux.\n"
-            else:
-                notes += "GB/GBC remains experimental; its checks are reported separately in the linked run.\n"
             args.output.write_text(notes, encoding="utf-8")
             print(f"release allowed: both required operational jobs passed for {args.sha}")
             return

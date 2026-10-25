@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import struct
 
-REMOVED = {"n64": "Nintendo 64", "gc": "GameCube", "wii": "Wii", "gcwii": "GameCube/Wii"}
+REMOVED = {"n64": "Nintendo 64", "gc": "GameCube", "wii": "Wii", "gcwii": "GameCube/Wii",
+           "gb": "Game Boy", "gbc": "Game Boy Color"}
 ALIASES = {"gamecube": "gc", "gcn": "gc", "nintendo64": "n64", "nintendo 64": "n64",
-           "gc-wii": "gcwii", "gamecube/wii": "gcwii", "ps": "psx", "ds": "nds"}
+           "gc-wii": "gcwii", "gamecube/wii": "gcwii", "ps": "psx", "ds": "nds",
+           "gameboy": "gb", "game boy": "gb", "game-boy": "gb", "gb/gbc": "gb",
+           "gameboy color": "gbc", "game boy color": "gbc", "game-boy-color": "gbc",
+           "gameboycolor": "gbc", "gameboycolour": "gbc", "game boy colour": "gbc", "cgb": "gbc"}
 NAMES = {"nds": "Nintendo DS", "psx": "PlayStation", "ps2": "PlayStation 2",
-         "gba": "Game Boy Advance", "gb": "Game Boy", "gbc": "Game Boy Color"}
-REMOVED_TOOLS = frozenset({"gcc-2.7.2-kmc", "ido-5.3", "ido-7.1", "mwcc"})
+         "gba": "Game Boy Advance"}
+REMOVED_TOOLS = frozenset({"gcc-2.7.2-kmc", "ido-5.3", "ido-7.1", "mwcc", "rgbds"})
 
 
 def canonical(platform: str) -> str:
@@ -23,9 +27,11 @@ def enabled(platform: str) -> bool:
 def require(platform: str, error=ValueError) -> None:
     key = canonical(platform)
     if key in REMOVED:
+        previous = ("Use a previous commit from this repository to access the old workflow. "
+                    if key in ("gb", "gbc") else
+                    "Use the preserved main branch in PR #27 for the previous workflow. ")
         raise error(f"{REMOVED[key]} functionality has been removed from this branch. "
-                    "Use the preserved main branch in PR #27 for the previous workflow. "
-                    "Existing project files have not been deleted.")
+                    + previous + "Existing project files have not been deleted.")
 
 
 def project_platform(root, declared='') -> str:
@@ -48,6 +54,9 @@ def project_platform(root, declared='') -> str:
 
 def removed_input(head: bytes, size: int) -> str | None:
     """Identify retired formats before decoding, uploading or starting a tool."""
+    # Only identify the retired cartridge header; no GB decoder or mapper remains.
+    if len(head) >= 0x144 and head[0x104:0x10c] == bytes.fromhex("ceed6666cc0d000b"):
+        return "gbc" if head[0x143] & 0x80 else "gb"
     if head[:4] in (b'\x80\x37\x12\x40', b'\x37\x80\x40\x12', b'\x40\x12\x37\x80'):
         return 'n64'
     if len(head) >= 0x20:

@@ -106,7 +106,7 @@ def _game_manifest(root, *, platform='nds'):
     return path, data
 
 
-@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba', 'gb', 'gbc'])
+@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba'])
 def test_same_adaptive_gpu_contract_for_every_remaining_console(tmp_path, platform):
     path, data = _game_manifest(tmp_path, platform=platform)
     path.write_text(json.dumps(data))
@@ -114,6 +114,14 @@ def test_same_adaptive_gpu_contract_for_every_remaining_console(tmp_path, platfo
     assert result['presentation_declared'] is True
     assert result['host_build_verified'] is False
     assert result['gameplay_verified'] is False
+
+
+@pytest.mark.parametrize('platform', ['gb', 'gbc'])
+def test_retired_cartridges_cannot_claim_a_native_project(tmp_path, platform):
+    path, data = _game_manifest(tmp_path, platform=platform)
+    path.write_text(json.dumps(data))
+    with pytest.raises(pc.PCError, match='removed'):
+        pc.verify(tmp_path)
 
 
 @pytest.mark.parametrize(('key', 'value'), [

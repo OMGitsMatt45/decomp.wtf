@@ -11,7 +11,7 @@ from pathlib import Path
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    suites = sys.argv[1:] or ["--ignore=tests/test_gb.py", "--ignore=tests/test_gb_app.py"]
+    suites = sys.argv[1:]
     command = [sys.executable, "-m", "pytest", "-q", "-p", "tools.operational_progress", *suites,
                "--junitxml=operational-results.xml"]
     with tempfile.TemporaryDirectory(prefix="operational-progress-") as temporary:

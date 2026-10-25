@@ -59,23 +59,6 @@ def check_source(source: str, *, psx_gp_registers: bool = False, psx_bios_dispat
             raise SourceRejected(why)
 
 
-def check_assembly(source: str) -> None:
-    """Self-contained RGBDS submissions. File access and generated directive names are excluded.
-
-    The assembler receives only our generated INCLUDE of context.inc. Reject
-    EQUS and string interpolation too, so they cannot manufacture file directives.
-    """
-    if len(source.encode()) > MAX_SOURCE_BYTES:
-        raise SourceRejected(f"source too large (max {MAX_SOURCE_BYTES} bytes)")
-    # Keep strings for the check: a macro argument must not hide a file directive.
-    code = re.sub(r'"(?:\\.|[^"\\])*"|;[^\n]*', lambda m: '' if m[0].startswith(';') else m[0], source)
-    if re.search(r'\b(INCLUDE|INCBIN|EQUS|MACRO)\b|[{}\\]', code, re.I):
-        raise SourceRejected("assembly must be self-contained: INCLUDE, INCBIN, EQUS, macros, interpolation and escapes are not allowed")
-    for token in re.finditer(r'"[^"\n]*"|\bSECTION\b', code, re.I):
-        if token[0].lower() == "section" and not re.match(r'SECTION\s+"[A-Za-z0-9_. -]+"\s*,', code[token.start():], re.I):
-            raise SourceRejected("assembly SECTION names must be plain quoted ASCII names")
-
-
 def check_gnu_assembly(source: str) -> None:
     """GNU submissions cannot read files or manufacture assembler directives."""
     if len(source.encode()) > MAX_SOURCE_BYTES:
@@ -97,7 +80,7 @@ class CompilerConfig:
     language: str = "c"
     c_linkage: bool = False  # preserve external names when compiling C-origin game code as C++
     relative_paths: bool = False  # IDO's legacy driver cannot preserve absolute output paths with spaces
-    assembly_dialect: str = "rgbds"
+    assembly_dialect: str = "gnu"
     qemu_i386: str | None = None  # explicit Linux compatibility runner; sandboxing is unchanged
     toolchain_dirs: tuple[str, ...] = ()  # pinned trees whose i386 child programs need launchers
     psx_gp_registers: bool = False  # exact GCC GP bindings, never instruction assembly
@@ -219,12 +202,13 @@ def run_in(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float = 30
 
 
 def compile_source(cfg: CompilerConfig, context_header: str, source: str, trusted: bool = False) -> CompileResult:
+    if cfg.language == "asm" and cfg.assembly_dialect != "gnu":
+        return CompileResult(False, None, "rejected: only GNU assembly is supported")
     if not trusted:
         try:
             if cfg.language == "asm":
-                check = check_gnu_assembly if cfg.assembly_dialect == "gnu" else check_assembly
-                check(context_header)
-                check(source)
+                check_gnu_assembly(context_header)
+                check_gnu_assembly(source)
             else:
                 check_source(source, psx_gp_registers=cfg.psx_gp_registers,
                              psx_bios_dispatch=cfg.psx_bios_dispatch and cfg.language == "c")
@@ -254,7 +238,7 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         filename = "func.asm" if cfg.language == "asm" else "func.cpp" if cfg.language == "c++" else "func.c"
         context = "context.inc" if cfg.language == "asm" else "context.h"
         (inc / context).write_text(context_header, encoding="utf-8", newline="\n")
-        prefix = ('.include "context.inc"\n' if cfg.assembly_dialect == "gnu" else 'INCLUDE "context.inc"\n') \
+        prefix = '.include "context.inc"\n' \
             if cfg.language == "asm" else f'#include "context.h"\n#line 1 "{filename}"\n'
         (work / filename).write_text(prefix + source + "\n", encoding="utf-8", newline="\n")
 

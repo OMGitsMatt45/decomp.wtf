@@ -6,8 +6,6 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const hex8 = (n) => "0x" + (n >>> 0).toString(16).toUpperCase().padStart(8, "0");
 const isAssembly = (ov) => ov?.compiler?.language === "asm" || ov?.progress_kind === "assembly";
-const isBankedAssembly = (ov) => isAssembly(ov) && ["gb", "gbc"].includes(ov?.platform);
-const bankAddress = (n) => `${(n >>> 16).toString(16).toUpperCase().padStart(2, "0")}:${(n & 0xffff).toString(16).toUpperCase().padStart(4, "0")}`;
 const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const pctOf = (best, insns) => (best == null ? null : Math.max(0, 1 - best / Math.max(1, insns * 100)));
 /* A match percentage that never reads 100% before the function really matches (99.6% stays 99.6%). */
@@ -227,7 +225,7 @@ $("cancelPick").onclick = resetDrop;
 
 /* What the user dropped, from its first bytes (nothing is uploaded until they confirm). */
 const PLATFORM_NAME = { psx: "PlayStation", ps2: "PlayStation 2", playstation: "PlayStation 1 or 2",
-  gba: "Game Boy Advance", gb: "Game Boy", gbc: "Game Boy Color", nds: "Nintendo DS" };
+  gba: "Game Boy Advance", nds: "Nintendo DS" };
 const CW_PACK = {
   nds: { id: "mwccarm", text: "Install CodeWarrior for DS, the compilers DS games were built with (about 50 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
 };
@@ -248,18 +246,7 @@ function identifyHead(head, file) {
   const stem = file.name.replace(/\.[^.]*$/, "");
   const base = { title: stem, size: file.size };
   if (["\x80\x37\x12\x40", "\x37\x80\x40\x12", "\x40\x12\x37\x80"].includes(text(0, 4))) return { ...base, platform: "n64" };
-  const gbLogo = "ceed6666cc0d000b03730083000c000d0008111f8889000edccc6ee6ddddd999bbbb67636e0eecccdddc999fbbb9333e";
-  if (head.length >= 0x150 && Array.from(head.slice(0x104, 0x134), n => n.toString(16).padStart(2, "0")).join("") === gbLogo) {
-    let checksum = 0;
-    for (let i = 0x134; i < 0x14d; i++) checksum = (checksum - head[i] - 1) & 255;
-    const banks = head[0x148] <= 8 ? 2 << head[0x148] : ({0x52: 72, 0x53: 80, 0x54: 96})[head[0x148]];
-    if (checksum === head[0x14d] && banks * 0x4000 === file.size) {
-      const color = !!(head[0x143] & 0x80);
-      return { ...base, platform: color ? "gbc" : "gb", order: "Banked ROM · RGBDS assembly", entry: 0x100,
-        title: ascii(0x134, color ? 0x13f : 0x144) || stem, banks };
-    }
-    return null;
-  }
+  if (head.length >= 0x144 && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b") return null;
   if (text(0, 8) === "PS-X EXE") return { ...base, platform: "psx", order: "PS-X EXE", entry: dv.getUint32(0x10, true) };
   if (head.length > 0xc0 && head[0xb2] === 0x96 && head[3] === 0xea) {  // GBA: fixed byte, header checksum, ARM branch
     let sum = 0;
@@ -295,10 +282,10 @@ function identifyHead(head, file) {
 function notSupported(head, file) {
   const text = (a, b) => String.fromCharCode(...head.slice(a, b));
   const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
-  if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA, GB/GBC and PlayStation 1/2 games.";
+  if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA and PlayStation 1/2 games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
-  if (["gb", "gbc"].includes(ext)) return "This Game Boy cartridge has an invalid header or ROM size. Use a complete .gb or .gbc image with its original header.";
+  if (["gb", "gbc"].includes(ext) || (head.length >= 0x10c && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b")) return "Game Boy and Game Boy Color support has been removed.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
   if (ext === "cue") return "Use ‘file on this computer’ below and enter the .cue path so the app can read all referenced tracks together.";
@@ -325,7 +312,7 @@ async function pickFile(file) {
   const p = info.platform;
   const facts = [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
        info.code ? ["Game ID", info.code] : ["Entry", info.entry != null ? hex8(info.entry) : "from the disc"],
-       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "PC source or DS reconstruction" : ["gb", "gbc"].includes(p) ? "RGBDS assembly" : p === "gba" ? "luvdis" : "splat"]];
+       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "PC source or DS reconstruction" : p === "gba" ? "luvdis" : "splat"]];
   $("romFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
   const level = platformStatus(p);
   $("romStatus").hidden = !level;
@@ -379,11 +366,6 @@ function setupCompilers(info) {
   else if (p === "psx") fillCompilers(select, "gcc-2.7.2-psx", "PS1");
   else if (p === "ps2") fillCompilers(select, "ee-gcc-2.96", "PS2");
   else if (p === "gba") fillCompilers(select, "agbcc", "GBA");
-  else if (["gb", "gbc"].includes(p)) {
-    select.innerHTML = '<option value="rgbds">RGBDS 1.0.4 (SM83 assembly)</option>';
-    note.hidden = false;
-    note.textContent = "Assembly ranges are reviewed and verified against your copy. Unknown bytes stay in the base ROM; bank switches may need explicit entries.";
-  }
   else if (p === "playstation") {
     $("compilerRow").hidden = true; note.hidden = false;
     note.textContent = "The compiler is picked from the disc: PSY-Q-era GCC for PlayStation, EE-GCC for PlayStation 2. You can change it later.";
@@ -1160,8 +1142,8 @@ async function installToolchain(id, proprietary) {
 }
 
 /* ------------------------------------------------------------------ public decomps */
-const PLAT_ORDER = ["nds", "gba", "ps", "ps2", "gb", "gbc", "switch", "win32", "xbox360", "3ds", "xbox", "psp"];
-const PLAT_SHORT = { gb: "GB", gbc: "GBC", ps: "PS1", psx: "PS1", ps2: "PS2", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
+const PLAT_ORDER = ["nds", "gba", "ps", "ps2", "switch", "win32", "xbox360", "3ds", "xbox", "psp"];
+const PLAT_SHORT = { ps: "PS1", psx: "PS1", ps2: "PS2", gba: "GBA", nds: "DS", switch: "Switch", win32: "PC", xbox360: "Xbox 360", "3ds": "3DS", xbox: "Xbox", psp: "PSP" };
 const cat = { list: null, downloaded: null, plat: "", q: "", done: false };
 
 /* The list decomp.dev had, as this install downloaded it before the directory was retired (none on a new one). */
@@ -1490,7 +1472,7 @@ $("map").addEventListener("mousemove", (ev) => {
   const f = S.map[i];
   const p = pctOf(f.best, f.insns);
   const status = f.status === "matched" ? `matched${f.matched_by ? " by " + esc(f.matched_by) : ""}` : f.status === "working" ? `${esc(f.agent)} is on it` : f.best != null ? `best ${pctText(p)}` : "not started";
-  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram);
+  const where = S.ov && S.ov.kind === "fork" ? esc(f.unit || "") : hex8(f.vram);
   tip.innerHTML = `<b>${esc(f.name)}</b><br>${where} · ${f.insns} instructions<br>${status}`;
   tip.hidden = false;
   const wrap = $("mapWrap").getBoundingClientRect();
@@ -1943,7 +1925,7 @@ async function refreshFn(first) {
     S.fnDetail = d;
     $("fnAddr").textContent = S.ov.kind === "fork"
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
-      : `${isBankedAssembly(S.ov) ? bankAddress(d.vram) : hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
+      : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     $("fnName").textContent = d.name;
     fnBadge(d);
     const pinned = (S.ov.priority || []).includes(d.name);
@@ -2166,7 +2148,7 @@ function renderList() {
   $("fnFilter").innerHTML = FILTERS.map(([k, label]) => `<button type="button" role="radio" aria-checked="${L.filter === k}" class="${L.filter === k ? "on" : ""}" data-filter="${k}">${label}<span>${counts[k].toLocaleString()}</span></button>`).join("");
   const q = L.q.trim().toLowerCase();
   let rows = S.map.filter((f) => (L.filter === "all" || fnState(f) === L.filter)
-    && (!q || f.name.toLowerCase().includes(q) || (isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
+    && (!q || f.name.toLowerCase().includes(q) || (hex8(f.vram)).toLowerCase().includes(q) || (f.unit || "").toLowerCase().includes(q)));
   const key = {
     i: (f) => f.i, name: (f) => f.name.toLowerCase(), insns: (f) => f.insns, attempts: (f) => f.attempts || 0,
     best: (f) => (f.status === "matched" ? 2 : f.best == null ? -1 : pctOf(f.best, f.insns)), status: (f) => STATE_RANK[fnState(f)],
@@ -2179,7 +2161,7 @@ function renderList() {
     const best = st === "matched" ? `<span class="ok">100%</span>` : p == null ? `<span class="dim">–</span>` : pctText(p);
     const status = st === "matched" ? `<span class="st matched" title="${esc(f.matched_by ? "by " + f.matched_by : "")}">matched</span>` : st === "asm" ? `<span class="st" title="hand-written assembly: no C compiles to it">assembly</span>` : st === "working" ? `<span class="st working">${esc(f.agent || "working")}</span>`
       : st === "tried" ? `<span class="st tried">tried</span>` : `<span class="st">to do</span>`;
-    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : isBankedAssembly(S.ov) ? bankAddress(f.vram) : hex8(f.vram)}</td>
+    return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0"><td class="mono dim">${fork ? esc(f.unit || "") : hex8(f.vram)}</td>
       <td class="mono name">${(S.ov && (S.ov.priority || []).includes(f.name)) ? `<span class="star" title="agents take it next">★</span>` : ""}${esc(f.name)}</td><td class="r mono">${f.insns.toLocaleString()}</td><td class="r mono">${best}</td>
       <td class="r mono">${f.attempts || `<span class="dim">0</span>`}</td><td>${status}</td></tr>`;
   }).join("") || `<tr class="none"><td colspan="6">No function matches${q ? ` “${esc(L.q)}”` : ""}.</td></tr>`;
@@ -2491,7 +2473,7 @@ function renderSource(ov) {
     ? ` The complete PlayStation disc is checked too, including ${ov.disc.programs} rebuilt program files. Disc layout, other files and audio are preserved from your copy.`
     : ` Program payload export only: ${esc(ov.disc.reason)}.`;
   if (ov.disc_set) $("srcText").innerHTML += ` Export creates one source project for all ${ov.disc_set.discs.length} discs of ${esc(ov.disc_set.title)}, with shared recovered source and one build command.`;
-  if (isAssembly(ov)) $("srcText").textContent = `Export editable ${isBankedAssembly(ov) ? "RGBDS" : "GNU"} assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base image. Every saved match is checked again, then the ${ov.scope === "apploader" ? "executable apploader" : "complete ROM"} must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.${ov.scope === "apploader" ? " The disc container is not rebuilt." : ""}`;
+  if (isAssembly(ov)) $("srcText").textContent = `Export editable GNU assembly with ${bytes(ov.assembly_bytes)} of discovered code ranges. The remaining ${bytes(ov.base_bytes)} comes from your own base image. Every saved match is checked again, then the ${ov.scope === "apploader" ? "executable apploader" : "complete ROM"} must rebuild byte for byte. Earlier exports are kept. This is assembly verification, not C/C++ recovery.${ov.scope === "apploader" ? " The disc container is not rebuilt." : ""}`;
   const stale = ex && ex.matched != null && ex.matched < ov.matched;
   $("srcState").innerHTML = !ex ? `<span class="muted small">Not exported yet.</span>`
     : `<div class="src-line ${ex.identical === false ? "bad" : "ok"}">${ex.identical === false ? "✕ the last rebuild differed" : "✓ rebuilds byte for byte"}</div>
@@ -2511,7 +2493,7 @@ $("srcExport").onclick = async () => {
     const r = await followJob(job, $("expLog"));
     $("expResult").innerHTML = r.identical === false
       ? `<div class="notice bad"><span><b>Exported, but the rebuild differs.</b> ${esc(r.log.split("\n").filter(Boolean).pop() || "")}</span></div>`
-      : `<div class="notice room"><span><b>${r.scope === "disc-set" ? "All discs rebuild" : r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py${isBankedAssembly(S.ov) ? ' "PATH_TO_YOUR_ROM"' : ''}`)}`;
+      : `<div class="notice room"><span><b>${r.scope === "disc-set" ? "All discs rebuild" : r.scope === "disc" ? "Complete disc rebuilds" : r.scope === "apploader" ? "Apploader rebuilds" : "Rebuilds"} byte for byte.</b> ${r.matched != null ? `${r.matched} of ${r.functions} ${isAssembly(S.ov) ? "ranges are verified assembly" : "functions are C/C++"}.` : ""}</span></div>${cmdBox(`cd "${r.path}" && python build.py`)}`;
     if (r.archive && r.identical) $("expResult").innerHTML += `<a class="button" href="/api/export/archive?slug=${encodeURIComponent(S.slug)}">Download combined ZIP</a>`;
     if (r.shiftable) {
       $("expResult").innerHTML += r.shiftable.ready
