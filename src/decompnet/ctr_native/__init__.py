@@ -88,10 +88,22 @@ def generate(project, root):
             if text['address'] <= (word & ~1) < text['address']+text['size']:
                 entries.add(word)
     seeds.write_text('\n'.join(map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]))+'\n')
+    if project.get('instruction_boundaries'):
+        from . import romfs
+        modules=romfs.modules(path,inspection)
+        inspection['modules']=[]
+        if modules:
+            folder=assets/'modules';folder.mkdir()
+            for index,module in enumerate(modules):
+                name=f'{index:04}'+('.crs' if module['path'].lower().endswith('.crs') else '.cro')
+                (folder/name).write_bytes(module.pop('data'))
+                inspection['modules'].append({**module,'file':name})
     try:
         command = [str(emitter), str(text_file), str(text['address']), str(seeds), str(game)]
         if project.get('instruction_boundaries'):
             command.append('--instruction-boundaries')
+            if inspection['modules']:
+                command.extend(['--modules',str(assets/'modules')])
         result = subprocess.run(command,
                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -172,6 +184,7 @@ def generate_runtime(project, root):
                            (package/'runtime_main.rs',app/'src/main.rs'),
                            (package/'desktop.rs',app/'src/desktop.rs'),
                            (package/'gpu_scenes.rs',app/'src/gpu_scenes.rs'),
+                           (package/'module_scenes.rs',app/'src/module_scenes.rs'),
                            (package/'Runtime.cmake',root/'CMakeLists.txt'),
                            (package/'README.runtime.md',root/'README.md')):
         shutil.copyfile(source,target)

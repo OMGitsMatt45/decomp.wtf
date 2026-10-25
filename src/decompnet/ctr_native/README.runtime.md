@@ -5,6 +5,12 @@
 audio and PICA200 source. `native/recompiler/` supplies its matching ABI. There
 is no dependency on an installed emulator or decomp.wtf after export.
 
+RomFS CRO/CRS payloads are retained under `assets/modules/` with numeric filenames
+and logical paths/hashes in `analysis.json`. Module exports/imports/relocations
+feed C generation; the bundled loader places their generated functions when a
+module is loaded. Original module checks cover ARM/Thumb relocation, changed-code
+guards, reload and unload. Retail module/service coverage remains unqualified.
+
 This is a runtime development project with a Vulkan window and bounded headless
 runner. Retail gameplay, audio playback and controller support are not qualified
 yet. It does not open a game-library browser.

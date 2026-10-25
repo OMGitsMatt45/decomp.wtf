@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "ctr_gpu_scenes"
 path = "src/gpu_scenes.rs"
 
+[[bin]]
+name = "ctr_module_scenes"
+path = "src/module_scenes.rs"
+
 [workspace]
 
 [features]

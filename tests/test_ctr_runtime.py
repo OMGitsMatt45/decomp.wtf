@@ -10,7 +10,7 @@ import pytest
 
 from decompnet import pc
 from decompnet.ctr_native import export_runtime, runtime_provider
-from tools.ctr_fixture import fixture
+from tools.ctr_fixture import fixture,cro,with_romfs
 
 
 def command(args, *, timeout=900, env=None):
@@ -26,13 +26,16 @@ def original_runtime(tmp_path_factory):
         pytest.skip('set DECOMP_TEST_3DS_RUNTIME=1 for the source-shipped Rust/Vulkan core build')
     assert shutil.which('cmake') and shutil.which('cargo'), 'runtime build requires CMake, Rust 1.95+ and C/C++'
     root=tmp_path_factory.mktemp('original 3DS runtime')
-    image=root/'original.cxi';image.write_bytes(fixture('services'))
+    image=root/'original.cxi'
+    image.write_bytes(with_romfs(fixture('services'),[('OriginalARM.cro',cro('OriginalARM')),
+        ('OriginalThumb.cro',cro('OriginalThumb',thumb=True)),('Alias.cro',cro('OriginalARM'))]))
     project=root/'Independent source'
     exported=export_runtime(image,project,screen_mode='unified')
     assert exported['integrity_verified'] and not exported['presentation_declared']
     manifest=exported['manifest']
     assert manifest['qualification']['retail'] is False
     assert manifest['development_presentation']['screen_mode']=='unified'
+    assert len(json.loads((project/'analysis.json').read_text())['modules'])==3
     assert manifest['fallback']==dict(interpreter=True,runtime_compilation=False,default='strict')
     assert (project/'native/runtime/LICENSE').is_file()
     assert (project/'native/app/Cargo.lock').is_file()
@@ -125,6 +128,19 @@ def test_adaptive_layout_touch_and_vulkan_scenes(original_runtime):
         assert report['passed'] and report['scenes']==4
         assert report['resized_scales']==[1,2,3,1] and report['framebuffer_preserved']
         assert not report['physical_device_qualified']
+
+
+def test_translated_arm_and_thumb_modules_move_reload_and_unload(original_runtime):
+    project,image,binary,_scenes,_build,_run=original_runtime
+    probe=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    rows=json.loads((project/'analysis.json').read_text())['modules']
+    for row in rows:
+        path=project/'assets/modules'/row['file'];raw=path.read_bytes()
+        name_offset=int.from_bytes(raw[0xc0:0xc4],'little')
+        module=raw[name_offset:].split(b'\0')[0].decode('ascii')
+        report=json.loads(command([probe,image,path,module],timeout=30).stdout)
+        assert report['passed'] and report['native_instructions']==4
+        assert report['interpreted_instructions']==0 and report['provenance_checked']
 
 
 def test_vulkan_window_with_both_screen_arrangements(original_runtime):

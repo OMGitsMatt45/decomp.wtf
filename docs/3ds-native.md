@@ -24,6 +24,15 @@ saves. The 3DS stays marked in development in the application; `pc status
   [Zakuro source runtime at e174910](https://github.com/fearkov/zakuro/tree/e174910de5e7285581b153cbce05543efb135cd5),
   matching recompiler ABI, independent host, CMake and locked Rust dependencies.
   It does not depend on an installed emulator or decomp.wtf after export.
+- Bounded RomFS traversal extracts CRO/CRS modules under generated filenames.
+  Their exports, imports and relocation roots feed C generation, including
+  static-CRS exports from the main executable. Original ARM/Thumb module tests
+  execute at two load addresses without interpretation, reload after a clean
+  copy, reject changed code and remove stale entries on unload. Read-only asset
+  aliases are allowed; conflicting module contents with one name fail explicitly.
+  Directory links, UTF-16 names, parent relationships and data ranges are checked.
+  Whole-input and module SHA identities are recorded; IVFC hash-tree verification
+  is not claimed by the bounded directory walker.
 - An original ARM11 program exercises real memory allocation, event signaling
   and waits, srv:/configuration IPC and an asynchronous ExeFS read. Its expected
   result takes 168 native instructions with zero interpreted instructions.
@@ -105,9 +114,9 @@ additional owner-provided files; no system/game data is downloaded automatically
 
 ## Remaining game-output work
 
-1. Export and qualify RomFS CRO/CRS discovery, module C generation, loading,
-   relocation and provenance guards together. The bundled core has a module
-   loader; that alone does not establish complete translated module coverage.
+1. Broaden service-driven CRO/CRS load/import/relocation and executable-data
+   coverage beyond the original placement/provenance fixtures. Original module
+   success does not establish complete translated retail module coverage.
 2. Extend the combined presentation from composition into continuous scenes
    where game camera/UI behavior supports it, with honest per-title evidence.
    Qualify textures/effects, high DPI/fullscreen and physical GPUs on Windows.

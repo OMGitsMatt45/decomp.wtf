@@ -57,6 +57,63 @@ def cartridge(raw):
     return bytes(out)
 
 
+def cro(name='OriginalFixture', *, thumb=False):
+    """CC0 module with one exported function returning 42, without SDK data."""
+    code=struct.pack('<HH',0x202a,0x4770) if thumb else struct.pack('<II',0xe3a0002a,0xe12fff1e)
+    out=bytearray(0x200+len(code))
+    out[0x80:0x84]=b'CRO0'
+    for at,value in ((0xc0,0x180),(0xc8,0x138),(0xcc,1),(0x138,0x200),
+                     (0x13c,len(code)),(0xd8,0x150),(0xdc,1),(0x150,0x10 if thumb else 0)):
+        struct.pack_into('<I',out,at,value)
+    # Thumb pointer is the code offset + 1, encoded as segment tag offset << 4.
+    encoded=name.encode('ascii')
+    assert len(encoded)<0x80
+    out[0x180:0x180+len(encoded)]=encoded
+    out[0x200:]=code
+    return bytes(out)
+
+
+def with_romfs(raw, entries, *, directory=None):
+    """Append a flat original IVFC/RomFS; metadata and payloads are independent.
+
+    No retail assets or hash-tree acceptance claim. The importer and runtime
+    use the whole-image identity and independently hashed module bytes.
+    """
+    files=bytearray();offsets=[];payload=bytearray()
+    for name,data in entries:
+        name=name.encode('utf-16-le');at=len(files);offsets.append(at)
+        files.extend(struct.pack('<IIQQII',0 if directory is None else 0x18,0xffffffff,len(payload),len(data),0xffffffff,len(name))+name)
+        files.extend(bytes((-len(files))%4));payload.extend(data)
+    for index,at in enumerate(offsets[:-1]):
+        struct.pack_into('<I',files,at+4,offsets[index+1])
+    first=offsets[0] if offsets else 0xffffffff
+    if directory is None:
+        dirs=struct.pack('<6I',0,0xffffffff,0xffffffff,first,0xffffffff,0)
+    else:
+        name=directory.encode('utf-16-le')
+        dirs=struct.pack('<6I',0,0xffffffff,0x18,0xffffffff,0xffffffff,0)
+        dirs+=struct.pack('<6I',0,0xffffffff,0xffffffff,first,0xffffffff,len(name))+name
+        dirs+=bytes((-len(dirs))%4)
+    file_meta=0x28+4+len(dirs)+4
+    data_offset=(file_meta+len(files)+15)&~15
+    level=bytearray(data_offset+len(payload))
+    struct.pack_into('<10I',level,0,0x28,0x28,4,0x2c,len(dirs),file_meta-4,4,file_meta,len(files),data_offset)
+    level[0x2c:0x2c+len(dirs)]=dirs
+    level[file_meta:file_meta+len(files)]=files
+    level[data_offset:]=payload
+    ivfc=bytearray(0x1000)+level
+    ivfc[:4]=b'IVFC'
+    struct.pack_into('<I',ivfc,4,0x10000)
+    struct.pack_into('<Q',ivfc,0x44,len(level))
+    struct.pack_into('<I',ivfc,0x4c,12)
+    ivfc.extend(bytes((-len(ivfc))%0x200))
+    out=bytearray(raw);out.extend(bytes((-len(out))%0x200));start=len(out)
+    out.extend(ivfc)
+    struct.pack_into('<I',out,0x104,len(out)//0x200)
+    struct.pack_into('<II',out,0x1b0,start//0x200,len(ivfc)//0x200)
+    return bytes(out)
+
+
 if __name__=='__main__':
     import argparse
     from pathlib import Path
