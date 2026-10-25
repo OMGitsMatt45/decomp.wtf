@@ -90,7 +90,8 @@ def _fingerprint(sdk):
     """The cache cannot silently change between source generation and compilation."""
     value = hashlib.sha256()
     for base in ('common', 'tools/recomp', 'runtime'):
-        for path in sorted((sdk/base).rglob('*')):
+        # WindowsPath sorts case-insensitively. Pin one order on every host.
+        for path in sorted((sdk/base).rglob('*'), key=lambda p: p.relative_to(sdk).as_posix()):
             if path.is_symlink():
                 raise pc.PCError('GBA source cache contains an external source')
             if path.is_file():
