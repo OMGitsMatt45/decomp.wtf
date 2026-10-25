@@ -1565,6 +1565,20 @@ class RomNetwork(Network):
         log('Native PC source project: '+result['path'])
         return result
 
+    def generate_gba_pc(self, game: Path, *, confirmed=False, save_type='auto', renderer='auto', log=print):
+        """Independent GBA desktop source, without a matching console compiler."""
+        if not confirmed:
+            raise NetworkError('confirm that this is your own legally obtained copy of the game')
+        from ..gba_native import export_game
+        from .. import pc
+        import uuid
+        name=_slugify(Path(game).stem)[:60] or 'gba-game'
+        output=self.workspace/(name+'-pc-'+uuid.uuid4().hex[:8])
+        try:result=export_game(game,output,save_type=save_type,renderer=renderer,log=log)
+        except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
+        log('Native PC source project: '+result['path'])
+        return result
+
     def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
                        renderer='auto',screen_mode='dual',log=print) -> dict:
         """Generate a PC repository directly, without a console matching project/compiler."""
@@ -1623,6 +1637,12 @@ class RomNetwork(Network):
                     if not source:raise pc.PCError('this project has no retained PS2 input; generate from the original disc on the home screen')
                     return export(Path(proj['root'])/source,Path(proj['root'])/'pc-source',
                         profile=ps2_profile,renderer=renderer,log=log)
+                if cfg.get('platform') == 'gba':
+                    from ..gba_native import export_game
+                    source=cfg.get('rom',{}).get('file')
+                    if not source:raise pc.PCError('this project has no retained GBA input; generate from the original cartridge on the home screen')
+                    return export_game(Path(proj['root'])/source,Path(proj['root'])/'pc-source',
+                        save_type=save_type,renderer=renderer,log=log)
                 return pc.export({**cfg, 'root': proj['root']}, Path(proj['root'])/'pc-source')
             except (pc.PCError, OSError, ValueError) as error:
                 raise NetworkError(str(error)) from error

@@ -1,13 +1,13 @@
 # GBA native PC output — PR6
 
-Status: **implementation in progress; not a finished PC game backend**.
+Status: **experimental desktop backend; retail qualification in progress**.
 The goal is the same independent editable repository as DS/PS1/PS2: translated
 game code, source-shipped hardware runtime, a desktop CMake build, adaptive GPU
 presentation, audio, controllers, cartridge saves and explicit compatibility reports.
 
 ## Implemented foundation
 
-- An input-validating `pc gba-inspect` command and experimental `pc gba-probe` exporter.
+- An input-validating `pc gba-inspect` command, `pc gba-native` desktop exporter and `pc gba-probe` diagnostic exporter.
 - ARMv4T ARM/Thumb discovery and native C translation through pinned MIT
   [AnyGBA](https://github.com/hoanglt1223/anygba/tree/a3eb412f79627eaae27e2523039d893f72dada1d).
 - An independent C11/C++20 project containing translated code and the hardware core;
@@ -21,14 +21,23 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Unsupported BIOS sound/link services fail explicitly; they never silently return success.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
-The first probe has no desktop window or GPU renderer. Its CPU scanline PPU is a
-reference for the GPU implementation, not fulfillment of the shared presentation
-contract. Accordingly it stays outside registered PC-game backends and the GUI
-does not advertise GBA native-game output yet. Emerald boot smoke testing is
-recorded in [gba-native-validation.json](../gba-native-validation.json); retail
-gameplay compatibility remains unqualified.
+The desktop export is registered in the GUI, application API and chat tool. OpenGL
+3.3 rasterizes raw per-scanline tile/sprite/palette state at the current drawable
+size. It preserves the original art's pixel detail. The CPU reference framebuffer
+is used only for comparison or explicitly reported software compatibility mode.
+The active monitor controls the initial window; F11 uses its native fullscreen size.
+Keyboard/gamepad controls, paced stereo audio and atomic raw saves are included.
+The pinned SDL 3.4.10 source downloads automatically during host configuration.
 
-## Reproduce the development probe
+Emerald reaches the title and New Game/Option menu under bounded scripted input.
+The latest bounded export generates 1,170 functions and retains one guarded RAM
+fallback at `0x03007dcc`; strict mode stops there. Its GPU images match the internal reference; this workspace uses llvmpipe software
+OpenGL, so this is not physical GPU qualification. The internal CPU reference
+shares the hardware core, rather than providing an independent accuracy oracle.
+See [gba-native-validation.json](../gba-native-validation.json) for measured results.
+Retail gameplay compatibility remains unqualified.
+
+## Generate a desktop project
 
 Install a host C/C++ compiler and [CMake](https://cmake.org/download/) 3.20 or newer.
 Windows users can use [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
@@ -38,17 +47,18 @@ for native translation.
 
 ```sh
 decomp pc gba-inspect /path/to/your/game.gba
-decomp pc gba-probe /path/to/your/game.gba /new/source-folder --experimental
+decomp pc gba-native /path/to/your/game.gba /new/source-folder --experimental
 cd /new/source-folder
 python tools/extract_assets.py /path/to/your/game.gba
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel 2
-./build/gba_probe --rom assets/game.gba --frames 8 --strict-static
+./build/gba_pc
 ```
 
-Visual Studio puts the executable in `build/Release/gba_probe.exe`. An unprofiled
+Visual Studio puts the executable in `build/Release/gba_pc.exe`. The generated README
+explains controls, display settings, raw saves and diagnostic captures. An unprofiled
 retail cartridge can have unresolved callbacks or RAM-installed routines. The
-hybrid probe reports fallback; a bounded run is not a gameplay acceptance test.
+hybrid runtime reports fallback; a bounded run is not a gameplay acceptance test.
 
 `--profile reviewed.json` accepts schema `decomp.wtf.gba-profile/v1`, the exact
 `input_sha256`, `entries` (`address`, `mode`) and `ram_code` (`rom`, `address`,
@@ -59,7 +69,7 @@ To expand native coverage without title-specific patches:
 
 ```sh
 ./build/gba_probe --rom assets/game.gba --frames 900 --miss-log /new/coverage.txt
-decomp pc gba-probe /path/to/your/game.gba /new/source-with-feedback --feedback /new/coverage.txt --experimental
+decomp pc gba-native /path/to/your/game.gba /new/source-with-feedback --feedback /new/coverage.txt --experimental
 ```
 
 Build the new source project and compare its output with the previous run. Repeat
@@ -70,13 +80,14 @@ all gameplay paths are statically translated.
 
 ## Remaining PC-game acceptance
 
-- [ ] Adaptive desktop window, gamepad/keyboard input and paced audio.
-- [ ] Actual GPU rasterization of GBA backgrounds/sprites/effects, compared with the
+- [x] Adaptive desktop window, gamepad/keyboard input and paced audio.
+- [x] Actual GPU rasterization of GBA backgrounds/sprites/effects, compared with the
   reference PPU, with drawable-resolution sizing and reported software fallback.
-- [ ] Broader timing, save-chip and RTC execution qualification, including Emerald's
-  Flash 128 KiB cartridge and clock. Core presence is not retail proof.
+- [x] Original Flash 128 KiB protocol, bank, erase, atomic save/reload and serial RTC
+  time/advance execution checks. These are cartridge protocol checks, not retail save proof.
+- [ ] Retail save/reload and clock-driven gameplay events, plus broader timing accuracy checks.
 - [ ] Reviewed import of matching ELF/symbol data and missed indirect/RAM code discovery.
-- [ ] App/GUI/CLI native-game export integration under the shared PC-output contract.
+- [x] App/GUI/CLI native-game export integration under the shared PC-output contract.
 - [ ] Owner-supplied Emerald revision: clean native build, boot, graphics/audio/input,
   save/reload, fallback report; eventual full playthrough remains with the owner.
 

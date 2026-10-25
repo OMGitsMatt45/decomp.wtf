@@ -1,0 +1,2 @@
+#pragma once
+inline constexpr char gba_ppu_shader[]=R"GBA_PPU(@GBA_PPU_SOURCE@)GBA_PPU";

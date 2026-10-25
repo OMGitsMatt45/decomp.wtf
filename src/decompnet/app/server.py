@@ -514,6 +514,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                         raise NetworkError('Native PC output does not use a matching console compiler or reconstruction layout')
                     from .. import pc
                     target=q.get('pc_platform') or pc.input_platform(game)
+                    if target=='gba':
+                        return net.generate_gba_pc(game,confirmed=True,save_type=q.get('save_type','auto'),renderer=q.get('renderer','auto'),log=log)
                     if target=='ps2':
                         profile=hostenv.local_path(q['ps2_profile']) if q.get('ps2_profile') else None
                         return net.generate_ps2_pc(game,confirmed=True,profile=profile,renderer=q.get('renderer','auto'),log=log)
@@ -524,7 +526,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                             raise NetworkError('provide up to fifteen additional disc paths in order')
                         paths=[game,*[hostenv.local_path(path) for path in extra]]
                         return net.generate_psx_pc(paths,confirmed=True,renderer=q.get('renderer','auto'),log=log)
-                    if target!='nds':raise NetworkError('native PC generation is available for DS, PS1 and experimental PS2 projects')
+                    if target!='nds':raise NetworkError('native PC generation is available for DS, PS1, PS2 and GBA projects')
                     return net.generate_ds_pc(game,confirmed=True,input_format=q.get('ds_input_format','auto'),
                                               save_type=q.get('save_type','auto'),renderer=q.get('renderer','auto'),
                                               screen_mode=q.get('screen_mode','dual'),log=log)

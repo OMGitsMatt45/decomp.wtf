@@ -41,6 +41,7 @@ BACKENDS: dict[str, Backend] | None = None
 def input_platform(path: Path) -> str:
     """Select direct native generation, retaining support for unnamed DS uploads."""
     path=Path(path)
+    if path.suffix.lower() == '.gba':return 'gba'
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
     if path.suffix.lower() in ('.elf','.iso','.bin'):
         from .ps2_native.media import inspect
@@ -53,6 +54,8 @@ def input_platform(path: Path) -> str:
     with path.open('rb') as stream:head=stream.read(0x200)
     if len(head)==0x200 and crc16(head[:0x15e])==int.from_bytes(head[0x15e:0x160],'little'):
         return 'nds'
+    from .rom.gba import is_gba
+    if is_gba(head):return 'gba'
     return 'psx'
 
 
@@ -64,7 +67,8 @@ def _backends():
     from .nds_native import backend
     from .psx_native import backend as psx_backend
     from .ps2_native import backend as ps2_backend
-    return [backend(),psx_backend(),ps2_backend()]
+    from .gba_native import game_backend as gba_backend
+    return [backend(),psx_backend(),ps2_backend(),gba_backend()]
 
 
 def status(platform: str = '') -> dict:

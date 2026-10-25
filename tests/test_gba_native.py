@@ -169,8 +169,8 @@ def test_wrong_profile_identity_and_output_reuse_preserve_existing_work(original
     assert pc.verify(root)['integrity_verified']
 
 
-def test_gba_probe_does_not_advertise_a_finished_gpu_game_backend(tmp_path):
-    assert not pc.status('gba')['available']
+def test_gba_game_backend_is_experimental_and_inspection_validates_header(tmp_path):
+    assert pc.status('gba')['available'] and pc.status('gba')['experimental']
     data, _ = hardware(); rom = tmp_path/'fixture.gba'; rom.write_bytes(data)
     assert inspect(rom)['game_code'] == 'TSTE'
     bad = bytearray(data); bad[0xbd] ^= 1; rom.write_bytes(bad)
@@ -208,3 +208,22 @@ def test_edited_source_cache_is_rejected_before_building(tmp_path, monkeypatch):
     monkeypatch.setattr(toolchains, 'ensure', lambda *_a, **_k: tmp_path)
     with pytest.raises(pc.PCError, match='pinned SDK'):
         _sdk()
+
+
+def test_combined_feedback_preserves_distinct_ram_copies_independent_of_log_order():
+    from decompnet.gba_native import _feedback_regions
+    # Two copied functions, then an interior entry in the first copy. The old
+    # end-of-RAM inference let the second record hide the first function.
+    a = ('# identity\n0x03002000 arm rom=0x08000100\n', {})
+    b = ('# identity\n0x03001000 thumb rom=0x08001000\n', {})
+    c = ('# identity\n0x03002100 arm rom=0x08000200\n', {})
+    expected = [dict(address=0x03001000,rom=0x08001000,size=0x1000,mode='thumb'),
+                dict(address=0x03002000,rom=0x08000100,size=0x6000,mode='arm')]
+    assert _feedback_regions({}, [a,b,c], 0x10000) == expected
+    assert _feedback_regions({}, [c,b,a], 0x10000) == expected
+    conflict = ('# identity\n0x03002000 arm rom=0x08000500\n', {})
+    rows = _feedback_regions({}, [a,b,c,conflict], 0x10000)
+    assert all(r['address'] != 0x03002000 for r in rows)
+    assert rows[0]['address']+rows[0]['size'] == 0x03002000
+    reviewed = dict(ram_code=[dict(address=0x03002000,rom=0x08000100,size=0x200,mode='arm')])
+    assert _feedback_regions(reviewed, [a,b,c], 0x10000) == expected[:1]

@@ -9,8 +9,8 @@
     "sha256": "a9dec84dfe7f62ab2220bafaef7479da0929d066ece16a6885f6226db19085af"
   },
   "backend": {
-    "id": "gba-anygba-probe",
-    "revision": "1ea9940d5e347f9e6f567101393bfaa752ade898dfe70f488948604864ad42af"
+    "id": "gba-anygba-experimental",
+    "revision": "be1f3ea52fcaec79ef10672eff4f69136054fd6d0442b4e1df78652345171fd5"
   },
   "runtime": {
     "id": "anygba-core",
@@ -77,18 +77,115 @@
   },
   "qualification": {
     "retail": false,
-    "desktop": false,
-    "gpu": false,
+    "desktop": true,
+    "gpu": true,
     "physical_audio_device": false,
     "save_reload": false,
     "rtc_events": false,
-    "full_playthrough": false
+    "full_playthrough": false,
+    "physical_gpu": false,
+    "physical_gamepad": false,
+    "scripted_input": true,
+    "flash128_protocol_save_reload": true,
+    "rtc_protocol": true
   },
   "notes": [
-    "Headless source-shipped core validation only; the desktop/GPU game backend is pending.",
-    "Input-bound feedback expands generic code discovery without game-specific code or patches.",
-    "Interpreter fallback remains disclosed. Misses are bounded execution observations, not whole-game static coverage.",
-    "The CPU interpreter comparison shares the same hardware core and is not an independent hardware or emulator oracle.",
-    "No ROM, BIOS, extracted assets, image captures or ROM-derived code is published with this record."
-  ]
+    "The registered experimental desktop backend emits independent editable C/C++ with source-shipped AnyGBA and SDL/OpenGL presentation.",
+    "The OpenGL shader rasterizes scanline IO/VRAM/palette/OAM state; original conformance tests deliberately supply an unrelated CPU framebuffer.",
+    "This workspace uses llvmpipe software OpenGL and SDL dummy audio. Physical GPU, audible output and physical controller acceptance are not established.",
+    "Title/menu feedback adds generic code coverage without game-specific routines or patches. RAM hints are bounded together; compatible contiguous hints are merged so whole-function byte guards remain valid.",
+    "The remaining unverified RAM entry uses interpreter fallback; strict mode rejects it. This bounded observation does not establish whole-game static coverage.",
+    "The internal CPU/reference PPU comparison shares the hardware core and is not an independent hardware or emulator oracle.",
+    "Original Flash128/RTC protocol tests do not establish Emerald retail save/reload or clock-driven gameplay events. Full playthrough acceptance belongs to the owner.",
+    "No ROM, BIOS, extracted assets, image captures, save files or ROM-derived C is published with this record."
+  ],
+  "historical_probe_comparisons": "The boot/feedback CPU comparisons below predate the desktop backend and RAM hint bounding fix.",
+  "desktop_smoke": {
+    "phase": "title screen and New Game/Option menu",
+    "frames": 2400,
+    "source_functions": 1170,
+    "cycles": 674066652,
+    "interpreted_cycles": 930515,
+    "remaining_misses": [
+      "0x3007dcc"
+    ],
+    "rtc_enabled": true,
+    "audio_frames": 1316536,
+    "screen_sha256": "6e734d6879c8ca75ff0f34634c6af498411ae6a58fc50472491827ae5df8c0f2",
+    "gpu_matches_internal_reference": true,
+    "same_picture_as_previous_export": true,
+    "renderer": "opengl",
+    "device": "llvmpipe (LLVM 19.1.7, 256 bits)",
+    "physical_gpu": false,
+    "audio_driver": "SDL dummy",
+    "drawable": [
+      240,
+      160
+    ],
+    "strict_static_passed": false,
+    "strict_stop_address": "0x03007dcc",
+    "scripted_buttons": [
+      {
+        "frame": 0,
+        "pressed_mask": 0
+      },
+      {
+        "frame": 180,
+        "pressed_mask": 8
+      },
+      {
+        "frame": 182,
+        "pressed_mask": 0
+      },
+      {
+        "frame": 600,
+        "pressed_mask": 8
+      },
+      {
+        "frame": 602,
+        "pressed_mask": 0
+      },
+      {
+        "frame": 1000,
+        "pressed_mask": 8
+      },
+      {
+        "frame": 1002,
+        "pressed_mask": 0
+      },
+      {
+        "frame": 1800,
+        "pressed_mask": 8
+      },
+      {
+        "frame": 1802,
+        "pressed_mask": 0
+      }
+    ]
+  },
+  "original_desktop_checks": {
+    "gpu_scenes": 18,
+    "gpu_modes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "raw_state_rasterization": true,
+    "unrelated_cpu_framebuffer_does_not_change_gpu_output": true,
+    "drawable_resize": [
+      480,
+      320
+    ],
+    "software_fallback_reported": true,
+    "automatic_asset_discovery": true,
+    "paced_audio_queue": true,
+    "scripted_buttons": true,
+    "sram_save_reload": true,
+    "flash128_detection_banks_erase_atomic_save_reload": true,
+    "rtc_serial_bcd_time_and_cycle_advance": true,
+    "feedback_ram_regions_order_independent": true
+  }
 }
