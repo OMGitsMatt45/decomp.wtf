@@ -31,7 +31,8 @@ def retired_images():
     return images+[bytes(dol)]
 
 
-@pytest.mark.parametrize('raw', retired_images())
+@pytest.mark.parametrize('raw', retired_images(),
+                         ids=lambda raw: platforms.removed_input(raw[:0x440],len(raw)))
 def test_retired_inputs_rejected_before_writing_or_starting_tools(tmp_path, raw, monkeypatch):
     net = RomNetwork(tmp_path/'app.db', tmp_path/'projects')
     monkeypatch.setattr(net, '_community_layout', lambda *_: pytest.fail('must reject before generation'))
