@@ -1,7 +1,7 @@
 # decomp.wtf
 
 A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS, PS1 and PS2 have experimental
+PC source repositories for Dragon Quest and Pokémon. **DS, PS1, PS2 and GBA have experimental
 native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
 remaining supported platforms.
 
@@ -18,7 +18,8 @@ of current application support.
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
-| Nintendo 3DS / Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
+| Nintendo 3DS | [In development](docs/3ds-native.md): decrypted-image inspection and original ARM/Thumb/VFP C execution | Independent CPU source projects; GPU/services and playable game output are still in progress |
+| Nintendo Switch | Planned; no qualified raw-game pipeline | Additional import and runtime work |
 
 ## What the output means
 

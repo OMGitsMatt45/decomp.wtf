@@ -45,7 +45,12 @@ def input_platform(path: Path) -> str:
         platforms.require(path.suffix.lower()[1:], PCError)
     if path.is_file():
         with path.open('rb') as stream:
-            platforms.require(platforms.removed_input(stream.read(0x440),path.stat().st_size),PCError)
+            head=stream.read(0x440)
+            platforms.require(platforms.removed_input(head,path.stat().st_size),PCError)
+            from .ctr_native.media import recognizable
+            if recognizable(head):return '3ds'
+    if path.suffix.lower() in ('.3ds','.cci','.cxi','.cia','.3dsx'):
+        return '3ds'
     if path.suffix.lower() == '.gba':return 'gba'
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
     if path.suffix.lower() in ('.elf','.iso','.bin'):
@@ -84,8 +89,9 @@ def status(platform: str = '') -> dict:
     return dict(platform=key or None, first_platform='nds', available=bool(available), backends=available,
         experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
-        reason='' if available else 'No PC-project backend is installed for this platform. '
-            'Matching console exports remain separate from native PC projects.')
+        reason='' if available else ('3DS game output is in development. Use pc ctr-inspect or the explicit experimental pc ctr-probe CPU project; graphics and retail gameplay are not qualified.'
+            if key=='3ds' else 'No PC-project backend is installed for this platform. '
+            'Matching console exports remain separate from native PC projects.'))
 
 
 def _file(root: Path, name: str) -> Path:

@@ -245,6 +245,7 @@ function identifyHead(head, file) {
   const ascii = (a, b) => text(a, b).split("\0")[0].replace(/[^\x20-\x7e]/g, "").trim();
   const stem = file.name.replace(/\.[^.]*$/, "");
   const base = { title: stem, size: file.size };
+  if (["NCCH", "NCSD"].includes(text(0x100, 0x104))) return null;
   if (["\x80\x37\x12\x40", "\x37\x80\x40\x12", "\x40\x12\x37\x80"].includes(text(0, 4))) return { ...base, platform: "n64" };
   if (head.length >= 0x144 && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b") return null;
   if (text(0, 8) === "PS-X EXE") return { ...base, platform: "psx", order: "PS-X EXE", entry: dv.getUint32(0x10, true) };
@@ -285,6 +286,7 @@ function notSupported(head, file) {
   if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA and PlayStation 1/2 games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
+  if (["3ds", "cci", "cxi", "cia", "3dsx"].includes(ext) || ["NCCH", "NCSD"].includes(text(0x100, 0x104))) return "3DS support is in development. Use decomp pc ctr-inspect or the experimental pc ctr-probe CPU project; playable game export is not available yet.";
   if (["gb", "gbc"].includes(ext) || (head.length >= 0x10c && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b")) return "Game Boy and Game Boy Color support has been removed.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
@@ -745,7 +747,7 @@ function markPlatforms() {
   document.querySelectorAll("#platRow [data-p]").forEach((s) => {
     const rec = platformStatus(s.dataset.p) === "recommended";
     s.classList.toggle("rec", rec);
-    s.title = rec ? "Recommended: the most tested path to a full decomp you can port and mod" : "Beta: works, less tested on real games";
+    s.title = rec ? "Recommended: the most tested path to a full decomp you can port and mod" : platformStatus(s.dataset.p) === "development" ? "In development: native CPU source probes; playable game output is not available yet" : "Beta: works, less tested on real games";
     if (rec && !s.querySelector(".rec-mark")) s.insertAdjacentHTML("afterbegin", `<span class="rec-mark">★</span>`);
   });
   $("platLegend").hidden = !any;

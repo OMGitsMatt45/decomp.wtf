@@ -35,7 +35,7 @@ from ..rom.symbols import AUTO_NAME, IDENT, Symbol, SymbolTable
 DEFAULT_TOOLCHAIN = {"PSYQ": "gcc-2.7.2-psx", "EEGCC": "ee-gcc-2.96",
                      "AGBCC": "agbcc"}
 # Console reconstruction status. Native PC backend readiness is reported separately.
-PLATFORM_STATUS = {"psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta"}
+PLATFORM_STATUS = {"psx": "beta", "ps2": "beta", "gba": "beta", "nds": "beta", "3ds": "development"}
 COMPILERS = {
     "gcc-2.7.2-psx": "PlayStation games (PSY-Q era GCC)",
     "gcc-2.8.1-psx": "later PlayStation games",

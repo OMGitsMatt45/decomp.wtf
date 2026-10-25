@@ -13,6 +13,12 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    ctr_inspect = actions.add_parser('ctr-inspect', help='validate a decrypted 3DS NCCH/NCSD executable without exporting or running it')
+    ctr_inspect.add_argument('input', type=Path)
+    ctr_probe = actions.add_parser('ctr-probe', help='3DS native C/C++ CPU development project; no graphics or retail game runtime yet')
+    ctr_probe.add_argument('input', type=Path)
+    ctr_probe.add_argument('output', type=Path)
+    ctr_probe.add_argument('--experimental', action='store_true', required=True)
     gba_inspect = actions.add_parser('gba-inspect', help='validate a GBA cartridge and identify its exact revision')
     gba_inspect.add_argument('input', type=Path)
     for name, help in (('gba-probe', 'headless GBA native C/C++ development probe'),
@@ -65,7 +71,13 @@ def add_parser(sub):
 
 def run(args):
     try:
-        if args.pc_action == 'gba-inspect':
+        if args.pc_action == 'ctr-inspect':
+            from .ctr_native.media import load
+            result = load(args.input)
+        elif args.pc_action == 'ctr-probe':
+            from .ctr_native import export_probe
+            result = export_probe(args.input, args.output)
+        elif args.pc_action == 'gba-inspect':
             from .gba_native import inspect
             result = inspect(args.input)
         elif args.pc_action in ('gba-probe', 'gba-native'):

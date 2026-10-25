@@ -102,11 +102,11 @@ def _game_manifest(root, *, platform='nds'):
     data.pop('output_kind')
     data.pop('qualification')
     data['platform'] = platform
-    data['presentation'] = pc.presentation(screens=2, screen_mode='dual') if platform == 'nds' else pc.presentation()
+    data['presentation'] = pc.presentation(screens=2, screen_mode='dual') if platform in ('nds','3ds') else pc.presentation()
     return path, data
 
 
-@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba'])
+@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba', '3ds'])
 def test_same_adaptive_gpu_contract_for_every_remaining_console(tmp_path, platform):
     path, data = _game_manifest(tmp_path, platform=platform)
     path.write_text(json.dumps(data))
