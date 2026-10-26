@@ -142,6 +142,13 @@ def apply_graphics(root):
         let scale = old.supported_scale(scale);
         if old.scale() == scale { return Ok(scale); }
         old.flush(memory)?;
+        if let Some(shared) = device.as_ref() {
+            // A presenter sharing this device may still sample the old images.
+            // Both submit on this thread; finish those reads before replacing
+            // the renderer and destroying its image views.
+            unsafe { shared.device.device_wait_idle() }
+                .map_err(|error|format!("waiting for shared Vulkan device: {error:?}"))?;
+        }
         self.enable_hardware_renderer(scale, device, title)?;
         Ok(self.scale())
     }

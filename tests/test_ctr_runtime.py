@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -30,7 +31,8 @@ def original_runtime(tmp_path_factory):
     image.write_bytes(with_romfs(fixture('services'),[('OriginalARM.cro',cro('OriginalARM')),
         ('OriginalThumb.cro',cro('OriginalThumb',thumb=True)),('Alias.cro',cro('OriginalARM'))]))
     project=root/'Independent source'
-    exported=export_runtime(image,project,screen_mode='unified')
+    stream=SimpleNamespace(stat=image.stat,open=image.open)
+    exported=export_runtime('streamed-original.cxi',project,screen_mode='unified',source=stream)
     assert exported['integrity_verified'] and not exported['presentation_declared']
     manifest=exported['manifest']
     assert manifest['qualification']['retail'] is False
@@ -52,9 +54,17 @@ def original_runtime(tmp_path_factory):
     binary=target/'debug'/('ctr_runtime'+suffix)
     scenes=target/'debug'/('ctr_gpu_scenes'+suffix)
     assert binary.is_file() and scenes.is_file()
+    host_env=os.environ.copy()
+    if os.environ.get('DECOMP_TEST_3DS_AUDIO_NULL')=='1':
+        # ALSA treats spaces as separators in its configuration-path list.
+        # Keep the independent project's paths spaced, but use a separate
+        # ordinary path for the virtual output device's configuration.
+        config=tmp_path_factory.mktemp('ctr-audio')/'null.conf'
+        config.write_text('pcm.!default { type null }\n')
+        host_env['ALSA_CONFIG_PATH']=str(config)
     def run(*args, status=0):
         result=subprocess.run([str(binary),str(image),'--data',str(root/'user'),*args],
-                              capture_output=True,text=True,timeout=90)
+                              capture_output=True,text=True,timeout=90,env=host_env)
         assert result.returncode==status,result.stdout+result.stderr
         return json.loads(result.stdout)
     return project,image,binary,scenes,build,run
@@ -143,6 +153,16 @@ def test_translated_arm_and_thumb_modules_move_reload_and_unload(original_runtim
         assert report['interpreted_instructions']==0 and report['provenance_checked']
 
 
+def test_audio_resampling_queue_and_controller_input_merge(original_runtime):
+    project,_image,_binary,_scenes,_build,_run=original_runtime
+    env=os.environ.copy()
+    if os.environ.get('DECOMP_TEST_3DS_AUDIO_NULL')=='1':
+        env['ALSA_CONFIG_PATH']=str(next(project.parent.parent.glob('ctr-audio*/null.conf')))
+    result=command(['cmake','--build',project/'build','--target','ctr_runtime_tests','--config','Release'],timeout=180,env=env)
+    assert '0 failed' in result.stdout and 'gamepad::tests::' in result.stdout
+    assert 'audio::tests::' in result.stdout
+
+
 def test_vulkan_window_with_both_screen_arrangements(original_runtime):
     if os.environ.get('DECOMP_TEST_3DS_WINDOW')!='1':
         # Runtime CI on Windows still builds the desktop source. A runner
@@ -160,5 +180,10 @@ def test_vulkan_window_with_both_screen_arrangements(original_runtime):
             report=run('--window','--window-frames','2',*options)
             assert report['window']['presented_frames']==2 and report['gpu_rendering']
             assert report['interpreted_instructions']==0 and not report['retail_qualified']
+            assert not report['window']['physical_audio_qualified']
+            if os.environ.get('DECOMP_TEST_3DS_AUDIO_NULL')=='1':
+                # This original CPU loop never starts the DSP; it is silent.
+                # A separate tone test checks nonzero audio through the callback.
+                assert report['window']['audio_output_open'],report['window']
     finally:
         source.write_text(text);build()

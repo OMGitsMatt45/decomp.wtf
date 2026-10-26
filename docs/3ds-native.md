@@ -53,6 +53,11 @@ saves. The 3DS stays marked in development in the application; `pc status
   F7 swaps primary and F11 changes fullscreen. This compositor does **not** yet
   turn two game cameras into a continuous widescreen scene or expand field of
   view. No fixed display resolution or forced 16:9 shape is assumed.
+- The desktop host queues DSP samples to the pinned resampling/audio sink and
+  merges standard controllers with keyboard/touch input. It reports missing
+  devices and supports `--mute`. Original queue/resampling and controller merge
+  checks run on both hosts; a nonzero original tone is consumed by a virtual
+  Linux audio callback. Physical audio/controller acceptance remains separate.
 
 ## Commands and downloads
 
@@ -85,7 +90,9 @@ Downloads not installed automatically:
 - [Visual Studio C++ tools](https://visualstudio.microsoft.com/downloads/).
   Include **C++ CMake tools for Windows**, or install
   [CMake](https://cmake.org/download/) separately. Linux needs a host C/C++
-  compiler, CMake and desktop X11 libraries for the window.
+  compiler, CMake, pkg-config, ALSA/libudev development packages and X11 libraries.
+  Ubuntu/Debian package names include `pkg-config`, `libasound2-dev` and
+  `libudev-dev`; see the main README download links.
 - A Vulkan-capable graphics driver from
   [Intel](https://www.intel.com/content/www/us/en/download-center/home.html),
   [AMD](https://www.amd.com/en/support/download/drivers.html) or
@@ -120,8 +127,9 @@ additional owner-provided files; no system/game data is downloaded automatically
 2. Extend the combined presentation from composition into continuous scenes
    where game camera/UI behavior supports it, with honest per-title evidence.
    Qualify textures/effects, high DPI/fullscreen and physical GPUs on Windows.
-3. Connect and qualify audio playback/DSP, controllers and persistent game saves.
-   The development window currently drains audio samples without playing them.
+3. Qualify retail DSP/audio, physical controllers and persistent game saves.
+   Host audio/controller integration and original signal/input fixtures are
+   implemented; those do not establish correct sound or saves in every title.
 4. Add title/update integration, coverage feedback and owner-supplied Pokémon
    and Dragon Quest retail acceptance. Interpreter use must remain explicit in
    both the project manifest and execution reports. A passing fixture, bounded

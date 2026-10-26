@@ -9,6 +9,10 @@ use zakuro_core::{loader, Config, StepOutcome};
 include!("identity.rs");
 #[cfg(feature="desktop")]
 mod desktop;
+#[cfg(feature="desktop")]
+mod audio;
+#[cfg(feature="desktop")]
+mod gamepad;
 
 fn advance(system:&mut zakuro_core::System,deadline:u64)->Option<&'static str> {
     let outcome=system.step(Some(deadline));
@@ -48,7 +52,7 @@ fn identity(path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let Some(input) = args.next() else {
-        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--screens stacked|unified] [--primary top|bottom] [--cycles N] [--data DIRECTORY] [--allow-interpreter] [--gpu]".into());
+        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--screens stacked|unified] [--primary top|bottom] [--mute] [--cycles N] [--data DIRECTORY] [--allow-interpreter] [--gpu]".into());
     };
     let input = PathBuf::from(input);
     let mut cycles: u64 = 1_000_000;
@@ -62,6 +66,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut frame_limit:Option<u64> = None;
     let mut explicit_cycles = false;
     let mut layout_option = false;
+    let mut mute = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--cycles" => {cycles = args.next().ok_or("--cycles needs a value")?.parse()?;explicit_cycles=true;}
@@ -70,6 +75,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             "--gpu" => gpu = true,
             "--scale" => scale = args.next().ok_or("--scale needs a value")?.parse()?,
             "--window" => window = true,
+            "--mute" => mute = true,
             "--screens" => {layout_option=true; unified = match args.next().as_deref() {
                 Some("stacked")=>false,Some("unified")=>true,_=>return Err("--screens expects stacked or unified".into())};}
             "--primary" => {layout_option=true; bottom_primary = match args.next().as_deref() {
@@ -114,12 +120,15 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if window {
         #[cfg(feature="desktop")]
         {
-            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,unified,bottom_primary)?;
+            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,unified,bottom_primary,mute)?;
             stopped=outcome.stop;
             window_report=serde_json::json!({"presented_frames":outcome.presented,"drawable":outcome.drawable,
                 "screens":if outcome.unified {"unified"} else {"stacked"},
                 "primary":if outcome.bottom_primary {"bottom"} else {"top"},"physical_device_qualified":false,
-                "audio_playback":false,"continuous_scene_qualified":false});
+                "audio_output_open":outcome.audio_open,"audio_frames_queued":outcome.audio_frames,
+                "audio_error":outcome.audio_error,"controllers":outcome.controllers,
+                "controller_error":outcome.controller_error,"physical_audio_qualified":false,
+                "physical_controller_qualified":false,"continuous_scene_qualified":false});
         }
     } else {
         while system.cpu.cycles < cycles {

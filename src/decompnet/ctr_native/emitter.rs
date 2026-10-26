@@ -19,12 +19,13 @@ fn imported(modules:&[(cro::Module,Vec<u8>)], crs:Option<&cro::Module>, target:&
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len()<4 {return Err("expected TEXT BASE SEEDS OUTPUT [--instruction-boundaries] [--analyze-only] [--modules DIRECTORY]".into());}
-    let (mut boundaries,mut analyze_only,mut directory)=(false,false,None);
+    let (mut boundaries,mut analyze_only,mut measure,mut directory)=(false,false,false,None);
     let mut options=args[4..].iter();
     while let Some(option)=options.next() {
         match option.as_str() {
             "--instruction-boundaries"=>boundaries=true,
             "--analyze-only"=>analyze_only=true,
+            "--measure-output"=>measure=true,
             "--modules"=>directory=Some(options.next().ok_or("--modules needs a directory")?),
             _=>return Err(format!("unknown emitter option: {option}").into()),
         }
@@ -86,8 +87,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(output)?;
     if !analyze_only {
         let units=programs.iter().zip(&analyses).map(|((module,program),analysis)|codegen::Unit {module:*module,program,analysis}).collect::<Vec<_>>();
-        for (name, source) in codegen::generate(&units, &[]) {
-            std::fs::write(output.join(name), source)?;
+        let sources=codegen::generate(&units,&[]);
+        if measure {
+            eprintln!("generated_source_bytes={} files={}",sources.iter().map(|(_,s)|s.len()).sum::<usize>(),sources.len());
+        } else {
+            for (name,source) in sources {
+                std::fs::write(output.join(name),source)?;
+            }
         }
     }
     let mut report = format!("functions={}\n", analyses.iter().map(|a|a.functions.len()).sum::<usize>());

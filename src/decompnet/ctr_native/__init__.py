@@ -61,7 +61,8 @@ static inline unsigned ctr_clz(uint32_t x) { unsigned long at; return _BitScanRe
 
 def generate(project, root):
     path = Path(project['input']).resolve()
-    inspection = media.load(path, include_code=True)
+    input_source = project.get('_source',path)
+    inspection = media.load_source(input_source, include_code=True)
     code = inspection.pop('code')
     rustc = os.environ.get('DECOMP_3DS_RUSTC') or shutil.which('rustc')
     if not rustc:
@@ -90,7 +91,7 @@ def generate(project, root):
     seeds.write_text('\n'.join(map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]))+'\n')
     if project.get('instruction_boundaries'):
         from . import romfs
-        modules=romfs.modules(path,inspection)
+        modules=romfs.modules(input_source,inspection)
         inspection['modules']=[]
         if modules:
             folder=assets/'modules';folder.mkdir()
@@ -134,7 +135,7 @@ def generate(project, root):
         'License declaration: Cargo.toml and abi/Cargo.toml at that revision.\n'
         'Local changes: MSVC portability macros and a nonempty sentinel for the empty module table.\n')
     shutil.copyfile(Path(__file__).with_name('MIT.3dsrecomp.txt'), root/'MIT.3dsrecomp.txt')
-    with path.open('rb') as stream:
+    with input_source.open('rb') as stream:
         if hashlib.file_digest(stream, 'sha256').hexdigest()!=inspection['input']['sha256']:
             raise pc.PCError('3DS owner input changed during source generation')
     files = {p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
@@ -183,11 +184,14 @@ def generate_runtime(project, root):
                            (package/'runtime_build.rs',app/'build.rs'),
                            (package/'runtime_main.rs',app/'src/main.rs'),
                            (package/'desktop.rs',app/'src/desktop.rs'),
+                           (package/'gamepad.rs',app/'src/gamepad.rs'),
                            (package/'gpu_scenes.rs',app/'src/gpu_scenes.rs'),
                            (package/'module_scenes.rs',app/'src/module_scenes.rs'),
                            (package/'Runtime.cmake',root/'CMakeLists.txt'),
                            (package/'README.runtime.md',root/'README.md')):
         shutil.copyfile(source,target)
+    from .runtime_audio import install as install_audio
+    install_audio(native,app)
     (app/'src/identity.rs').write_text(
         f'const TITLE_ID:u64=0x{inspection["program_id"]};\n'
         f'const INPUT_SHA256:&str="{inspection["input"]["sha256"]}";\n'
@@ -221,5 +225,8 @@ def runtime_backend():
     return pc.Backend(RUNTIME_BACKEND_ID,'3ds',revision(),generate_runtime,experimental=True)
 
 
-def export_runtime(path, destination, *, screen_mode='dual'):
-    return pc.export_backend(dict(platform='3ds',input=str(path),screen_mode=screen_mode),destination,runtime_backend())
+def export_runtime(path, destination, *, screen_mode='dual', source=None):
+    project=dict(platform='3ds',input=str(path),screen_mode=screen_mode)
+    if source is not None:
+        project['_source']=source
+    return pc.export_backend(project,destination,runtime_backend())

@@ -85,8 +85,8 @@ on Intel Iris Xe. Broader compatibility and the owner's playthrough remain separ
 3DS work includes [decrypted-image validation and native source/runtime projects](3ds-native.md).
 Original ARM/Thumb/VFP programs and memory/event/IPC/ExeFS services execute from
 translated C. A pinned MIT source runtime supplies a Vulkan geometry renderer and
-adaptive stacked/unified window with keyboard/touch. Retail CRO/source coverage,
-audio playback, controller/save qualification and physical GPU acceptance remain;
+adaptive stacked/unified window with keyboard/touch, host audio and controllers.
+Retail CRO/source coverage, DSP/save qualification and physical device acceptance remain;
 the 3DS backend is still in development.
 Further console additions, including Switch, are paused while the existing
 outputs and 3DS reach the standalone source-project goal. GB/GBC

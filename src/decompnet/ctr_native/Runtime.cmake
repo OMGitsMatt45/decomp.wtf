@@ -24,3 +24,13 @@ add_custom_target(ctr_runtime ALL
     --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/native/app/Cargo.toml"
   DEPENDS ctr_game
   USES_TERMINAL VERBATIM)
+add_custom_target(ctr_runtime_tests
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CTR_GAME_LIBRARY=$<TARGET_FILE:ctr_game>"
+    "CARGO_TARGET_DIR=${CTR_CARGO_TARGET}"
+    "CARGO_BUILD_JOBS=2"
+    "CARGO_INCREMENTAL=0"
+    "${CTR_CARGO}" test --locked --profile "${CTR_CARGO_PROFILE}" ${CTR_FEATURES}
+    --bin ctr_runtime --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/native/app/Cargo.toml"
+  DEPENDS ctr_game
+  USES_TERMINAL VERBATIM)

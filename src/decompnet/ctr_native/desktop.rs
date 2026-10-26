@@ -18,6 +18,11 @@ pub struct Outcome {
     pub drawable: [u32;2],
     pub unified: bool,
     pub bottom_primary: bool,
+    pub audio_open: bool,
+    pub audio_frames: u64,
+    pub audio_error: Option<String>,
+    pub controllers: usize,
+    pub controller_error: Option<String>,
 }
 
 struct Host<'a> {
@@ -29,6 +34,9 @@ struct Host<'a> {
     pointer: Option<(f64,f64)>,
     pressed: bool,
     circle: [bool;4],
+    focused: bool,
+    audio: Option<super::audio::Audio>,
+    gamepads: super::gamepad::Gamepads,
     limit: Option<u64>,
     frame_limit: Option<u64>,
     next_frame: Instant,
@@ -64,7 +72,9 @@ impl Host<'_> {
     fn redraw(&mut self)->Result<Option<&'static str>,String> {
         let [w,h]=self.result.drawable;
         if w==0 || h==0 {return Ok(None);}
-        self.system.set_input(self.input);
+        let input=self.gamepads.apply(self.input);
+        self.result.controllers=self.gamepads.count();
+        self.system.set_input(if self.focused {input} else {InputState::default()});
         let deadline=self.system.cpu.cycles.saturating_add(zakuro_core::CYCLES_PER_FRAME)
             .min(self.limit.unwrap_or(u64::MAX));
         while self.system.cpu.cycles<deadline {
@@ -87,12 +97,20 @@ impl Host<'_> {
             Err(PresentError::OutOfDate)=>{},
             Err(error)=>return Err(error.to_string()),
         }
-        // The audio sink is a separate qualification milestone. Drain pending
-        // samples so this development window cannot accumulate unbounded audio.
-        let _=self.system.take_audio();
+        let samples=self.system.take_audio();
+        if let Some(audio)=&self.audio {
+            audio.push(&samples);
+            self.result.audio_frames+=samples.len() as u64;
+        }
         if self.limit.is_some_and(|n|self.system.cpu.cycles>=n) {return Ok(Some("budget"));}
         if self.frame_limit.is_some_and(|n|self.result.presented>=n) {return Ok(Some("window-frame-limit"));}
-        self.next_frame=Instant::now()+Duration::from_secs_f64(1.0/60.0);
+        let period=Duration::from_secs_f64(1.0/60.0);
+        self.next_frame+=period;
+        // Rendering and swapchain waits count toward the frame interval.
+        // After a long stall, resume rather than running a burst of old frames.
+        if Instant::now().saturating_duration_since(self.next_frame)>period*2 {
+            self.next_frame=Instant::now();
+        }
         Ok(None)
     }
 
@@ -147,7 +165,10 @@ impl ApplicationHandler for Host<'_> {
             WindowEvent::CloseRequested=>{self.result.stop="window-closed";events.exit();}
             WindowEvent::Resized(_)=>if let Err(error)=self.resize() {self.error=Some(error);events.exit();},
             WindowEvent::ScaleFactorChanged {..}=>if let Err(error)=self.resize() {self.error=Some(error);events.exit();},
-            WindowEvent::Focused(false)=>{self.input=InputState::default();self.circle=[false;4];self.pressed=false;}
+            WindowEvent::Focused(on)=>{
+                self.focused=on;
+                if !on {self.input=InputState::default();self.circle=[false;4];self.pressed=false;}
+            }
             WindowEvent::CursorMoved {position,..}=>{self.pointer=Some((position.x,position.y));self.touch();}
             WindowEvent::CursorLeft {..}=>{self.pointer=None;self.input.touch=None;}
             WindowEvent::MouseInput {button:MouseButton::Left,state,..}=>{self.pressed=state.is_pressed();self.touch();}
@@ -187,11 +208,23 @@ impl ApplicationHandler for Host<'_> {
     }
 }
 
-pub fn run(system:&mut System,limit:Option<u64>,frame_limit:Option<u64>,unified:bool,bottom_primary:bool)->Result<Outcome,String> {
+pub fn run(system:&mut System,limit:Option<u64>,frame_limit:Option<u64>,unified:bool,bottom_primary:bool,mute:bool)->Result<Outcome,String> {
     let events=EventLoop::new().map_err(|e|e.to_string())?;
+    let (audio,audio_error)=if mute {(None,None)} else {
+        match super::audio::Audio::open(zakuro_core::AUDIO_SAMPLE_RATE) {
+            Ok(audio)=>(Some(audio),None),Err(error)=>{
+                eprintln!("3DS sound output unavailable: {error}");(None,Some(error))
+            }
+        }
+    };
+    let gamepads=super::gamepad::Gamepads::new();
+    let controller_error=gamepads.error.clone();
+    if let Some(error)=&controller_error {eprintln!("3DS controllers unavailable: {error}");}
     let mut host=Host {system,presenter:None,window:None,input:InputState::default(),pointer:None,
-        pressed:false,circle:[false;4],limit,frame_limit,next_frame:Instant::now(),error:None,
-        result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],unified,bottom_primary}};
+        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,
+        result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],unified,bottom_primary,
+            audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error},
+        audio,gamepads};
     events.run_app(&mut host).map_err(|e|e.to_string())?;
     if let Some(error)=host.error.take() {return Err(error);}
     Ok(host.result)

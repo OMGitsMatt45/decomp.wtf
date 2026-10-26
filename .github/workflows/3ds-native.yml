@@ -44,7 +44,7 @@ jobs:
         run: uv run --no-sync python -m pytest -q tests/test_ctr_native.py tests/test_ctr_romfs.py --junitxml=ctr-source-results.xml
       - name: Install Linux software Vulkan and virtual display
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 xvfb libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 xvfb libxkbcommon-x11-0 libasound2-dev libudev-dev
       - name: Select the installed software Vulkan driver
         if: runner.os == 'Linux'
         run: |
@@ -64,6 +64,7 @@ jobs:
         env:
           DECOMP_TEST_3DS_GPU: '1'
           DECOMP_TEST_3DS_WINDOW: '1'
+          DECOMP_TEST_3DS_AUDIO_NULL: '1'
         run: xvfb-run -a uv run --no-sync python -m pytest -q tests/test_ctr_runtime.py --junitxml=ctr-runtime-results.xml
       - name: Require every native source case without skips
         run: >-

@@ -22,7 +22,7 @@ path = "src/module_scenes.rs"
 
 [features]
 default = []
-desktop = ["dep:winit"]
+desktop = ["dep:winit", "dep:cpal", "dep:gilrs"]
 
 [dependencies]
 zakuro-core = { path = "../runtime/crates/zakuro-core" }
@@ -30,6 +30,8 @@ zakuro-cpu = { path = "../runtime/crates/zakuro-cpu" }
 zakuro-common = { path = "../runtime/crates/zakuro-common" }
 zakuro-gpu = { path = "../runtime/crates/zakuro-gpu", default-features = false, features = ["vulkan"] }
 winit = { version = "0.30", optional = true, default-features = false, features = ["rwh_06", "x11"] }
+cpal = { version = "0.16", optional = true }
+gilrs = { version = "0.11.2", optional = true }
 sha2 = "0.10"
 serde_json = "1"
 

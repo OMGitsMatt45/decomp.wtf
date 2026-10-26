@@ -12,8 +12,8 @@ module is loaded. Original module checks cover ARM/Thumb relocation, changed-cod
 guards, reload and unload. Retail module/service coverage remains unqualified.
 
 This is a runtime development project with a Vulkan window and bounded headless
-runner. Retail gameplay, audio playback and controller support are not qualified
-yet. It does not open a game-library browser.
+runner. Audio and controller input are connected; retail gameplay and physical
+device acceptance remain unqualified. It does not open a game-library browser.
 
 Install Rust 1.95+, CMake and a host C/C++ compiler. On Windows, use MSVC Rust
 with Visual Studio C++ tools. Build from this directory:
@@ -28,6 +28,10 @@ On Windows the executable is `build/host/debug/ctr_runtime.exe`.
 For an optimized host build, configure `-DCTR_CARGO_PROFILE=release` and run
 `build/host/release/ctr_runtime`. The C library and Rust runtime link into one
 executable. Changes to generated C are rebuilt and relinked by the same command.
+
+Linux desktop builds also need pkg-config, ALSA and libudev development packages
+and X11 libraries (`pkg-config libasound2-dev libudev-dev` on Ubuntu/Debian).
+Windows uses CPAL/Gilrs with the system audio/controller APIs and MSVC Rust.
 
 For the adaptive window, run:
 
@@ -47,8 +51,12 @@ view; that remains additional scene-level work. Neither picture is discarded.
 J/K/U/I are A/B/X/Y, Q/E are L/R, arrows are the D-pad, WASD is the circle pad,
 and Enter/Backspace are Start/Select. Click the lower-screen picture for touch.
 The top inset never passes clicks through to a primary lower screen.
-Audio samples are currently drained without playback; a connected audio device
-or controller is not claimed. Use `--window-frames N` for bounded window checks.
+DSP samples go to the selected host's default audio output, with resampling and
+a bounded queue. `--mute` disables it. Standard gamepads merge with keyboard and
+touch; left/right sticks drive the circle pad/C-stick. Reports say whether audio
+opened, how many frames were queued, how many controllers were seen and why a
+device failed. These observations do not claim physical device qualification.
+Use `--window-frames N` for bounded window checks.
 Without `--cycles`, a window runs until closed; the headless runner defaults to
 one million guest cycles. `--gpu` enables Vulkan geometry in the headless runner.
 
@@ -57,6 +65,11 @@ compares independent software PICA results and verifies GPU-owned framebuffer
 data survives resize. `ctr_gpu_scenes --layout-only` checks adaptive rectangles,
 touch mapping and draw order without needing Vulkan. Software Vulkan can pass
 these checks; physical hardware qualification is separate.
+
+`cmake --build build --target ctr_runtime_tests --config Release` runs the original
+audio queue/resampling and controller merge checks. An optional virtual audio
+device can also verify that the actual callback consumes a nonzero original tone.
+This is signal-path evidence, not retail DSP or physical-speaker acceptance.
 
 The original input must match its exact SHA-256 before execution. Neither a
 BIOS nor system firmware is required by the HLE kernel. Some titles may need
