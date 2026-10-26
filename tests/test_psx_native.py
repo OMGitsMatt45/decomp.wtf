@@ -163,7 +163,8 @@ def run(project,name,*args,interp=False,driver='dummy',ok=True,frames=600):
     command=[str(exe),'--game',str(root/'game.toml'),'--frames',str(frames),'--report',str(report),'--capture',str(capture),
              '--memcard-dir',str(work/'shared-saves')]
     for address in OBSERVE:command+=['--observe',hex(address)]
-    try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=90)
+    timeout=180 if interp else 90
+    try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=timeout)
     except subprocess.TimeoutExpired as error:
         def decoded(value):return value.decode('utf-8','replace') if isinstance(value,bytes) else value or ''
         output=decoded(error.stdout)+decoded(error.stderr)
@@ -179,8 +180,9 @@ def run(project,name,*args,interp=False,driver='dummy',ok=True,frames=600):
 
 def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_project):
     # The guest finishes CD/card operations before frame 300. Compare both
-    # execution modes at 360; a longer run only interprets the busy-wait loop
-    # and approached the 90-second bound on Windows (600 frames took 85 s).
+    # execution modes at 360; a longer run only interprets the busy-wait loop.
+    # The separate reference gets 180 seconds: Windows reached frame 353 at
+    # the former 90-second limit, after all guest operations had completed.
     first,pixels=run(native_project,'disc1','--headless','--renderer','software',frames=360)
     assert 'does not contain the expected game ID' not in (native_project[0]/'disc1.log').read_text()
     assert first['native_dispatches']>0 and first['module_dispatches'][0]>0
