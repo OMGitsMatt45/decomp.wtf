@@ -13,9 +13,8 @@ still have limits; reusing it does not establish another game's compatibility.
 
 On the home screen, drop a DS ROM and choose **Native PC source project
 (experimental)**. Select its ROM format and cartridge save chip, then generate.
-Choose GPU rendering and either the original two screens or **One extended 3D
-camera**. These choices become defaults in the generated project and remain
-runtime options; changing the view does not require translating the game again.
+Choose the renderer used by the generated project. Both original screens remain
+visible; combined-camera enhancements belong in game-specific output work.
 This route bypasses console matching/compiler setup. It creates a fresh output
 folder and reports its path. Existing DS reconstruction projects can use
 **Export native PC project** on the Source tab. Existing output is preserved.

@@ -170,8 +170,10 @@ for 10 billion guest cycles (2,231 frames) to the title screen. It executed
 662,650,004 native instructions, zero interpreted instructions, and reported no
 missing native targets, unsupported SVCs or unsupported service commands. The
 captured original LCD pixels match the independently interpreted reference.
-This run used software geometry and a bounded debug C build; it does not qualify
-Vulkan retail rendering, release performance, later gameplay, sound or saves.
+A separate Vulkan run reached the same title with the same native counts and no
+fallback, using cloud llvmpipe. The software image comparison is exact; rasterizer
+output is assessed separately. These bounded debug C builds do not qualify
+release performance, physical GPUs, later gameplay, sound or saves.
 
 General fixes discovered by this check include ARM-to-Thumb linker veneers,
 Thumb position-independent callback discovery, idle scheduling at vertical blank,
