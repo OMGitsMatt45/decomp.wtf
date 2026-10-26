@@ -1,5 +1,7 @@
 """Small, revision-guarded adaptations of the copied PS1 runtime."""
+from importlib import resources
 from .codegen import retain_initializer
+from . import execution_policy
 
 
 def replace(text,old,new):
@@ -8,8 +10,18 @@ def replace(text,old,new):
 
 
 def patch(root):
+    execution=root/'runtime/src/dirty_ram_interp.c'
+    execution.write_text(execution_policy.patch(execution.read_text(encoding='utf-8-sig')),encoding='utf-8')
     bios=root/'generated/OpenBIOS_dispatch.c'
-    bios.write_text(retain_initializer(bios.read_text(encoding='utf-8'),'bios'),encoding='utf-8')
+    text=retain_initializer(bios.read_text(encoding='utf-8'),'bios')
+    bridge=resources.files(__package__).joinpath('kernel_stubs.inc').read_text(encoding='utf-8')
+    text=replace(text,'static int psx_bios_try_native_call_stub(CPUState* cpu, uint32_t addr) {',
+        bridge+'\nstatic int psx_bios_try_native_call_stub(CPUState* cpu, uint32_t addr) {')
+    text=replace(text,'        /* Byte-guarded A0/B0/C0 call-vector tail stubs. */',
+        '        if (!found && decomp_psx_kernel_stub(cpu,addr,\n'
+        '            OpenBIOS_psx_bios_kernel_patch_ranges,OpenBIOS_psx_bios_kernel_patch_range_count))found=1;\n'
+        '        /* Byte-guarded A0/B0/C0 call-vector tail stubs. */')
+    bios.write_text(text,encoding='utf-8')
     bios=root/'generated/OpenBIOS_full.c'
     text=bios.read_text(encoding='utf-8-sig')
     text=replace(text,'void OpenBIOS_func_1FC06AE4(CPUState* cpu) {',

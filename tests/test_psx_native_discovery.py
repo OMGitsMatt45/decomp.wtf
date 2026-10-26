@@ -121,7 +121,7 @@ def test_direct_export_records_automatically_discovered_sources(tmp_path):
     assert all(item['disc'] == 1 for item in modules)
     assert sorted(item['source']['format'] for item in modules if 'source' in item) == [
         'hbd-memory', 'hbd-memory', 'hbd-memory', 'iso-program']
-    assert result['manifest']['fallback'] == dict(interpreter=True, runtime_compilation=False)
+    assert result['manifest']['fallback'] == dict(interpreter=False, runtime_compilation=False)
     assert path.read_bytes() == original
 
 

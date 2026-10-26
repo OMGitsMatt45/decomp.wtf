@@ -104,10 +104,15 @@ int {prefix}dirty_ram_text_native_ok_ranges(const uint32_t *ranges,uint32_t coun
                 **({'source':disc['source']} if 'source' in disc else {}))
 
 
-def registry(modules,path):
+def registry(modules,path,*,copied=False):
     lines=['#include "cpu_state.h"','#include <stdint.h>',
            'uint64_t decomp_native_dispatches=0;',f'const unsigned decomp_module_count={len(modules)};',
            f'uint64_t decomp_module_dispatches[{len(modules)}]={{0}};']
+    if copied:
+        lines.extend(['extern int decomp_psx_copy_valid(uint32_t);',
+                      'extern int decomp_psx_dispatch_copy(CPUState*,uint32_t);'])
+    copy_valid='decomp_psx_copy_valid(address)' if copied else '0'
+    copy_dispatch='decomp_psx_dispatch_copy(cpu,address)' if copied else '0'
     for item in modules:
         prefix=item['prefix']
         lines.append(f'extern int {prefix}psx_dispatch_game_compiled(CPUState*,uint32_t);')
@@ -138,25 +143,25 @@ def registry(modules,path):
     return low<sizeof(entries)/sizeof(entries[0])&&entries[low].pc==address?entries+low:NULL;
 }
 int psx_dispatch_game_compiled(CPUState *cpu,uint32_t address){
-    const DecompEntry *entry=lookup(address);if(!entry)return 0;
+    const DecompEntry *entry=lookup(address);if(!entry)return COPY_DISPATCH;
     for(uint32_t i=0;i<entry->count;i++)
         if(modules[owners[entry->first+i]].dispatch(cpu,address))return 1;
-    return 0;
-}'''])
+    return COPY_DISPATCH;
+}'''.replace('COPY_DISPATCH',copy_dispatch)])
     for name,member in (('psx_game_text_native_ok','valid'),('psx_game_text_native_ok_full','full'),
                         ('psx_game_is_function_entry','valid')):
         # An indexed candidate still checks its whole immutable footprint.
         lines.append(f'int {name}(uint32_t address){{\n'
-            'const DecompEntry *entry=lookup(address);if(!entry)return 0;\n'
+            f'const DecompEntry *entry=lookup(address);if(!entry)return {copy_valid};\n'
             'for(uint32_t i=0;i<entry->count;i++)\n'
-            f'if(modules[owners[entry->first+i]].{member}(address))return 1;\nreturn 0;}}')
+            f'if(modules[owners[entry->first+i]].{member}(address))return 1;\nreturn {copy_valid};}}')
     merged=[]
     for low,high in sorted(ranges):
         if merged and low<=merged[-1][1]:merged[-1]=(merged[-1][0],max(high,merged[-1][1]))
         else:merged.append((low,high))
     covered='||'.join(f'(physical>={low}u&&physical<{high}u)' for low,high in merged)
     lines.append('int psx_game_address_in_text(uint32_t address){uint32_t physical=address&0x1fffffffu;'
-                 'return '+covered+';}')
+                 'return '+covered+'||'+copy_valid+';}')
     lines.append(r'''
 /* OpenBIOS 55fbf046: loadSystemCnf zeroes configuration before parsing.
  * Its const-propagated findWordItem takes (destination, key). Restore the

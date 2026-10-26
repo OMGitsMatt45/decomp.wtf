@@ -67,9 +67,10 @@ runtime: adaptive OpenGL geometry, audio, keyboard/gamepad input, CD-ROM and
 shared memory cards. Ordered discs become one repository and executable; F9/F10
 change the inserted disc. It uses bundled MIT OpenBIOS and needs no retail BIOS.
 The optional pinned PSXRecomp dependency has **PolyForm Noncommercial** terms,
-shown in the app and generated README/licenses. Execution is hybrid: recognized
-code runs natively; unresolved or modified code is interpreted. Runtime guest-code
-compilation is disabled. The shared GPU standard applies to all new game outputs;
+shown in the app and generated README/licenses. The normal player executes
+generated native code and reports uncovered or modified code as a coverage failure.
+An optional separate executable supplies the instruction reference. Runtime
+guest-code compilation is disabled. The shared GPU standard applies to all new game outputs;
 PS1 uses one screen; DS and 3DS preserve their two original screens.
 
 ## Install and run

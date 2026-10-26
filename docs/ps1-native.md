@@ -20,7 +20,7 @@ an existing imported game or combined disc set. Reviewed, hash-bound module
 layouts are translated when exporting retained projects. Direct and retained
 disc exports also discover additional PS-X EXE files and address-bearing
 Heartbeat HBD program records, including compressed records. Unknown layouts
-retain the disclosed interpreter fallback. Original discs and prior source edits
+can require further static coverage work. Original discs and prior source edits
 are preserved. PS1 has no DS save-chip or screen-merger settings.
 
 ```sh
@@ -82,16 +82,29 @@ headless checks can explicitly override it with `--renderer software`.
 
 ## Execution model and evidence
 
-The model is **hybrid**, not fully static recovery. Recognized original code runs
-as generated C. Unresolved or changed code runs through the R3000 interpreter;
-runtime guest-code compilation is disabled. Each static module validates its
+The normal `ps1_pc` player executes **ahead-of-time generated C**. Its instruction
+interpreter is excluded at compile time, and runtime guest-code compilation is
+disabled. Unresolved or changed code stops with a coverage report instead of
+executing a fallback. Each static module validates its
 own original bytes, so two discs or overlays sharing an address cannot select
 the wrong native function merely because a particular disc is inserted.
+
+Input-derived closed routines can execute from copied RAM locations after a
+whole-body byte check. Their generated C preserves the actual PC, continuations
+and instruction-fetch interface. Native OpenBIOS callback bridges require exact
+ABI bytes inside declared patch slots. Recognized rewrites from the pinned BIOS
+produce separately guarded native views; the BIOS still owns their side effects.
+
+For an instruction reference, configure `-DPS1_BUILD_REFERENCE=ON` and build
+`ps1_probe`. Run it with `PSX_FORCE_INTERP=1`; the primary player rejects that
+setting. The executables have different execution identities and cannot share
+snapshots. Ordinary game memory cards remain shared data.
 
 Bounded checks support `--frames N --report result.json --capture frame.ppm`,
 `--observe ADDRESS`, `--switch-disc FRAME:N` and `--resize FRAME:WIDTHxHEIGHT`.
 Reports include the actual renderer/device, drawable/monitor dimensions,
-fullscreen state, native and interpreted execution counts, module dispatches,
+fullscreen state, native and interpreted execution counts, coverage failures,
+copied-routine and kernel-bridge dispatches, module dispatches,
 disc identity, audio and observed guest RAM. Manifest verification alone checks
 source integrity and declarations; it does not certify gameplay.
 
@@ -105,6 +118,12 @@ The smaller independent CPU probe retains its separate register/delay-slot check
 Original archive fixtures also exercise compressed/raw program discovery,
 packed callback pointers, overlapping destinations and stale-byte rejection.
 Their generated functions are executed against an independent CPU reference.
+
+The [native-only validation record](ps1-native-validation.json) reports a private
+1,800-frame DQVII boot check: zero interpreted instructions and coverage failures,
+with the same final picture and audio-frame counts as the prior runtime. PCM
+samples and a full playthrough were not compared in that check. No owner inputs,
+derived game source or captures are published with the record.
 
 Retail compatibility remains title-specific. DQVII is the first target; targeted
 boot/module/save/disc checks and a full playthrough establish different evidence.

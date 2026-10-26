@@ -100,7 +100,9 @@ Reviewed boot-data envelopes and differing-call-site signature repairs passed na
 
 Experimental [PS1 PC source output](../ps1-native.md) is implemented, including
 the source-shipped hardware runtime and one build for an ordered disc set.
-The execution model remains hybrid while compiled coverage is expanded for
-disc-loaded programs, copied routines and runtime patches. The [integration
+The normal player uses native compiled code with coverage failures for unknown
+paths. A separate optional executable retains the instruction reference.
+Static coverage includes disc-loaded programs, bounded copied routines and
+recognized OpenBIOS runtime patches. The [integration
 record](ps1-native.md) describes the CPU and full-runtime qualification scope.
 Exhaustive retail source matching remains checkpointed in PR #26.
