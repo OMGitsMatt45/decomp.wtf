@@ -1,5 +1,6 @@
 """Build and execute generated DS C++ with the pinned source-shipped runtime."""
 import hashlib
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import pytest
 
 from decompnet import pc,toolchains
 from decompnet.nds_native import export,SDK_COMMIT,_source
-from .fixtures.nds_native import dual_cpu,hardware,mixed_arm_switch
+from .fixtures.nds_native import dual_cpu,hardware,mixed_arm_switch,rtc
 from .fixtures.nds_static import simple
 
 
@@ -118,6 +119,25 @@ def test_full_runtime_executes_original_arm7_private_ram_and_overlay_loader(tmp_
     assert (root/'native/dsr/LICENSE').is_file() and (root/'native/dsr/DECOMP_WTF_PATCHES.md').is_file()
     assert 'OBB' in (root/'README.md').read_text()
     assert pc.verify(root)['integrity_verified']
+
+
+def test_guest_rtc_defaults_to_local_date_and_accepts_explicit_fixed_utc(tmp_path,sdk):
+    _,root,exe=generate(tmp_path/'clock',rtc)
+    bcd=lambda value:(value//10)*16+value%10
+    date=lambda now:[bcd(now.year%100),bcd(now.month),bcd(now.day),(now.weekday()+1)%7]
+    before=datetime.now()
+    local=execute(exe,root,'--save',tmp_path/'local.sav')
+    after=datetime.now()
+    assert local['rtc']==dict(mode='local',start_unix=None)
+    assert local['observed'][:4] in (date(before),date(after))
+    for epoch in (1704067200,946684800,4102444799):
+        fixed=execute(exe,root,'--save',tmp_path/'fixed.sav','--rtc-start',epoch)
+        assert fixed['rtc']==dict(mode='fixed-utc',start_unix=epoch)
+        assert fixed['observed'][:4]==date(datetime.fromtimestamp(epoch,timezone.utc))
+        assert fixed['unimplemented_io']==0
+    for epoch in ('-1','bad','946684799','4102444800'):
+        assert execute(exe,root,'--save',tmp_path/'bad-clock.sav','--rtc-start',epoch,ok=False)
+        assert not (tmp_path/'bad-clock.sav').exists()
 
 
 def test_generated_guest_code_drives_video_audio_irqs_ipc_keys_and_cartridge_save(tmp_path,hardware_project):

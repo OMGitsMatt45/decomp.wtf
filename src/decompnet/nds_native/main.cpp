@@ -104,7 +104,7 @@ struct Display {
 int main(int argc,char** argv) {
     try {
         std::filesystem::path assets="assets",save="saves/game.sav",capture,script,audio_path,memory_dump;
-        uint64_t frames=0;bool headless=false,diagnostics=false;
+        uint64_t frames=0,rtc_start=0;bool headless=false,diagnostics=false,rtc_fixed=false;
         std::string renderer=profile::renderer;
         unsigned width=0,height=0;bool fullscreen=false;
         for(int i=1;i<argc;++i) {
@@ -117,6 +117,11 @@ int main(int argc,char** argv) {
             if(option=="--assets")assets=value;
             else if(option=="--save")save=value;
             else if(option=="--frames")frames=count(value,1000000);
+            else if(option=="--rtc-start") {
+                rtc_start=count(value,4102444799ull);
+                if(rtc_start<946684800ull)throw std::runtime_error("RTC start must be in 2000..2099 UTC");
+                rtc_fixed=true;
+            }
             else if(option=="--capture")capture=value;
             else if(option=="--input-script")script=value;
             else if(option=="--audio-pcm")audio_path=value;
@@ -140,7 +145,7 @@ int main(int argc,char** argv) {
         config.arm9_table=dsr::gen_table_arm9();config.arm7_table=dsr::gen_table_arm7();
         config.arm9_regions=dsr::gen_dispatch_regions_arm9();config.arm7_regions=dsr::gen_dispatch_regions_arm7();
         config.guest_abi.backup_type=dsr::parse_backup_type(profile::save_type);
-        config.deterministic_rtc=true;config.rtc_epoch_seconds=946684800;
+        config.deterministic_rtc=rtc_fixed;config.rtc_epoch_seconds=int64_t(rtc_start);
         profile::configure(config);
         profile::verify_input(config.rom_path);
         dsr::Session session(config);profile::initialize(session.machine());
@@ -242,7 +247,10 @@ int main(int argc,char** argv) {
         }
         std::cout<<"{\"frames\":"<<session.frame_count()<<",\"ticks\":"<<session.ticks()
                  <<",\"top_hash\":"<<hash(session.screen_top())<<",\"bottom_hash\":"<<hash(session.screen_bottom())
-                 <<",\"audio_frames\":"<<audio_samples<<",\"observed\":[";
+                 <<",\"audio_frames\":"<<audio_samples
+                 <<",\"rtc\":{\"mode\":"<<std::quoted(rtc_fixed?"fixed-utc":"local")<<",\"start_unix\":";
+        if(rtc_fixed)std::cout<<rtc_start;else std::cout<<"null";
+        std::cout<<"},\"observed\":[";
         for(unsigned i=0;i<profile::observation_count;++i)
             std::cout<<(i?",":"")<<session.machine().read32(dsr::CpuId::Arm9,profile::observations[i]);
         std::cout<<"],\"cpu_pc\":["<<session.machine().debug_cpu_snapshot(dsr::CpuId::Arm9).current_pc

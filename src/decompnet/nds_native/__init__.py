@@ -500,6 +500,11 @@ Cartridge saves are written to `saves/game.sav`, or the path given by `--save`.
 The selected save chip is pinned in `native/profile.hpp`; review it for each game.
 `auto` infers from an existing raw save. Choose the actual chip for a new game.
 
+The RTC uses your computer's current local date/time, including after restarting.
+For repeatable tests, `--rtc-start 1704067200` starts at 2024-01-01 00:00:00 UTC
+and advances with emulated time. Unix timestamps must fall in 2000..2099 UTC.
+JSON records `rtc.mode` (`local` or `fixed-utc`) and `rtc.start_unix` (null for local).
+
 For a bounded headless check use `--headless --frames 300`. Add `--capture DIR`
 for final PPM screens, `--audio-pcm FILE` for little-endian signed stereo samples,
 or `--input-script FILE` for rows `frame button_mask touch_x touch_y` (use -1 -1

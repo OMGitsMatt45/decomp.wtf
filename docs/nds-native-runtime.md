@@ -86,6 +86,14 @@ scripted run; `--capture DIR`, `--audio-pcm FILE`, `--input-script FILE`,
 `--diagnostics` and `--dump-memory DIR` support private compatibility testing.
 Do not publish retail-derived sources, assets, memory captures or game builds.
 
+Generated games use the computer's current local date/time by default, including
+after restarting a saved game. For reproducible tests, pass
+`--rtc-start 1704067200` to start at 2024-01-01 00:00:00 UTC and advance the clock
+with emulated time. The accepted Unix timestamp range is 2000 through 2099 UTC.
+The JSON result records `rtc.mode` (`local` or `fixed-utc`) and `rtc.start_unix`
+(`null` for the local clock). Fixed time is an explicit testing option; normal
+launches retain the local clock for calendar and daily events.
+
 ## Adaptive GPU rendering
 
 The original OpenGL 3.3 host draws transformed game geometry at the actual

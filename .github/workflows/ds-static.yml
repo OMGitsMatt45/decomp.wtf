@@ -19,6 +19,7 @@ on:
       - 'tests/fixtures/nds-static/**'
       - 'tests/fixtures/nds-hardware/**'
       - 'tests/fixtures/nds-video/**'
+      - 'tests/fixtures/nds-rtc/**'
       - 'tests/fixtures/nds_static.py'
       - 'tests/fixtures/nds_native.py'
       - '.github/workflows/ds-static.yml'
