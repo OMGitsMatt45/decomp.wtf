@@ -130,10 +130,15 @@ def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,har
         'project(RuntimeChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nfind_package(Threads REQUIRED)\n'
         f'add_executable(runtime_checks {quoted(runtime/"core/tests/core_tests.cpp")} '
         f'{quoted(runtime/"core/tests/thread_tests.cpp")} {quoted(runtime/"core/tests/abi_config_tests.cpp")})\n'
+        f'add_executable(register_checks {quoted(Path(__file__).parent/"fixtures/nds_registers.cpp")})\n'
+        f'target_include_directories(register_checks PRIVATE {quoted(runtime/"include")})\n'
+        f'target_link_libraries(register_checks PRIVATE {quoted(library)} Threads::Threads)\n'
         f'target_include_directories(runtime_checks PRIVATE {quoted(runtime/"include")} {quoted(runtime/"core/include")} {quoted(runtime/"core/src")})\n'
         f'target_link_libraries(runtime_checks PRIVATE {quoted(library)} Threads::Threads)\n'
         'if(WIN32)\n target_compile_definitions(runtime_checks PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)\n'
-        ' target_link_libraries(runtime_checks PRIVATE bcrypt)\nendif()\n')
+        ' target_link_libraries(runtime_checks PRIVATE bcrypt)\n'
+        ' target_compile_definitions(register_checks PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)\n'
+        ' target_link_libraries(register_checks PRIVATE bcrypt)\nendif()\n')
     for cmd in (['cmake','-S',str(tmp_path),'-B',str(tmp_path/'build')],
                 ['cmake','--build',str(tmp_path/'build'),'--config','Release','--parallel','2']):
         done=subprocess.run(cmd,capture_output=True,text=True,timeout=240)
@@ -141,6 +146,9 @@ def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,har
     exe=next(p for p in (tmp_path/'build/runtime_checks',tmp_path/'build/runtime_checks.exe',
                         tmp_path/'build/Release/runtime_checks.exe') if p.is_file())
     done=subprocess.run([str(exe)],capture_output=True,text=True,timeout=120)
+    assert done.returncode==0,done.stdout+done.stderr
+    register_exe=exe.with_name(exe.name.replace('runtime_checks','register_checks'))
+    done=subprocess.run([str(register_exe)],capture_output=True,text=True,timeout=30)
     assert done.returncode==0,done.stdout+done.stderr
 
 
