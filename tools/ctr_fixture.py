@@ -60,9 +60,12 @@ def cartridge(raw):
     return bytes(out)
 
 
-def cro(name='OriginalFixture', *, thumb=False):
-    """CC0 module with one exported function returning 42, without SDK data."""
+def cro(name='OriginalFixture', *, thumb=False, save=False):
+    """CC0 module exporting an original return-42 or persistent-save program."""
     code=struct.pack('<HH',0x202a,0x4770) if thumb else struct.pack('<II',0xe3a0002a,0xe12fff1e)
+    if save:
+        assert not thumb
+        code=bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-save.hex').read_text())
     out=bytearray(0x200+len(code))
     out[0x80:0x84]=b'CRO0'
     for at,value in ((0xc0,0x180),(0xc8,0x138),(0xcc,1),(0x138,0x200),

@@ -86,6 +86,8 @@ on Intel Iris Xe. Broader compatibility and the owner's playthrough remain separ
 Original ARM/Thumb/VFP programs and memory/event/IPC/ExeFS services execute from
 translated C. A pinned MIT source runtime supplies a Vulkan geometry renderer and
 adaptive stacked/unified window with keyboard/touch, host audio and controllers.
+An original native save counter persists across launches, preserves other save
+files and rejects corruption without reformatting the archive.
 Retail CRO/source coverage, DSP/save qualification and physical device acceptance remain;
 the 3DS backend is still in development.
 Further console additions, including Switch, are paused while the existing

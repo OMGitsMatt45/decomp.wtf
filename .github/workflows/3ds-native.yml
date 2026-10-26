@@ -11,6 +11,7 @@ on:
       - 'src/decompnet/nds_native/hash.hpp'
       - 'tools/ctr_fixture.py'
       - 'tools/fixtures/ctr-services.*'
+      - 'tools/fixtures/ctr-save.*'
       - 'tools/fixtures/ctr-arm-code.blz.hex'
       - 'tests/test_ctr_native.py'
       - 'tests/test_ctr_runtime.py'

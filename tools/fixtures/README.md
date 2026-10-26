@@ -2,6 +2,9 @@
 
 These ARM11 programs and generated fixture data are CC0 and contain no console
 SDK, game or firmware bytes. `ctr-services.S` is the source for its matching hex.
+`ctr-save.S` and its matching hex are an original relocatable save counter:
+first-use formatting is allowed only for the exact not-formatted result, and
+later launches read/increment the persisted file without clearing other data.
 
 `ctr-arm-code.blz.hex` encodes the original `arm` fixture's full executable/data
 image. It was generated independently with ndspy 4.2.0's `codeCompression.compress`

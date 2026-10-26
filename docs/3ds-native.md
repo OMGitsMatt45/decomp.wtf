@@ -10,7 +10,10 @@ saves. The 3DS stays marked in development in the application; `pc status
 
 - Bounded read-only inspection of decrypted NCCH/CXI and NCSD/CCI/`.3ds` images:
   partition/ExeFS ranges, executable mappings, BSS, code checksums and backwards
-  LZSS decompression, including final data-page padding.
+  LZSS decompression, including final data-page padding. An independently
+  compressed original executable checks every instruction/data byte against
+  both pinned decoders and the runtime's loaded memory, as well as native
+  execution against Unicorn.
 - ARM/Thumb/VFP C generation through MIT
   [3dsrecomp at cec1270](https://github.com/fearkov/3dsrecomp/tree/cec1270db38411f9c02d3f356fc3ed6c3f007424).
   Data/rodata callback pointers provide additional discovery roots. Archive and
@@ -58,6 +61,12 @@ saves. The 3DS stays marked in development in the application; `pc status
   devices and supports `--mute`. Original queue/resampling and controller merge
   checks run on both hosts; a nonzero original tone is consumed by a virtual
   Linux audio callback. Physical audio/controller acceptance remains separate.
+- An original translated ARM save program creates its archive only after the
+  exact not-formatted result, then writes a counter and reads/increments it
+  across separate launches. Existing sibling files survive; a corrupt counter
+  fails without formatting or overwriting them. `--data DIRECTORY` keeps the
+  runtime's title-isolated saves under `DIRECTORY/user/savedata/TITLE_ID`.
+  This qualifies the original persistence path, not retail save formats.
 
 ## Commands and downloads
 
@@ -127,9 +136,10 @@ additional owner-provided files; no system/game data is downloaded automatically
 2. Extend the combined presentation from composition into continuous scenes
    where game camera/UI behavior supports it, with honest per-title evidence.
    Qualify textures/effects, high DPI/fullscreen and physical GPUs on Windows.
-3. Qualify retail DSP/audio, physical controllers and persistent game saves.
+3. Qualify retail DSP/audio, physical controllers and retail game saves.
    Host audio/controller integration and original signal/input fixtures are
-   implemented; those do not establish correct sound or saves in every title.
+   implemented, and an original native save/relaunch fixture passes; those do
+   not establish correct sound or saves in every title.
 4. Add title/update integration, coverage feedback and owner-supplied Pokémon
    and Dragon Quest retail acceptance. Interpreter use must remain explicit in
    both the project manifest and execution reports. A passing fixture, bounded

@@ -29,7 +29,8 @@ def original_runtime(tmp_path_factory):
     root=tmp_path_factory.mktemp('original 3DS runtime')
     image=root/'original.cxi'
     image.write_bytes(with_romfs(fixture('services'),[('OriginalARM.cro',cro('OriginalARM')),
-        ('OriginalThumb.cro',cro('OriginalThumb',thumb=True)),('Alias.cro',cro('OriginalARM'))]))
+        ('OriginalThumb.cro',cro('OriginalThumb',thumb=True)),('Alias.cro',cro('OriginalARM')),
+        ('OriginalSave.cro',cro('OriginalSave',save=True))]))
     project=root/'Independent source'
     stream=SimpleNamespace(stat=image.stat,open=image.open)
     exported=export_runtime('streamed-original.cxi',project,screen_mode='unified',source=stream)
@@ -37,7 +38,7 @@ def original_runtime(tmp_path_factory):
     manifest=exported['manifest']
     assert manifest['qualification']['retail'] is False
     assert manifest['development_presentation']['screen_mode']=='unified'
-    assert len(json.loads((project/'analysis.json').read_text())['modules'])==3
+    assert len(json.loads((project/'analysis.json').read_text())['modules'])==4
     assert manifest['fallback']==dict(interpreter=True,runtime_compilation=False,default='strict')
     assert (project/'native/runtime/LICENSE').is_file()
     assert (project/'native/app/Cargo.lock').is_file()
@@ -148,9 +149,34 @@ def test_translated_arm_and_thumb_modules_move_reload_and_unload(original_runtim
         path=project/'assets/modules'/row['file'];raw=path.read_bytes()
         name_offset=int.from_bytes(raw[0xc0:0xc4],'little')
         module=raw[name_offset:].split(b'\0')[0].decode('ascii')
+        if module=='OriginalSave':continue
         report=json.loads(command([probe,image,path,module],timeout=30).stdout)
         assert report['passed'] and report['native_instructions']==4
         assert report['interpreted_instructions']==0 and report['provenance_checked']
+
+
+def test_native_savedata_survives_relaunch_and_preserves_other_files(original_runtime,tmp_path):
+    project,image,binary,_scenes,_build,_run=original_runtime
+    probe=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    row=next(row for row in json.loads((project/'analysis.json').read_text())['modules']
+             if row['path']=='OriginalSave.cro')
+    module=project/'assets/modules'/row['file']
+    user=tmp_path/'independent user data'
+    saved=user/'user/savedata'/'000400000FF3DE00'
+    for expected in (1,2):
+        report=json.loads(command([probe,'--save',image,module,user],timeout=30).stdout)
+        assert report['passed'] and report['counter']==expected
+        assert report['native_instructions']>100 and report['interpreted_instructions']==0
+        assert (saved/'counter.bin').read_bytes()==expected.to_bytes(4,'little')
+        if expected==1:(saved/'preserve.txt').write_text('owner save data')
+    assert (saved/'preserve.txt').read_text()=='owner save data'
+    # Corrupt counters fail without formatting the existing archive.
+    (saved/'counter.bin').write_bytes(b'\xff'*4)
+    failed=subprocess.run([str(probe),'--save',str(image),str(module),str(user)],
+                          capture_output=True,text=True,timeout=30)
+    assert failed.returncode!=0 and 'save fixture' in failed.stderr
+    assert (saved/'counter.bin').read_bytes()==b'\xff'*4
+    assert (saved/'preserve.txt').read_text()=='owner save data'
 
 
 def test_compressed_executable_bytes_agree_with_independent_runtime_loader(original_runtime):

@@ -15,6 +15,46 @@ extern "C" {
 
 fn run()->Result<(),Box<dyn std::error::Error>> {
     let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len()==4 && args[0]=="--save" {
+        let raw=std::fs::read(&args[2])?;
+        if raw.len()>0x1000 || raw.get(0x80..0x84)!=Some(b"CRO0") {
+            return Err("save fixture expects its original one-page module".into());
+        }
+        let linked=unsafe {zakuro_core::recompiled::Linked::new(TITLE_ID,recomp_abi,
+            addr_of!(recomp_entries) as *const c_void,recomp_entry_count,
+            addr_of!(recomp_modules) as *const c_void,recomp_module_count)
+            .with_origins(recomp_generation,addr_of!(recomp_origins) as *const c_void)};
+        let mut system=loader::load(&args[1],Config {linked:Some(linked),find_recompiled:false,
+            strict_static:true,data_dir:Some((&args[3]).into()),clock:Some(0),..Config::default()})?;
+        let base=0x02000000;
+        system.memory.map(base,0x26000000,0x1000,
+            Permission::RW|Permission::EXECUTE,MemoryState::Code);
+        system.memory.write_bytes(base,&raw);
+        let library=system.recompiled.as_mut().ok_or("save fixture has no linked C")?;
+        library.forbid_fallback=true;
+        library.place("OriginalSave",base,&mut system.memory);
+        if !library.has_code(base+0x200) {return Err("save fixture has no translated entry".into());}
+        // Select the loaded main thread before replacing its entry. Subsequent
+        // asynchronous filesystem waits use the ordinary kernel scheduler.
+        system.kernel.schedule(&mut system.cpu,0);
+        system.cpu.regs[15]=base+0x200;
+        system.cpu.cpsr.thumb=false;
+        while system.cpu.cycles<10_000_000 {
+            if !matches!(system.step(Some(10_000_000)),zakuro_core::StepOutcome::Ran) {break;}
+        }
+        let library=system.recompiled.as_ref().unwrap();
+        let interpreted=system.interpreted_instructions+library.fallbacks();
+        if !system.exited || system.cpu.regs[0]!=0 || interpreted!=0 || library.rejected.get().is_some()
+            || !system.static_misses.is_empty() || !system.unimplemented_svcs.is_empty()
+            || !system.services.unimplemented.is_empty() {
+            return Err(format!("save fixture failed: exit={}, r0={:X}, pc={:X}, misses={:?}",
+                system.exited,system.cpu.regs[0],system.cpu.regs[15],system.static_misses).into());
+        }
+        println!("{}",serde_json::json!({"schema":"decomp.wtf.3ds-save-fixture/v1","passed":true,
+            "counter":system.cpu.regs[1],"native_instructions":system.recompiled_instructions,
+            "interpreted_instructions":interpreted,"retail_qualified":false}));
+        return Ok(());
+    }
     if args.len()==3 && args[0]=="--loaded-code" {
         let expected=std::fs::read(&args[2])?;
         let mut system=loader::load(&args[1],Config {find_recompiled:false,clock:Some(0),..Config::default()})?;
