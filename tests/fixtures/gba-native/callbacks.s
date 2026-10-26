@@ -125,6 +125,36 @@ long_callbacks:
     str r0, [r5, #76]
     bl long_loop
     str r0, [r5, #80]
+    /* Script bytecode packs its pointer one byte after a command opcode.
+     * Reassemble the pointer with byte reads, as an ARM7 unaligned word LDR
+     * rotates its value. There is no aligned code-pointer literal to rescue it. */
+    ldr r3, =packed_record + 1
+    ldrb r1, [r3]
+    ldrb r0, [r3, #1]
+    orr r1, r1, r0, lsl #8
+    ldrb r0, [r3, #2]
+    orr r1, r1, r0, lsl #16
+    ldrb r0, [r3, #3]
+    orr r1, r1, r0, lsl #24
+    str r1, [r5]
+    ldr r1, [r5]
+    mov lr, pc
+    bx r1
+    str r0, [r5, #84]
+    ldr r3, =isolated_leaf_record
+    ldr r1, [r3, #4]
+    str r1, [r5]
+    ldr r1, [r5]
+    mov lr, pc
+    bx r1
+    str r0, [r5, #88]
+    ldr r3, =tail_table
+    ldr r1, [r3]
+    str r1, [r5]
+    ldr r1, [r5]
+    mov lr, pc
+    bx r1
+    str r0, [r5, #92]
     ldr r0, =0x04000130
     ldrh r0, [r0]
     tst r0, #2
@@ -148,6 +178,35 @@ thumb_stack:
     movs r0, #11
     pop {r3}
     bx r3
+.align 2
+packed_record:
+    .byte 0xa7
+    .word packed_callback
+    .byte 0, 0, 0
+.align 2
+isolated_leaf_record:
+    .word 0, isolated_long_leaf, 0
+tail_table:
+    .word arm_tail, arm_stack, arm_leaf
+.thumb_func
+packed_callback:
+    push {lr}
+    movs r0, #107
+    pop {r3}
+    bx r3
+.thumb_func
+isolated_long_leaf:
+    movs r0, #99
+    .rept 10
+    adds r0, #1
+    .endr
+    bx lr
+.align 2
+.arm
+arm_tail:
+    mov r0, #1
+    b arm_leaf
+.thumb
 .thumb_func
 thumb_leaf:
     movs r0, #22

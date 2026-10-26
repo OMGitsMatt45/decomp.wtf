@@ -7,7 +7,9 @@
         std::set<std::uint64_t> checked;
         const auto& bytes = image_.rom();
         unsigned adopted = 0;
-        for (std::size_t offset = 0; offset + 4 <= bytes.size(); offset += 4) {
+        // Script records can pack a command byte directly before a callback
+        // pointer. The storage alignment does not establish the code alignment.
+        for (std::size_t offset = 0; offset + 4 <= bytes.size(); ++offset) {
             const auto raw = image_.read32(kRomBase + static_cast<std::uint32_t>(offset));
             if (!raw || !Image::is_rom(*raw)) continue;
             // A callback stored as an ordinary data/code-copy pointer can be
@@ -26,6 +28,9 @@
                  (first.reglist & (1u << decode::kLR))) ||
                 (first.op == decode::Op::STR && first.rn == decode::kSP && first.rd == decode::kLR &&
                  first.pre && !first.up && first.writeback && first.imm && first.imm_value == 4);
+            // Packed data supplies weaker evidence than an aligned pointer
+            // table. Require an immediate stack-save prologue in that case.
+            if((offset&3u) && !saves_lr)continue;
             bool deferred_stack=false;
             for(auto pc=address;pc<address+64;) {
                 const auto in=decode_at(image_,pc,mode);if(!in.valid())break;
@@ -54,7 +59,7 @@
             bool short_leaf = false;
             if (!saves_lr) {
                 auto pc = address;
-                for (unsigned i = 0; i < 8; ++i) {
+                for (unsigned i = 0; i < 32; ++i) {
                     const auto instruction = decode_at(image_, pc, mode);
                     if (!instruction.valid() || instruction.cond != decode::Cond::AL) break;
                     if (is_return(instruction) || instruction.op == decode::Op::BX ||
@@ -72,11 +77,16 @@
             if (!saves_lr && !deferred_stack && !short_leaf && !callback_table) continue;
             const EntryPoint candidate{address, mode, EntrySource::LiteralPool};
             const auto walk = walk_function(image_, candidate, known_, noreturn_, options_.skip);
+            // A callback may end entirely in branches to already discovered
+            // functions. That is a complete tail-call body without a local BX.
+            bool known_tail = !walk.function.tail_calls.empty();
+            for(const auto target : walk.function.tail_calls)
+                known_tail = known_tail && known_.contains(target);
             // Interworking epilogues may POP the saved LR into another
             // register and BX it. A verified stack entry need not contain a
             // literal BX LR or POP PC to be a callable function.
-            if (walk.function.hit_undefined || !walk.function.has_exit ||
-                (!saves_lr && !deferred_stack && !callback_table && !(short_leaf && walk.function.insns.size()<=8))) continue;
+            if (walk.function.hit_undefined || (!walk.function.has_exit && !known_tail) ||
+                (!saves_lr && !deferred_stack && !callback_table && !(short_leaf && walk.function.insns.size()<=32))) continue;
             enqueue(candidate);
             ++adopted;
             }
