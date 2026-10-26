@@ -150,7 +150,7 @@ def test_game_export_cannot_omit_presentation(tmp_path):
 
 def test_single_screen_console_cannot_claim_ds_screen_merger(tmp_path):
     path, data = _game_manifest(tmp_path, platform='psx')
-    data['presentation'] = pc.presentation(screens=2, screen_mode='unified')
+    data['presentation'] = pc.presentation(screens=2, screen_mode='dual')
     path.write_text(json.dumps(data))
     with pytest.raises(pc.PCError, match='screen count'):
         pc.verify(tmp_path)

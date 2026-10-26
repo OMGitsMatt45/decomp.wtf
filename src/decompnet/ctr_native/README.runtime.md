@@ -36,21 +36,20 @@ Windows uses CPAL/Gilrs with the system audio/controller APIs and MSVC Rust.
 For the adaptive window, run:
 
 ```
-build/host/debug/ctr_runtime PATH_TO_ORIGINAL_IMAGE --window --screens unified
+build/host/debug/ctr_runtime PATH_TO_ORIGINAL_IMAGE --window
 ```
 
-`--screens stacked` preserves the console arrangement. Unified composition fits
-one primary picture to the current drawable and keeps the other as an inset;
-`--primary bottom` swaps them. F6 changes layout, F7 swaps the primary, F11 toggles
-fullscreen on the window's monitor and Escape closes the window. All rectangles,
-touch coordinates and geometry render resolution follow resize and high DPI.
-The screens keep their native aspect ratios. This composition does not infer a
-continuous camera from two independent game pictures or expand a game's field of
-view; that remains additional scene-level work. Neither picture is discarded.
+The original two LCDs stay visible and retain their native aspect ratios.
+F11 toggles fullscreen on the window's monitor; Escape closes it. Touch mapping
+and geometry render resolution follow resize and high DPI. Game-specific camera
+merging can be added to this exported repository later.
+
+`--renderer auto` tries Vulkan geometry and reports software geometry fallback.
+`vulkan` requires GPU geometry; `software` uses the native software geometry
+renderer. The desktop presenter requires Vulkan in all three modes.
 
 J/K/U/I are A/B/X/Y, Q/E are L/R, arrows are the D-pad, WASD is the circle pad,
 and Enter/Backspace are Start/Select. Click the lower-screen picture for touch.
-The top inset never passes clicks through to a primary lower screen.
 DSP samples go to the selected host's default audio output, with resampling and
 a bounded queue. `--mute` disables it. Standard gamepads merge with keyboard and
 touch; left/right sticks drive the circle pad/C-stick. Reports say whether audio

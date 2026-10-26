@@ -8,6 +8,7 @@ BASE = 0x00100000
 
 def fixture(kind='arm'):
     programs = {
+        # Append an unreachable Thumb return for strict/compatibility coverage tests.
         'services': bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-services.hex').read_text())+b'\x70\x47',
         'arm': struct.pack('<IIII', 0xe3a00007, 0xe3a01005, 0xe0800001, 0xef000003),
         # ldr r3, literal; blx r3; svc ExitProcess; pointer; Thumb movs r0,42; bx lr

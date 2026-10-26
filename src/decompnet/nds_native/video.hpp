@@ -36,7 +36,7 @@ struct Frame {
     bool on_top=false;
 };
 struct Options {
-    std::string renderer="auto",screen_mode="dual";
+    std::string renderer="auto";
     int width=0,height=0; // Zero chooses an initial size from the active monitor.
     bool fullscreen=false,readback=false;
 };
@@ -55,7 +55,6 @@ public:
     int height() const;
     const std::string& renderer() const;
     const std::string& device() const;
-    bool unified() const;
     uint64_t polygons_drawn() const;
 private:
     struct Impl;

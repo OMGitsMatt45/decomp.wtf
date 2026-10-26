@@ -1,10 +1,11 @@
 # Nintendo 3DS native source work
 
-Status: **source runtime development; playable retail output is not qualified**.
+Status: **experimental standalone native output; full retail gameplay is not qualified**.
 The goal remains an independent editable game C/C++ repository with a source
 runtime, adaptive GPU rendering, dual-screen presentation, audio, controls and
-saves. The 3DS stays marked in development in the application; `pc status
---platform 3ds` does not advertise a game backend yet.
+saves. The application, connected-agent tools and `pc ctr-native` share the same
+experimental game backend. `pc status --platform 3ds` reports it without
+installing optional sources. CPU/service probes remain available for diagnosis.
 
 ## Implemented foundation
 
@@ -51,13 +52,9 @@ saves. The 3DS stays marked in development in the application; `pc status
   not physical GPU qualification.
 - The optional desktop host presents both pictures with adaptive geometry render
   scale, window resize/high DPI, monitor fullscreen and keyboard/touch input.
-  `stacked` keeps the console arrangement. `unified` fits a primary picture to
-  the current drawable and keeps the other as an inset, with either screen
-  selectable as primary. Screen aspects and touch mapping are preserved, even
-  when the top inset overlaps a primary lower screen. F6 changes layout,
-  F7 swaps primary and F11 changes fullscreen. This compositor does **not** yet
-  turn two game cameras into a continuous widescreen scene or expand field of
-  view. No fixed display resolution or forced 16:9 shape is assumed.
+  Both original LCDs remain visible with their native aspects and touch mapping.
+  F11 changes fullscreen. No fixed display resolution or forced 16:9 shape is
+  assumed. Game-specific camera merging belongs in the exported repository.
 - The desktop host queues DSP samples to the pinned resampling/audio sink and
   merges standard controllers with keyboard/touch input. It reports missing
   devices and supports `--mute`. Original queue/resampling and controller merge
@@ -73,6 +70,12 @@ saves. The 3DS stays marked in development in the application; `pc status
   with guest ticks. `--clock-ms N` explicitly selects a deterministic replay
   clock in milliseconds since 1900. Execution reports include the clock and
   fault PC/LR/mode to help diagnose missing native targets.
+- Bounded headless runs accept up to ten billion cycles for startup validation.
+  `--capture-guest-screens NEW_DIRECTORY` writes native top/bottom RGB PPMs and
+  records their hashes; it preserves existing directories. GPU draw/transfer/
+  fill counts and the actual Vulkan device name are reported independently of
+  retail or physical-device qualification. The desktop starts maximized to its
+  monitor and continues adapting to drawable resize/high DPI.
 - Runtime reports can feed observed main-executable entry points into a new
   export with repeatable `--feedback REPORT.json` options. Reports must match
   the exact original image SHA-256. Targets, report sizes and entry counts are
@@ -92,7 +95,7 @@ From the repository root:
 
 ```powershell
 uv run --locked python -m decompnet.cli pc ctr-inspect "game.3ds"
-uv run --locked python -m decompnet.cli pc ctr-runtime "game.3ds" "New 3DS source" --experimental --screen-mode unified
+uv run --locked python -m decompnet.cli pc ctr-native "game.3ds" "New 3DS source" --experimental
 cmake -S "New 3DS source" -B "New 3DS source/build"
 cmake --build "New 3DS source/build" --config Release
 ```
@@ -100,11 +103,11 @@ cmake --build "New 3DS source/build" --config Release
 The installed `decomp pc` command also works. Inside the exported directory:
 
 ```powershell
-.\build\host\debug\ctr_runtime.exe "PATH_TO_ORIGINAL_IMAGE" --window --screens unified
+.\build\host\debug\ctr_runtime.exe "PATH_TO_ORIGINAL_IMAGE" --window
 ```
 
 On Linux use `build/host/debug/ctr_runtime`. For a bounded headless run, replace
-`--window --screens unified` with `--cycles 1000000`. Add `--gpu` for headless
+`--window` with `--cycles 1000000`. Add `--gpu` for headless
 Vulkan geometry. CMake defaults to the desktop build; `-DCTR_DESKTOP=OFF` omits
 window dependencies. `-DCTR_CARGO_PROFILE=release` selects an optimized Rust
 build and puts the executable under `build/host/release/`.
@@ -158,14 +161,41 @@ Encrypted inputs fail with a decrypted-dump message. CIA installation and 3DSX
 relocation are not implemented by this importer. Some retail services can need
 additional owner-provided files; no system/game data is downloaded automatically.
 
+## Local graphics qualification
+
+From a downloaded checkout, Windows PowerShell can run this script from any
+current directory:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\qualify-3ds-hardware.ps1"
+```
+
+Use the script's full path when outside the checkout. It discovers the Visual
+Studio CMake component and an installed uv/Rust toolchain. Rust 1.95+ with MSVC
+is required; the download links above also apply to this command. `-CheckTools`
+checks prerequisites without building. No game, boot ROM or firmware is used.
+
+The assessment builds an original native loop, renders independent PICA geometry
+at changing scales, and presents both original LCDs in a resizable window. Physical
+qualification requires each actual Vulkan device name to match an integrated or
+discrete device in the driver inventory. A software renderer cannot pass as
+physical hardware. Results and command logs are retained in the printed output
+directory. This validates the original graphics path, not retail gameplay,
+physical audio or controller behavior.
+
+Linux developers with a display can run `python -m tools.qualify_ctr_hardware
+NEW_DIRECTORY --allow-software`; this explicit comparison never qualifies a
+software device as physical. Standard repository commands use `uv run --locked
+--group dev --python 3.12 python` in place of `python`.
+
 ## Remaining game-output work
 
 1. Broaden service-driven CRO/CRS load/import/relocation and executable-data
    coverage beyond the original placement/provenance fixtures. Original module
    success does not establish complete translated retail module coverage.
-2. Extend the combined presentation from composition into continuous scenes
-   where game camera/UI behavior supports it, with honest per-title evidence.
-   Qualify textures/effects, high DPI/fullscreen and physical GPUs on Windows.
+2. Broaden texture/effect coverage and qualify physical GPUs on Windows using
+   the provided local command. Both original screens remain visible; continuous
+   camera/UI changes belong in each generated game repository.
 3. Qualify retail DSP/audio, physical controllers and retail game saves.
    Host audio/controller integration and original signal/input fixtures are
    implemented, and an original native save/relaunch fixture passes; those do

@@ -1539,8 +1539,23 @@ class RomNetwork(Network):
         log('Native PC source project: '+result['path'])
         return result
 
+    def generate_ctr_pc(self,game:Path,*,confirmed=False,renderer='auto',feedback=(),log=print):
+        """Independent experimental 3DS desktop source from a decrypted image."""
+        if not confirmed:
+            raise NetworkError('confirm that this is your own legally obtained copy of the game')
+        from ..ctr_native import export_game
+        from .. import pc
+        import uuid
+        name=_slugify(Path(game).stem)[:60] or '3ds-game'
+        output=self.workspace/(name+'-pc-'+uuid.uuid4().hex[:8])
+        log('Preparing experimental 3DS native source and its pinned desktop runtime...')
+        try:result=export_game(game,output,renderer=renderer,feedback=feedback)
+        except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
+        log('Native PC source project: '+result['path'])
+        return result
+
     def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
-                       renderer='auto',screen_mode='dual',log=print) -> dict:
+                       renderer='auto',log=print) -> dict:
         """Generate a PC repository directly, without a console matching project/compiler."""
         if not confirmed:
             raise NetworkError('confirm that this is your own legally obtained copy of the game')
@@ -1552,14 +1567,14 @@ class RomNetwork(Network):
         output = self.workspace / (name+'-pc-'+uuid.uuid4().hex[:8])
         try:
             result = export(game,output,input_format=input_format,save_type=save_type,
-                            renderer=renderer,screen_mode=screen_mode,
+                            renderer=renderer,
                             arm7_bios=os.environ.get('DECOMP_ARM7_BIOS') if input_format=='auto' else None,log=log)
         except (pc.PCError, ValueError, OSError) as error:
             raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
         return result
 
-    def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',screen_mode='dual',ps2_profile=None) -> dict:
+    def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',ps2_profile=None) -> dict:
         """Write a rebuildable source tree (the base for ports and mods) and prove it rebuilds the game."""
         if format == 'pc':
             from .. import pc
@@ -1579,8 +1594,14 @@ class RomNetwork(Network):
                         game = root/source
                         input_format = cfg.get('ds_input_format','auto')
                     return export(game,root/'pc-source',input_format=input_format,save_type=save_type,
-                        renderer=renderer,screen_mode=screen_mode,
+                        renderer=renderer,
                         arm7_bios=os.environ.get('DECOMP_ARM7_BIOS') if input_format=='auto' else None,log=log)
+                if cfg.get('platform')=='3ds':
+                    from ..ctr_native import export_game
+                    source=cfg.get('rom',{}).get('file')
+                    if not source:raise pc.PCError('this project has no retained 3DS image; generate from your original on the home screen')
+                    root=Path(proj['root'])
+                    return export_game(root/source,root/'pc-source',renderer=renderer)
                 if cfg.get('platform') == 'psx':
                     from ..psx_native import backend
                     if cfg.get('psx_disc_set'):

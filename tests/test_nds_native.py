@@ -163,13 +163,13 @@ def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
     result=json.loads(done.stdout)
     assert result['frames']==2 and result['audio_frames']>0 and result['unimplemented_io']==0
     # Automatic rendering must retain a runnable original-screen project when
-    # a machine cannot create GL, even if unified view was the export default.
+    # a machine cannot create GL.
     fallback=subprocess.run([str(exe),'--assets',str(root/'assets'),'--save',str(tmp_path/'fallback.sav'),
-        '--frames','2','--renderer','auto','--screen-mode','unified'],
+        '--frames','2','--renderer','auto'],
         env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'},capture_output=True,text=True,timeout=30)
     assert fallback.returncode==0,fallback.stdout+fallback.stderr
     report=json.loads(fallback.stdout)
-    assert report['video']['renderer']=='software' and not report['video']['unified']
+    assert report['video']['renderer']=='software'
     assert 'OpenGL unavailable; using software screens' in fallback.stderr
 
 

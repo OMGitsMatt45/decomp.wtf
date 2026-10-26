@@ -3,39 +3,29 @@ use zakuro_gpu::{Gpu, GpuMemory, SoftwareRenderer};
 use zakuro_gpu::format::ColorFormat;
 use zakuro_gpu::registers::*;
 
+mod screens;
 fn layouts()->Result<(),String> {
-    use zakuro_gpu::{ScreenLayout, Shown, Stereo};
-    use zakuro_gpu::backend::{layout,place,unified};
+    use zakuro_gpu::ScreenLayout;
+    use zakuro_gpu::backend::layout;
     for (w,h) in [(1920,1080),(3440,1440),(481,327),(320,1280),(1,1)] {
-        for bottom in [false,true] {
-            let mode=if bottom {ScreenLayout::UnifiedBottom} else {ScreenLayout::Unified};
-            let (top,touch)=layout(w,h,mode,400.0,false);
-            let top=top.ok_or("missing top picture")?;
-            let touch=touch.ok_or("missing touch picture")?;
-            for (v,aspect) in [(top,400.0/240.0),(touch,320.0/240.0)] {
-                if v.x<0.0 || v.y<0.0 || v.width<=0.0 || v.height<=0.0
-                    || v.x+v.width>w as f32+0.001 || v.y+v.height>h as f32+0.001
-                    || (v.width/v.height-aspect).abs()>0.001 {
-                    return Err("adaptive screen composition is outside the drawable or distorts a screen".into());
-                }
-            }
-            let mapped=unified::touch(Some(top),Some(touch),bottom,
-                (touch.x+touch.width/2.0) as f64,(touch.y+touch.height/2.0) as f64);
-            if mapped!=Some((160,120)) {return Err(format!("touch mapping differs: {mapped:?}"));}
-            if unified::touch(Some(top),Some(touch),bottom,-1.0,-1.0).is_some() {
-                return Err("touch accepted outside the drawable".into());
-            }
-            if bottom && unified::touch(Some(top),Some(touch),true,
-                (top.x+top.width/2.0) as f64,(top.y+top.height/2.0) as f64).is_some() {
-                return Err("top inset passed touch through to the bottom screen".into());
-            }
-            let order=place(w,h,mode,400.0,false,Stereo::default(),false);
-            if order.last().map(|(_,shown)|*shown)!=Some(if bottom {Shown::Top} else {Shown::Bottom}) {
-                return Err("secondary inset was obscured by the primary picture".into());
+        let (top,bottom)=layout(w,h,ScreenLayout::Stacked,400.0,false);
+        let top=top.ok_or("missing top picture")?;
+        let bottom=bottom.ok_or("missing touch picture")?;
+        for (v,aspect) in [(top,400.0/240.0),(bottom,320.0/240.0)] {
+            if v.x<0.0 || v.y<0.0 || v.width<=0.0 || v.height<=0.0
+                || v.x+v.width>w as f32+0.001 || v.y+v.height>h as f32+0.001
+                || (v.width/v.height-aspect).abs()>0.001 {
+                return Err("screen layout is outside the drawable or distorts an LCD".into());
             }
         }
+        let mapped=screens::touch(Some(bottom),
+            (bottom.x+bottom.width/2.0) as f64,(bottom.y+bottom.height/2.0) as f64);
+        if mapped!=Some((160,120)) {return Err(format!("touch mapping differs: {mapped:?}"));}
+        for (x,y) in [(-1.0,-1.0),((top.x+top.width/2.0) as f64,(top.y+top.height/2.0) as f64)] {
+            if screens::touch(Some(bottom),x,y).is_some() {return Err("touch accepted outside the lower LCD".into());}
+        }
     }
-    if unified::places(0,0,false)!=(None,None) {return Err("minimized drawable must have no screen rectangles".into());}
+    if screens::touch(None,0.0,0.0).is_some() {return Err("missing lower LCD accepted touch".into());}
     Ok(())
 }
 
@@ -98,7 +88,8 @@ fn run()->Result<(),String> {
     let mut memory=Memory(vec![0;0x4000]);
     let mut renderer=SoftwareRenderer::default();
     let mut gpu=setup(&mut memory,&mut renderer);
-    let device=gpu.enable_hardware_renderer(1,None,None)?;
+    let device_info=gpu.enable_hardware_renderer(1,None,None)?;
+    let device=gpu.hardware_device_name().ok_or("Vulkan device identity is missing")?.to_owned();
     if !gpu.draws_on_gpu() {return Err("geometry renderer was not enabled".into());}
     let mut scenes=0;
     for (scale,color) in [(1,[1.0,0.0,0.0,1.0]),(2,[0.0,1.0,0.0,1.0]),(3,[0.0,0.0,1.0,1.0]),(1,[1.0,1.0,0.0,1.0])] {
@@ -126,7 +117,7 @@ fn run()->Result<(),String> {
         scenes+=1;
     }
     println!("{}",serde_json::json!({"schema":"decomp.wtf.3ds-gpu-scenes/v1","scenes":scenes,
-        "passed":true,"renderer":"vulkan","device":device,"resized_scales":[1,2,3,1],
+        "passed":true,"renderer":"vulkan","device":device,"device_info":device_info,"resized_scales":[1,2,3,1],
         "framebuffer_preserved":true,"retail_qualified":false,"physical_device_qualified":false}));
     Ok(())
 }

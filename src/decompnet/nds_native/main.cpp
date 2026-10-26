@@ -105,7 +105,7 @@ int main(int argc,char** argv) {
     try {
         std::filesystem::path assets="assets",save="saves/game.sav",capture,script,audio_path,memory_dump;
         uint64_t frames=0;bool headless=false,diagnostics=false;
-        std::string renderer=profile::renderer,screen_mode=profile::screen_mode;
+        std::string renderer=profile::renderer;
         unsigned width=0,height=0;bool fullscreen=false;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
@@ -122,7 +122,6 @@ int main(int argc,char** argv) {
             else if(option=="--audio-pcm")audio_path=value;
             else if(option=="--dump-memory")memory_dump=value;
             else if(option=="--renderer")renderer=value;
-            else if(option=="--screen-mode")screen_mode=value;
             else if(option=="--resolution") {
                 const auto split=value.find('x');
                 if(split==std::string::npos)throw std::runtime_error("resolution must be WIDTHxHEIGHT");
@@ -132,8 +131,6 @@ int main(int argc,char** argv) {
         }
         if(headless && !frames)throw std::runtime_error("headless mode requires --frames N");
         if(renderer!="auto"&&renderer!="opengl"&&renderer!="software")throw std::runtime_error("renderer must be auto, opengl or software");
-        if(screen_mode!="dual"&&screen_mode!="unified")throw std::runtime_error("screen mode must be dual or unified");
-        if(renderer=="software"&&screen_mode=="unified")throw std::runtime_error("the unified camera requires OpenGL rendering");
 #ifndef NDS_WITH_SDL
         if(!headless)throw std::runtime_error("rebuild with NDS_WITH_SDL=ON for a window");
 #endif
@@ -164,7 +161,7 @@ int main(int argc,char** argv) {
 #ifdef NDS_WITH_SDL
         std::unique_ptr<Display> display;
         if(!headless) {
-            display=std::make_unique<Display>(video::Options{renderer,screen_mode,int(width),int(height),fullscreen,!capture.empty()});
+            display=std::make_unique<Display>(video::Options{renderer,int(width),int(height),fullscreen,!capture.empty()});
             if(display->video->renderer()=="opengl") {
                 session.machine().gpu3d().set_capture_opaque_only(true);
                 session.machine().gpu3d().on_render_complete=[&]{display->pending=video::Scene::capture(session.machine());};
@@ -255,7 +252,7 @@ int main(int argc,char** argv) {
         if(display) {
             auto& video=*display->video;
             std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
-                <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()<<",\"unified\":"<<(video.unified()?"true":"false")
+                <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()
                 <<",\"polygons_drawn\":"<<video.polygons_drawn()<<"}";
             session.machine().gpu3d().on_render_complete=nullptr;
         }

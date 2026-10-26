@@ -91,7 +91,6 @@
         <label class="field" id="dsSaveRow" hidden><span>Cartridge save chip</span><select id="dsSaveType"></select><small>Use the chip for this game. A wrong size can prevent saving; existing emulator saves often reveal the size.</small></label>
         <div id="dsVideoRows" hidden>
           <label class="field"><span>PC rendering</span><select id="dsRenderer"><option value="auto">GPU when available (OpenGL 3.3)</option><option value="opengl">Require GPU rendering</option><option value="software">Original software rendering</option></select><small>3D geometry renders at the window or fullscreen resolution; text and sprites retain their pixels.</small></label>
-          <label class="field" id="dsScreenRow"><span>PC picture</span><select id="dsScreenMode"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera (experimental)</option></select><small>Extends one scene across the picture. Menus and unsupported scenes retain both screens. F6 switches views in the PC build.</small></label>
         </div>
         <label class="field" id="romLayoutRow" hidden><span>Reviewed PS1 layout (optional)</span><input id="romLayoutFile" type="file" accept=".json,application/json"><small>Use known load addresses and module boundaries from your analysis.</small></label>
         <label class="check" id="mwConsent" hidden><input type="checkbox" id="mwAccept"><span id="mwText"></span></label>
@@ -351,7 +350,6 @@
         <label class="field" id="pcSaveRow" hidden><span>PC project's cartridge save chip</span><select id="pcSaveType"></select></label>
         <div id="pcVideoRows" hidden>
           <label class="field"><span>PC rendering</span><select id="pcRenderer"><option value="auto">GPU when available (OpenGL 3.3)</option><option value="opengl">Require GPU rendering</option><option value="software">Original software rendering</option></select></label>
-          <label class="field" id="pcScreenRow"><span>PC picture</span><select id="pcScreenMode"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera (experimental)</option></select></label>
         </div>
         <label class="field" id="srcFormatRow" hidden><span>Console export format</span><select id="srcFormat"><option value="matching">Matching reconstruction</option></select></label>
         <button class="ghost" id="pcExport" type="button" disabled>Export native PC project</button>

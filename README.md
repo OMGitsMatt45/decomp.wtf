@@ -18,7 +18,7 @@ of current application support.
 | PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
 | PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
 | Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
-| Nintendo 3DS | [In development](docs/3ds-native.md): decrypted images, ARM/Thumb/VFP C and CRO/CRS modules | Independent source runtime with Vulkan, adaptive dual/unified composition, audio and controls; retail/source coverage and physical-device acceptance are still in progress |
+| Nintendo 3DS | [Experimental](docs/3ds-native.md): decrypted images, ARM/Thumb/VFP C and CRO/CRS modules | Independent source runtime with Vulkan, adaptive two-screen presentation, audio and controls; retail/source coverage and physical-device acceptance are still in progress |
 | Nintendo Switch | Deferred; console additions are paused after 3DS | No qualified raw-game pipeline |
 
 ## What the output means
@@ -50,11 +50,10 @@ directly, without a matching compiler, and existing DS projects can export the
 same native repository from the Source tab. Select the game's cartridge save
 chip; DQV Europe defaults to the verified 64 KiB EEPROM configuration.
 
-DS output also offers OpenGL rendering and an optional single-camera picture.
+DS output offers OpenGL rendering with both original screens.
 3D geometry renders at the current window/monitor resolution, adapting to
 resizes and high-DPI changes. Fullscreen uses the active monitor's native
-resolution. F6 switches the original screens/unified camera; F7 controls the
-secondary-screen inset; F11 toggles fullscreen. The [guide](docs/nds-native-runtime.md)
+resolution. F11 toggles fullscreen. The [guide](docs/nds-native-runtime.md)
 describes native-screen fallbacks and per-title camera limits.
 
 Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
@@ -71,7 +70,7 @@ The optional pinned PSXRecomp dependency has **PolyForm Noncommercial** terms,
 shown in the app and generated README/licenses. Execution is hybrid: recognized
 code runs natively; unresolved or modified code is interpreted. Runtime guest-code
 compilation is disabled. The shared GPU standard applies to all new game outputs;
-PS1 uses one screen and DS retains its optional unified camera.
+PS1 uses one screen; DS and 3DS preserve their two original screens.
 
 ## Install and run
 

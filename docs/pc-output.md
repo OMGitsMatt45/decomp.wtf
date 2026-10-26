@@ -25,7 +25,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. Hybrid execution and noncommercial dependency terms are explicit. |
 | GBA | ARM/Thumb matching, cartridge reconstruction, and an experimental independent native desktop project | [PR6](future/gba.md) adds translated C, guarded temporal RAM variants, a source-shipped core, raw-state OpenGL rendering, audio, controls and cartridge saves. Emerald's tested save/reload and daily-clock workflows run without interpretation. Independent timer observations and an mGBA save/room check pass. Original GPU fixtures pass on the owner's [Windows/Intel Iris Xe](gba-hardware-validation.json). Broader hardware accuracy remains experimental; full gameplay acceptance remains owner-run. |
 | PS2 | EE reconstruction; shared disc/overlay inspection and experimental native PC export | Pinned PS2Recomp/SDL3 GS sources supply adaptive Vulkan geometry, audio, input, disc access and saves. The DQVIII export builds and reaches its settings prompt. Reviewed stripped-code maps and hybrid IOP/VU execution are explicit; see [qualification scope](future/ps2.md). |
-| 3DS | [Decrypted images, native CPU/CRO source and bundled runtime projects](3ds-native.md), with original kernel/IPC/ExeFS, Vulkan and audio/input checks | Adaptive stacked/unified presentation, audio and keyboard/touch/gamepads are development features. Retail source/DSP/save coverage and physical device acceptance remain. No game backend is advertised yet. |
+| 3DS | [Decrypted images, native CPU/CRO source and bundled runtime projects](3ds-native.md), with original kernel/IPC/ExeFS, Vulkan and audio/input checks | Adaptive two-screen presentation, audio and keyboard/touch/gamepads are development features. Retail source/DSP/save coverage and physical device acceptance remain. The experimental `ctr-native` game backend ships the same standalone source/runtime contract. |
 | Switch | Planned; no qualified raw-game pipeline | Both program/service integration and a PC runtime are additional work. |
 
 For GBA Pokémon, [pokeemerald](https://github.com/pret/pokeemerald) and
@@ -142,9 +142,8 @@ native repositories. The latter is available from DS import, the Source tab and
 overlay loading and cartridge-save behavior on Windows/Linux. DQV source
 generation, standalone building, boot/menu/field operation and initial save
 interoperability have also been observed. GPU geometry rendering uses the
-current drawable resolution and adapts to window/monitor changes. The optional
-unified camera extends submitted 3D scenery over one picture, with accessible
-secondary-screen UI and conservative native-screen fallbacks. Original GL and
+current drawable resolution and adapts to window/monitor changes. Both original
+LCDs stay visible, with conservative native-screen fallbacks. Original GL and
 guest fixtures qualify this presentation path. Further gameplay acceptance
 belongs to the user. Optional mobile assets and other game-specific extras are
 deferred to later output enhancement work.
@@ -161,8 +160,8 @@ failure must be reported when the runtime falls back to software; an explicitly
 required GPU backend must fail visibly if it cannot start.
 
 PS1 and the other single-screen consoles use `screens: 1` and
-`screen_mode: single`. DS has two screens and retains its optional unified
-camera. The common GPU requirement does not add DS screen merging to PS1.
+`screen_mode: single`. DS and 3DS use `screens: 2`, `screen_mode: dual`.
+Game-specific camera merging belongs in the generated game repository.
 A user can still choose a starting window size or software rendering without
 removing the project's adaptive GPU capability.
 

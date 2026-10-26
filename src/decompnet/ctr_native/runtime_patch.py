@@ -104,33 +104,18 @@ def apply(root):
 
 def apply_graphics(root):
     root = Path(root)
-    import shutil
-    shutil.copyfile(Path(__file__).with_name('unified.rs'),
-                    root/'runtime/crates/zakuro-gpu/src/backend/unified.rs')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '//! presentation backends.\n', '//! presentation backends.\npub mod unified;\n')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '    LargeTop,\n}',
-        '    LargeTop,\n    /// One adaptive canvas with the other screen as a touch-accessible inset.\n    Unified,\n    UnifiedBottom,\n}')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '            ScreenLayout::TopOnly => (top_width, 240.0),',
-        '            ScreenLayout::TopOnly | ScreenLayout::Unified => (top_width, 240.0),\n'
-        '            ScreenLayout::UnifiedBottom => (320.0, 240.0),')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '    let (total_width, total_height) = arrangement.size_f(top_w);',
-        '''    if matches!(arrangement, ScreenLayout::Unified | ScreenLayout::UnifiedBottom) {
-        return unified::places(window_width, window_height, arrangement == ScreenLayout::UnifiedBottom);
+    replace(root,'runtime/crates/zakuro-gpu/src/lib.rs',
+        '    /// whether the 3D is drawn on the host\'s GPU, enable_hardware_renderer\n',
+        '''    /// The actual Vulkan driver's undecorated device identity.
+    pub fn hardware_device_name(&self) -> Option<&str> {
+        #[cfg(feature="vulkan")]
+        { self.resources.hardware.as_ref().map(|hardware|hardware.name()) }
+        #[cfg(not(feature="vulkan"))]
+        { None }
     }
-    let (total_width, total_height) = arrangement.size_f(top_w);''')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '        ScreenLayout::TopOnly => None,',
-        '        ScreenLayout::TopOnly | ScreenLayout::Unified | ScreenLayout::UnifiedBottom => None,')
-    replace(root, 'runtime/crates/zakuro-gpu/src/backend/mod.rs',
-        '        top.map(|viewport| (viewport, eye)).into_iter().chain(bottom.map(|viewport| (viewport, Shown::Bottom)))',
-        '''        let mut placed = top.map(|viewport| (viewport, eye)).into_iter()
-            .chain(bottom.map(|viewport| (viewport, Shown::Bottom))).collect::<Vec<_>>();
-        if arrangement == ScreenLayout::UnifiedBottom { placed.reverse(); }
-        placed.into_iter()''')
+
+    /// whether the 3D is drawn on the host's GPU, enable_hardware_renderer
+''')
     replace(root, 'runtime/crates/zakuro-gpu/src/raster/hardware.rs',
         '''    pub fn set_scale(&mut self, scale: u32) -> u32 {
         if self.surfaces.is_empty() && self.blits {

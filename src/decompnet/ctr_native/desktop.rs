@@ -5,24 +5,20 @@ use winit::{application::ApplicationHandler, dpi::PhysicalSize,
     keyboard::{KeyCode, PhysicalKey}, window::{Fullscreen, Window, WindowId}};
 use zakuro_common::Screen;
 use zakuro_core::{System, services::hid::{InputState, PadState}};
-use zakuro_gpu::{backend::{vulkan::VulkanPresenter, layout, unified}, Overlay, PresentError, Presenter,
+use zakuro_gpu::{backend::{vulkan::VulkanPresenter, layout}, Overlay, PresentError, Presenter,
     ScreenImage, ScreenLayout};
-
-pub fn arrangement(unified:bool,bottom:bool)->ScreenLayout {
-    if !unified {ScreenLayout::Stacked} else if bottom {ScreenLayout::UnifiedBottom} else {ScreenLayout::Unified}
-}
 
 pub struct Outcome {
     pub stop: &'static str,
     pub presented: u64,
     pub drawable: [u32;2],
-    pub unified: bool,
-    pub bottom_primary: bool,
     pub audio_open: bool,
     pub audio_frames: u64,
     pub audio_error: Option<String>,
     pub controllers: usize,
     pub controller_error: Option<String>,
+    pub device: Option<String>,
+    pub renderer_error: Option<String>,
 }
 
 struct Host<'a> {
@@ -42,17 +38,18 @@ struct Host<'a> {
     next_frame: Instant,
     result: Outcome,
     error: Option<String>,
+    renderer: &'a str,
 }
 
 impl Host<'_> {
     fn resize(&mut self) -> Result<(),String> {
         let size=self.window.as_ref().unwrap().inner_size();
         self.result.drawable=[size.width,size.height];
-        let mode=arrangement(self.result.unified,self.result.bottom_primary);
+        let mode=ScreenLayout::Stacked;
         let presenter=self.presenter.as_mut().unwrap();
         presenter.set_layout(mode);
         if size.width>0 && size.height>0 {presenter.resize(size.width,size.height);}
-        self.system.resize_drawable(size.width,size.height,mode)?;
+        if self.system.gpu.draws_on_gpu() {self.system.resize_drawable(size.width,size.height,mode)?;}
         self.touch();
         Ok(())
     }
@@ -62,10 +59,9 @@ impl Host<'_> {
         if !self.pressed {return;}
         if let Some((x,y))=self.pointer {
             let [w,h]=self.result.drawable;
-            let mode=arrangement(self.result.unified,self.result.bottom_primary);
-            let (top,bottom)=layout(w,h,mode,400.0,false);
-            self.input.touch=unified::touch(top,bottom,
-                self.result.unified && self.result.bottom_primary,x,y);
+            let mode=ScreenLayout::Stacked;
+            let (_,bottom)=layout(w,h,mode,400.0,false);
+            self.input.touch=super::screens::touch(bottom,x,y);
         }
     }
 
@@ -136,9 +132,11 @@ impl ApplicationHandler for Host<'_> {
     fn resumed(&mut self,events:&ActiveEventLoop) {
         if self.window.is_some() {return;}
         let initialize=||->Result<(Window,VulkanPresenter),String> {
+            let initial=events.primary_monitor().map(|monitor|monitor.size())
+                .unwrap_or(PhysicalSize::new(1280,720));
             let window=events.create_window(Window::default_attributes()
-                .with_title("3DS native project — F6 layout · F7 primary screen · F11 fullscreen")
-                .with_inner_size(PhysicalSize::new(1280,720))).map_err(|e|e.to_string())?;
+                .with_title("3DS native project — F11 fullscreen")
+                .with_inner_size(initial).with_maximized(true)).map_err(|e|e.to_string())?;
             let size=window.inner_size();
             let presenter=VulkanPresenter::new(&window,(size.width.max(1),size.height.max(1)))
                 .map_err(|e|e.to_string())?;
@@ -148,11 +146,18 @@ impl ApplicationHandler for Host<'_> {
             Ok((window,presenter))=>{
                 let device=presenter.shared_device();
                 let title=self.system.title.as_ref().map(|title|title.program_id());
-                if let Err(error)=self.system.gpu.enable_hardware_renderer(1,device.clone(),title) {
-                    self.error=Some(error);events.exit();return;
+                if self.renderer!="software" {
+                    match self.system.gpu.enable_hardware_renderer(1,device.clone(),title) {
+                        Ok(_)=>self.result.device=self.system.gpu.hardware_device_name().map(str::to_owned),
+                        Err(error) if self.renderer=="auto"=>{
+                            eprintln!("Vulkan geometry unavailable; using software geometry: {error}");
+                            self.result.renderer_error=Some(error);
+                        }
+                        Err(error)=>{self.error=Some(error);events.exit();return;}
+                    }
                 }
                 self.system.config.device=device;
-                self.system.config.hardware_renderer=true;
+                self.system.config.hardware_renderer=self.system.gpu.draws_on_gpu();
                 self.presenter=Some(presenter);self.window=Some(window);
                 if let Err(error)=self.resize() {self.error=Some(error);events.exit();}
             }
@@ -177,16 +182,11 @@ impl ApplicationHandler for Host<'_> {
                 if down && !event.repeat {
                     match code {
                         KeyCode::Escape=>{self.result.stop="window-closed";events.exit();}
-                        KeyCode::F6=>self.result.unified=!self.result.unified,
-                        KeyCode::F7=>self.result.bottom_primary=!self.result.bottom_primary,
                         KeyCode::F11=>{
                             let window=self.window.as_ref().unwrap();
                             window.set_fullscreen(if window.fullscreen().is_some() {None} else {Some(Fullscreen::Borderless(None))});
                         }
                         _=>{}
-                    }
-                    if matches!(code,KeyCode::F6|KeyCode::F7) {
-                        if let Err(error)=self.resize() {self.error=Some(error);events.exit();}
                     }
                 }
                 self.key(code,down);
@@ -208,7 +208,7 @@ impl ApplicationHandler for Host<'_> {
     }
 }
 
-pub fn run(system:&mut System,limit:Option<u64>,frame_limit:Option<u64>,unified:bool,bottom_primary:bool,mute:bool)->Result<Outcome,String> {
+pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,mute:bool,renderer:&'a str)->Result<Outcome,String> {
     let events=EventLoop::new().map_err(|e|e.to_string())?;
     let (audio,audio_error)=if mute {(None,None)} else {
         match super::audio::Audio::open(zakuro_core::AUDIO_SAMPLE_RATE) {
@@ -221,9 +221,9 @@ pub fn run(system:&mut System,limit:Option<u64>,frame_limit:Option<u64>,unified:
     let controller_error=gamepads.error.clone();
     if let Some(error)=&controller_error {eprintln!("3DS controllers unavailable: {error}");}
     let mut host=Host {system,presenter:None,window:None,input:InputState::default(),pointer:None,
-        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,
-        result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],unified,bottom_primary,
-            audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error},
+        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,
+        result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],
+            audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error,device:None,renderer_error:None},
         audio,gamepads};
     events.run_app(&mut host).map_err(|e|e.to_string())?;
     if let Some(error)=host.error.take() {return Err(error);}

@@ -182,8 +182,11 @@ RUNTIME_BACKEND_ID = '3ds-zakuro-service-probe'
 def generate_runtime(project, root):
     from . import runtime_patch, runtime_provider
     screen_mode=project.get('screen_mode','dual')
-    if screen_mode not in ('dual','unified'):
-        raise pc.PCError('3DS screen mode must be dual or unified')
+    renderer=project.get('renderer','auto')
+    if renderer not in ('auto','vulkan','software'):
+        raise pc.PCError('3DS renderer must be auto, vulkan or software')
+    if screen_mode != 'dual':
+        raise pc.PCError('3DS screen mode must be dual; combined screens are a game-specific customization')
     generate({**project, 'instruction_boundaries':True}, root)
     inspection = json.loads((root/'analysis.json').read_text())
     sdk = Path(os.environ.get('DECOMP_3DS_RUNTIME_SDK') or toolchains.root()/'3ds-runtime-sdk').resolve()
@@ -203,6 +206,7 @@ def generate_runtime(project, root):
                            (package/'runtime_build.rs',app/'build.rs'),
                            (package/'runtime_main.rs',app/'src/main.rs'),
                            (package/'desktop.rs',app/'src/desktop.rs'),
+                           (package/'screens.rs',app/'src/screens.rs'),
                            (package/'gamepad.rs',app/'src/gamepad.rs'),
                            (package/'gpu_scenes.rs',app/'src/gpu_scenes.rs'),
                            (package/'module_scenes.rs',app/'src/module_scenes.rs'),
@@ -216,7 +220,7 @@ def generate_runtime(project, root):
         f'const INPUT_SHA256:&str="{inspection["input"]["sha256"]}";\n'
         f'const INPUT_SIZE:u64={inspection["input"]["size"]};\n',encoding='utf-8')
     with (app/'src/identity.rs').open('a',encoding='utf-8') as file:
-        file.write(f'const DEFAULT_UNIFIED:bool={str(screen_mode=="unified").lower()};\n')
+        file.write(f'const DEFAULT_RENDERER:&str="{renderer}";\n')
     # The earlier, minimal CPU harness is superseded by the bundled core here.
     shutil.rmtree(root/'runtime')
     (root/'runtime-sources.json').write_text(json.dumps(pins,indent=2)+'\n',encoding='utf-8')
@@ -225,13 +229,13 @@ def generate_runtime(project, root):
             f'Source: https://github.com/fearkov/zakuro/tree/{runtime_provider.COMMIT}\n'
             'Its license is native/runtime/LICENSE. Integration changes are in this generated source: '
             'local ABI paths, strict missing-code/instruction guards, explicit unknown-service errors, '
-            'adaptive raster resolution and unified screen composition. Host crates and checksums '
+            'adaptive raster resolution and original two-screen presentation. Host crates and checksums '
             'are locked in native/app/Cargo.lock.\n')
     manifest = json.loads((root/'pc-project.json').read_text())
     manifest.update(backend=dict(id=RUNTIME_BACKEND_ID,revision=revision()),
         execution_model='hybrid', runtime=dict(id='zakuro-core',revision=runtime_provider.COMMIT,license='MIT'),
         fallback=dict(interpreter=True,runtime_compilation=False,default='strict'),
-        development_presentation=dict(screens=2,screen_mode=screen_mode,modes=['dual','unified'],
+        development_presentation=dict(screens=2,screen_mode=screen_mode,modes=['dual'],
             resolution='drawable',continuous_scene_qualified=False),
         build=dict(system='cmake',target='ctr_runtime'))
     manifest['qualification'].update(kernel_services=True)
@@ -244,8 +248,31 @@ def runtime_backend():
     return pc.Backend(RUNTIME_BACKEND_ID,'3ds',revision(),generate_runtime,experimental=True)
 
 
-def export_runtime(path, destination, *, screen_mode='dual', source=None, feedback=()):
-    project=dict(platform='3ds',input=str(path),screen_mode=screen_mode,feedback=list(feedback))
+def export_runtime(path, destination, *, screen_mode='dual', source=None, feedback=(),renderer='auto'):
+    project=dict(platform='3ds',input=str(path),screen_mode=screen_mode,feedback=list(feedback),renderer=renderer)
     if source is not None:
         project['_source']=source
     return pc.export_backend(project,destination,runtime_backend())
+
+
+GAME_BACKEND_ID='3ds-native-3dsrecomp-zakuro'
+
+
+def generate_game(project,root):
+    generate_runtime(project,root)
+    manifest=json.loads((root/'pc-project.json').read_text())
+    manifest.update(output_kind='game',backend=dict(id=GAME_BACKEND_ID,revision=revision()),
+        presentation=pc.presentation(project.get('renderer','auto'),screens=2,
+            screen_mode=project.get('screen_mode','dual'),gpu='vulkan'))
+    manifest['qualification'].update(graphics=True,audio=True,saves=True,retail=False)
+    (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+
+
+def game_backend():
+    return pc.Backend(GAME_BACKEND_ID,'3ds',revision(),generate_game,experimental=True)
+
+
+def export_game(path,destination,*,renderer='auto',screen_mode='dual',feedback=(),source=None):
+    project=dict(platform='3ds',input=str(path),renderer=renderer,screen_mode=screen_mode,feedback=list(feedback))
+    if source is not None:project['_source']=source
+    return pc.export_backend(project,destination,game_backend())

@@ -78,7 +78,8 @@ def _backends():
     from .psx_native import backend as psx_backend
     from .ps2_native import backend as ps2_backend
     from .gba_native import game_backend as gba_backend
-    return [backend(),psx_backend(),ps2_backend(),gba_backend()]
+    from .ctr_native import game_backend as ctr_backend
+    return [backend(),psx_backend(),ps2_backend(),gba_backend(),ctr_backend()]
 
 
 def status(platform: str = '') -> dict:
@@ -89,9 +90,8 @@ def status(platform: str = '') -> dict:
     return dict(platform=key or None, first_platform='nds', available=bool(available), backends=available,
         experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
-        reason='' if available else ('3DS game output is in development. Use pc ctr-inspect, the experimental pc ctr-probe CPU project, or pc ctr-runtime with bundled services and adaptive Vulkan presentation; retail gameplay is not qualified.'
-            if key=='3ds' else 'No PC-project backend is installed for this platform. '
-            'Matching console exports remain separate from native PC projects.'))
+        reason='' if available else 'No PC-project backend is installed for this platform. '
+            'Matching console exports remain separate from native PC projects.')
 
 
 def _file(root: Path, name: str) -> Path:
@@ -114,7 +114,7 @@ def presentation(renderer='auto', *, screens=1, screen_mode='single', gpu='openg
         raise PCError('renderer must be auto, the GPU backend or software')
     if type(screens) is not int or screens not in (1, 2):
         raise PCError('presentation supports one or two console screens')
-    if screen_mode not in (('single',) if screens == 1 else ('dual', 'unified')):
+    if screen_mode not in (('single',) if screens == 1 else ('dual',)):
         raise PCError('screen mode must agree with the console screen count')
     return dict(schema=PRESENTATION_SCHEMA, renderer=renderer, renderers=[gpu, 'software'],
         gpu_rendering='geometry', resolution='drawable', initial_window='active-monitor',
@@ -157,6 +157,7 @@ def _presentation(data: dict) -> bool:
     screens = 2 if data['platform'] in ('nds', '3ds') else 1
     if type(display.get('screens')) is not int or display['screens'] != screens:
         raise PCError('presentation screen count must agree with the console')
+    # Earlier standalone exports retain verifiable manifests; new exports only generate dual.
     modes = ('dual', 'unified') if screens == 2 else ('single',)
     if display.get('screen_mode') not in modes:
         raise PCError('presentation screen mode must agree with the console')

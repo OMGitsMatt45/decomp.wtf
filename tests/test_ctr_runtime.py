@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from decompnet import pc
-from decompnet.ctr_native import export_runtime, runtime_provider, media
+from decompnet.ctr_native import export_runtime, export_game, runtime_provider, media
 from tools.ctr_fixture import fixture,cro,with_romfs
 
 
@@ -35,11 +35,13 @@ def original_runtime(tmp_path_factory):
         ('OriginalSave.cro',cro('OriginalSave',save=True))]))
     project=root/'Independent source'
     stream=SimpleNamespace(stat=image.stat,open=image.open)
-    exported=export_runtime('streamed-original.cxi',project,screen_mode='unified',source=stream)
-    assert exported['integrity_verified'] and not exported['presentation_declared']
+    exported=export_game('streamed-original.cxi',project,source=stream)
+    assert exported['integrity_verified'] and exported['presentation_declared']
+    assert exported['manifest']['output_kind']=='game'
+    assert exported['manifest']['presentation']==pc.presentation(screens=2,screen_mode='dual',gpu='vulkan')
     manifest=exported['manifest']
     assert manifest['qualification']['retail'] is False
-    assert manifest['development_presentation']['screen_mode']=='unified'
+    assert manifest['development_presentation']['screen_mode']=='dual'
     assert len(json.loads((project/'analysis.json').read_text())['modules'])==4
     assert manifest['fallback']==dict(interpreter=True,runtime_compilation=False,default='strict')
     assert (project/'native/runtime/LICENSE').is_file()
@@ -201,7 +203,7 @@ def test_empty_streetpass_read_returns_real_absence_and_preserves_guest_buffer(o
 def test_native_runtime_uses_host_clock_unless_a_replay_clock_is_explicit(original_runtime):
     _project,_image,_binary,_scenes,_build,run=original_runtime
     before=time.time()*1000
-    report=run('--cycles','1000000')
+    report=run('--cycles','10000000000')
     after=time.time()*1000
     offset=datetime.now().astimezone().utcoffset().total_seconds()*1000+2208988800000
     assert not report['fixed_clock']
@@ -209,6 +211,19 @@ def test_native_runtime_uses_host_clock_unless_a_replay_clock_is_explicit(origin
     fixed=run('--cycles','1000000','--clock-ms','123000')
     assert fixed['fixed_clock'] and 123000<=fixed['clock_ms']<123100
     assert fixed['native_instructions']==168 and fixed['interpreted_instructions']==0
+
+
+def test_guest_picture_capture_preserves_existing_output(original_runtime,tmp_path):
+    _project,image,binary,_scenes,_build,run=original_runtime
+    destination=tmp_path/'native guest pictures'
+    report=run('--cycles','1000000','--capture-guest-screens',str(destination))
+    assert report['gpu_draw_calls']==0 and len(report['guest_pictures'])==2
+    for name,width in [('top',400),('bottom',320)]:
+        raw=(destination/(name+'.ppm')).read_bytes()
+        assert raw==f'P6\n{width} 240\n255\n'.encode()+bytes(width*240*3)
+    sentinel=destination/'preserve.txt';sentinel.write_text('owner data')
+    failed=subprocess.run([str(binary),str(image),'--capture-guest-screens',str(destination)],capture_output=True,text=True,timeout=30)
+    assert failed.returncode==1 and sentinel.read_text()=='owner data'
 
 
 def test_compatibility_run_reports_missing_region_entries_without_a_native_claim(original_runtime):
@@ -241,7 +256,7 @@ def test_audio_resampling_queue_and_controller_input_merge(original_runtime):
     assert 'audio::tests::' in result.stdout
 
 
-def test_vulkan_window_with_both_screen_arrangements(original_runtime):
+def test_vulkan_window_and_explicit_software_geometry(original_runtime):
     if os.environ.get('DECOMP_TEST_3DS_WINDOW')!='1':
         # Runtime CI on Windows still builds the desktop source. A runner
         # without a display/device must not be presented as a window pass.
@@ -254,9 +269,13 @@ def test_vulkan_window_with_both_screen_arrangements(original_runtime):
     assert loop!=text
     try:
         source.write_text(loop);build()
-        for options in (['--screens','stacked'],[],['--primary','bottom']):
+        for options in ([],['--renderer','vulkan'],['--renderer','software']):
             report=run('--window','--window-frames','2',*options)
-            assert report['window']['presented_frames']==2 and report['gpu_rendering']
+            assert report['window']['presented_frames']==2
+            software='software' in options
+            assert report['gpu_rendering'] is not software
+            assert report['renderer']==('software' if software else 'vulkan')
+            assert bool(report['window']['device']) is not software
             assert report['interpreted_instructions']==0 and not report['retail_qualified']
             assert not report['window']['physical_audio_qualified']
             if os.environ.get('DECOMP_TEST_3DS_AUDIO_NULL')=='1':

@@ -316,12 +316,11 @@ or a guessed ARM function entry, which could conceal a translation defect.
 ''',encoding='utf-8')
 
 
-def _profile(root, digest, reviewed, save_type, renderer, screen_mode):
+def _profile(root, digest, reviewed, save_type, renderer):
     observations=reviewed.get('observe_words',[])
     lines=['#pragma once','#include "hash.hpp"','#include <dsr/machine.h>','namespace profile {',
            'inline constexpr const char* save_type='+json.dumps(save_type)+';',
            'inline constexpr const char* renderer='+json.dumps(renderer)+';',
-           'inline constexpr const char* screen_mode='+json.dumps(screen_mode)+';',
            'inline constexpr uint32_t observations[]={'+','.join(hex(a)+'u' for a in observations or [0])+'};',
            f'inline constexpr unsigned observation_count={len(observations)};',
            'inline void verify_input(const std::filesystem::path& path) {',
@@ -376,7 +375,7 @@ def generate(project,root):
             if not 0<=start<start+len(value)<=len(data):raise pc.PCError('decoded asset patch exceeds the original ROM')
             normalized[start:start+len(value)]=value
         asset_digest=hashlib.sha256(normalized).hexdigest()
-    _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'],project['screen_mode'])
+    _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'])
     (root/'game/input.json').write_text(json.dumps(dict(sha256=digest,size=len(data),
         asset_sha256=asset_digest,asset_patches=patches),indent=2)+'\n',encoding='utf-8')
     for source,destination in (('main.cpp','native/main.cpp'),('hash.hpp','native/hash.hpp'),
@@ -456,13 +455,13 @@ between monitors updates rendering to the actual drawable size, including
 high-DPI scaling. `--resolution WIDTHxHEIGHT` optionally sets an initial window
 size; the renderer keeps adapting after that.
 
-## Rendering and one-picture mode
+## Rendering
 
-The export's renderer and picture choices are recorded in `native/profile.hpp`
+The export's renderer choice is recorded in `native/profile.hpp`
 and the manifest. They can be changed without regenerating game code:
 
 ```sh
-./build/ds_pc --renderer opengl --screen-mode unified --fullscreen
+./build/ds_pc --renderer opengl --fullscreen
 ```
 
 `--renderer auto` tries OpenGL 3.3, reporting a software fallback if unavailable.
@@ -474,23 +473,16 @@ loads through SDL. Driver downloads: [NVIDIA](https://www.nvidia.com/Download/in
 your Linux distribution's graphics packages.
 The native DS renderer stays active for display capture, UI and guarded effects.
 
-`--screen-mode dual` preserves the two LCDs. `unified` extends one 3D camera over
-the picture, including geometry beyond the original screen bounds; it requires
-OpenGL. For alternating cameras it retains the latest bottom-camera scene and
-inherits that camera's update rate. It does not synthesize extra game frames or
-recover geometry the game culled before submitting it. F6 switches views.
-The secondary LCD stays visible in an inset to preserve unknown game interfaces;
-F7 hides/shows it. Touch coordinates follow the bottom LCD's displayed region.
-Original text/sprites remain sharply scaled. Menus, 2D-only scenes and guarded
-effects restore the complete two-screen picture. Fog, edge marking, shadow and
-depth-equal polygons and clear-image mode currently use that native path.
-Game-specific camera, menu and culling enhancements can be added to this source
-project later. Mobile sound, party chat and other title-specific extras are
-outside this generic DS output.
+Both original LCDs remain visible and preserve their aspect ratios. Touch
+coordinates follow the displayed lower LCD. Original text/sprites remain sharply
+scaled. Fog, edge marking, shadow/depth-equal polygons and clear-image mode
+currently use the native path. Game-specific camera, menu and culling
+enhancements can be added to this source project later. Mobile sound, party chat
+and other title-specific extras are outside this generic DS output.
 
 `--capture DIR` also saves `display.ppm` at the presented drawable resolution.
-The JSON result identifies the actual renderer, driver, dimensions, active
-unified view and geometry draw count. Headless mode runs the DS machine without
+The JSON result identifies the actual renderer, driver, dimensions and
+geometry draw count. Headless mode runs the DS machine without
 a presentation driver.
 
 Cartridge saves are written to `saves/game.sav`, or the path given by `--save`.
@@ -526,8 +518,7 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
     NdsImage(rom.read_bytes())  # reject invalid headers/TWL before any dependency install
     if input_format not in ('auto','decrypted'):raise pc.PCError('input format must be auto or decrypted')
     if renderer not in ('auto','opengl','software'):raise pc.PCError('renderer must be auto, opengl or software')
-    if screen_mode not in ('dual','unified'):raise pc.PCError('screen mode must be dual or unified')
-    if renderer=='software' and screen_mode=='unified':raise pc.PCError('the unified camera requires OpenGL rendering')
+    if screen_mode != 'dual':raise pc.PCError('screen mode must be dual; combined screens are a game-specific customization')
     bios=None
     if arm7_bios is not None:
         if input_format=='decrypted':raise pc.PCError('decrypted input must not be decrypted again with a BIOS')

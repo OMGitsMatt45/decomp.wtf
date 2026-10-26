@@ -218,7 +218,7 @@ def load_source(path, *, include_code=False) -> dict:
                       input=dict(size=size, sha256=identity), entry=segments[0]['address'],
                       segments=segments, bss_size=bss, partitions=partitions, sections=sections, exefs=files,
                       compressed=bool(ex[0xd] & 1), code_sha256=hashlib.sha256(code).hexdigest(),
-                      native_game_backend_available=False, retail_qualified=False)
+                      native_game_backend_available=True, retail_qualified=False)
         if include_code:
             result['code'] = code
         return result

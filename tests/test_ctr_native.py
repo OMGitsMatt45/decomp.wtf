@@ -27,7 +27,7 @@ def test_original_executable_layout_identity_and_native_routing(tmp_path, wrappe
     assert result['segments'][0]['size']==16
     assert [s['access'] for s in result['segments']]==['rx','r','rw']
     assert result['code'][:4]==struct.pack('<I',0xe3a00007)
-    assert result['native_game_backend_available'] is False
+    assert result['native_game_backend_available'] is True
     assert pc.input_platform(path)=='3ds'
     with pytest.raises(RomError,match='3DS support is in development'):
         detect.identify(path)
@@ -126,10 +126,12 @@ def test_blz_accepts_final_data_page_padding_but_not_output_beyond_allocation(tm
     with pytest.raises(pc.PCError,match='decompressed size is invalid'):media.load(path)
 
 
-def test_3ds_development_does_not_claim_a_registered_game_backend(monkeypatch):
+def test_3ds_game_backend_is_explicitly_experimental_and_status_does_not_install(monkeypatch):
     monkeypatch.setattr(provider,'download',lambda *_a,**_k:pytest.fail('status must not install'))
     status=pc.status('3ds')
-    assert not status['available'] and 'ctr-probe' in status['reason']
+    assert status['available'] and status['experimental']
+    assert status['backends'][0]['id']=='3ds-native-3dsrecomp-zakuro'
+    assert not status['console_reconstruction_is_pc_output']
 
 
 def test_inspect_cli_and_preserved_destination(tmp_path,capsys):
