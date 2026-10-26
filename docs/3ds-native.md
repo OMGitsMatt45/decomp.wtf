@@ -161,6 +161,25 @@ Encrypted inputs fail with a decrypted-dump message. CIA installation and 3DSX
 relocation are not implemented by this importer. Some retail services can need
 additional owner-provided files; no system/game data is downloaded automatically.
 
+## Bounded retail validation
+
+An owner-supplied decrypted DQVII USA image was exported through the normal
+standalone generator, without a game profile, feedback file or manually supplied
+entry addresses. The generated C/runtime source was built independently and ran
+for 10 billion guest cycles (2,231 frames) to the title screen. It executed
+662,650,004 native instructions, zero interpreted instructions, and reported no
+missing native targets, unsupported SVCs or unsupported service commands. The
+captured original LCD pixels match the independently interpreted reference.
+This run used software geometry and a bounded debug C build; it does not qualify
+Vulkan retail rendering, release performance, later gameplay, sound or saves.
+
+General fixes discovered by this check include ARM-to-Thumb linker veneers,
+Thumb position-independent callback discovery, idle scheduling at vertical blank,
+and fresh GSP client handles after graphics reinitialization. Original fixtures
+cover these patterns independently of the retail image. The original runtime
+suite also passes Vulkan geometry, window resizing, save/relaunch and null-device
+audio. Physical GPU acceptance uses the command below.
+
 ## Local graphics qualification
 
 From a downloaded checkout, Windows PowerShell can run this script from any
