@@ -204,6 +204,16 @@ physical hardware. Results and command logs are retained in the printed output
 directory. This validates the original graphics path, not retail gameplay,
 physical audio or controller behavior.
 
+The owner's [Windows 11 / Intel Iris Xe result](3ds-hardware-validation.json)
+passed on 2026-10-26 with source integrity verified. All four Vulkan geometry
+scenes passed, the framebuffer was preserved, and resizing exercised scales
+1, 2, 3 and 1. The stacked two-screen window presented at 1920×991 and scale 3;
+its original native program executed 13,443,408 instructions with no interpreter
+use, missed native targets or unsupported services/SVCs. Actual scene/window
+device names matched the integrated Vulkan device inventory. This owner-submitted
+result qualifies that original graphics fixture on this GPU/driver combination;
+it does not qualify retail gameplay, physical audio or controllers.
+
 Linux developers with a display can run `python -m tools.qualify_ctr_hardware
 NEW_DIRECTORY --allow-software`; this explicit comparison never qualifies a
 software device as physical. Standard repository commands use `uv run --locked
@@ -214,8 +224,9 @@ software device as physical. Standard repository commands use `uv run --locked
 1. Broaden service-driven CRO/CRS load/import/relocation and executable-data
    coverage beyond the original placement/provenance fixtures. Original module
    success does not establish complete translated retail module coverage.
-2. Broaden texture/effect coverage and qualify physical GPUs on Windows using
-   the provided local command. Both original screens remain visible; continuous
+2. Broaden texture/effect coverage and physical GPU/driver coverage beyond the
+   qualified Windows/Iris Xe original fixture using the local command. Both
+   original screens remain visible; continuous
    camera/UI changes belong in each generated game repository.
 3. Qualify retail DSP/audio, physical controllers and retail game saves.
    Host audio/controller integration and original signal/input fixtures are
