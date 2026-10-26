@@ -28,11 +28,11 @@ typedef struct Player {
     /* 0x24 */ s32 unk_24;
 } Player; /* size 0x28 */
 
-extern Player g_player;
-extern Entity g_entities[32];
-extern s32 g_score;
-extern s32 g_frame_count;
-extern u32 g_rng_state;
+Player g_player;
+Entity g_entities[32];
+s32 g_score;
+s32 g_frame_count;
+u32 g_rng_state;
 
 s32 abs_s32(s32 v);
 void entity_update_physics(Entity *e);

@@ -9,9 +9,9 @@ on:
       - 'tests/**'
       - 'tools/*operational*.py'
       - 'projects/demo-psx/**'
-      - 'projects/demo-n64/original/**'
-      - 'projects/demo-rom/src/**'
-      - 'projects/zlib-n64/**'
+      - 'projects/shared-game/original/**'
+      - 'projects/shared-game/runtime/**'
+      - 'projects/zlib/**'
       - 'pyproject.toml'
       - 'uv.lock'
 
@@ -63,6 +63,11 @@ jobs:
         run: uv run --no-sync python tools/check_operational_results.py --psx-only operational-results.xml
       - name: Preserve shared source-project guards and collaboration on PS1
         run: uv run --no-sync python -m pytest -q tests/test_forks.py -k "not ghidra"
+      - name: Check shared fixtures, collaboration and the MCP bridge on PS1
+        run: >-
+          uv run --no-sync python -m pytest -q
+          tests/test_phase23.py tests/test_speed.py tests/test_bridge.py
+          "tests/test_period_compilers.py::test_known_solutions_match_on_period_compilers[shared-game-gcc-2.7.2-psx-False]"
       - name: Report failures
         if: always()
         run: uv run --no-sync python tools/operational_report.py

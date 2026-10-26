@@ -27,8 +27,8 @@ def cases(work: Path) -> list[dict]:
     sources = {
         "features.cpp": (ROOT / "tests/fixtures/ps2_cpp_features.cpp").read_text(encoding="utf-8"),
         "extended.cpp": (ROOT / "tools/ps2_cpp/reconstruction/extended.cpp").read_text(encoding="utf-8"),
-        "game.c": (ROOT / "projects/demo-n64/original/game.c").read_text(encoding="utf-8"),
-        "game.h": (ROOT / "projects/demo-n64/original/game.h").read_text(encoding="utf-8"),
+        "game.c": (ROOT / "projects/shared-game/original/game.c").read_text(encoding="utf-8"),
+        "game.h": (ROOT / "projects/shared-game/original/game.h").read_text(encoding="utf-8"),
         "quoted.cpp": 'typedef TYPE T; extern "C" int size() { return sizeof(T); }\n'
                       'extern "C" const char *message() { return MESSAGE; }\n',
         "include.cpp": '#include "one.h"\n#include "two.h"\n'

@@ -20,8 +20,8 @@ from decompnet.rom import n64, split
 
 ROOT = Path(__file__).resolve().parents[2]
 DEMO = ROOT / "projects" / "demo-rom"
-SOURCES = [DEMO / "src" / "main.c", DEMO / "src" / "libc.c", ROOT / "projects" / "demo-n64" / "original" / "game.c",
-           *sorted((ROOT / "projects" / "zlib-n64" / "original").glob("*.c"))]
+SOURCES = [DEMO / "src" / "main.c", DEMO / "src" / "libc.c", ROOT / "projects" / "shared-game" / "original" / "game.c",
+           *sorted((ROOT / "projects" / "zlib" / "original").glob("*.c"))]
 OUT = ROOT / "site" / "public" / "data" / "sim.json"
 
 

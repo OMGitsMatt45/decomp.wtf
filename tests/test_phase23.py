@@ -102,42 +102,42 @@ def test_function_page_has_full_history(net):
     assert page["notes"][0]["text"] == "check lo first" and page["project"]["legal"]["basis"] == "own-code"
 
 
-needs_n64 = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None, reason="gcc-2.7.2-kmc not installed")
+needs_psx = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-psx") is None, reason="gcc-2.7.2-psx not installed")
 
 
-@needs_n64
+@needs_psx
 def test_donated_compute_round_trip(tmp_path):
     net = Network(tmp_path / "j.db")
-    import_project(net.store, PROJECTS / "demo-n64", log=lambda *_: None)
+    import_project(net.store, PROJECTS / "shared-game", log=lambda *_: None)
     a = net.authenticate(net.register_agent("a"))
-    net.compile_and_diff(a, "clamp_s32", WRONG_CLAMP, project="demo-n64")
-    net.release(a, "clamp_s32", "", project="demo-n64")
+    net.compile_and_diff(a, "clamp_s32", WRONG_CLAMP, project="shared-game")
+    net.release(a, "clamp_s32", "", project="shared-game")
     worker = net.authenticate(net.register_agent("worker"))
     job = jobs.next_job(net, worker)
-    assert job["function"] == "clamp_s32" and job["toolchain"] == "gcc-2.7.2-kmc" and job["target"]["code"]
+    assert job["function"] == "clamp_s32" and job["toolchain"] == "gcc-2.7.2-psx" and job["target"]["code"]
     from decompnet.permuter import LocalScorer
     assert LocalScorer(job, log=lambda *_: None).score(SOLUTIONS["clamp_s32"]) == 0  # same verdict locally
-    out = jobs.submit(net, worker, "demo-n64", "clamp_s32", SOLUTIONS["clamp_s32"])
+    out = jobs.submit(net, worker, "shared-game", "clamp_s32", SOLUTIONS["clamp_s32"])
     assert out["matched"] and net.store.one("SELECT status FROM functions WHERE name='clamp_s32'")["status"] == "matched"
 
 
-zlib_ready = (PROJECTS / "zlib-n64" / "original" / "zlib.h").exists()
+zlib_ready = (PROJECTS / "zlib" / "original" / "zlib.h").exists()
 
 
-@needs_n64
-@pytest.mark.skipif(not zlib_ready, reason="run projects/zlib-n64/prepare.py first")
+@needs_psx
+@pytest.mark.skipif(not zlib_ready, reason="run projects/zlib/prepare.py first")
 def test_zlib_uses_per_unit_headers(tmp_path):
     net = Network(tmp_path / "z.db")
-    import_project(net.store, PROJECTS / "zlib-n64", log=lambda *_: None)
+    import_project(net.store, PROJECTS / "zlib", log=lambda *_: None)
     assert net.store.one("SELECT COUNT(*) AS n FROM functions")["n"] == 71
-    assert net._unit_contexts(net._project("zlib-n64")["id"]) >= {"deflate", "inflate", "trees"}
+    assert net._unit_contexts(net._project("zlib")["id"]) >= {"deflate", "inflate", "trees"}
     with pytest.raises(NetworkError, match="pass `function`"):
-        net.get_context("zlib-n64")
-    assert "deflate_state" in net.get_context("zlib-n64", "fill_window")
+        net.get_context("zlib")
+    assert "deflate_state" in net.get_context("zlib", "fill_window")
     agent = net.authenticate(net.register_agent("z"))
-    src = (PROJECTS / "zlib-n64" / "original" / "adler32.c").read_text()
+    src = (PROJECTS / "zlib" / "original" / "adler32.c").read_text()
     body = src[src.index("uLong ZEXPORT adler32("):]
-    assert "MATCH" in net.compile_and_diff(agent, "adler32", body[: body.index("\n}\n") + 3], project="zlib-n64")
+    assert "MATCH" in net.compile_and_diff(agent, "adler32", body[: body.index("\n}\n") + 3], project="zlib")
 
 
 def test_upstream_export_commits_with_credit(net, tmp_path):

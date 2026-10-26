@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "projects" / "demo-psx"
 EXE = DEMO / "build" / "DEMOQ_PS1.EXE"
 ELF = DEMO / "build" / "demoq_ps1.elf"
-GAME = ROOT / "projects" / "demo-n64" / "original"
+GAME = ROOT / "projects" / "shared-game" / "original"
 GIT = shutil.which("git")
 FUNCTIONS = ["clamp_s32", "abs_s32", "player_take_damage", "rng_next", "count_alive_entities", "entity_update_physics",
              "entity_default_hp", "entity_spawn", "add_score", "lerp", "checksum_save", "entity_collides", "game_tick"]

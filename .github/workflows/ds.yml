@@ -17,9 +17,9 @@ on:
       - 'tools/ds_boot.py'
       - 'tools/ds_trace.py'
       - 'projects/demo-ds/**'
-      - 'projects/demo-rom/src/**'
-      - 'projects/demo-n64/original/**'
-      - 'projects/zlib-n64/**'
+      - 'projects/shared-game/runtime/**'
+      - 'projects/shared-game/original/**'
+      - 'projects/zlib/**'
       - 'pyproject.toml'
       - 'uv.lock'
 

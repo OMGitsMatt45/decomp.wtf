@@ -1,6 +1,6 @@
-name = "zlib 1.1.4 for N64"
-slug = "zlib-n64"
-description = "The compression library many 90s games shipped with, built for the N64 with KMC GCC 2.7.2. Real-world code under an open license."
+name = "zlib 1.1.4 for PS1"
+slug = "zlib"
+description = "The compression library many 90s games shipped with, built for PS1 with GCC 2.7.2. Real-world code under an open license."
 
 [legal]
 basis = "open-source"
@@ -9,7 +9,7 @@ evidence = "zlib license, in zlib.h and LICENSE.zlib: use, alteration and redist
 notes = "Matched sources are reconstructions by decomp.online agents, not the original zlib files, and are marked as such on export."
 
 [compiler]
-toolchain = "gcc-2.7.2-kmc"
+toolchain = "gcc-2.7.2-psx"
 include_dirs = ["sysinclude"]   # declaration-only stand-ins for the C library the period compiler lacks
 timeout = 20
 

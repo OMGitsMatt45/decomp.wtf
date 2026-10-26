@@ -23,7 +23,7 @@ from decompnet.forks import csource
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "projects" / "demo-gba"
 ROM, ELF = DEMO / "build" / "demoquest.gba", DEMO / "build" / "demoq_gba.elf"
-GAME = ROOT / "projects" / "demo-n64" / "original"
+GAME = ROOT / "projects" / "shared-game" / "original"
 FUNCTIONS = ["abs_s32", "player_take_damage", "count_alive_entities", "entity_update_physics", "entity_default_hp",
              "entity_spawn", "add_score", "checksum_save", "entity_collides", "game_tick", "clamp_s32", "lerp", "rng_next"]
 

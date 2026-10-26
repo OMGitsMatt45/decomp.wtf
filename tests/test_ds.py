@@ -20,7 +20,7 @@ from decompnet.forks import csource
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "projects" / "demo-ds"
 ROM, ELF = DEMO / "build" / "demoquest.nds", DEMO / "build" / "demoq_ds.elf"
-GAME = ROOT / "projects" / "demo-n64" / "original" / "game.c"
+GAME = ROOT / "projects" / "shared-game" / "original" / "game.c"
 
 pytestmark = pytest.mark.skipif(
     any(toolchains.installed(t) is None for t in ("mwccarm", "dsd", "objdiff-cli"))
