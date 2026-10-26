@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -186,6 +188,19 @@ def test_compressed_executable_bytes_agree_with_independent_runtime_loader(origi
     probe=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
     report=json.loads(command([probe,'--loaded-code',image,expected],timeout=30).stdout)
     assert report['passed'] and report['interpreted_instructions']==0
+
+
+def test_native_runtime_uses_host_clock_unless_a_replay_clock_is_explicit(original_runtime):
+    _project,_image,_binary,_scenes,_build,run=original_runtime
+    before=time.time()*1000
+    report=run('--cycles','1000000')
+    after=time.time()*1000
+    offset=datetime.now().astimezone().utcoffset().total_seconds()*1000+2208988800000
+    assert not report['fixed_clock']
+    assert before+offset-1000<=report['clock_ms']<=after+offset+1000
+    fixed=run('--cycles','1000000','--clock-ms','123000')
+    assert fixed['fixed_clock'] and 123000<=fixed['clock_ms']<123100
+    assert fixed['native_instructions']==168 and fixed['interpreted_instructions']==0
 
 
 def test_audio_resampling_queue_and_controller_input_merge(original_runtime):

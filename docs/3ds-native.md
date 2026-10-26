@@ -69,6 +69,10 @@ saves. The 3DS stays marked in development in the application; `pc status
   fails without formatting or overwriting them. `--data DIRECTORY` keeps the
   runtime's title-isolated saves under `DIRECTORY/user/savedata/TITLE_ID`.
   This qualifies the original persistence path, not retail save formats.
+- The runtime starts the guest clock at the host's local time and advances it
+  with guest ticks. `--clock-ms N` explicitly selects a deterministic replay
+  clock in milliseconds since 1900. Execution reports include the clock and
+  fault PC/LR/mode to help diagnose missing native targets.
 
 ## Commands and downloads
 

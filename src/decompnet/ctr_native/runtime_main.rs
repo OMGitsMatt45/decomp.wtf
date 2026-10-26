@@ -52,7 +52,7 @@ fn identity(path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let Some(input) = args.next() else {
-        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--screens stacked|unified] [--primary top|bottom] [--mute] [--cycles N] [--data DIRECTORY] [--allow-interpreter] [--gpu]".into());
+        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--screens stacked|unified] [--primary top|bottom] [--mute] [--cycles N] [--data DIRECTORY] [--clock-ms N] [--allow-interpreter] [--gpu]".into());
     };
     let input = PathBuf::from(input);
     let mut cycles: u64 = 1_000_000;
@@ -67,6 +67,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut explicit_cycles = false;
     let mut layout_option = false;
     let mut mute = false;
+    let mut clock = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--cycles" => {cycles = args.next().ok_or("--cycles needs a value")?.parse()?;explicit_cycles=true;}
@@ -76,6 +77,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             "--scale" => scale = args.next().ok_or("--scale needs a value")?.parse()?,
             "--window" => window = true,
             "--mute" => mute = true,
+            "--clock-ms" => clock = Some(args.next().ok_or("--clock-ms needs a value")?.parse::<u64>()?),
             "--screens" => {layout_option=true; unified = match args.next().as_deref() {
                 Some("stacked")=>false,Some("unified")=>true,_=>return Err("--screens expects stacked or unified".into())};}
             "--primary" => {layout_option=true; bottom_primary = match args.next().as_deref() {
@@ -87,6 +89,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if !(1..=1_000_000_000).contains(&cycles) { return Err("cycle budget must be 1 through 1000000000".into()); }
     if scale==0 {return Err("render scale must be positive".into());}
     if frame_limit==Some(0) {return Err("window frame limit must be positive".into());}
+    if clock.is_some_and(|value|value>u64::MAX-10_000) {return Err("clock leaves no room for the cycle budget".into());}
     if !window && (layout_option || frame_limit.is_some()) {
         return Err("screen options require --window".into());
     }
@@ -107,7 +110,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut system = loader::load(&input, Config {
         linked: Some(code), find_recompiled: false, strict_static: !fallback,
         data_dir: Some(data), hardware_renderer: gpu && !window, resolution: scale,
-        texture_packs: false, clock: Some(0), device, ..Config::default()
+        texture_packs: false, clock, device, ..Config::default()
     })?;
     let library = system.recompiled.as_mut().ok_or("linked translated C was not accepted")?;
     library.forbid_fallback = !fallback;
@@ -140,9 +143,13 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     }
     let inline = system.recompiled.as_ref().map_or(0, |code| code.fallbacks());
     let rejected = system.recompiled.as_ref().map_or(0, |code| code.rejected_count.get());
+    let mut shared_clock=[0u8;8];
+    system.memory.read_bytes(zakuro_common::memory_map::SHARED_PAGE_VADDR+0x20,&mut shared_clock);
     let report = serde_json::json!({
         "schema":"decomp.wtf.3ds-runtime-run/v1", "stop":stopped,
         "process_exited":system.exited, "r0":system.cpu.regs[0], "r1":system.cpu.regs[1],
+        "pc":system.cpu.regs[15],"lr":system.cpu.regs[14],"thumb":system.cpu.cpsr.thumb,
+        "clock_ms":u64::from_le_bytes(shared_clock),"fixed_clock":clock.is_some(),
         "cycles":system.cpu.cycles, "frames":system.frames,
         "native_instructions":system.recompiled_instructions.saturating_sub(inline + rejected),
         "interpreted_instructions":system.interpreted_instructions + inline,
