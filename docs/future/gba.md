@@ -17,9 +17,10 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Headless frame/PCM capture, input, RAM observations and raw save persistence.
   The player contains no interpreter; an optional separate probe retains the
   reference implementation for validation and coverage investigation.
-- Automatic callback-table discovery, native secondary entries for decoded
-  instruction boundaries, BIOS/memcpy/inline/DMA copy hypotheses, and complete
-  position-independent routine matching for changing stack addresses.
+- Automatic callback discovery includes aligned tables, packed script pointers,
+  longer leaf functions and tail-call bodies. Native secondary entries cover
+  decoded instruction boundaries. BIOS/memcpy/inline/DMA copy hypotheses and
+  complete position-independent routines cover changing RAM and stack addresses.
 - Bounded BIOS/DMA copies with verified code also get native instruction entries
   for computed jumps. Large functions split at instruction boundaries, and C
   source units use a byte budget to keep host compilation within ordinary memory.
@@ -63,18 +64,19 @@ The pinned SDL 3.4.10 source downloads automatically during host configuration.
 Emerald's 18,800-frame scripted run creates a character, reaches the overworld,
 saves on the ground floor, sets the bedroom clock, and saves again. Fresh boots
 return to the latest saved room. Advancing the configured RTC by one hour advances
-the displayed clock hand by one hour. The feedback export contains 3,847 dispatch
-entries, including 63 independently guarded RAM bodies. The complete scripted run
-and the tested fresh-load clock paths pass strict static mode with zero interpreted
-cycles. The two previously interpreted overlapping copies now execute native code.
+the displayed clock hand by one hour. Automatic generation from the ROM and an
+optional compiled owner BIOS produces 38,246 routines and 1,428,074 native entry
+points, using no code profile or runtime feedback. The complete scripted run and
+two 4,600-frame fresh-load clock paths pass strict static mode with zero interpreted
+cycles and no missing code.
 
 Fresh-load date-change checks observe the game's own day counter, Birch daily state,
 Mirage Island random value and berry-update timestamp. They advance when the date
 advances. These are read-only observations of the generated game, with no game
 hooks or RAM patches. Every result is bound to the exact owner-supplied revision.
 
-The GPU images match the internal reference. A 900-frame native audio capture is
-byte-identical to the reference CPU capture. Independently, mGBA 0.10.5 loads the
+The GPU images match the internal reference. The full scripted audio capture and
+both reload captures are byte-identical to the reference CPU captures. Independently, mGBA 0.10.5 loads the
 export's raw save and produces the same saved-room picture pixel for pixel. These
 checks establish bounded compatibility, rather than a full gameplay acceptance test.
 The owner reports all 18 original GPU scenes, resize/letterboxing checks and a
@@ -82,7 +84,10 @@ The owner reports all 18 original GPU scenes, resize/letterboxing checks and a
 11. The [physical-GPU summary](../gba-hardware-validation.json) records the
 tested backend and scope. The retail tests in this workspace used llvmpipe and
 SDL dummy audio; physical speakers, controllers and retail gameplay remain
-owner-run. Retail measurements are in [gba-native-validation.json](../gba-native-validation.json).
+owner-run. Current automatic native-only measurements are in
+[gba-static-validation.json](../gba-static-validation.json). Earlier profile-based
+checks and independent mGBA observations remain in
+[gba-native-validation.json](../gba-native-validation.json).
 
 CPU bus/prefetch timing remains approximate. The timer probes agree with mGBA for
 both following-instruction layouts (MOV and a ROM-literal load). The earlier
@@ -91,6 +96,10 @@ the regression cartridges prevent that heuristic. Original firmware also checks
 ARM/Thumb protected reads, IRQ entry/return and a cartridge callback against mGBA.
 BIOS sound-driver qualification uses an owner-supplied image and original samples;
 it covers the documented fixture modes, rather than every game's audio behavior.
+An original firmware timer probe checks that an ARM or Thumb software interrupt's
+issuing cycle is visible before its service executes. The reference implementation
+charges that cycle before calling the synchronous service; false conditional
+software interrupts retain their cycle charge without entering firmware.
 
 ## Test a Windows GPU
 

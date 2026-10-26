@@ -124,3 +124,21 @@ def bios_pipeline():
     profile=dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest(),
         entries=[dict(address=address,mode='arm') for address in (0x08000100,0x08000160)])
     return (bytes(data),profile),bytes(image)
+
+
+def bios_swi_timer():
+    """CC0 timer observations at the first firmware instruction, ARM and Thumb.
+
+    The BIOS vector first reads timer 0, increments an EWRAM call counter, then
+    returns through MOVS PC,LR. A third, false conditional SWI must not enter it.
+    """
+    program=json.loads((Path(__file__).parent/'gba-native/swi-timer.json').read_text())
+    data=bytearray.fromhex(program['hex'])
+    data[0xa0:0xac]=b'SWI-TIMER!!!';data[0xac:0xb0]=b'TSTE';data[0xb2]=0x96
+    data[0xbd]=(-(sum(data[0xa0:0xbd])+0x19))&255
+    data.extend(bytes(262148-len(data)))
+    profile=dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest(),
+        entries=[dict(address=program['symbols']['thumb_timer'],mode='thumb')])
+    image=bytearray(16384)
+    struct.pack_into('<5I',image,8,0xe1d400b0,0xe596700c,0xe2877001,0xe586700c,0xe1b0f00e)
+    return (bytes(data),profile),bytes(image)

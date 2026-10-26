@@ -1,0 +1,89 @@
+{
+  "schema": "decomp.wtf.gba-static-validation/v1",
+  "backend": {
+    "id": "gba-anygba-experimental",
+    "revision": "66568453072e8eab89e6ea0161f7370474c71616b2fb513a2cb596a94fc6859c"
+  },
+  "runtime_revision": "a3eb412f79627eaae27e2523039d893f72dada1d",
+  "input": {
+    "title": "Pokemon Emerald (USA, Europe)",
+    "game_code": "BPEE",
+    "revision": 0,
+    "owner_payloads_included": false
+  },
+  "generation": {
+    "code_profile": false,
+    "runtime_feedback": false,
+    "compiled_owner_bios": true,
+    "generated_routines": 38246,
+    "native_entry_points": 1428074
+  },
+  "execution": {
+    "native_player_links_interpreter": false,
+    "runtime_compilation": false,
+    "optional_reference_probe": true
+  },
+  "runs": [
+    {
+      "case": "full",
+      "frames": 18800,
+      "cycles": 5280761053,
+      "audio_stereo_frames": 10313986,
+      "native_bios_dispatches": 34257863,
+      "interpreted_cycles": 0,
+      "coverage_misses": 0,
+      "image_bytes_equal": true,
+      "pcm_bytes_equal": true,
+      "save_bytes_equal": true
+    },
+    {
+      "case": "clock-baseline",
+      "frames": 4600,
+      "cycles": 1292037853,
+      "audio_stereo_frames": 2523511,
+      "native_bios_dispatches": 10631584,
+      "interpreted_cycles": 0,
+      "coverage_misses": 0,
+      "image_bytes_equal": true,
+      "pcm_bytes_equal": true,
+      "save_bytes_equal": true
+    },
+    {
+      "case": "clock-shifted",
+      "frames": 4600,
+      "cycles": 1292037853,
+      "audio_stereo_frames": 2523511,
+      "native_bios_dispatches": 10631584,
+      "interpreted_cycles": 0,
+      "coverage_misses": 0,
+      "image_bytes_equal": true,
+      "pcm_bytes_equal": true,
+      "save_bytes_equal": true
+    }
+  ],
+  "clock_hour_shift_seconds": 3600,
+  "clock_hour_shift_changes_picture": true,
+  "reference_swi_regression": {
+    "fixture": "tests/fixtures/gba-native/swi-timer.s",
+    "license": "CC0-1.0",
+    "arm_service_entry_timer": 13,
+    "thumb_service_entry_timer": 7,
+    "service_calls_after_false_conditional_swi": 2
+  },
+  "owner_bios_sound_modes": {
+    "cases": [
+      "fixed-rate loop",
+      "resampled loop",
+      "resampled one-shot"
+    ],
+    "passed": 3,
+    "native_reference_pcm_equal": true
+  },
+  "primary_native_source_and_binary_unchanged_by_reference_timing_fix": true,
+  "scope": {
+    "full_playthrough": false,
+    "physical_retail_audio": false,
+    "physical_controller": false,
+    "bus_prefetch_timing_approximate": true
+  }
+}

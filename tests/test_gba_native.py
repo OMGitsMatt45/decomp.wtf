@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_sound, callbacks, PROGRAM
+from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_swi_timer, bios_sound, callbacks, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -256,6 +256,21 @@ def test_owner_bios_pipeline_protection_and_irq_vector_match_independent_mgba(tm
         assert all(address>=0x02000000 for address in result['misses'])
         if not options:
             assert not result['misses']
+
+
+def test_swi_instruction_time_is_visible_at_firmware_entry(tmp_path,sdk):
+    fixture,image=bios_swi_timer();bios=tmp_path/'timer-firmware.bin';bios.write_bytes(image)
+    project=generate(tmp_path/'swi-timing',fixture=fixture,bios=bios)
+    observations=[v for address in range(0x02000000,0x0200000c,4) for v in ('--observe',hex(address))]
+    native=execute(project,'--strict-static',*observations)
+    reference=execute(project,'--interpreter',*observations)
+    # With the default ROM fetch waits, enabling the timer and issuing SWI
+    # costs 6+6 ARM cycles or 3+3 Thumb cycles, plus the first BIOS load phase.
+    assert native['observed']==[13,7,2]
+    assert reference['observed']==native['observed']
+    assert native['interpreted_cycles']==0 and not native['misses']
+    for field in ('frames','cycles','audio_frames','screen_sha256'):
+        assert native[field]==reference[field],field
 
 
 def test_translated_bios_executes_vectors_thumb_and_irqs_with_zero_interpreter_cycles(tmp_path,sdk):

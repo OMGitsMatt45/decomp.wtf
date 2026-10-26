@@ -536,6 +536,16 @@ extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t 
         '        if (load) {\n            if (--c_.cycles <= 0) sys_.memory_load_events();\n            std::uint32_t v = 0;')
     text = text.replace('case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 1; break;',
         'case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 0; break;')
+    # SWI runs a synchronous firmware service, which can observe timers or
+    # transfer audio before returning. Charge its issuing instruction first.
+    old = '        if (passes(c_, in_.cond)) {\n            dispatch();'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA reference software-interrupt timing patch no longer applies')
+    text = text.replace(old,
+        '        if (passes(c_, in_.cond)) {\n'
+        '            if (in_.op == Op::SWI) {\n'
+        '                charge();\n                dispatch();\n                return;\n            }\n'
+        '            dispatch();')
     interp.write_text(text, encoding='utf-8')
     fetch = destination/'runtime/src/interp/thumb_interp.cpp'
     text = fetch.read_text(encoding='utf-8')
