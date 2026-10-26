@@ -1,6 +1,7 @@
 // Original CC0 GBA raw-hardware scenes. No game, BIOS, logo or SDK payload.
 #include "video.hpp"
 #include "anygba/system.hpp"
+#include "native_idle.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -39,7 +40,8 @@ int main(int argc,char** argv){try{
     for(unsigned variant=0;variant<18;++variant){
         std::vector<uint8_t> rom(0x100);rom[0]=0xfe;rom[1]=0xff;rom[2]=0xff;rom[3]=0xea;
         anygba::Options runtime_options;runtime_options.log_misses=false;
-        auto machine=std::make_unique<anygba::System>(rom,nullptr,runtime_options);
+        const auto program=original_idle_game(uint32_t(rom.size()));
+        auto machine=std::make_unique<anygba::System>(rom,&program,runtime_options);
         auto& m=machine->memory();
         for(unsigned i=0;i<512;++i)half(m.palette,i*2,((i*3)&31)|(((i*5)&31)<<5)|(((i*7)&31)<<10));
         for(unsigned i=0;i<m.vram.size();++i)m.vram[i]=uint8_t(i*37+i/64);

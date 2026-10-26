@@ -1,5 +1,6 @@
 // Independent desktop player and qualification harness. Cartridge code is emitted in game/.
 #include "anygba/system.hpp"
+#include "source_counts.h"
 #include "anygba/sha256.h"
 #include "save/save.h"
 #include <charconv>
@@ -16,6 +17,7 @@
 #endif
 
 extern "C" const anygba_game anygba_game_info;
+extern "C" const anygba_bios anygba_compiled_bios;
 
 namespace {
 std::uint64_t number(std::string_view text) {
@@ -49,14 +51,23 @@ int main(int argc, char** argv) {
         std::vector<std::uint32_t> observe;
         bool reference = false;
         anygba::Options options;
+#ifdef GBA_NATIVE_ONLY
+        options.strict_static=true;
+#endif
         options.log_misses = false; // Output JSON carries the exact miss set, no implicit cwd writes.
         for (int i = 1; i < argc; ++i) {
             const std::string_view arg = argv[i];
             if (arg == "--help") {
-                std::cout << "gba_probe --rom game.gba [--frames 8] [--strict-static | --interpreter]\n"
+#ifdef GBA_NATIVE_ONLY
+                std::cout << "gba_pc --rom game.gba (native execution; no interpreter fallback)\n";
+#else
+                std::cout << "gba_probe --rom game.gba [--frames 8] [--strict-static | --interpreter]\n";
+#endif
+                std::cout <<
+                    "  [--frames N] [--headless]\n"
                     "  [--save game.sav] [--keys 0x001] [--observe 0x02000000]...\n"
                     "  [--capture screen.ppm] [--audio-pcm audio.pcm] [--rtc-start unix-seconds]\n"
-                    "  [--bios owner-gba-bios.bin] (optional 16 KiB BIOS, interpreted; incompatible with strict static)\n"
+                    "  [--bios owner-gba-bios.bin] (optional; a translated BIOS is selected automatically)\n"
                     "  [--miss-log NEW_FILE] (input-bound feedback for the next translation)\n"
                     "  [--window] [--renderer auto|opengl|software] [--fullscreen]\n"
                     "  [--resolution WIDTHxHEIGHT] [--display-capture output.ppm]\n"
@@ -65,7 +76,13 @@ int main(int argc, char** argv) {
                 return 0;
             }
             if (arg == "--strict-static") { options.strict_static = true; continue; }
-            if (arg == "--interpreter") { reference = true; continue; }
+            if (arg == "--interpreter") {
+#ifdef GBA_NATIVE_ONLY
+                throw anygba::Error("this player contains no interpreter; configure GBA_BUILD_REFERENCE=ON and use gba_probe for reference testing");
+#else
+                reference = true; continue;
+#endif
+            }
             if (arg == "--window") { window=true;continue; }
             if (arg == "--headless") { window=false;continue; }
             if (arg == "--unpaced") { unpaced=true;continue; }
@@ -155,8 +172,12 @@ int main(int argc, char** argv) {
             if (!file || std::filesystem::file_size(bios)!=16384) throw anygba::Error("GBA BIOS must contain exactly 16384 bytes");
             bios_data.assign(std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>());
             if(file.bad()||bios_data.size()!=16384)throw anygba::Error("GBA BIOS must contain exactly 16384 readable bytes");
-            if(options.strict_static)throw anygba::Error("strict static mode rejects interpreted BIOS execution");
+        } else if(anygba_compiled_bios.image) {
+            bios_data.assign(anygba_compiled_bios.image,anygba_compiled_bios.image+16384);
         }
+        options.compiled_bios=&anygba_compiled_bios;
+        options.relocated_entries=anygba_relocated_entries;
+        options.relocated_count=anygba_relocated_count;
 #ifdef GBA_GAME_DEFAULT
         if(save.empty())save=(asset_root.empty()?std::filesystem::current_path():asset_root)/"saves"/(std::string(anygba_game_info.rom_sha256).substr(0,16)+".sav");
 #endif
@@ -253,10 +274,12 @@ int main(int argc, char** argv) {
         const auto image_hash = anygba::sha256_hex(std::span<const std::uint8_t>(
             reinterpret_cast<const std::uint8_t*>(rgb.data()), rgb.size()));
         std::cout << "{\"frames\":" << system->frames() << ",\"cycles\":" << system->now()
-            << ",\"functions\":" << anygba_game_info.function_count
+            << ",\"functions\":" << GBA_GENERATED_FUNCTIONS
+            << ",\"native_entry_points\":" << anygba_game_info.function_count
             << ",\"reference_interpreter\":" << (reference ? "true" : "false")
             << ",\"interpreted_cycles\":" << system->interpreted_cycles()
             << ",\"bios_sha256\":" << std::quoted(bios_data.empty()?std::string():anygba::sha256_hex(bios_data))
+            << ",\"bios_native_dispatches\":" << system->bios_native_instructions()
             << ",\"rtc\":" << (system->has_rtc() ? "true" : "false")
             << ",\"audio_frames\":" << audio_frames << ",\"screen_sha256\":\"" << image_hash
             << "\",\"gpu_rendering\":"<<(gpu?"true":"false")<<",\"renderer\":"<<std::quoted(selected)
@@ -272,7 +295,11 @@ int main(int argc, char** argv) {
         std::cout << "]}\n";
         return 0;
     } catch (const std::exception& error) {
+#ifdef GBA_NATIVE_ONLY
+        std::cerr << "gba_pc: " << error.what() << '\n';
+#else
         std::cerr << "gba_probe: " << error.what() << '\n';
+#endif
         return 1;
     }
 }

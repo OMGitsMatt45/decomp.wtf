@@ -9,6 +9,15 @@ from decompnet.gba_native import PROFILE_SCHEMA
 PROGRAM = json.loads((Path(__file__).parent/'gba-native/program.json').read_text())
 
 
+def callbacks():
+    """ARM/Thumb callback tables loaded through RAM; no reviewed entry list."""
+    program=json.loads((Path(__file__).parent/'gba-native/callbacks.json').read_text())
+    data=bytearray.fromhex(program['hex'])
+    data[0xa0:0xac]=b'CALLBACK-GBA';data[0xac:0xb0]=b'TSTE';data[0xb2]=0x96
+    data[0xbd]=(-(sum(data[0xa0:0xbd])+0x19))&255
+    return bytes(data),dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest())
+
+
 def bios_sound(mode="fixed-loop"):
     """Original service/mixer cartridge; requires a separately supplied BIOS."""
     program=json.loads((Path(__file__).parent/'gba-native/bios-sound.json').read_text())

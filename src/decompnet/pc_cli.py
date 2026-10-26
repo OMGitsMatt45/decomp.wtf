@@ -43,6 +43,7 @@ def add_parser(sub):
         gba.add_argument('--save-type', choices=('auto','none','sram','flash64','flash128','eeprom','eeprom512','eeprom8k'), default='auto')
         gba.add_argument('--rtc', choices=('auto','on','off'), default='auto')
         gba.add_argument('--feedback', action='append', type=Path, default=[], help='input-bound runtime miss log; repeat to combine coverage runs')
+        gba.add_argument('--bios',type=Path,help='optional owner BIOS to translate ahead of time into the private PC source project')
         gba.add_argument('--experimental', action='store_true', required=True)
         if name == 'gba-native':
             gba.add_argument('--renderer', choices=('auto','opengl','software'), default='auto')
@@ -102,7 +103,7 @@ def run(args):
             from .gba_native import export, export_game
             native = args.pc_action == 'gba-native'
             result = (export_game if native else export)(args.input, args.output, profile=args.profile,
-                save_type=args.save_type, rtc=args.rtc, feedback=args.feedback,
+                save_type=args.save_type, rtc=args.rtc, feedback=args.feedback,bios=args.bios,
                 **({'renderer': args.renderer} if native else {}))
         elif args.pc_action == 'ps2-inspect':
             from .ps2_native.media import inspect

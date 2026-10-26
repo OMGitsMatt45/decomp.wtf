@@ -207,8 +207,7 @@ Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validatio
 identifies the tested backend revision and driver. Retail playthrough validation
 remains separate.
 
-For the GBA GPU assessment, use the current [GBA branch](https://github.com/OMGitsMatt45/decomp.wtf/tree/codex/future-gba)
-and run:
+For the GBA GPU assessment, run from the current repository folder:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1

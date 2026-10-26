@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_sound, PROGRAM
+from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_sound, callbacks, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -32,7 +32,7 @@ def run(command, *, ok=True, **kwargs):
     return result.stderr
 
 
-def generate(work, *, profile=True, mutate=None, feedback=(), fixture=None):
+def generate(work, *, profile=True, mutate=None, feedback=(), fixture=None,bios=None,relocated=True):
     work.mkdir()
     data, document = hardware() if fixture is None else fixture
     if mutate:
@@ -41,12 +41,18 @@ def generate(work, *, profile=True, mutate=None, feedback=(), fixture=None):
     rom = work/'original.gba'; rom.write_bytes(data)
     mapping = work/'profile.json'; mapping.write_text(json.dumps(document))
     output = work/'Independent GBA source with spaces'
-    result = export(rom, output, profile=mapping if profile else None, save_type='sram', feedback=feedback)
+    result = export(rom, output, profile=mapping if profile else None, save_type='sram', feedback=feedback,bios=bios)
     assert result['integrity_verified'] and not result['host_build_verified']
     assert result['manifest']['runtime']['revision'] == SDK_COMMIT
     assert result['manifest']['fallback'] == dict(interpreter=True, runtime_compilation=False)
     assert result['manifest']['output_kind'] == 'cpu-probe'
     assert not result['presentation_declared'] and not result['gameplay_verified']
+    if not relocated:
+        # Fault-inject an incomplete older compiled registry to exercise strict
+        # failure and feedback import even when current inference covers it.
+        (output/'game/relocated_dispatch.c').write_text('#include <anygba/relocated.h>\n'
+            'const anygba_relocated_entry* const anygba_relocated_entries=0;\n'
+            'const uint32_t anygba_relocated_count=0;\n')
     run([sys.executable, '-I', output/'tools/extract_assets.py', rom])
     run(['cmake', '-S', output, '-B', output/'build', '-DCMAKE_BUILD_TYPE=Release'])
     run(['cmake', '--build', output/'build', '--config', 'Release', '--parallel', '2'])
@@ -64,6 +70,27 @@ def execute(original, *options, ok=True, frames=8):
     rom, root, exe = original
     output = run([exe, '--rom', root/'assets/game.gba', '--frames', str(frames), *options], ok=ok)
     return json.loads(output) if ok else output
+
+
+def test_callback_tables_reached_through_ram_compile_without_profiles_or_feedback(tmp_path,sdk):
+    project=generate(tmp_path/'callbacks',profile=False,fixture=callbacks())
+    options=[v for address in [*range(0x02000004,0x02000044,4),0x02000048,0x0200004c,0x02000050]
+             for v in ('--observe',hex(address))]
+    native=execute(project,'--strict-static',*options)
+    reference=execute(project,'--interpreter',*options)
+    assert native['observed']==[11,22,33,44,55,33,25,7,42,55,12,13,69,79,89,42,77,97,2300]
+    assert native['misses']==[] and native['interpreted_cycles']==0
+    for field in ('observed','frames','cycles','screen_sha256','audio_frames'):
+        assert native[field]==reference[field],field
+    assert 'ROM callback-table entry hypotheses' in (project[1]/'analysis.json').read_text()
+    assert json.loads((project[1]/'analysis.json').read_text())['automatic_ram_code']
+    # Storing the instruction PC makes a copied body placement-dependent.
+    # Its ROM-compiled constant must never be reused at a stack address.
+    assert 'static coverage miss' in execute(project,'--keys','2','--strict-static',ok=False)
+    moved=execute(project,'--keys','2','--observe','0x02000044')
+    oracle=execute(project,'--keys','2','--interpreter','--observe','0x02000044')
+    assert moved['observed']==oracle['observed']==[0x03007eec]
+    assert moved['misses'] and moved['interpreted_cycles']>0
 
 
 def test_original_native_code_drives_bios_keys_irq_dma_picture_audio_and_save(original, tmp_path):
@@ -132,7 +159,7 @@ def test_probe_rejects_invalid_run_options(original, args):
 
 
 def test_missing_code_map_reports_fallback_and_strict_mode_stops(tmp_path, sdk):
-    project = generate(tmp_path/'unprofiled', profile=False)
+    project = generate(tmp_path/'unprofiled', profile=False,relocated=False)
     feedback = tmp_path/'coverage.txt'
     result = execute(project, '--miss-log', feedback)
     assert result['interpreted_cycles'] > 0 and result['misses']
@@ -159,7 +186,14 @@ def test_feedback_preserves_existing_files_and_checks_input_identity(original, t
         _feedback(path, hashlib.sha256(data).hexdigest(), len(data))
 
 
-def test_feedback_recovers_temporal_and_overlapping_ram_copies(original, tmp_path, sdk):
+def test_feedback_recovers_temporal_and_overlapping_ram_copies(tmp_path, sdk, monkeypatch):
+    # Isolate the feedback importer from automatic copy inference. These copies
+    # are now discovered during an ordinary export; an older/incomplete export
+    # must still record both byte variants at a shared execution address.
+    import decompnet.gba_native as gba
+    with monkeypatch.context() as patch:
+        patch.setattr(gba, '_automatic_copies', lambda *_args: ([], [], []))
+        original = generate(tmp_path/'before-copy-inference',relocated=False)
     feedback = tmp_path/'overlays.txt'
     observations = [v for a in range(0x02000028, 0x02000038, 4) for v in ('--observe', hex(a))]
     native = execute(original, '--keys', '0x40', '--miss-log', feedback, *observations)
@@ -224,6 +258,24 @@ def test_owner_bios_pipeline_protection_and_irq_vector_match_independent_mgba(tm
             assert not result['misses']
 
 
+def test_translated_bios_executes_vectors_thumb_and_irqs_with_zero_interpreter_cycles(tmp_path,sdk):
+    fixture,image=bios_pipeline();bios=tmp_path/'original-firmware.bin';bios.write_bytes(image)
+    project=generate(tmp_path/'native-bios',fixture=fixture,bios=bios)
+    observations=[v for address in [*range(0x02000000,0x02000024,4),0x02000040,0x02000044]
+                  for v in ('--observe',hex(address))]
+    native=execute(project,'--strict-static',*observations)
+    reference=execute(project,'--interpreter',*observations)
+    assert native['observed']==[0x89abcdef,0x12345678,0x1234,0x56,0x12345678,0x5aa5,0,0x5a,0x31415926,99,77]
+    assert native['interpreted_cycles']==0 and native['misses']==[]
+    assert native['bios_native_dispatches']>0 and reference['bios_native_dispatches']==0
+    for field in ('observed','frames','cycles','screen_sha256','audio_frames','bios_sha256'):
+        assert native[field]==reference[field],field
+    manifest=json.loads((project[1]/'pc-project.json').read_text())
+    assert manifest['firmware']['mode']=='compiled' and manifest['inputs'][1]['kind']=='bios'
+    changed=bytearray(image);changed[-1]^=1;bios.write_bytes(changed)
+    assert 'strict static mode rejects' in execute(project,'--bios',bios,'--strict-static',ok=False)
+
+
 @pytest.mark.parametrize('mode,active_bytes,checksum',[
     ('fixed-loop',3168,434383957),
     ('resampled-loop',3162,2270628090),
@@ -235,16 +287,18 @@ def test_optional_owner_bios_sound_driver_mixes_and_clears_original_pcm(mode, ac
         pytest.skip('owner-run BIOS sound qualification; set DECOMP_GBA_TEST_BIOS to a 16 KiB image')
     bios=Path(image).resolve()
     assert bios.is_file() and bios.stat().st_size==16384
-    project=generate(tmp_path/'sound',fixture=bios_sound(mode))
+    project=generate(tmp_path/'sound',fixture=bios_sound(mode),bios=bios)
     addresses=[*range(0x02000000,0x02000054,4),*range(0x02003000,0x02003090,4)]
     observations=[v for address in addresses for v in ('--observe',hex(address))]
     reports=[];pcm=[]
-    for name,options in (('native',()),('reference',('--interpreter',))):
+    for name,options in (('native',('--strict-static',)),('reference',('--interpreter',))):
         capture=tmp_path/(name+'.pcm')
         result=execute(project,'--bios',bios,*options,'--audio-pcm',capture,*observations,frames=96)
-        assert result['interpreted_cycles']>0
-        if not options:
-            assert not result['misses']  # All cartridge callbacks are native; firmware is interpreted.
+        if name=='native':
+            assert result['interpreted_cycles']==0 and result['bios_native_dispatches']>0
+            assert not result['misses']
+        else:
+            assert result['interpreted_cycles']>0 and result['bios_native_dispatches']==0
         values=result['observed'][:21]
         assert all(0<address<16384 and address&1 for address in result['observed'][21:])
         assert values[0]==0x68736d53  # BIOS SoundInfo identity

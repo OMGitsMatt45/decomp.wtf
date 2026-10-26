@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 
 import pytest
@@ -29,6 +30,8 @@ def desktop(tmp_path_factory, sdk):
     assert result['presentation_declared'] and not result['gameplay_verified']
     assert result['manifest']['output_kind'] == 'game'
     assert result['manifest']['build']['target'] == 'gba_pc'
+    assert result['manifest']['execution_model']=='static-recompiled'
+    assert result['manifest']['fallback']==dict(interpreter=False,runtime_compilation=False)
     assert result['manifest']['presentation'] == pc.presentation()
     run([sys.executable, '-I', root/'tools/extract_assets.py', rom])
     args = ['cmake', '-S', root, '-B', root/'build', '-DCMAKE_BUILD_TYPE=Release', '-DGBA_BUILD_GPU_TESTS=ON']
@@ -37,6 +40,16 @@ def desktop(tmp_path_factory, sdk):
     run(args)
     run(['cmake', '--build', root/'build', '--config', 'Release', '--parallel', '2'])
     return root, binary(root, 'gba_pc')
+
+
+def test_player_has_no_interpreter_and_reports_unknown_ram_without_opt_in(desktop,tmp_path):
+    root,exe=desktop
+    assert not (root/'build/gba_probe').exists() and not (root/'build/Release/gba_probe.exe').exists()
+    assert 'contains no interpreter' in run([exe,'--interpreter'],ok=False)
+    error=run([exe,'--headless','--frames','8','--keys','2','--save',tmp_path/'mutation.sav'],ok=False)
+    assert 'static coverage miss' in error and 'contains no interpreter' in error
+    if shutil.which('nm'):
+        assert 'anygba::interp::' not in run(['nm','-C',exe])
 
 
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):

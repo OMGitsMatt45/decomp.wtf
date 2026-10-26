@@ -1,6 +1,6 @@
 # Original GBA native fixture
 
-`program.s` and the generated `program.json` are original CC0 test content. No
+The assembly fixtures and generated JSON are original CC0 test content. No
 commercial ROM, Nintendo logo, SDK library, BIOS or remake asset is included.
 The Python wrapper supplies an original header with a valid checksum.
 
@@ -42,7 +42,8 @@ within MSBuild's path limit. Exported fixture folders still contain spaces.
 contain no BIOS image or commercial samples. The cartridge exercises BIOS sound
 initialization, mode selection, MIDI frequency calculation, jump-table creation,
 VSync, mixing, channel clearing and VSync off/on, including a Thumb caller and
-native IRQ/music callbacks. Its original waveform covers fixed-rate looping,
+native IRQ/music callbacks. The optional supplied firmware is translated into
+native code as well. Its original waveform covers fixed-rate looping,
 resampled looping and one-shot channels. Mixer-buffer checksums are compared with
 independent mGBA; native/reference PCM must match and become silent after clearing.
 
@@ -56,7 +57,17 @@ DECOMP_GBA_TEST_BIOS='/path/to/gba_bios.bin' uv run --locked --group dev --pytho
 
 In PowerShell, set `$env:DECOMP_GBA_TEST_BIOS = 'C:\path\gba_bios.bin'` and run the
 same `uv run ...` command. CMake and a host C/C++ compiler are required. The tests
-build an independent export and keep the supplied BIOS outside its source tree.
+build an independent private export containing code and initial data derived
+from the supplied BIOS. Keep those generated files private.
 CI skips these three cases when no BIOS is supplied; it still runs the original
 miniature-firmware checks. Regeneration accepts `--fixture bios-sound` to rebuild
-only this cartridge, or `--fixture all` (the default) for both assembly fixtures.
+only this cartridge, or `--fixture all` (the default) for all assembly fixtures.
+
+`callbacks.s` exercises callback tables reached through RAM, interworking,
+computed interior entry points, ARM/Thumb bodies sharing one address, BIOS and
+inline copies, and a position-independent looping routine copied to two changing
+stack addresses. Its ordinary unprofiled export must match the reference in
+strict native execution without a runtime coverage-discovery run.
+It also checks an even code pointer with a deferred stack save, a computed jump
+inside a BIOS-wrapper copy, and a 2,300-instruction loop crossing native C pieces.
+A copied PC-dependent body must be rejected by placement-independent matching.

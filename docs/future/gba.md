@@ -1,4 +1,4 @@
-# GBA native PC output — PR6
+# GBA native PC output
 
 Status: **experimental desktop backend; retail qualification in progress**.
 The goal is the same independent editable repository as DS/PS1/PS2: translated
@@ -14,8 +14,15 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   the user's cartridge is staged privately by a SHA-256-verifying extraction script.
 - Input-bound code profiles for callbacks and ROM-to-RAM code copies. Runtime byte
   checks prevent modified RAM code from executing stale native instructions.
-- Headless frame/PCM capture, input, RAM observations, raw save persistence and a
-  reference-interpreter mode. Interpreter use is reported and strict mode rejects it.
+- Headless frame/PCM capture, input, RAM observations and raw save persistence.
+  The player contains no interpreter; an optional separate probe retains the
+  reference implementation for validation and coverage investigation.
+- Automatic callback-table discovery, native secondary entries for decoded
+  instruction boundaries, BIOS/memcpy/inline/DMA copy hypotheses, and complete
+  position-independent routine matching for changing stack addresses.
+- Bounded BIOS/DMA copies with verified code also get native instruction entries
+  for computed jumps. Large functions split at instruction boundaries, and C
+  source units use a byte budget to keep host compilation within ordinary memory.
 - Input-bound runtime coverage feedback. Re-exporting with `--feedback` translates
   newly observed code, with ROM checksums and source-file preservation checks.
 - Instruction-boundary scheduler updates keep timer, DMA and audio accesses synchronized
@@ -41,7 +48,8 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
   cases through generated native cartridge code. Checks cover sound mode, pitch,
   jump tables, IRQ/music callbacks, stereo mixing, clearing and VSync off/on.
   Native/reference PCM is identical; independent mGBA agrees on the active mixer
-  buffers and selected service results. No BIOS image is included in the output.
+  buffers and selected service results. Firmware is never downloaded; an explicitly
+  supplied image produces private firmware-derived source and initial data.
 - Original CC0 fixture qualification and a required Windows/Linux native CI workflow.
 
 The desktop export is registered in the GUI, application API and chat tool. OpenGL
@@ -86,7 +94,7 @@ it covers the documented fixture modes, rather than every game's audio behavior.
 
 ## Test a Windows GPU
 
-Use the current GBA branch, `codex/future-gba`, then run from its extracted folder:
+Run from the current repository's extracted folder:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1
@@ -133,7 +141,8 @@ cmake --build build --config Release --parallel 2
 Visual Studio puts the executable in `build/Release/gba_pc.exe`. The generated README
 explains controls, display settings, raw saves and diagnostic captures. An unprofiled
 retail cartridge can have unresolved callbacks or RAM-installed routines. The
-hybrid runtime reports fallback; a bounded run is not a gameplay acceptance test.
+player stops on uncovered code. Its binary contains no interpreter or runtime
+compiler; a bounded passing run still does not establish full-game compatibility.
 
 `--profile reviewed.json` accepts schema `decomp.wtf.gba-profile/v1`, the exact
 `input_sha256`, `entries` (`address`, `mode`) and `ram_code` (`rom`, `address`,
@@ -142,13 +151,21 @@ It does not accept patches, replacement functions or arbitrary host source files
 RAM mappings may overlap: each copy is analyzed independently and executes only
 while its own complete byte footprint matches.
 
-For games requiring the legacy BIOS sound driver, the generated player accepts
-`--bios /path/to/your/gba-bios.bin`. It validates the owner's 16 KiB file before
-opening saves or coverage output, executes its software-interrupt/IRQ vectors and
-BIOS callbacks in the interpreter, and reports its SHA-256 and interpreted cycles.
-`--strict-static` rejects this mode. The default remains BIOS-free; no firmware is
-downloaded or shipped. The original test firmware validates the execution path,
-and a separate original cartridge validates the supplied BIOS's sound services.
+For games requiring original firmware, including its sound driver, supply your
+own 16 KiB BIOS during generation:
+
+```sh
+decomp pc gba-native /path/to/game.gba /new/source-folder --bios /path/to/gba_bios.bin --experimental
+```
+
+The exporter emits native ARM/Thumb firmware entries and initial data, with an
+exact image identity. Those private firmware-derived files are selected
+automatically at runtime; no separate BIOS file is needed by the built player.
+An untranslated replacement image is rejected. Firmware is never downloaded.
+The default remains BIOS-free. Original miniature firmware checks vectors,
+protected reads and IRQ returns with zero interpreted cycles; an original
+cartridge also checks the supplied BIOS's three sound-driver modes against the
+reference interpreter and independently established mixer-buffer observations.
 To repeat the latter with your own BIOS, see the [fixture commands](../../tests/fixtures/gba-native/README.md).
 The independent comparison checks the BIOS mixer buffers; mGBA's final filtered
 and resampled PCM is not expected to match this runtime's final PCM byte for byte.
@@ -156,6 +173,8 @@ and resampled PCM is not expected to match this runtime's final PCM byte for byt
 To expand native coverage without title-specific patches:
 
 ```sh
+cmake -S . -B build -DGBA_BUILD_REFERENCE=ON
+cmake --build build --target gba_probe --config Release --parallel 2
 ./build/gba_probe --rom assets/game.gba --frames 900 --miss-log /new/coverage.txt
 decomp pc gba-native /path/to/your/game.gba /new/source-with-feedback --feedback /new/coverage.txt --experimental
 ```

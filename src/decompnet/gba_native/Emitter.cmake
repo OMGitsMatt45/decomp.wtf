@@ -37,6 +37,13 @@ string(REPLACE "        line(\"AG_ENTER_RAM(c, %s, %d);\", hex(fn_.entry).c_str(
   "        const auto footprint = code_footprint(fn_, options_.image);\n        const auto source = options_.image ? options_.image->rom_offset(footprint.begin, footprint.end-footprint.begin) : std::nullopt;\n        line(\"if (!anygba_ram_variant_valid(c, %s, %s, %s)) { c->r[15]=%s; return; }\", hex(footprint.begin).c_str(), hex(footprint.end).c_str(), hex(source ? analysis::kRomBase+*source : 0).c_str(), hex(fn_.entry).c_str());"
   EMITTER_PRECISE "${EMITTER_PRECISE}")
 set(PRECISE_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/precise_emitter.cpp")
+string(REPLACE "std::string emit_function(" "std::string emit_legacy_function("
+  EMITTER_PRECISE "${EMITTER_PRECISE}")
+# The native entry wrapper inserts a PC-to-label switch after generation.
+# Keep every proven instruction label for that switch.
+string(REPLACE "if (out_.find(\"goto \" + label_name + \";\") == std::string::npos)"
+  "if (false && out_.find(\"goto \" + label_name + \";\") == std::string::npos)"
+  EMITTER_PRECISE "${EMITTER_PRECISE}")
 file(CONFIGURE OUTPUT "${PRECISE_SOURCE}" CONTENT "${EMITTER_PRECISE}" @ONLY)
 get_target_property(RECOMP_SOURCES anygba_recomp_lib SOURCES)
 set(PRECISE_SOURCES)
@@ -63,5 +70,52 @@ file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/guarded_arm_ops.cpp" CONTENT 
 list(REMOVE_ITEM PRECISE_SOURCES "${GBA_SDK}/tools/recomp/codegen/arm_ops.cpp")
 list(APPEND PRECISE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/guarded_arm_ops.cpp")
 set_property(TARGET anygba_recomp_lib PROPERTY SOURCES "${PRECISE_SOURCES}")
+# Resolve callback tables that are reached through mutable RAM state, in addition
+# to literal-pool references reachable from the reset entry. Keep the SDK intact.
+file(READ "${GBA_SDK}/tools/recomp/analysis/functions.cpp" DISCOVERY_SOURCE)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/discovery.inc" DISCOVERY_MEMBERS)
+string(REPLACE "            try_candidates();"
+  "            scan_pointer_candidates();\n            try_candidates();"
+  DISCOVERY_PATCHED "${DISCOVERY_SOURCE}")
+string(REPLACE "    void try_candidates() {"
+  "${DISCOVERY_MEMBERS}\n    void try_candidates() {"
+  DISCOVERY_PATCHED "${DISCOVERY_PATCHED}")
+string(REPLACE "if (!image_.contains(e.addr, e.mode == Mode::Thumb ? 2 : 4))"
+  "if (skipped(e.addr) || !image_.contains(e.addr, e.mode == Mode::Thumb ? 2 : 4))"
+  DISCOVERY_PATCHED "${DISCOVERY_PATCHED}")
+if(DISCOVERY_PATCHED STREQUAL DISCOVERY_SOURCE)
+  message(FATAL_ERROR "GBA callback discovery patch no longer applies")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native_discovery.cpp" CONTENT "${DISCOVERY_PATCHED}" @ONLY)
+list(REMOVE_ITEM PRECISE_SOURCES "${GBA_SDK}/tools/recomp/analysis/functions.cpp")
+list(APPEND PRECISE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/native_discovery.cpp")
+# Malformed code hypotheses must not walk an entire data image indefinitely.
+file(READ "${GBA_SDK}/tools/recomp/analysis/cfg.cpp" CFG_SOURCE)
+string(REPLACE "            if (fn().insns.contains(pc)) {"
+  "            if (fn().insns.size() >= 65536) { fn().hit_undefined = true; note(\"analysis instruction limit at 0x%08x\", pc); return; }\n            if (fn().insns.contains(pc)) {"
+  CFG_BOUNDED "${CFG_SOURCE}")
+string(REPLACE "Image::is_rom(addr.value)" "image_.contains(addr.value, 4)"
+  CFG_BOUNDED "${CFG_BOUNDED}")
+if(CFG_BOUNDED STREQUAL CFG_SOURCE)
+  message(FATAL_ERROR "GBA bounded analysis patch no longer applies")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bounded_cfg.cpp" CONTENT "${CFG_BOUNDED}" @ONLY)
+list(REMOVE_ITEM PRECISE_SOURCES "${GBA_SDK}/tools/recomp/analysis/cfg.cpp")
+list(APPEND PRECISE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/bounded_cfg.cpp")
+file(READ "${GBA_SDK}/tools/recomp/codegen/dispatch_table.cpp" DISPATCH_SOURCE)
+string(REPLACE "std::vector<std::filesystem::path> write_project("
+  "std::vector<std::filesystem::path> write_legacy_project("
+  DISPATCH_NATIVE "${DISPATCH_SOURCE}")
+if(DISPATCH_NATIVE STREQUAL DISPATCH_SOURCE)
+  message(FATAL_ERROR "GBA secondary-entry dispatch patch no longer applies")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native_dispatch.cpp" CONTENT "${DISPATCH_NATIVE}" @ONLY)
+list(REMOVE_ITEM PRECISE_SOURCES "${GBA_SDK}/tools/recomp/codegen/dispatch_table.cpp")
+list(APPEND PRECISE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/native_dispatch.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/native_entries.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/relocated.cpp")
+set_property(TARGET anygba_recomp_lib PROPERTY SOURCES "${PRECISE_SOURCES}")
 add_executable(gba-overlays overlay_emitter.cpp)
 target_link_libraries(gba-overlays PRIVATE anygba_recomp_lib)
+add_executable(gba-copies copy_discovery.cpp)
+target_link_libraries(gba-copies PRIVATE anygba_recomp_lib)
+add_executable(gba-bios bios_emitter.cpp)
+target_link_libraries(gba-bios PRIVATE anygba_recomp_lib)
