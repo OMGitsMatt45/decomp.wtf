@@ -14,6 +14,12 @@ def fixture(kind='arm'):
         # ldr r3, literal; blx r3; svc ExitProcess; pointer; Thumb movs r0,42; bx lr
         'thumb': struct.pack('<IIIIHH', 0xe59f3004, 0xe12fff33, 0xef000003, BASE+0x11, 0x202a, 0x4770),
         # float 1.0 -> s0; s0+s0 -> s0; return IEEE float bits for 2.0
+        # An ARM linker veneer computes the Thumb target; there is no pointer literal.
+        'veneer': struct.pack('<6I2H',0xeb000002,0xef000003,0,0,0xe28fc001,0xe12fff1c,0x202a,0x4770),
+        # Thumb PIC loads a relative literal, preserves it across a stack store,
+        # adds the instruction's PC and calls the resulting Thumb callback.
+        'pic-callback': struct.pack('<6I12HI',0xeb000002,0xef000003,0,0,0xe28fc001,0xe12fff1c,
+            0xb500,0xb081,0x4b04,0x9000,0x447b,0x4798,0xb001,0xbd00,0x202a,0x4770,0x46c0,0x46c0,5),
         'vfp': struct.pack('<IIIIII', 0xe59f000c, 0xee000a10, 0xee300a00, 0xee100a10, 0xef000003, 0x3f800000),
         # The callback address exists only in .data, reached through a table.
         'data-callback': struct.pack('<IIIII',0xe59f3008,0xe5933000,0xe12fff33,0xef000003,BASE+0x2000)

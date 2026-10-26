@@ -215,7 +215,7 @@ def test_invalid_coverage_fails_before_tools_or_output(tmp_path,monkeypatch,bad)
     assert not (tmp_path/'output').exists()
 
 
-@pytest.mark.parametrize(('kind','expected'), [('arm',12),('blz-arm',12),('thumb',42),('vfp',0x40000000),('bss',0),('data-callback',42),('relative-callbacks',42)])
+@pytest.mark.parametrize(('kind','expected'), [('arm',12),('blz-arm',12),('thumb',42),('veneer',42),('pic-callback',42),('vfp',0x40000000),('bss',0),('data-callback',42),('relative-callbacks',42)])
 def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_tools,kind,expected):
     out,binary=build_original(tmp_path,kind,native_tools)
     result=subprocess.run([str(binary),str(out/'assets')],capture_output=True,text=True,timeout=15)
@@ -223,11 +223,13 @@ def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_too
     report=json.loads(result.stdout)
     assert report['process_exited'] and report['r0']==expected and report['native_instructions']>0
     assert report['interpreted_instructions']==0 and report['retail_qualified'] is False
-    if kind in ('arm','blz-arm','thumb','vfp','relative-callbacks'):
+    if kind in ('arm','blz-arm','thumb','veneer','pic-callback','vfp','relative-callbacks'):
         from unicorn import Uc,UC_ARCH_ARM,UC_MODE_ARM,UC_HOOK_INTR
-        from unicorn.arm_const import UC_ARM_REG_C1_C0_2,UC_ARM_REG_FPEXC,UC_ARM_REG_R0
+        from unicorn.arm_const import UC_ARM_REG_C1_C0_2,UC_ARM_REG_FPEXC,UC_ARM_REG_R0,UC_ARM_REG_SP
         reference=Uc(UC_ARCH_ARM,UC_MODE_ARM)
         reference.mem_map(BASE,0x4000)
+        reference.mem_map(0x0fff0000,0x10000)
+        reference.reg_write(UC_ARM_REG_SP,0x10000000)
         reference.mem_write(BASE,media.load(tmp_path/(kind+'.cxi'),include_code=True)['code'])
         reference.reg_write(UC_ARM_REG_C1_C0_2,0x00f00000)
         reference.reg_write(UC_ARM_REG_FPEXC,0x40000000)

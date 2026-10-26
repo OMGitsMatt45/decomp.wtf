@@ -15,6 +15,51 @@ extern "C" {
 
 fn run()->Result<(),Box<dyn std::error::Error>> {
     let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if args==["--vblank-wake"] {
+        use zakuro_core::{System,StepOutcome,CYCLES_PER_FRAME,kernel::{sync::ResetType,thread::{ThreadStatus,THREAD_EXIT_MAGIC}}};
+        let mut system=System::new(Config {clock:Some(0),..Config::default()});
+        let address=0x10002000;
+        system.memory.map(address,0x26000000,0x1000,Permission::RW,MemoryState::Code);
+        let (event,_)=system.kernel.create_event(ResetType::OneShot,"original vblank waiter");
+        system.services.gsp.shared_memory_address=address;
+        system.services.gsp.interrupt_event_object=Some(event);
+        let waiter=system.kernel.create_thread("original vblank waiter",THREAD_EXIT_MAGIC,0,0,0x20,0);
+        let thread=system.kernel.thread_mut(waiter);
+        thread.status=ThreadStatus::WaitSync;thread.wait_objects=vec![event];
+        let deadline=CYCLES_PER_FRAME*8;
+        if system.step(Some(deadline))!=StepOutcome::Ran || system.cpu.cycles!=CYCLES_PER_FRAME {
+            return Err(format!("blocked CPU skipped vertical blank: tick {} instead of {}",system.cpu.cycles,CYCLES_PER_FRAME).into());
+        }
+        if system.step(Some(deadline))!=StepOutcome::Ran || system.frames!=1
+            || system.kernel.thread(waiter).status!=ThreadStatus::Dead {
+            return Err("vertical blank failed to wake the blocked original thread".into());
+        }
+        println!("{}",serde_json::json!({"schema":"decomp.wtf.3ds-vblank-wake/v1","passed":true,
+            "frames":system.frames,"interpreted_instructions":system.interpreted_instructions}));
+        return Ok(());
+    }
+    if args.len()==2 && args[0]=="--gsp-reopen" {
+        use zakuro_core::kernel::{ipc::{CommandBuffer,Header,Descriptor},sync::ResetType};
+        let mut system=loader::load(&args[1],Config {find_recompiled:false,clock:Some(0),..Config::default()})?;
+        system.kernel.schedule(&mut system.cpu,0);
+        let command=CommandBuffer::new(system.cpu.cp15.thread_id_ro);
+        let (_event,event_handle)=system.kernel.create_event(ResetType::OneShot,"original GSP event");
+        let register=|system:&mut zakuro_core::System|->Result<u32,Box<dyn std::error::Error>> {
+            let header=Header::new(0x0013,1,2);
+            for (i,v) in [header.0,0,Descriptor::handles(1),event_handle].into_iter().enumerate() {command.set(&mut system.memory,i as u32,v);}
+            if !zakuro_core::services::gsp::handle(system,&command,header) {return Err("GSP registration is unimplemented".into());}
+            Ok(command.get(&mut system.memory,4))
+        };
+        let first=register(&mut system)?;
+        let original=system.kernel.resolve(first).ok_or("initial GSP shared memory is invalid")?;
+        if !system.kernel.handles.close(&mut system.kernel.objects,first) {return Err("failed to close the original GSP handle".into());}
+        let second=register(&mut system)?;
+        let reopened=system.kernel.resolve(second).ok_or("registration reused a closed GSP shared-memory handle")?;
+        if reopened!=original {return Err("GSP lost its service-owned shared memory across client closure".into());}
+        println!("{}",serde_json::json!({"schema":"decomp.wtf.3ds-gsp-reopen/v1","passed":true,"reopened":true,
+            "interpreted_instructions":system.interpreted_instructions}));
+        return Ok(());
+    }
     if args.len()==2 && args[0]=="--empty-cecd" {
         use zakuro_core::kernel::ipc::{CommandBuffer,Header};
         let mut system=loader::load(&args[1],Config {find_recompiled:false,clock:Some(0),..Config::default()})?;

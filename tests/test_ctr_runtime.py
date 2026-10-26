@@ -284,3 +284,19 @@ def test_vulkan_window_and_explicit_software_geometry(original_runtime):
                 assert report['window']['audio_output_open'],report['window']
     finally:
         source.write_text(text);build()
+
+
+def test_blocked_threads_receive_vertical_blank_before_a_large_outer_budget(original_runtime):
+    _project,_image,binary,_scenes,_build,_run=original_runtime
+    tool=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    report=json.loads(command([tool,'--vblank-wake']).stdout)
+    assert report['schema']=='decomp.wtf.3ds-vblank-wake/v1'
+    assert report['passed'] and report['frames']==1 and report['interpreted_instructions']==0
+
+
+def test_gsp_shared_memory_survives_client_handle_closure_and_reconnection(original_runtime):
+    _project,image,binary,_scenes,_build,_run=original_runtime
+    tool=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    report=json.loads(command([tool,'--gsp-reopen',image]).stdout)
+    assert report['schema']=='decomp.wtf.3ds-gsp-reopen/v1'
+    assert report['passed'] and report['reopened'] and report['interpreted_instructions']==0

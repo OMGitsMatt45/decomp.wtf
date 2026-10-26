@@ -99,6 +99,12 @@ def apply(root):
     replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
         '    let command = header.command_id();',
         '    if empty::handle(system,buffer,header) { return true; }\n    let command = header.command_id();')
+    replace(root, 'runtime/crates/zakuro-core/src/lib.rs',
+        '            let mut limit = deadline.unwrap_or(self.cpu.cycles + CYCLES_PER_FRAME);',
+        '            // A blocked client still needs the next LCD interrupt before the outer budget.\n'
+        '            let mut limit = deadline.unwrap_or(self.cpu.cycles + CYCLES_PER_FRAME)\n'
+        '                .min(self.next_frame_boundary);')
+    apply_gsp_lifetime(root)
     apply_graphics(root)
 
 
@@ -179,3 +185,36 @@ def apply_graphics(root):
     }
 
     pub fn set_interpolation(&mut self, on: bool) -> bool {''')
+
+
+def apply_gsp_lifetime(root):
+    """GSP owns its shared block; closing a client handle must not destroy it."""
+    root = Path(root)
+    replace(root, 'runtime/crates/zakuro-core/src/services/gsp.rs',
+        '    pub shared_memory_handle: Option<u32>,',
+        '    pub shared_memory_handle: Option<u32>,\n'
+        '    pub shared_memory_object: Option<crate::kernel::object::ObjectId>,')
+    replace(root, 'runtime/crates/zakuro-core/src/services/gsp.rs',
+        '''    if let Some(handle) = system.services.gsp.shared_memory_handle {
+        return handle;
+    }''',
+        '''    if let Some(object) = system.services.gsp.shared_memory_object {
+        if let Some(handle) = system.services.gsp.shared_memory_handle {
+            if system.kernel.resolve(handle) == Some(object) { return handle; }
+        }
+        // A service reconnection receives a live handle to the same block.
+        let handle = system.kernel.handles.create(&mut system.kernel.objects, object, "GSP shared memory");
+        system.services.gsp.shared_memory_handle = Some(handle);
+        return handle;
+    }''')
+    replace(root, 'runtime/crates/zakuro-core/src/services/gsp.rs',
+        '''    let handle = system
+        .kernel
+        .handles
+        .create(&mut system.kernel.objects, object, "GSP shared memory");''',
+        '''    system.kernel.objects.add_ref(object);
+    system.services.gsp.shared_memory_object = Some(object);
+    let handle = system
+        .kernel
+        .handles
+        .create(&mut system.kernel.objects, object, "GSP shared memory");''')

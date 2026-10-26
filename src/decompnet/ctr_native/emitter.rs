@@ -16,6 +16,66 @@ fn imported(modules:&[(cro::Module,Vec<u8>)], crs:Option<&cro::Module>, target:&
         .filter_map(|(_,tag)|target.code_address(*tag)).collect()
 }
 
+/// ARM linker veneers compute a Thumb entry without storing a pointer literal.
+/// Recognize the complete ADD Rd,pc,#1 / BX Rd pair; never scan arbitrary words
+/// as Thumb function pointers. Apply this to main text and relocated modules.
+fn interworking(program:&mut discover::Program) {
+    let text=&program.text;
+    for offset in (0..text.bytes.len().saturating_sub(8)).step_by(4) {
+        let first=u32::from_le_bytes(text.bytes[offset..offset+4].try_into().unwrap());
+        let second=u32::from_le_bytes(text.bytes[offset+4..offset+8].try_into().unwrap());
+        let register=(first>>12)&15;
+        if first&0xffff0fff==0xe28f0001 && register!=15 && second==(0xe12fff10|register) {
+            if let Some(target)=text.base.checked_add((offset+8) as u32) {
+                program.seeds.push((target|1,discover::Source::Hint));
+            }
+        }
+    }
+}
+
+/// Recover Thumb PIC callback pointers only from decoded instruction paths.
+/// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
+/// them. A branch, a write to Rt or an unknown gap ends the candidate.
+fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static str> {
+    interworking(program);
+    for _ in 0..8 {
+        let analysis=discover::analyze(program);
+        let text=&program.text;
+        let hints=program.seeds.iter().filter_map(|(at,source)|(*source==discover::Source::Hint).then_some(*at))
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut found=std::collections::BTreeSet::new();
+        for function in analysis.functions.values().filter(|f|f.mode==discover::Mode::Thumb) {
+            for &pc in &function.instructions {
+                let Some(op)=text.read16(pc) else {continue;};
+                if op&0xf800!=0x4800 {continue;}
+                let register=(op>>8)&7;
+                let Some(literal)=(pc+4 & !3).checked_add(u32::from(op&255)*4) else {continue;};
+                let Some(relative)=text.read32(literal) else {continue;};
+                for delta in [2,4,6,8] {
+                    let at=pc+delta;
+                    if function.instructions.binary_search(&at).is_err() {break;}
+                    let Some(next)=text.read16(at) else {break;};
+                    if next==0x4478|register {
+                        let target=at.wrapping_add(4).wrapping_add(relative);
+                        if target&1!=0 && text.contains(target&!1) && !hints.contains(&target)
+                            && !analysis.functions.get(&(target&!1)).is_some_and(|f|f.mode==discover::Mode::Thumb) {
+                            found.insert(target);
+                        }
+                        break;
+                    }
+                    let store=matches!(next&0xf800,0x6000|0x7000|0x8000|0x9000);
+                    let other_immediate=next&0xf800==0x2000 && (next>>8)&7!=register;
+                    let other_literal=next&0xf800==0x4800 && (next>>8)&7!=register;
+                    if !store && !other_immediate && !other_literal && !matches!(next,0x46c0|0xbf00) {break;}
+                }
+            }
+        }
+        if found.is_empty() {return Ok(analysis);}
+        program.seeds.extend(found.into_iter().map(|at|(at,discover::Source::Hint)));
+    }
+    Err("position-independent callback discovery exceeded eight passes")
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Qualification uses the pinned independent decoder as an oracle for the
@@ -87,7 +147,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or_else(||format!("CRO {} has no bounded executable segment",module.name))?;
         programs.push((Some(module.name.as_str()),program));
     }
-    let mut analyses=programs.iter().map(|(_,program)|discover::analyze(program)).collect::<Vec<_>>();
+    let mut analyses=programs.iter_mut().map(|(_,program)|analyze(program)).collect::<Result<Vec<_>,_>>()?;
     for analysis in &mut analyses {
         if boundaries {
             // Every scheduler boundary, including relocated modules, must be
