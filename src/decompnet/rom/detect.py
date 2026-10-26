@@ -28,6 +28,7 @@ class Picked:
 
 def _program(data: bytes, name: str = "") -> Picked | None:
     platforms.require(platforms.removed_input(data[:0x440], len(data)), RomError)
+    _development_input(data)
     if gba.is_gba(data):
         return Picked("gba", data, "rom.gba", gba.read_info(data), False)
     if data[:8] == b"PS-X EXE":
@@ -39,13 +40,21 @@ def _program(data: bytes, name: str = "") -> Picked | None:
     return None
 
 
+def _development_input(head):
+    from ..ctr_native.media import recognizable
+    if recognizable(head):
+        raise RomError('3DS support is in development. Use decomp pc ctr-inspect, or the experimental pc ctr-probe/ctr-runtime projects; a playable 3DS game export is not available yet.')
+
+
 def identify(src: bytes | Path, name: str = "") -> Picked:
     """What the user picked: a ROM or program (bytes or a file), or a disc image (read from the file in place)."""
     if isinstance(src, (str, Path)):
         path = Path(src)
         name = name or path.name
         with path.open('rb') as source:
-            platforms.require(platforms.removed_input(source.read(0x440), path.stat().st_size), RomError)
+            head = source.read(0x440)
+            platforms.require(platforms.removed_input(head, path.stat().st_size), RomError)
+            _development_input(head)
         if path.suffix.lower() == ".cue":
             from . import psx_media
             media = psx_media.cue(path)

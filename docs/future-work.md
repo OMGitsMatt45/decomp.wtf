@@ -82,7 +82,16 @@ ARM/Thumb C, guarded RAM variants, adaptive GPU rendering, audio, controls and
 cartridge saves. Emerald's documented save/reload and daily-clock paths execute
 without interpretation, and the owner reports the original GPU fixtures passing
 on Intel Iris Xe. Broader compatibility and the owner's playthrough remain separate.
-3DS and Switch remain planned and need import and runtime integration. GB/GBC
+3DS work includes [decrypted-image validation and native source/runtime projects](3ds-native.md).
+Original ARM/Thumb/VFP programs and memory/event/IPC/ExeFS services execute from
+translated C. A pinned MIT source runtime supplies a Vulkan geometry renderer and
+adaptive two-screen window with keyboard/touch, host audio and controllers.
+An original native save counter persists across launches, preserves other save
+files and rejects corruption without reformatting the archive.
+Retail CRO/source coverage, DSP/save qualification and physical device acceptance remain;
+the 3DS backend is still in development.
+Further console additions, including Switch, are paused while the existing
+outputs and 3DS reach the standalone source-project goal. GB/GBC
 support has been removed; the previous assembly implementation remains in Git
 history. Other console plans are deferred.
 

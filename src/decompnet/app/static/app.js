@@ -225,7 +225,7 @@ $("cancelPick").onclick = resetDrop;
 
 /* What the user dropped, from its first bytes (nothing is uploaded until they confirm). */
 const PLATFORM_NAME = { psx: "PlayStation", ps2: "PlayStation 2", playstation: "PlayStation 1 or 2",
-  gba: "Game Boy Advance", nds: "Nintendo DS" };
+  gba: "Game Boy Advance", nds: "Nintendo DS", "3ds": "Nintendo 3DS" };
 const CW_PACK = {
   nds: { id: "mwccarm", text: "Install CodeWarrior for DS, the compilers DS games were built with (about 50 MB). It's proprietary software, kept by the decomp community: only if you accept that." },
 };
@@ -245,6 +245,7 @@ function identifyHead(head, file) {
   const ascii = (a, b) => text(a, b).split("\0")[0].replace(/[^\x20-\x7e]/g, "").trim();
   const stem = file.name.replace(/\.[^.]*$/, "");
   const base = { title: stem, size: file.size };
+  if (["NCCH", "NCSD"].includes(text(0x100, 0x104))) return { ...base, platform: "3ds", order: text(0x100, 0x104) + " image" };
   if (["\x80\x37\x12\x40", "\x37\x80\x40\x12", "\x40\x12\x37\x80"].includes(text(0, 4))) return { ...base, platform: "n64" };
   if (head.length >= 0x144 && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b") return null;
   if (text(0, 8) === "PS-X EXE") return { ...base, platform: "psx", order: "PS-X EXE", entry: dv.getUint32(0x10, true) };
@@ -285,6 +286,7 @@ function notSupported(head, file) {
   if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA and PlayStation 1/2 games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
+  if (["3ds", "cci", "cxi", "cia", "3dsx"].includes(ext)) return "3DS PC source requires a decrypted NCCH/CXI or NCSD/CCI image. CIA installation and 3DSX relocation are not supported.";
   if (["gb", "gbc"].includes(ext) || (head.length >= 0x10c && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b")) return "Game Boy and Game Boy Color support has been removed.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";
   if (["nes", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Starting an assembly or C project from a ROM for that console isn't implemented yet.";
@@ -312,12 +314,12 @@ async function pickFile(file) {
   const p = info.platform;
   const facts = [["Platform", PLATFORM_NAME[p]], ["Format", info.order], ["Size", MB(info.size)],
        info.code ? ["Game ID", info.code] : ["Entry", info.entry != null ? hex8(info.entry) : "from the disc"],
-       ["Project", info.bootUtility ? "GNU boot assembly" : p === "nds" ? "PC source or DS reconstruction" : p === "gba" ? "luvdis" : "splat"]];
+       ["Project", info.bootUtility ? "GNU boot assembly" : p === "3ds" ? "Experimental native PC source" : p === "nds" ? "PC source or DS reconstruction" : p === "gba" ? "luvdis" : "splat"]];
   $("romFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
   const level = platformStatus(p);
   $("romStatus").hidden = !level;
   $("romStatus").className = `plat-status ${level || ""}`;
-  $("romStatus").innerHTML = level === "recommended"
+  $("romStatus").innerHTML = p === "3ds" ? "<b>Experimental PC output.</b> Generates editable game code and a desktop runtime. Retail gameplay still needs validation for your image." : level === "recommended"
     ? `<b>★ Recommended platform.</b> The most tested path to a full decomp you can port and mod.`
     : `<b>Beta.</b> ${esc(PLATFORM_NAME[p] || "This platform")} works and is tested on homemade games, less so on real ones yet. Problems are worth <a href="https://github.com/i12bp8/decomp.wtf/issues" target="_blank" rel="noopener">reporting</a>.`;
   $("dsOutput").value = "pc";
@@ -331,7 +333,7 @@ async function pickFile(file) {
 }
 
 function nativeRenderers(select, platform) {
-  const gpu = platform === "ps2" ? "vulkan" : "opengl", previous = select.value;
+  const gpu = ["ps2", "3ds"].includes(platform) ? "vulkan" : "opengl", previous = select.value;
   if (select.dataset.gpu !== gpu) {
     select.innerHTML = `<option value="auto">GPU when available (${gpu === "vulkan" ? "Vulkan" : "OpenGL 3.3"})</option><option value="${gpu}">Require GPU rendering</option><option value="software">Software compatibility mode</option>`;
     select.value = ["auto", gpu, "software"].includes(previous) ? previous : "auto";
@@ -343,11 +345,12 @@ function setupCompilers(info) {
   const cw = S.st?.codewarrior || { installed: false, ds_installed: false, gc: [], wii: [], ds: [] };
   $("compilerRow").hidden = false; note.hidden = true; $("mwConsent").hidden = true; $("mwAccept").checked = false;
   $("dsInputRow").hidden = p !== "nds" || !!info.bootUtility;
-  $("dsOutputRow").hidden = !["nds", "psx", "playstation", "ps2", "gba"].includes(p) || !!info.bootUtility;
+  $("dsOutputRow").hidden = !["nds", "psx", "playstation", "ps2", "gba", "3ds"].includes(p) || !!info.bootUtility;
+  $("dsOutput").querySelector('option[value="matching"]').disabled = p === "3ds";
+  if (p === "3ds") $("dsOutput").value = "pc";
   const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
   $("dsSaveRow").hidden = !nativePC || p !== "nds";
   $("dsVideoRows").hidden = !nativePC;
-  $("dsScreenRow").hidden = p !== "nds";
   $("psxAdditionalDiscsRow").hidden = !nativePC || !["psx", "playstation"].includes(p);
   $("ps2ProfileRow").hidden = !nativePC || p !== "ps2";
   nativeRenderers($("dsRenderer"), p);
@@ -361,7 +364,7 @@ function setupCompilers(info) {
   else if (nativePC) {
     $("compilerRow").hidden = true;
     note.hidden = false;
-    note.textContent = "Generates a standalone Windows/Linux C++ project. No console matching compiler is needed. The pinned source tools are installed automatically.";
+    note.textContent = "Generates a standalone Windows/Linux source project. No console matching compiler is needed. The pinned source tools are installed automatically.";
   }
   else if (p === "psx") fillCompilers(select, "gcc-2.7.2-psx", "PS1");
   else if (p === "ps2") fillCompilers(select, "ee-gcc-2.96", "PS2");
@@ -388,14 +391,6 @@ function updateAnalyse() {
 $("mwAccept").addEventListener("change", updateAnalyse);
 $("dsOutput").onchange = () => { if (picked) setupCompilers(picked.info); updateAnalyse(); };
 $("dsSaveType").onchange = updateAnalyse;
-for (const prefix of ["ds", "pc"]) {
-  $(`${prefix}ScreenMode`).onchange = () => {
-    if ($(`${prefix}ScreenMode`).value === "unified" && $(`${prefix}Renderer`).value === "software") $(`${prefix}Renderer`).value = "auto";
-  };
-  $(`${prefix}Renderer`).onchange = () => {
-    if ($(`${prefix}Renderer`).value === "software") $(`${prefix}ScreenMode`).value = "dual";
-  };
-}
 
 function fillDsSaves(select,code) {
   const chips = [["", "Choose the game's save chip"], ["eeprom512b", "EEPROM 512 bytes"],
@@ -495,7 +490,7 @@ $("analyse").onclick = async () => {
   const dsFormat = !$("dsInputRow").hidden ? `&ds_input_format=${encodeURIComponent($("dsInputFormat").value)}` : "";
   const nativePC = !$("dsOutputRow").hidden && $("dsOutput").value === "pc";
   const additionalDiscs = $("psxAdditionalDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const pcOutput = nativePC ? `&output=pc&pc_platform=${picked.info.platform === "nds" ? "nds" : picked.info.platform === "ps2" ? "ps2" : picked.info.platform === "gba" ? "gba" : "psx"}&ps2_profile=${encodeURIComponent($("ps2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(additionalDiscs))}&save_type=${encodeURIComponent(picked.info.platform === "nds" ? $("dsSaveType").value : "auto")}&renderer=${encodeURIComponent($("dsRenderer").value)}&screen_mode=${encodeURIComponent($("dsScreenMode").value)}` : "";
+  const pcOutput = nativePC ? `&output=pc&pc_platform=${["nds", "ps2", "gba", "3ds"].includes(picked.info.platform) ? picked.info.platform : "psx"}&ps2_profile=${encodeURIComponent($("ps2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(additionalDiscs))}&save_type=${encodeURIComponent(picked.info.platform === "nds" ? $("dsSaveType").value : "auto")}&renderer=${encodeURIComponent($("dsRenderer").value)}` : "";
   let layoutQuery = "";
   const layoutFile = !$("romLayoutRow").hidden && $("romLayoutFile").files[0];
   if (layoutFile) {
@@ -512,14 +507,13 @@ $("pathPick").onclick = (e) => {
   e.stopPropagation();
   const body = dialog("Use a file on this computer", `<p class="muted">For big disc images: decomp.wtf reads the file where it is instead of copying it through the browser.</p>
     <label class="field"><span>Path to the game file</span><input id="ppPath" class="mono" placeholder="/home/me/games/my-game.iso"></label>
-    <label class="field"><span>Output</span><select id="ppTarget"><option value="psx">PS1 native PC source project</option><option value="nds">DS native PC source project</option><option value="ps2">PS2 native PC source project (experimental)</option><option value="gba">GBA native PC source project (experimental)</option><option value="matching">Console reconstruction</option></select></label>
+    <label class="field"><span>Output</span><select id="ppTarget"><option value="psx">PS1 native PC source project</option><option value="nds">DS native PC source project</option><option value="ps2">PS2 native PC source project (experimental)</option><option value="gba">GBA native PC source project (experimental)</option><option value="3ds">3DS native PC source project (experimental)</option><option value="matching">Console reconstruction</option></select></label>
     <label class="field" id="ppPS2ProfileRow" hidden><span>Reviewed PS2 code map</span><input id="ppPS2Profile" class="mono" placeholder="Local path to profile.json"><small>Required for stripped retail code. The map must match this original input.</small></label>
     <label class="field" id="ppDiscRow"><span>Additional PS1 discs, in order</span><textarea id="ppDiscs" rows="2" placeholder="One path per line, starting with disc 2"></textarea><small>CUE tracks stay beside their CUE sheet. A single M3U playlist can list the complete game. PS1 runtime terms are noncommercial.</small></label>
     <label class="field" id="ppRenderRow"><span>PC rendering</span><select id="ppRenderer"><option value="auto">GPU when available</option><option value="opengl">Require OpenGL GPU rendering</option><option value="software">Software compatibility mode</option></select></label>
     <div id="ppDS" hidden>
       <label class="field"><span>Cartridge save chip</span><select id="ppSaveType"></select></label>
       <label class="field"><span>DS input format</span><select id="ppInputFormat"><option value="auto">Detect automatically</option><option value="decrypted">Already decrypted</option></select></label>
-      <label class="field"><span>DS picture</span><select id="ppScreen"><option value="dual">Original two screens</option><option value="unified">One extended 3D camera</option></select></label>
     </div>
     <label class="field" id="ppLayoutRow" hidden><span>Reviewed PS1 layout (optional)</span><input id="ppLayout" type="file" accept=".json,application/json"></label>
     <label class="check"><input type="checkbox" id="ppOwn"><span>This is my own copy of this game, obtained legally. The results stay with me for my own use.</span></label>
@@ -537,8 +531,6 @@ $("pathPick").onclick = (e) => {
     $("ppGo").disabled = !$("ppOwn").checked || (target === "nds" && !$("ppSaveType").value);
   };
   for (const id of ["ppTarget", "ppOwn", "ppSaveType"]) $(id).onchange = updatePathOptions;
-  $("ppScreen").onchange = () => { if ($("ppScreen").value === "unified" && $("ppRenderer").value === "software") $("ppRenderer").value = "auto"; };
-  $("ppRenderer").onchange = () => { if ($("ppRenderer").value === "software") $("ppScreen").value = "dual"; };
   body.querySelector("#ppGo").onclick = async () => {
     const path = $("ppPath").value.trim();
     if (!path) return;
@@ -547,7 +539,7 @@ $("pathPick").onclick = (e) => {
     if (target !== "matching") {
       const discs = target === "psx" ? $("ppDiscs").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [];
       if (discs.length > 15) return toast("A game can contain up to 16 ordered discs.", "err");
-      query = `&output=pc&pc_platform=${target}&ps2_profile=${encodeURIComponent($("ppPS2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(discs))}&renderer=${encodeURIComponent($("ppRenderer").value)}&save_type=${encodeURIComponent(target === "nds" ? $("ppSaveType").value || "auto" : "auto")}&ds_input_format=${encodeURIComponent($("ppInputFormat").value)}&screen_mode=${encodeURIComponent($("ppScreen").value)}`;
+      query = `&output=pc&pc_platform=${target}&ps2_profile=${encodeURIComponent($("ppPS2Profile").value.trim())}&discs=${encodeURIComponent(JSON.stringify(discs))}&renderer=${encodeURIComponent($("ppRenderer").value)}&save_type=${encodeURIComponent(target === "nds" ? $("ppSaveType").value || "auto" : "auto")}&ds_input_format=${encodeURIComponent($("ppInputFormat").value)}`;
     }
     const file = target === "matching" && $("ppLayout").files[0];
     if (file) {
@@ -745,7 +737,7 @@ function markPlatforms() {
   document.querySelectorAll("#platRow [data-p]").forEach((s) => {
     const rec = platformStatus(s.dataset.p) === "recommended";
     s.classList.toggle("rec", rec);
-    s.title = rec ? "Recommended: the most tested path to a full decomp you can port and mod" : "Beta: works, less tested on real games";
+    s.title = rec ? "Recommended: the most tested path to a full decomp you can port and mod" : platformStatus(s.dataset.p) === "development" ? "In development: native CPU source probes; playable game output is not available yet" : "Beta: works, less tested on real games";
     if (rec && !s.querySelector(".rec-mark")) s.insertAdjacentHTML("afterbegin", `<span class="rec-mark">★</span>`);
   });
   $("platLegend").hidden = !any;
@@ -2426,7 +2418,6 @@ function renderSource(ov) {
   $("pcVideoRows").hidden = !ov.outputs?.pc?.available;
   $("pcPS2ProfileRow").hidden = ov.platform !== "ps2" || !ov.outputs?.pc?.available;
   nativeRenderers($("pcRenderer"), ov.platform);
-  $("pcScreenRow").hidden = ov.platform !== "nds";
   if ($("pcSaveType").dataset.project !== ov.slug) {
     fillDsSaves($("pcSaveType"),ov.rom?.game_code || ov.version);
     $("pcSaveType").dataset.project = ov.slug;
@@ -2512,7 +2503,7 @@ $("pcExport").onclick = async () => {
   if (!$("pcSaveRow").hidden && !saveType) return toast("Choose the cartridge save chip for this game.", "err");
   button.disabled = true;
   try {
-    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: S.ov.platform === "nds" ? saveType || "auto" : "auto", renderer: $("pcRenderer").value, screen_mode: $("pcScreenMode").value, ps2_profile: $("pcPS2Profile").value.trim() } });
+    const { job } = await api("/api/export", { method: "POST", body: { slug: S.slug, format: "pc", save_type: S.ov.platform === "nds" ? saveType || "auto" : "auto", renderer: $("pcRenderer").value, ps2_profile: $("pcPS2Profile").value.trim() } });
     const result = await followJob(job);
     $("expLog").hidden = false;
     $("expLog").textContent = `PC project: ${result.path}\nIntegrity verified. Host build and gameplay validation are separate.`;

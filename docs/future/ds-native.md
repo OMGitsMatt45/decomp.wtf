@@ -21,12 +21,12 @@ reloaded its prologue save, including independent save interoperability.
 Combat, later saves and playthrough acceptance belong to the user. No DQIV code or
 mobile OBB dependency is adopted.
 
-Common output now includes optional OpenGL geometry rendering at the current
-drawable resolution and one extended 3D camera. Window sizing derives from the
-user's monitor; resizing, high-DPI changes and fullscreen update rendering
-without regeneration. The original screens remain available for menus, touch
-and guarded effects. See the [runtime guide](../nds-native-runtime.md) for the
-camera's update-rate/culling limits and original GPU qualification fixtures.
+Common output includes optional OpenGL geometry rendering at the current
+drawable resolution, retaining both original LCDs and lower-screen touch.
+Window sizing derives from the user's monitor; resizing, high-DPI changes and
+fullscreen update rendering without regeneration. Combined-camera features
+belong in later game-specific output work. See the
+[runtime guide](../nds-native-runtime.md) for original GPU qualification.
 
 ## Product
 

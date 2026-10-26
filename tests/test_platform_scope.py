@@ -143,7 +143,7 @@ const start = source.indexOf('const PLATFORM_NAME =');
 const stop = source.indexOf('async function pickFile(', start);
 assert(start >= 0 && stop > start);
 eval(source.slice(start, stop) + `
-assert.deepEqual(Object.keys(PLATFORM_NAME).sort(), ['gba','nds','playstation','ps2','psx']);
+assert.deepEqual(Object.keys(PLATFORM_NAME).sort(), ['3ds','gba','nds','playstation','ps2','psx']);
 for (const flag of [0, 0x80, 0xc0]) {
   const raw = new Uint8Array(0x8000);
   raw.set([0xce,0xed,0x66,0x66,0xcc,0x0d,0x00,0x0b], 0x104);
@@ -158,6 +158,10 @@ const gba = new Uint8Array(0x8000);
 gba[3] = 0xea; gba[0xb2] = 0x96; gba[0xbd] = (-(0x96 + 0x19)) & 0xff;
 assert.equal(identifyHead(gba, {name:'game.gba',size:gba.length}).platform, 'gba');
 assert.equal(notSupported(gba, {name:'game.gba'}), null);
+for (const magic of ['NCCH','NCSD']) {
+  const raw = new Uint8Array(0x440); raw.set(Array.from(magic, c => c.charCodeAt(0)), 0x100);
+  assert.equal(identifyHead(raw, {name:'unnamed.bin',size:raw.length}).platform, '3ds');
+}
 `);
 ''',str(script)],check=True)
 

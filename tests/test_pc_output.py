@@ -102,11 +102,11 @@ def _game_manifest(root, *, platform='nds'):
     data.pop('output_kind')
     data.pop('qualification')
     data['platform'] = platform
-    data['presentation'] = pc.presentation(screens=2, screen_mode='dual') if platform == 'nds' else pc.presentation()
+    data['presentation'] = pc.presentation(screens=2, screen_mode='dual') if platform in ('nds','3ds') else pc.presentation()
     return path, data
 
 
-@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba'])
+@pytest.mark.parametrize('platform', ['nds', 'psx', 'ps2', 'gba', '3ds'])
 def test_same_adaptive_gpu_contract_for_every_remaining_console(tmp_path, platform):
     path, data = _game_manifest(tmp_path, platform=platform)
     path.write_text(json.dumps(data))
@@ -150,7 +150,7 @@ def test_game_export_cannot_omit_presentation(tmp_path):
 
 def test_single_screen_console_cannot_claim_ds_screen_merger(tmp_path):
     path, data = _game_manifest(tmp_path, platform='psx')
-    data['presentation'] = pc.presentation(screens=2, screen_mode='unified')
+    data['presentation'] = pc.presentation(screens=2, screen_mode='dual')
     path.write_text(json.dumps(data))
     with pytest.raises(pc.PCError, match='screen count'):
         pc.verify(tmp_path)

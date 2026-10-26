@@ -1,0 +1,87 @@
+name: 3DS native source and bundled runtime
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/decompnet/ctr_native/**'
+      - 'src/decompnet/pc*.py'
+      - 'src/decompnet/platforms.py'
+      - 'src/decompnet/rom/detect.py'
+      - 'src/decompnet/nds_native/hash.hpp'
+      - 'tools/ctr_fixture.py'
+      - 'tools/qualify_ctr_hardware.py'
+      - 'tools/qualify-3ds-hardware.ps1'
+      - 'tools/fixtures/ctr-services.*'
+      - 'tools/fixtures/ctr-save.*'
+      - 'tools/fixtures/ctr-arm-code.blz.hex'
+      - 'tests/test_ctr_native.py'
+      - 'tests/test_ctr_runtime.py'
+      - 'tests/test_ctr_romfs.py'
+      - 'tests/test_ctr_hardware.py'
+      - 'tests/test_ctr_native_app.py'
+      - 'src/decompnet/app/**'
+      - '.github/workflows/3ds-native.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-source:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      DECOMP_TEST_3DS_NATIVE: '1'
+      DECOMP_TEST_3DS_RUNTIME: '1'
+      DECOMP_UPDATES: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Validate original images and build/execute ARM, Thumb and VFP native source
+        run: uv run --no-sync python -m pytest -q tests/test_ctr_native.py tests/test_ctr_romfs.py tests/test_ctr_hardware.py tests/test_ctr_native_app.py --junitxml=ctr-source-results.xml
+      - name: Install Linux software Vulkan and virtual display
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 xvfb libxkbcommon-x11-0 libasound2-dev libudev-dev
+      - name: Select the installed software Vulkan driver
+        if: runner.os == 'Linux'
+        run: |
+          python - <<'PY'
+          import glob,os
+          paths=sorted(glob.glob('/usr/share/vulkan/icd.d/lvp_icd*.json'))
+          assert paths, 'Mesa lavapipe driver manifest was not installed'
+          with open(os.environ['GITHUB_ENV'],'a') as stream:
+              stream.write('VK_ICD_FILENAMES='+paths[0]+'\n')
+          print('Selected '+paths[0])
+          PY
+      - name: Build independent runtime and exercise services, strict guards and source editing on Windows
+        if: runner.os == 'Windows'
+        run: uv run --no-sync python -m pytest -q tests/test_ctr_runtime.py --junitxml=ctr-runtime-results.xml
+      - name: Exercise runtime, Vulkan geometry, adaptive two-screen presentation on Linux
+        if: runner.os == 'Linux'
+        env:
+          DECOMP_TEST_3DS_GPU: '1'
+          DECOMP_TEST_3DS_WINDOW: '1'
+          DECOMP_TEST_3DS_AUDIO_NULL: '1'
+        run: xvfb-run -a uv run --no-sync python -m pytest -q tests/test_ctr_runtime.py --junitxml=ctr-runtime-results.xml
+      - name: Require every native source case without skips
+        run: >-
+          uv run --no-sync python -c "import xml.etree.ElementTree as E;
+          roots=[E.parse(p).getroot() for p in ('ctr-source-results.xml','ctr-runtime-results.xml')];
+          assert sum(int(s.get('skipped','0')) for r in roots for s in r.iter('testsuite'))==0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctr-source-${{ matrix.os }}
+          path: |
+            ctr-source-results.xml
+            ctr-runtime-results.xml

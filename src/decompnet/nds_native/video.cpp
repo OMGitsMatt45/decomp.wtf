@@ -156,9 +156,6 @@ struct Display::Impl {
     GLuint scene_program=0,flat_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0;
     std::map<std::pair<uint32_t,uint32_t>,GLuint> textures;
     std::string renderer_name="software",device_name;
-    Scene unified_scene;
-    std::array<uint32_t,256*192> unified_ui{};
-    bool have_bottom=false,unified_active=false,unified_on_top=false,secondary_visible=true;
     Rect touch_rect;
     int width=0,height=0,display_index=0;
     uint64_t draws=0;
@@ -167,8 +164,6 @@ struct Display::Impl {
     explicit Impl(Options value):options(std::move(value)) {
         try {
         check(options.renderer=="auto"||options.renderer=="opengl"||options.renderer=="software","renderer must be auto, opengl or software");
-        check(options.screen_mode=="dual"||options.screen_mode=="unified","screen mode must be dual or unified");
-        check(options.renderer!="software"||options.screen_mode!="unified","the unified camera requires OpenGL rendering");
         SDL_Point pointer{};SDL_GetGlobalMouseState(&pointer.x,&pointer.y);
         display_index=std::max(0,SDL_GetPointDisplayIndex(&pointer));
         if(options.width<=0||options.height<=0) {
@@ -182,7 +177,7 @@ struct Display::Impl {
             catch(const std::exception& error) {
                 cleanup();
                 if(options.renderer=="opengl")throw;
-                options.screen_mode="dual";device_name.clear();
+                device_name.clear();
                 std::cerr<<"OpenGL unavailable; using software screens: "<<error.what()<<'\n';
             }
         }
@@ -328,38 +323,7 @@ struct Display::Impl {
         SDL_GL_GetDrawableSize(window,&width,&height);if(width<=0||height<=0)return;
         const bool has_3d=frame.scene&&frame.scene->supported&&!frame.scene->order.empty()&&frame.three_d&&
             std::any_of(frame.three_d,frame.three_d+256*192,[](uint8_t x){return x!=0;});
-        unified_active=options.screen_mode=="unified"&&has_3d;
         gl->Viewport(0,0,width,height);gl->DepthMask(GL_TRUE);gl->ClearDepth(1);gl->ClearColor(0,0,0,1);gl->Clear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        if(unified_active) {
-            // Prefer one bottom camera for alternating-camera games. Retain its
-            // last completed scene during the other camera's frame; no guessed
-            // camera offsets or invented 60 Hz game updates are applied.
-            if(!frame.on_top||!have_bottom) {
-                unified_scene=*frame.scene;unified_on_top=frame.on_top;
-                const auto* native=frame.on_top?frame.top:frame.bottom;
-                for(unsigned i=0;i<unified_ui.size();++i)unified_ui[i]=
-                    frame.three_d[i]&&frame.scene->safe[i]?0:native[i];
-                if(!frame.on_top)have_bottom=true;
-            }
-            const auto clear=unified_scene.clear_color;
-            gl->ClearColor(float(clear&31)/31,float((clear>>5)&31)/31,float((clear>>10)&31)/31,1);gl->Clear(GL_COLOR_BUFFER_BIT);
-            const float h=std::min(height/2.0F,width*192.0F/256),w=h*256/192;
-            const Rect original{(width-w)/2,unified_on_top?height-h:0,w,h};
-            geometry(unified_scene,original,nullptr);flat(unified_ui.data(),256,192,original);
-            touch_rect=unified_on_top?Rect{}:original;
-            // Generic output cannot identify every game's secondary-screen UI.
-            // Keep it accessible in an inset; F7 can hide it after title review.
-            if(secondary_visible) {
-                const float margin=std::min(16.0F,std::min(width,height)/16.0F);
-                const float sh=std::min(height/4.0F,(width-2*margin)*192/256),sw=sh*256/192;
-                const Rect secondary{width-sw-margin,height-sh-margin,sw,sh};
-                flat(unified_on_top?frame.bottom:frame.top,256,192,secondary);
-                if(unified_on_top)touch_rect=secondary;
-            }
-        } else {
-            // Leaving a scene (a menu, unsupported effect or 2D game) discards
-            // its retained camera; never display stale scenery over that UI.
-            have_bottom=false;
             const auto total=fit(float(width),float(height),256.0F/384);
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
@@ -368,7 +332,6 @@ struct Display::Impl {
                 for(unsigned i=0;i<mask.size();++i)mask[i]=frame.three_d[i]&&frame.scene->safe[i]?255:0;
                 geometry(*frame.scene,frame.on_top?top:bottom,mask.data());
             }
-        }
         check(gl->GetError()==GL_NO_ERROR,"OpenGL presentation failed");
         if(options.readback) {
             last_pixels.resize(size_t(width)*height);
@@ -388,8 +351,6 @@ void Display::key(const SDL_KeyboardEvent& event) {
         const bool full=(SDL_GetWindowFlags(impl_->window)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0;
         check(SDL_SetWindowFullscreen(impl_->window,full?0:SDL_WINDOW_FULLSCREEN_DESKTOP)==0,SDL_GetError());
     }
-    if(event.keysym.scancode==SDL_SCANCODE_F6&&impl_->gl)impl_->options.screen_mode=impl_->options.screen_mode=="dual"?"unified":"dual";
-    if(event.keysym.scancode==SDL_SCANCODE_F7)impl_->secondary_visible=!impl_->secondary_visible;
 }
 bool Display::touch(int x,int y,int& ds_x,int& ds_y) const {
     if(impl_->software) {
@@ -408,6 +369,5 @@ int Display::width() const{return impl_->width;}
 int Display::height() const{return impl_->height;}
 const std::string& Display::renderer() const{return impl_->renderer_name;}
 const std::string& Display::device() const{return impl_->device_name;}
-bool Display::unified() const{return impl_->unified_active;}
 uint64_t Display::polygons_drawn() const{return impl_->draws;}
 }

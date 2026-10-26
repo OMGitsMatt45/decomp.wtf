@@ -1,0 +1,199 @@
+//! Independent host for the generated C and source-shipped 3DS runtime.
+use std::ffi::c_void;
+use std::io::Read;
+use std::path::PathBuf;
+use std::ptr::addr_of;
+use sha2::{Digest, Sha256};
+use zakuro_core::{loader, Config, StepOutcome};
+
+include!("identity.rs");
+#[cfg(feature="desktop")]
+mod desktop;
+#[cfg(feature="desktop")]
+mod audio;
+#[cfg(feature="desktop")]
+mod gamepad;
+#[cfg(feature="desktop")]
+mod screens;
+
+fn advance(system:&mut zakuro_core::System,deadline:u64)->Option<&'static str> {
+    let outcome=system.step(Some(deadline));
+    // Even a service that exits must not hide unsupported operations in the
+    // same step. These errors remain visible with compatibility enabled.
+    if !system.unimplemented_svcs.is_empty() || !system.services.unimplemented.is_empty() {
+        return Some("unimplemented-service");
+    }
+    match outcome {
+        StepOutcome::Ran=>None, StepOutcome::Exited=>Some("exit-process"), StepOutcome::Faulted=>Some("fault")
+    }
+}
+
+extern "C" {
+    static recomp_abi: u32;
+    static recomp_generation: u32;
+    static recomp_entry_count: u32;
+    static recomp_entries: u8;
+    static recomp_module_count: u32;
+    static recomp_modules: u8;
+    static recomp_origins: u8;
+}
+
+fn identity(path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+    let mut file = std::fs::File::open(path)?;
+    if file.metadata()?.len() != INPUT_SIZE { return Err("original input size differs".into()); }
+    let mut hash = Sha256::new();
+    let mut bytes = [0u8; 65536];
+    loop {
+        let count = file.read(&mut bytes)?;
+        if count == 0 { break; }
+        hash.update(&bytes[..count]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+fn run() -> Result<i32, Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let Some(input) = args.next() else {
+        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--renderer auto|vulkan|software] [--mute] [--cycles N] [--data DIRECTORY] [--clock-ms N] [--capture-guest-screens NEW_DIRECTORY] [--allow-interpreter] [--gpu]".into());
+    };
+    let input = PathBuf::from(input);
+    let mut cycles: u64 = 1_000_000;
+    let mut data = PathBuf::from("user");
+    let mut fallback = false;
+    let mut gpu = false;
+    let mut scale = 1;
+    let mut window = false;
+    let mut frame_limit:Option<u64> = None;
+    let mut explicit_cycles = false;
+    let mut mute = false;
+    let mut clock = None;
+    let mut capture:Option<PathBuf> = None;
+    let mut renderer=DEFAULT_RENDERER.to_owned();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--cycles" => {cycles = args.next().ok_or("--cycles needs a value")?.parse()?;explicit_cycles=true;}
+            "--data" => data = args.next().ok_or("--data needs a directory")?.into(),
+            "--allow-interpreter" => fallback = true,
+            "--gpu" => gpu = true,
+            "--renderer" => renderer=args.next().ok_or("--renderer needs auto, vulkan or software")?,
+            "--scale" => scale = args.next().ok_or("--scale needs a value")?.parse()?,
+            "--window" => window = true,
+            "--mute" => mute = true,
+            "--clock-ms" => clock = Some(args.next().ok_or("--clock-ms needs a value")?.parse::<u64>()?),
+            "--capture-guest-screens" => capture=Some(args.next().ok_or("--capture-guest-screens needs a new directory")?.into()),
+            "--window-frames" => frame_limit=Some(args.next().ok_or("--window-frames needs a value")?.parse()?),
+            _ => return Err(format!("unknown option: {arg}").into()),
+        }
+    }
+    if !(1..=10_000_000_000).contains(&cycles) { return Err("cycle budget must be 1 through 10000000000".into()); }
+    if !matches!(renderer.as_str(),"auto"|"vulkan"|"software") {return Err("renderer must be auto, vulkan or software".into());}
+    if gpu && renderer=="software" {return Err("--gpu conflicts with --renderer software".into());}
+    gpu=gpu || renderer=="vulkan";
+    if scale==0 {return Err("render scale must be positive".into());}
+    if frame_limit==Some(0) {return Err("window frame limit must be positive".into());}
+    if clock.is_some_and(|value|value>u64::MAX-100_000) {return Err("clock leaves no room for the cycle budget".into());}
+    if !window && frame_limit.is_some() {
+        return Err("--window-frames requires --window".into());
+    }
+    if window && !cfg!(feature="desktop") {return Err("rebuild with CTR_DESKTOP=ON for --window".into());}
+    if identity(&input)? != INPUT_SHA256 { return Err("original input SHA-256 differs; use the exported revision".into()); }
+    if let Some(directory)=capture.as_ref() {std::fs::create_dir(directory)?;}
+    // SAFETY: CMake links these exact C tables and their ABI. Code provenance
+    // guards stay enabled for relocated or modified executable memory.
+    let code = unsafe {
+        zakuro_core::recompiled::Linked::new(TITLE_ID, recomp_abi,
+            addr_of!(recomp_entries) as *const c_void, recomp_entry_count,
+            addr_of!(recomp_modules) as *const c_void, recomp_module_count)
+            .with_origins(recomp_generation, addr_of!(recomp_origins) as *const c_void)
+    };
+    let device = if gpu && !window {
+        Some(std::sync::Arc::new(zakuro_gpu::SharedDevice::new()
+            .map_err(|error|format!("Vulkan geometry device: {error}"))?))
+    } else { None };
+    let mut system = loader::load(&input, Config {
+        linked: Some(code), find_recompiled: false, strict_static: !fallback,
+        data_dir: Some(data), hardware_renderer: gpu && !window, resolution: scale,
+        texture_packs: false, clock, device, ..Config::default()
+    })?;
+    let library = system.recompiled.as_mut().ok_or("linked translated C was not accepted")?;
+    library.forbid_fallback = !fallback;
+    if gpu && !window && !system.gpu.draws_on_gpu() {
+        return Err("requested Vulkan geometry renderer could not initialize; no software fallback was selected".into());
+    }
+    let mut stopped = "budget";
+    #[allow(unused_mut)]
+    let mut window_report=serde_json::Value::Null;
+    if window {
+        #[cfg(feature="desktop")]
+        {
+            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,mute,&renderer)?;
+            stopped=outcome.stop;
+            window_report=serde_json::json!({"presented_frames":outcome.presented,"drawable":outcome.drawable,
+                "screens":"stacked","physical_device_qualified":false,
+                "audio_output_open":outcome.audio_open,"audio_frames_queued":outcome.audio_frames,
+                "audio_error":outcome.audio_error,"controllers":outcome.controllers,
+                "controller_error":outcome.controller_error,"physical_audio_qualified":false,
+                "physical_controller_qualified":false,"continuous_scene_qualified":false,"device":outcome.device,
+                "renderer_error":outcome.renderer_error});
+        }
+    } else {
+        while system.cpu.cycles < cycles {
+            if let Some(stop)=advance(&mut system,cycles) {stopped=stop;break;}
+        }
+    }
+    if let Some(at) = system.recompiled.as_ref().and_then(|code| code.rejected.get()) {
+        system.static_misses.insert(at);
+    }
+    let inline = system.recompiled.as_ref().map_or(0, |code| code.fallbacks());
+    let rejected = system.recompiled.as_ref().map_or(0, |code| code.rejected_count.get());
+    let mut shared_clock=[0u8;8];
+    system.memory.read_bytes(zakuro_common::memory_map::SHARED_PAGE_VADDR+0x20,&mut shared_clock);
+    let mut pictures=Vec::new();
+    if let Some(directory)=capture.as_ref() {
+        use std::io::Write;
+        for (index,(name,screen)) in [("top",zakuro_common::Screen::Top),("bottom",zakuro_common::Screen::Bottom)].into_iter().enumerate() {
+            if system.gpu.framebuffers[index].stride>65536 {return Err("guest framebuffer stride exceeds capture bound".into());}
+            let pixels=system.read_screen(screen);
+            let file=std::fs::OpenOptions::new().write(true).create_new(true).open(directory.join(format!("{name}.ppm")))?;
+            let mut output=std::io::BufWriter::new(file);
+            write!(output,"P6\n{} {}\n255\n",screen.width(),screen.height())?;
+            for pixel in pixels.chunks_exact(4) {output.write_all(&pixel[..3])?;}
+            output.flush()?;
+            pictures.push(serde_json::json!({"screen":name,"width":screen.width(),"height":screen.height(),
+                "rgba_sha256":format!("{:x}",Sha256::digest(&pixels)),
+                "nonzero_rgb_pixels":pixels.chunks_exact(4).filter(|p|p[..3]!=[0,0,0]).count()}));
+        }
+    }
+    let report = serde_json::json!({
+        "schema":"decomp.wtf.3ds-runtime-run/v1", "stop":stopped,
+        "process_exited":system.exited, "r0":system.cpu.regs[0], "r1":system.cpu.regs[1],
+        "pc":system.cpu.regs[15],"lr":system.cpu.regs[14],"thumb":system.cpu.cpsr.thumb,
+        "clock_ms":u64::from_le_bytes(shared_clock),"fixed_clock":clock.is_some(),
+        "cycles":system.cpu.cycles, "frames":system.frames,
+        "native_instructions":system.recompiled_instructions.saturating_sub(inline + rejected),
+        "interpreted_instructions":system.interpreted_instructions + inline,
+        "rejected_instructions":rejected,
+        "interpreter_allowed":fallback, "static_misses":system.static_misses,
+        "coverage_truncated":system.coverage_truncated,
+        "unimplemented_svcs":system.unimplemented_svcs,
+        "unimplemented_services":system.services.unimplemented.iter().collect::<Vec<_>>(),
+        "services":system.services_seen,
+        "gpu_rendering":system.gpu.draws_on_gpu(), "render_scale":system.gpu.scale(),
+        "renderer":if system.gpu.draws_on_gpu() {"vulkan"} else {"software"},
+        "gpu_device":system.gpu.hardware_device_name(),
+        "gpu_draw_calls":system.gpu.draw_calls,"gpu_transfers":system.gpu.transfers,"gpu_fills":system.gpu.fills,
+        "guest_pictures":pictures,
+        "graphics_qualified":false, "retail_qualified":false,
+        "input_sha256":INPUT_SHA256
+        ,"window":window_report
+    });
+    println!("{report}");
+    Ok(if matches!(stopped,"exit-process"|"window-closed"|"window-frame-limit") {0} else if stopped == "budget" {2} else {1})
+}
+
+fn main() {
+    match run() {
+        Ok(status) => std::process::exit(status),
+        Err(error) => { eprintln!("3DS runtime: {error}"); std::process::exit(1); }
+    }
+}

@@ -11,7 +11,7 @@ ALIASES = {"gamecube": "gc", "gcn": "gc", "nintendo64": "n64", "nintendo 64": "n
            "gameboy color": "gbc", "game boy color": "gbc", "game-boy-color": "gbc",
            "gameboycolor": "gbc", "gameboycolour": "gbc", "game boy colour": "gbc", "cgb": "gbc"}
 NAMES = {"nds": "Nintendo DS", "psx": "PlayStation", "ps2": "PlayStation 2",
-         "gba": "Game Boy Advance"}
+         "gba": "Game Boy Advance", "3ds": "Nintendo 3DS"}
 REMOVED_TOOLS = frozenset({"gcc-2.7.2-kmc", "ido-5.3", "ido-7.1", "mwcc", "rgbds"})
 
 

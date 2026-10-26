@@ -13,6 +13,25 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    ctr_inspect = actions.add_parser('ctr-inspect', help='validate a decrypted 3DS NCCH/NCSD executable without exporting or running it')
+    ctr_inspect.add_argument('input', type=Path)
+    ctr_probe = actions.add_parser('ctr-probe', help='3DS native C/C++ CPU development project; no graphics or retail game runtime yet')
+    ctr_probe.add_argument('input', type=Path)
+    ctr_probe.add_argument('output', type=Path)
+    ctr_probe.add_argument('--experimental', action='store_true', required=True)
+    ctr_probe.add_argument('--feedback',action='append',type=Path,default=[],help='exact-input runtime coverage report; repeat to combine runs')
+    ctr_runtime = actions.add_parser('ctr-runtime', help='3DS source-shipped kernel/service development project; desktop gameplay is not qualified')
+    ctr_runtime.add_argument('input', type=Path)
+    ctr_runtime.add_argument('output', type=Path)
+    ctr_runtime.add_argument('--experimental', action='store_true', required=True)
+    ctr_runtime.add_argument('--feedback',action='append',type=Path,default=[],help='exact-input runtime coverage report; discovery does not qualify native execution')
+    ctr_runtime.add_argument('--renderer',choices=('auto','vulkan','software'),default='auto')
+    ctr_native=actions.add_parser('ctr-native',help='experimental 3DS standalone C source, Vulkan desktop runtime, audio, input and saves')
+    ctr_native.add_argument('input',type=Path)
+    ctr_native.add_argument('output',type=Path)
+    ctr_native.add_argument('--experimental',action='store_true',required=True)
+    ctr_native.add_argument('--renderer',choices=('auto','vulkan','software'),default='auto')
+    ctr_native.add_argument('--feedback',action='append',type=Path,default=[])
     gba_inspect = actions.add_parser('gba-inspect', help='validate a GBA cartridge and identify its exact revision')
     gba_inspect.add_argument('input', type=Path)
     for name, help in (('gba-probe', 'headless GBA native C/C++ development probe'),
@@ -53,7 +72,6 @@ def add_parser(sub):
     native.add_argument('--arm7-bios', type=Path, help='optional private decoding input for encrypted originals')
     native.add_argument('--save-type', default='auto', help='cartridge chip for a new game, e.g. eeprom64k; auto infers from an existing raw save')
     native.add_argument('--renderer', choices=('auto','opengl','software'),default='auto',help='default native renderer; OpenGL draws 3D geometry at the window resolution')
-    native.add_argument('--screen-mode', choices=('dual','unified'),default='dual',help='default presentation; unified extends one 3D camera across the window')
     native.add_argument('--experimental', action='store_true', required=True)
     psx = actions.add_parser('psx-native', help='PS1 C/C++ repository for one game and its ordered disc set')
     psx.add_argument('inputs',nargs='+',type=Path,help='disc images/CUE sheets in order, or an M3U playlist')
@@ -65,7 +83,19 @@ def add_parser(sub):
 
 def run(args):
     try:
-        if args.pc_action == 'gba-inspect':
+        if args.pc_action == 'ctr-inspect':
+            from .ctr_native.media import load
+            result = load(args.input)
+        elif args.pc_action == 'ctr-probe':
+            from .ctr_native import export_probe
+            result = export_probe(args.input, args.output,feedback=args.feedback)
+        elif args.pc_action == 'ctr-runtime':
+            from .ctr_native import export_runtime
+            result = export_runtime(args.input, args.output, feedback=args.feedback,renderer=args.renderer)
+        elif args.pc_action=='ctr-native':
+            from .ctr_native import export_game
+            result=export_game(args.input,args.output,renderer=args.renderer,feedback=args.feedback)
+        elif args.pc_action == 'gba-inspect':
             from .gba_native import inspect
             result = inspect(args.input)
         elif args.pc_action in ('gba-probe', 'gba-native'):
@@ -86,7 +116,7 @@ def run(args):
         elif args.pc_action == 'nds-native':
             from .nds_native import export
             result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,
-                            arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer,screen_mode=args.screen_mode)
+                            arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer)
         elif args.pc_action == 'nds-generate':
             from .nds_pc import export
             result = export(args.rom,args.profile,args.output)

@@ -45,7 +45,12 @@ def input_platform(path: Path) -> str:
         platforms.require(path.suffix.lower()[1:], PCError)
     if path.is_file():
         with path.open('rb') as stream:
-            platforms.require(platforms.removed_input(stream.read(0x440),path.stat().st_size),PCError)
+            head=stream.read(0x440)
+            platforms.require(platforms.removed_input(head,path.stat().st_size),PCError)
+            from .ctr_native.media import recognizable
+            if recognizable(head):return '3ds'
+    if path.suffix.lower() in ('.3ds','.cci','.cxi','.cia','.3dsx'):
+        return '3ds'
     if path.suffix.lower() == '.gba':return 'gba'
     if path.suffix.lower() in ('.nds','.srl'):return 'nds'
     if path.suffix.lower() in ('.elf','.iso','.bin'):
@@ -73,7 +78,8 @@ def _backends():
     from .psx_native import backend as psx_backend
     from .ps2_native import backend as ps2_backend
     from .gba_native import game_backend as gba_backend
-    return [backend(),psx_backend(),ps2_backend(),gba_backend()]
+    from .ctr_native import game_backend as ctr_backend
+    return [backend(),psx_backend(),ps2_backend(),gba_backend(),ctr_backend()]
 
 
 def status(platform: str = '') -> dict:
@@ -108,7 +114,7 @@ def presentation(renderer='auto', *, screens=1, screen_mode='single', gpu='openg
         raise PCError('renderer must be auto, the GPU backend or software')
     if type(screens) is not int or screens not in (1, 2):
         raise PCError('presentation supports one or two console screens')
-    if screen_mode not in (('single',) if screens == 1 else ('dual', 'unified')):
+    if screen_mode not in (('single',) if screens == 1 else ('dual',)):
         raise PCError('screen mode must agree with the console screen count')
     return dict(schema=PRESENTATION_SCHEMA, renderer=renderer, renderers=[gpu, 'software'],
         gpu_rendering='geometry', resolution='drawable', initial_window='active-monitor',
@@ -151,6 +157,7 @@ def _presentation(data: dict) -> bool:
     screens = 2 if data['platform'] in ('nds', '3ds') else 1
     if type(display.get('screens')) is not int or display['screens'] != screens:
         raise PCError('presentation screen count must agree with the console')
+    # Earlier standalone exports retain verifiable manifests; new exports only generate dual.
     modes = ('dual', 'unified') if screens == 2 else ('single',)
     if display.get('screen_mode') not in modes:
         raise PCError('presentation screen mode must agree with the console')

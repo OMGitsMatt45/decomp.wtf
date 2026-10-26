@@ -13,9 +13,8 @@ still have limits; reusing it does not establish another game's compatibility.
 
 On the home screen, drop a DS ROM and choose **Native PC source project
 (experimental)**. Select its ROM format and cartridge save chip, then generate.
-Choose GPU rendering and either the original two screens or **One extended 3D
-camera**. These choices become defaults in the generated project and remain
-runtime options; changing the view does not require translating the game again.
+Choose the renderer used by the generated project. Both original screens remain
+visible; combined-camera enhancements belong in game-specific output work.
 This route bypasses console matching/compiler setup. It creates a fresh output
 folder and reports its path. Existing DS reconstruction projects can use
 **Export native PC project** on the Source tab. Existing output is preserved.
@@ -26,10 +25,10 @@ integrity checks.
 uv run decomp pc nds-native original.nds output --experimental --input-format decrypted --save-type eeprom64k
 ```
 
-Add `--renderer opengl --screen-mode unified` to select the single-camera
-default. The GUI, CLI and optional connected-agent tools accept the same
-`renderer` (`auto`, `opengl`, `software`) and `screen_mode` (`dual`, `unified`)
-values. Invalid combinations fail before dependency installation or publication.
+Add `--renderer opengl` to require GPU rendering. The GUI, CLI and optional
+connected-agent tools accept `renderer` (`auto`, `opengl`, `software`). Both
+original screens remain visible; combined cameras are an output customization.
+Invalid renderer values fail before dependency installation or publication.
 
 An optional agent connected with `decomp mcp` can call
 `generate_pc_project(path, own_copy=true, ds_input_format="decrypted", save_type="eeprom64k")`.
@@ -87,7 +86,7 @@ scripted run; `--capture DIR`, `--audio-pcm FILE`, `--input-script FILE`,
 `--diagnostics` and `--dump-memory DIR` support private compatibility testing.
 Do not publish retail-derived sources, assets, memory captures or game builds.
 
-## Adaptive GPU rendering and unified camera
+## Adaptive GPU rendering
 
 The original OpenGL 3.3 host draws transformed game geometry at the actual
 drawable resolution, including high-DPI scaling. The initial window size comes
@@ -105,28 +104,21 @@ the 3D engine's one-frame pipeline. GPU pixels replace the eligible 3D part of
 the DS composition. Display capture, UI and guarded effects retain the native
 renderer; this path draws geometry rather than only scaling a framebuffer.
 
-Unified view extends a single camera across the output, using submitted
-geometry outside the original screen bounds. It retains the latest bottom
-camera when a game alternates cameras and inherits that camera's update rate.
-It does not invent 60 Hz game updates or recover geometry culled by game code.
-The secondary LCD remains accessible in an inset; F7 hides/shows it. F6 restores
-the original two-screen layout, and touch follows the displayed bottom LCD.
-The generic host cannot infer every game's menu/camera logic. Menus without 3D,
-2D-only games and guarded effects use the complete original two-screen view.
+The two LCDs retain their native aspect ratios. Touch maps only to the displayed
+lower LCD. Menus, 2D-only games and guarded effects keep their original output.
 Fog, edge marking, shadow/depth-equal polygons and clear-image mode currently
-take that native path. Per-title camera/culling/UI changes can be made later
-in the exported repository. This common option does not certify Goldie's
-DQIV-specific camera hooks for an arbitrary title.
+use the native renderer. Camera/culling/UI enhancements can be made later in
+the exported game repository.
 
-Original fixtures qualify raw geometry outside the DS frustum, actual GL draw
-calls, texture modulation, UI retention, alternating-camera selection, touch
+Original fixtures qualify raw geometry clipped to the LCD, actual GL draw
+calls, texture modulation, UI retention, touch
 mapping, drawable resizing and fallback. Another original ARM9/ARM7 program
 submits 3D geometry through guest I/O and validates the complete generated-host
 path against headless frame/tick/screen results. Linux qualification executes
 OpenGL through Mesa; cloud testing does not measure physical graphics-card
 performance. Windows qualification builds the same host and exercises software
 presentation. `--capture` includes `display.ppm` at the actual drawable size;
-JSON reports the renderer, device, dimensions, active unified view and draw count.
+JSON reports the renderer, device, dimensions, both LCDs and draw count.
 
 The original DS game supplies all required assets and audio. Mobile OBB data is
 optional enhancement material in some existing ports, and is not used here.
@@ -152,7 +144,7 @@ switching back to DS audio. Validate missing, mismatched and disabled add-ons
 alongside the enhanced path. Mobile remaster-mod archives need the same
 checks as the original Android data. These extras do not block the common DS
 output milestone; the current scope includes native output, GPU rendering and
-the optional unified camera.
+two-screen presentation.
 
 The user's DQIV reference is the [Mobile Remaster thread](https://www.romhacking.net/forum/index.php?topic=34365.0).
 The author's [Nexus listing](https://www.nexusmods.com/dragonquest4/mods/1)
