@@ -13,7 +13,7 @@ import pytest
 
 from decompnet import pc,toolchains
 from decompnet.nds_native import export,SDK_COMMIT,_source
-from .fixtures.nds_native import dual_cpu,hardware
+from .fixtures.nds_native import dual_cpu,hardware,mixed_arm_switch
 from .fixtures.nds_static import simple
 
 
@@ -55,6 +55,56 @@ def execute(executable,root,*options,ok=True):
     return run.stderr
 
 
+def test_analysis_retries_when_decoder_fails_before_creating_config(tmp_path,monkeypatch):
+    from decompnet import nds_native
+    monkeypatch.setattr(toolchains,'ensure',lambda *a,**k:tmp_path)
+    monkeypatch.setattr(toolchains,'binary',lambda *a,**k:tmp_path/'dsd')
+    attempts=[]
+    def run(command,cwd,what):
+        if what!='DS code analysis':return
+        attempts.append(command)
+        if len(attempts)==1:raise pc.PCError('call leads to no function')
+        assert '--allow-unknown-function-calls' in command
+        raise pc.PCError('retried decoder diagnostic')
+    monkeypatch.setattr(nds_native,'_run',run)
+    with pytest.raises(pc.PCError,match='retried decoder diagnostic'):
+        nds_native._analyze(tmp_path/'original.nds',tmp_path,tmp_path,None,'auto',None)
+    assert len(attempts)==2 and not (tmp_path/'config').exists()
+
+
+def test_conditional_irq_scan_derives_only_a_balanced_ready_loop(sdk):
+    import capstone
+    import importlib.util
+    from decompnet.nds_native.abi_patch import install
+    name='decompnet._original_abi_scan_test'
+    spec=importlib.util.spec_from_file_location(name,sdk/'tools/derive_abi_config.py')
+    analyzer=importlib.util.module_from_spec(spec);sys.modules[name]=analyzer
+    spec.loader.exec_module(analyzer)
+    def load(dst,base,offset=0):return 0xe5900000|base<<16|dst<<12|offset
+    def store(src,offset):return 0xe58c0000|src<<12|offset
+    words=[load(12,15),0xe3a03000,load(12,12),0xe3a02009,
+           store(2,0x90),store(3,0xa0),store(3,0xa4),load(0,12,0xa8),store(3,0xa8),
+           load(12,15),store(3,0x10),store(3,0x14),load(12,15),0xe1dc11b8,
+           0xe28c2020,0xe3510000,0x11d109b0,0x13500009,0x15911094,0x1afffffa,
+           load(3,12,0x24),0xe1a0e00f,0xe12fff13,store(1,0x1c)]
+    literals=len(words);words.extend([0x02104000,0x02105000])
+    for index,literal in ((0,literals),(9,literals),(12,literals+1)):
+        words[index]=load(12,15,(literal-index-2)*4)
+    def function(values):
+        image=struct.pack('<'+'I'*len(values),*values)
+        decoder=capstone.Cs(capstone.CS_ARCH_ARM,capstone.CS_MODE_ARM);decoder.detail=True
+        return analyzer.Function(0x02010000,-1,0x02010000,image,list(decoder.disasm(image,0x02010000)))
+    assert analyzer.irq_layout(function(words)) is None
+    install(analyzer);install(analyzer)
+    result=analyzer.irq_layout(function(words))
+    assert result['ready_state']==9 and result['state_offset']==0x90
+    assert result['alarm_queue']==0x02104000 and result['thread_info']==0x02105000
+    assert result['list_next_offset']==0x94 and result['info_active_offset']==0x1c
+    for index,replacement in ((17,0x13500008),(18,0x05911094),(19,0x1afffff9)):
+        wrong=words.copy();wrong[index]=replacement
+        assert analyzer.irq_layout(function(wrong)) is None
+
+
 @pytest.fixture(scope='module')
 def hardware_project(tmp_path_factory,sdk):
     return generate(tmp_path_factory.mktemp('hardware-runtime')/'project',hardware)
@@ -91,6 +141,14 @@ def test_generated_guest_code_drives_video_audio_irqs_ipc_keys_and_cartridge_sav
     second=execute(exe,root,'--save',save)
     assert second['observed'][3:5]==[0,1] and save.read_bytes()[0]==1
     assert pc.verify(root)['integrity_verified']
+
+
+@pytest.mark.parametrize('wide',[False,True])
+def test_arm_switch_keeps_direct_returns_and_proven_large_bounds(tmp_path,sdk,wide):
+    _,root,exe=generate(tmp_path/'mixed-switch',lambda:mixed_arm_switch(wide=wide))
+    result=execute(exe,root,'--save',tmp_path/'switch.sav')
+    assert result['observed']==([77,299,300] if wide else [11,1,22,3])
+    assert result['unimplemented_io']==0
 
 
 def test_wrong_assets_fail_before_running_or_creating_a_save(tmp_path,hardware_project):
@@ -130,10 +188,15 @@ def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,har
         'project(RuntimeChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nfind_package(Threads REQUIRED)\n'
         f'add_executable(runtime_checks {quoted(runtime/"core/tests/core_tests.cpp")} '
         f'{quoted(runtime/"core/tests/thread_tests.cpp")} {quoted(runtime/"core/tests/abi_config_tests.cpp")})\n'
+        f'add_executable(register_checks {quoted(Path(__file__).parent/"fixtures/nds_registers.cpp")})\n'
+        f'target_include_directories(register_checks PRIVATE {quoted(runtime/"include")})\n'
+        f'target_link_libraries(register_checks PRIVATE {quoted(library)} Threads::Threads)\n'
         f'target_include_directories(runtime_checks PRIVATE {quoted(runtime/"include")} {quoted(runtime/"core/include")} {quoted(runtime/"core/src")})\n'
         f'target_link_libraries(runtime_checks PRIVATE {quoted(library)} Threads::Threads)\n'
         'if(WIN32)\n target_compile_definitions(runtime_checks PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)\n'
-        ' target_link_libraries(runtime_checks PRIVATE bcrypt)\nendif()\n')
+        ' target_link_libraries(runtime_checks PRIVATE bcrypt)\n'
+        ' target_compile_definitions(register_checks PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)\n'
+        ' target_link_libraries(register_checks PRIVATE bcrypt)\nendif()\n')
     for cmd in (['cmake','-S',str(tmp_path),'-B',str(tmp_path/'build')],
                 ['cmake','--build',str(tmp_path/'build'),'--config','Release','--parallel','2']):
         done=subprocess.run(cmd,capture_output=True,text=True,timeout=240)
@@ -141,6 +204,9 @@ def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,har
     exe=next(p for p in (tmp_path/'build/runtime_checks',tmp_path/'build/runtime_checks.exe',
                         tmp_path/'build/Release/runtime_checks.exe') if p.is_file())
     done=subprocess.run([str(exe)],capture_output=True,text=True,timeout=120)
+    assert done.returncode==0,done.stdout+done.stderr
+    register_exe=exe.with_name(exe.name.replace('runtime_checks','register_checks'))
+    done=subprocess.run([str(register_exe)],capture_output=True,text=True,timeout=30)
     assert done.returncode==0,done.stdout+done.stderr
 
 
@@ -177,6 +243,23 @@ def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
 def test_unsupported_code_does_not_publish_an_incomplete_repository(tmp_path,sdk):
     raw,profile=simple(struct.pack('<I',0xe7f000f0))  # undefined ARM instruction
     profile.pop('save_region')
+    rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
+    with pytest.raises(pc.PCError,match='unsupported instruction sites'):
+        export(rom,tmp_path/'out',profile=path)
+    assert not (tmp_path/'out').exists()
+
+
+def test_mismatched_shared_stack_frame_does_not_hide_unsupported_code(tmp_path,sdk):
+    import hashlib
+    raw,profile=hardware();raw=bytearray(raw)
+    symbols=json.loads((Path(__file__).parent/'fixtures/nds-hardware/program.json').read_text())['arm9']['symbols']
+    offset,_,base,_=struct.unpack_from('<4I',raw,0x20)
+    at=offset+symbols['shared_start']-base+2
+    allocation=struct.unpack_from('<H',raw,at)[0]
+    assert allocation&0xff80==0xb080
+    struct.pack_into('<H',raw,at,allocation+1)
+    profile['input_sha256']=hashlib.sha256(raw).hexdigest()
     rom=tmp_path/'original.nds';rom.write_bytes(raw)
     path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
     with pytest.raises(pc.PCError,match='unsupported instruction sites'):

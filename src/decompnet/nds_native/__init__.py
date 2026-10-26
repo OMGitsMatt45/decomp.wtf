@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -110,7 +110,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
         _run(init,work,'DS code analysis')
     except pc.PCError as error:
         if 'leads to no function' not in str(error):raise
-        shutil.rmtree(config_dir)
+        if config_dir.exists():shutil.rmtree(config_dir)
         _run([*init,'--allow-unknown-function-calls'],work,'DS code analysis')
     config=config_dir/'arm9/config.yaml'
     finish_layout(config)
@@ -133,6 +133,8 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm7_path,_=analyzer.write_outputs(result,work/'arm7-analysis')
     arm7=json.loads(arm7_path.read_text(encoding='utf-8'))
     derive=_tool(sdk,'derive_abi_config')
+    from .abi_patch import install
+    install(derive)
     abi={}
     for manifest in (arm9,arm7):
         path=work/(manifest['cpu']+'.manifest.json')
@@ -229,6 +231,8 @@ def _runtime(sdk, root):
     for name in ('LICENSE','NOTICE','LEGAL.md'):
         shutil.copyfile(sdk/name,target/name)
     shutil.copytree(sdk/'third_party',target/'third_party')
+    from .io_patch import patch
+    patch(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -297,6 +301,13 @@ void Machine::Impl::enable_dma'''
     (target/'DECOMP_WTF_PATCHES.md').write_text('''# decomp.wtf runtime changes
 
 Base: 0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931 (MIT).
+ARM9 DMA fill latches have explicit byte/halfword/word storage handling, including
+fixed-source DMA reads. ARM7 RCNT retains its 16-bit GPIO control value without
+writing the adjacent read-only extended key input. These accesses no longer
+produce unsupported-I/O diagnostics; external serial link behavior is separate.
+The ARM7 wireless RAM window has independent 8 KiB storage and its address
+mirror, respecting the existing power gate. Wireless MAC/network services remain
+unsupported and retain their diagnostics.
 The direct boot copy uses each destination processor's bus. In the base source,
 ARM7 private WRAM receives no initialized bytes when copied through ARM9.
 Our original dual-CPU fixture covers this layout and its live literal loads.

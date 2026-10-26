@@ -8,9 +8,11 @@ source-shipped hardware runtime. PS1 has a corresponding experimental native
 export with adaptive GPU rendering and shared multi-disc state. PS2 now exports
 a standalone C++/CMake project with a source runtime and adaptive Vulkan geometry.
 GBA exports an experimental C/C++ desktop project with raw-state OpenGL rendering,
-audio, controls and cartridge saves. Other implemented platform workflows still
-target the original console.
+audio, controls and cartridge saves. 3DS exports translated CPU/CRO source with
+a bundled runtime, adaptive Vulkan presentation, audio, input and saves.
 General retail compatibility is not yet qualified.
+The [five-console operational check](operational-2026-10-26.md) records bounded
+retail results and distinguishes strict static execution from hybrid output.
 
 The [archived upstream](https://github.com/i12bp8/decomp.wtf#platforms) also
 describes its rebuildable project as a base for ports. Resetting to upstream

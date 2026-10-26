@@ -70,6 +70,7 @@ wait_card:
     blx r4
     str r0, [r6, #48]
     ldr r4, =shared_start + 1
+    mov r0, #1
     blx r4
     str r0, [r6, #52]
     ldr r4, =regular_start + 1
@@ -223,14 +224,26 @@ switch_default:
 thumb_end:
 shared_start:
     push {r3, r4, r5, lr}
+    sub sp, #12
+    cmp r0, #0
+    beq shared_inline_return
     movs r4, #42
     /* BL is a long jump to a shared return, not a returning subroutine. */
     bl shared_exit
+    /* Pointer-like data after a nonreturning BL must not be decoded. */
+    .word 0x02fff400
     movs r0, #99
+    add sp, #12
+    pop {r3, r4, r5, pc}
+shared_inline_return:
+    add sp, #12
+    movs r0, #42
+    str r0, [r6, #80]
     pop {r3, r4, r5, pc}
 shared_end:
 shared_exit:
     movs r0, r4
+    add sp, #12
     pop {r3, r4, r5, pc}
 shared_exit_end:
 regular_start:

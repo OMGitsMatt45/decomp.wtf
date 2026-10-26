@@ -16,6 +16,42 @@ def dual_cpu():
     return raw,profile
 
 
+def mixed_arm_switch(wide=False):
+    from .nds_static import simple
+    words=[0]
+    calls=[]
+    values=(0,299,300) if wide else (0,1,2,3)
+    def immediate(value):
+        for rotate in range(16):
+            encoded=((value<<(2*rotate))|(value>>(32-2*rotate)))&0xffffffff
+            if encoded<256:return rotate<<8|encoded
+        raise ValueError('fixture immediate is not encodable')
+    for index,value in enumerate(values):
+        try:words.append(0xe3a00000|immediate(value))
+        except ValueError:
+            words.extend([0xe3a00000|immediate(value&~255),0xe3800000|(value&255)])
+        calls.append(len(words));words.append(0)
+        words.append(0xe5840000|index*4)
+    words.append(0xeafffffe)
+    main_size=len(words)*4;switch=len(words)
+    if wide:
+        words.extend([0xe92d4008,0xe3a02001,0xe2621000|immediate(300),0xe1500001,0x908ff100,0xe8bd8008])
+        for index in range(300):words.append(0xe8bd8008 if index==299 else 0xea000000|(300-index-2))
+        words.extend([0xe3a0004d,0xe8bd8008])
+    else:
+        words.extend([0xe92d4008,0xe3500002,0x908ff100,0xe8bd8008,
+                      0xea000001,0xe8bd8008,0xea000001,0xe3a0000b,0xe8bd8008,
+                      0xe3a00016,0xe8bd8008])
+    end=len(words)*4
+    words[0]=0xe59f4000|(end-8)
+    words.append(0x02010000)
+    for index in calls:words[index]=0xeb000000|((switch-index-2)&0xffffff)
+    raw,profile=simple(struct.pack('<'+'I'*len(words),*words),struct.pack('<I',0xeafffffe),code_size9=main_size)
+    profile.pop('save_region');profile['observe_words']=[0x02010000+4*i for i in range(len(values))]
+    profile['code']['arm9'].append(dict(address=0x02000000+switch*4,size=end-switch*4,mode='arm'))
+    return raw,profile
+
+
 def hardware():
     program=json.loads((Path(__file__).parent/'nds-hardware/program.json').read_text())
     ranges=[]

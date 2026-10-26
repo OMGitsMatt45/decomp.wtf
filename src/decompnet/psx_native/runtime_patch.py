@@ -19,7 +19,10 @@ def patch(root):
     text=path.read_text(encoding='utf-8-sig')
     text=replace(text,'/* ---- SDL state ---- */',
         '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic bool decomp_event(const SDL_Event&);\n'
-        'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);')
+        'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);\n'
+        'static bool decomp_bounded_run();')
+    text=replace(text,'static bool frontend_unattended() { return g_headless || g_hidden_window; }',
+        'static bool frontend_unattended() { return g_headless || g_hidden_window || decomp_bounded_run(); }')
     text=replace(text,'    SDL_Rect bounds;\n    const int have_bounds =\n        (SDL_GetDisplayUsableBounds(0, &bounds) == 0 && bounds.w > 0 && bounds.h > 0);\n    psx_window_size(w, h, num, den, have_bounds,\n                    have_bounds ? bounds.w : 0, have_bounds ? bounds.h : 0);',
         '    decomp_opening_size(w,h,num,den);')
     text=replace(text,'int main(int argc, char** argv) {',
@@ -75,4 +78,11 @@ def patch(root):
         'void autocompile_configure(const char *cmd, const char *cwd) {\n#ifdef DECOMP_NO_RUNTIME_COMPILATION\n    cmd = NULL;\n#endif')
     text=replace(text,'int autocompile_request(void) {',
         'int autocompile_request(void) {\n#ifdef DECOMP_NO_RUNTIME_COMPILATION\n    return 0;\n#endif')
+    path.write_text(text,encoding='utf-8')
+    path=root/'runtime/src/disc_identity.cpp'
+    text=path.read_text(encoding='utf-8-sig')
+    text=replace(text,'    // Expect 4 letters + 5 digits.',
+        '    // Match the importer: P is also a valid executable-name separator.\n'
+        "    if (s.size() == 10 && s[4] == 'P') s.erase(4, 1);\n"
+        '    // Expect 4 letters + 5 digits.')
     path.write_text(text,encoding='utf-8')

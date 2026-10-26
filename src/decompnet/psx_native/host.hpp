@@ -20,11 +20,12 @@ static int decomp_resize_w=0, decomp_resize_h=0;
 static bool decomp_fullscreen=false, decomp_require_gpu=decomp_default_require_gpu;
 static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
+static bool decomp_bounded_run() { return decomp_limit>0; }
 
 static void decomp_gpu_error() {
     const char *message="OpenGL GPU rendering was required but is unavailable. Use --renderer software to select compatibility mode.";
     std::fprintf(stderr,"%s\n",message);
-    if(!g_headless&&!g_hidden_window)
+    if(!g_headless&&!g_hidden_window&&!decomp_bounded_run())
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"GPU renderer unavailable",message,sdl_window);
 }
 
