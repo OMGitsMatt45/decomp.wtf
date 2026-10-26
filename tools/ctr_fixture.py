@@ -17,6 +17,10 @@ def fixture(kind='arm'):
         # The callback address exists only in .data, reached through a table.
         'data-callback': struct.pack('<IIIII',0xe59f3008,0xe5933000,0xe12fff33,0xef000003,BASE+0x2000)
             +bytes(12)+struct.pack('<II',0xe3a0002a,0xe12fff1e),
+        # Three self-relative callback slots; none stores an absolute code
+        # pointer. The first reaches Thumb code, which ARM gap scanning misses.
+        'relative-callbacks': struct.pack('<6I6H',0xe59f300c,0xe5930000,0xe0833000,
+            0xe12fff33,0xef000003,BASE+0x1000,0x202a,0x4770,0x202b,0x4770,0x202c,0x4770),
         'unsupported-service': struct.pack('<II', 0xef000001, 0xef000003),
         'unknown-target': struct.pack('<II', 0xe3a03000, 0xe12fff13),
         'unsupported-opcode': struct.pack('<II', 0xee100f10, 0xef000003),
@@ -26,7 +30,10 @@ def fixture(kind='arm'):
     }
     text = programs['arm' if kind=='blz-arm' else kind]
     data=struct.pack('<I',BASE+0x20) if kind=='data-callback' else b'DATA'
-    code = text+bytes(0x1000-len(text))+b'RO!!'+bytes(0xffc)+data
+    rodata=b'RO!!'
+    if kind=='relative-callbacks':
+        rodata=struct.pack('<3I',*((BASE+0x19+4*i-(BASE+0x1000+4*i))&0xffffffff for i in range(3)))
+    code = text+bytes(0x1000-len(text))+rodata+bytes(0x1000-len(rodata))+data
     if kind=='blz-arm':
         code=bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-arm-code.blz.hex').read_text())
     exefs_size = (0x200+len(code)+0x1ff)&~0x1ff
@@ -39,7 +46,7 @@ def fixture(kind='arm'):
     struct.pack_into('<II', out, 0x1a0, 5, exefs_size//0x200)
     out[0x200:0x208] = b'CTRTEST\0'
     if kind=='blz-arm':out[0x20d]=1
-    for at, values in ((0x210, (BASE, 1, len(text))), (0x220, (BASE+0x1000, 1, 4)),
+    for at, values in ((0x210, (BASE, 1, len(text))), (0x220, (BASE+0x1000, 1, len(rodata))),
                        (0x230, (BASE+0x2000, 1, 4))):
         struct.pack_into('<III', out, at, *values)
     struct.pack_into('<I', out, 0x23c, 16)
@@ -125,7 +132,7 @@ if __name__=='__main__':
     from pathlib import Path
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--kind', choices=('arm','blz-arm','thumb','vfp','bss','data-callback','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
+    parser.add_argument('--kind', choices=('arm','blz-arm','thumb','vfp','bss','data-callback','relative-callbacks','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
     parser.add_argument('--cartridge', action='store_true')
     args=parser.parse_args()
     if args.output.exists():

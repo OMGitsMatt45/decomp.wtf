@@ -85,9 +85,23 @@ def generate(project, root):
     entries = {inspection['entry']}
     for segment in inspection['segments'][1:]:
         raw = code[segment['code_offset']:segment['code_offset']+segment['size']]
-        for (word,) in struct.iter_unpack('<I', raw[:len(raw)//4*4]):
+        relative = []
+        for index,(word,) in enumerate(struct.iter_unpack('<I', raw[:len(raw)//4*4])):
             if text['address'] <= (word & ~1) < text['address']+text['size']:
                 entries.add(word)
+            # ARM constructor/callback arrays may store offsets from each
+            # slot instead of absolute pointers. Require a contiguous table
+            # of at least three plausible code pointers before treating it
+            # as a discovery hint. Retain the Thumb mode bit and sign wrapping;
+            # normal instruction and provenance checks still apply.
+            target = (segment['address']+index*4+word)&0xffffffff
+            if (text['address'] <= (target & ~1) < text['address']+text['size']
+                    and (target & 1 or target % 4 == 0)):
+                relative.append(target)
+            else:
+                if len(relative)>=3:entries.update(relative)
+                relative.clear()
+        if len(relative)>=3:entries.update(relative)
     seeds.write_text('\n'.join(map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]))+'\n')
     if project.get('instruction_boundaries'):
         from . import romfs

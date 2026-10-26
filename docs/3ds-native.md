@@ -16,7 +16,9 @@ saves. The 3DS stays marked in development in the application; `pc status
   execution against Unicorn.
 - ARM/Thumb/VFP C generation through MIT
   [3dsrecomp at cec1270](https://github.com/fearkov/3dsrecomp/tree/cec1270db38411f9c02d3f356fc3ed6c3f007424).
-  Data/rodata callback pointers provide additional discovery roots. Archive and
+  Data/rodata callback pointers, including contiguous self-relative callback
+  tables, provide additional discovery roots. An original relative-table/Thumb
+  fixture executes from native C and agrees with Unicorn. Archive and
   source SHA-256 pins are checked before building the dependency-free translator.
 - `ctr-probe` exports a small independent C/C++ CPU harness. It needs no Rust
   after export and implements ExitProcess only. Original ARM, Thumb, VFP, BSS
