@@ -44,8 +44,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let base: u32 = args[1].parse()?;
     let bytes = std::fs::read(&args[0])?;
     let mut seeds = std::fs::read_to_string(&args[2])?.lines().enumerate()
-        .map(|(i,line)| line.parse::<u32>().map(|at| (at,
-            if i==0 {discover::Source::Entry} else {discover::Source::Pointer})))
+        .map(|(i,line)| {
+            let (value,source)=if let Some(value)=line.strip_prefix("hint:") {
+                (value,discover::Source::Hint)
+            } else {(line,if i==0 {discover::Source::Entry} else {discover::Source::Pointer})};
+            value.parse::<u32>().map(|at|(at,source))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let (mut modules,mut crs)=(Vec::new(),None);
     if let Some(directory)=directory {

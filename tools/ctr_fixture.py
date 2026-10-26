@@ -8,7 +8,7 @@ BASE = 0x00100000
 
 def fixture(kind='arm'):
     programs = {
-        'services': bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-services.hex').read_text()),
+        'services': bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-services.hex').read_text())+b'\x70\x47',
         'arm': struct.pack('<IIII', 0xe3a00007, 0xe3a01005, 0xe0800001, 0xef000003),
         # ldr r3, literal; blx r3; svc ExitProcess; pointer; Thumb movs r0,42; bx lr
         'thumb': struct.pack('<IIIIHH', 0xe59f3004, 0xe12fff33, 0xef000003, BASE+0x11, 0x202a, 0x4770),
@@ -28,11 +28,13 @@ def fixture(kind='arm'):
         'bss': struct.pack('<IIII', 0xe59f1004, 0xe5910000, 0xef000003, BASE+0x2004),
         'loop': struct.pack('<I', 0xeafffffe),
     }
-    text = programs['arm' if kind=='blz-arm' else kind]
+    program='arm' if kind=='blz-arm' else 'relative-callbacks' if kind=='hidden-callback' else kind
+    text = programs[program]
     data=struct.pack('<I',BASE+0x20) if kind=='data-callback' else b'DATA'
     rodata=b'RO!!'
-    if kind=='relative-callbacks':
-        rodata=struct.pack('<3I',*((BASE+0x19+4*i-(BASE+0x1000+4*i))&0xffffffff for i in range(3)))
+    if kind in ('relative-callbacks','hidden-callback'):
+        count=3 if kind=='relative-callbacks' else 1
+        rodata=struct.pack('<'+'I'*count,*((BASE+0x19+4*i-(BASE+0x1000+4*i))&0xffffffff for i in range(count)))
     code = text+bytes(0x1000-len(text))+rodata+bytes(0x1000-len(rodata))+data
     if kind=='blz-arm':
         code=bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-arm-code.blz.hex').read_text())
@@ -132,7 +134,7 @@ if __name__=='__main__':
     from pathlib import Path
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--kind', choices=('arm','blz-arm','thumb','vfp','bss','data-callback','relative-callbacks','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
+    parser.add_argument('--kind', choices=('arm','blz-arm','thumb','vfp','bss','data-callback','relative-callbacks','hidden-callback','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
     parser.add_argument('--cartridge', action='store_true')
     args=parser.parse_args()
     if args.output.exists():

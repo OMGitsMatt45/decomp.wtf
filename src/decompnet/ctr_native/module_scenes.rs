@@ -15,6 +15,38 @@ extern "C" {
 
 fn run()->Result<(),Box<dyn std::error::Error>> {
     let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len()==2 && args[0]=="--empty-cecd" {
+        use zakuro_core::kernel::ipc::{CommandBuffer,Header};
+        let mut system=loader::load(&args[1],Config {find_recompiled:false,clock:Some(0),..Config::default()})?;
+        system.kernel.schedule(&mut system.cpu,0);
+        let command=CommandBuffer::new(system.cpu.cp15.thread_id_ro);
+        let address=0x02000000;
+        system.memory.map(address,0x26000000,0x1000,Permission::RW,MemoryState::Code);
+        system.memory.write_bytes(address,&[0xa5;16]);
+        for (path_type,size,descriptor,expected) in [(1,16,0x10c,0xc8810bef),
+            (10,16,0x10c,0xc8810bea),(1,0x100001,0x10c,0xe0e10bec),
+            (1,16,0x10a,0xe0e10bec)] {
+            let header=Header::new(0x0012,4,4);
+            let request=[header.0,size,0x0ff3de00,path_type,1,0x20,0,descriptor,address];
+            for (index,value) in request.into_iter().enumerate() {
+                command.set(&mut system.memory,index as u32,value);
+            }
+            if !zakuro_core::services::cecd::handle(&mut system,&command,header) {
+                return Err("empty CECD read remained unimplemented".into());
+            }
+            if command.get(&mut system.memory,0)!=Header::new(0x0012,2,2).0
+                || command.get(&mut system.memory,1)!=expected
+                || command.get(&mut system.memory,2)!=0
+                || command.get(&mut system.memory,3)!=descriptor
+                || command.get(&mut system.memory,4)!=address {
+                return Err("empty CECD reply lost its result or mapped buffer".into());
+            }
+            let mut actual=[0;16];system.memory.read_bytes(address,&mut actual);
+            if actual!=[0xa5;16] {return Err("empty CECD read changed guest storage".into());}
+        }
+        println!("{{\"schema\":\"decomp.wtf.3ds-empty-cecd/v1\",\"passed\":true,\"cases\":4,\"interpreted_instructions\":0,\"guest_buffer_preserved\":true}}");
+        return Ok(());
+    }
     if args.len()==4 && args[0]=="--save" {
         let raw=std::fs::read(&args[2])?;
         if raw.len()>0x1000 || raw.get(0x80..0x84)!=Some(b"CRO0") {

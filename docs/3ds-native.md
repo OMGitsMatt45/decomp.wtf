@@ -73,6 +73,18 @@ saves. The 3DS stays marked in development in the application; `pc status
   with guest ticks. `--clock-ms N` explicitly selects a deterministic replay
   clock in milliseconds since 1900. Execution reports include the clock and
   fault PC/LR/mode to help diagnose missing native targets.
+- Runtime reports can feed observed main-executable entry points into a new
+  export with repeatable `--feedback REPORT.json` options. Reports must match
+  the exact original image SHA-256. Targets, report sizes and entry counts are
+  bounded; Thumb mode is preserved. Explicit compatibility runs collect missing
+  region entries and retain their interpreted-instruction counts. Their results
+  are discovery hints; the new output still defaults to strict execution and
+  must be retested without interpretation. Relocated-module feedback and
+  unsupported inline instructions need separate work.
+- An empty offline StreetPass read returns CECD's real NoData result and zero
+  bytes, preserving the caller's mapped buffer. Directory reads, invalid sizes
+  and buffer permissions return errors. StreetPass mailbox writes and wireless
+  exchange remain unimplemented; no received messages are fabricated.
 
 ## Commands and downloads
 
@@ -96,6 +108,18 @@ On Linux use `build/host/debug/ctr_runtime`. For a bounded headless run, replace
 Vulkan geometry. CMake defaults to the desktop build; `-DCTR_DESKTOP=OFF` omits
 window dependencies. `-DCTR_CARGO_PROFILE=release` selects an optimized Rust
 build and puts the executable under `build/host/release/`.
+
+Save the execution report and use it when creating a new source directory:
+
+```powershell
+.\build\host\debug\ctr_runtime.exe "PATH_TO_ORIGINAL_IMAGE" --cycles 50000000 | Set-Content -Encoding utf8 coverage.json
+uv run --locked python -m decompnet.cli pc ctr-runtime "PATH_TO_ORIGINAL_IMAGE" "Next 3DS source" --experimental --feedback coverage.json
+```
+
+The first command can stop at a missing target and still write a useful report.
+`--allow-interpreter` is an explicit diagnostic option for collecting further
+entries. Its interpreted execution is recorded and does not qualify a native
+port. Export to a new directory so existing source edits remain available.
 
 Downloads not installed automatically:
 
@@ -146,7 +170,7 @@ additional owner-provided files; no system/game data is downloaded automatically
    Host audio/controller integration and original signal/input fixtures are
    implemented, and an original native save/relaunch fixture passes; those do
    not establish correct sound or saves in every title.
-4. Add title/update integration, coverage feedback and owner-supplied Pokémon
+4. Add title/update integration, relocated-module feedback and owner-supplied Pokémon
    and Dragon Quest retail acceptance. Interpreter use must remain explicit in
    both the project manifest and execution reports. A passing fixture, bounded
    run or upstream compatibility claim does not establish a playable retail port.

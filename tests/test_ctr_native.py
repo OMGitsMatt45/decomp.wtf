@@ -169,6 +169,50 @@ def build_original(tmp_path, kind, cmake):
     return out,binary
 
 
+def test_input_bound_coverage_recovers_a_hidden_thumb_callback(tmp_path,native_tools):
+    _original,binary=build_original(tmp_path,'hidden-callback',native_tools)
+    failed=subprocess.run([str(binary),str(_original/'assets')],capture_output=True,text=True,timeout=15)
+    assert failed.returncode!=0 and 'untranslated' in failed.stderr
+    image=tmp_path/'hidden-callback.cxi'
+    feedback=tmp_path/'compatibility coverage.json'
+    feedback.write_text(json.dumps(dict(schema='decomp.wtf.3ds-runtime-run/v1',
+        input_sha256=hashlib.sha256(image.read_bytes()).hexdigest(),static_misses=[BASE+0x19],
+        interpreter_allowed=True,interpreted_instructions=2,rejected_instructions=0)))
+    out=tmp_path/'regenerated source'
+    export_probe(image,out,feedback=[feedback])
+    metadata=json.loads((out/'analysis.json').read_text())['coverage']
+    assert metadata['entries']==[BASE+0x19] and metadata['reports'][0]['interpreted_instructions']==2
+    for args in ([native_tools,'-S',out,'-B',out/'build'],
+                 [native_tools,'--build',out/'build','--config','Release']):
+        step=subprocess.run(list(map(str,args)),capture_output=True,text=True,timeout=180)
+        assert step.returncode==0,step.stdout+step.stderr
+    executable=next(p for p in (out/'build').rglob('ctr_probe.exe' if os.name=='nt' else 'ctr_probe') if p.is_file())
+    result=subprocess.run([str(executable),str(out/'assets')],capture_output=True,text=True,timeout=15)
+    assert result.returncode==0,result.stderr
+    report=json.loads(result.stdout)
+    assert report['process_exited'] and report['r0']==42 and report['interpreted_instructions']==0
+
+
+@pytest.mark.parametrize('bad',['identity','schema','range','alignment','boolean','count','inline','counters','json','size'])
+def test_invalid_coverage_fails_before_tools_or_output(tmp_path,monkeypatch,bad):
+    image=tmp_path/'original.cxi';image.write_bytes(fixture())
+    data=dict(schema='decomp.wtf.3ds-runtime-run/v1',input_sha256=hashlib.sha256(image.read_bytes()).hexdigest(),
+              static_misses=[BASE],interpreter_allowed=False,interpreted_instructions=0,rejected_instructions=0)
+    if bad=='identity':data['input_sha256']='0'*64
+    elif bad=='schema':data['schema']='other'
+    elif bad=='range':data['static_misses']=[0]
+    elif bad=='alignment':data['static_misses']=[BASE+2]
+    elif bad=='boolean':data['static_misses']=[True]
+    elif bad=='count':data['static_misses']=[BASE]*4097
+    elif bad=='inline':data['rejected_instructions']=1
+    elif bad=='counters':data['interpreted_instructions']=1
+    feedback=tmp_path/'coverage.json'
+    feedback.write_text('{' if bad=='json' else ' '*1048577 if bad=='size' else json.dumps(data))
+    monkeypatch.setattr(provider,'build',lambda *_a,**_k:pytest.fail('feedback must validate before tools'))
+    with pytest.raises(pc.PCError):export_probe(image,tmp_path/'output',feedback=[feedback])
+    assert not (tmp_path/'output').exists()
+
+
 @pytest.mark.parametrize(('kind','expected'), [('arm',12),('blz-arm',12),('thumb',42),('vfp',0x40000000),('bss',0),('data-callback',42),('relative-callbacks',42)])
 def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_tools,kind,expected):
     out,binary=build_original(tmp_path,kind,native_tools)

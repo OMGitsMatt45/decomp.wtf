@@ -37,13 +37,24 @@ def apply(root):
                     self.static_misses.insert(self.cpu.regs[15] | self.cpu.cpsr.thumb as u32);
                     return StepOutcome::Faulted;
                 }
+                // Record region entries during explicit compatibility runs.
+                // These are discovery hints, never native qualification.
+                if !self.coverage_interpreting {
+                    let target=self.cpu.regs[15] | self.cpu.cpsr.thumb as u32;
+                    if self.static_misses.len()<4096 || self.static_misses.contains(&target) { self.static_misses.insert(target); }
+                    else { self.coverage_truncated=true; }
+                }
+                self.coverage_interpreting=true;
                 self.interpreted_instructions += 1;''')
     replace(root, 'runtime/crates/zakuro-core/src/lib.rs',
+        '            Some(exit) => {\n                // its writes',
+        '            Some(exit) => {\n                self.coverage_interpreting=false;\n                // its writes')
+    replace(root, 'runtime/crates/zakuro-core/src/lib.rs',
         '    pub unimplemented_svcs: BTreeSet<u32>,',
-        '    pub unimplemented_svcs: BTreeSet<u32>,\n    pub static_misses: BTreeSet<u32>,')
+        '    pub unimplemented_svcs: BTreeSet<u32>,\n    pub static_misses: BTreeSet<u32>,\n    coverage_interpreting: bool,\n    pub coverage_truncated: bool,')
     replace(root, 'runtime/crates/zakuro-core/src/lib.rs',
         '            unimplemented_svcs: BTreeSet::new(),',
-        '            unimplemented_svcs: BTreeSet::new(),\n            static_misses: BTreeSet::new(),')
+        '            unimplemented_svcs: BTreeSet::new(),\n            static_misses: BTreeSet::new(),\n            coverage_interpreting: false,\n            coverage_truncated: false,')
     replace(root, 'runtime/crates/zakuro-core/src/lib.rs',
         '        if !self.memory.is_executable(pc) {',
         '''        if !self.memory.is_executable(pc) {
@@ -80,6 +91,14 @@ def apply(root):
     replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
         '    buffer.reply(&mut system.memory, command, &[]);\n    for index in 2..8 {',
         '    buffer.reply_error(&mut system.memory, command, zakuro_common::result::errors::UNIMPLEMENTED.0);\n    for index in 2..8 {')
+    import shutil
+    shutil.copyfile(Path(__file__).with_name('cecd_empty.rs'),root/'runtime/crates/zakuro-core/src/services/cecd_empty.rs')
+    replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
+        'use crate::System;',
+        'use crate::System;\n#[path="cecd_empty.rs"] mod empty;')
+    replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
+        '    let command = header.command_id();',
+        '    if empty::handle(system,buffer,header) { return true; }\n    let command = header.command_id();')
     apply_graphics(root)
 
 

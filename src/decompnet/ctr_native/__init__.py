@@ -64,6 +64,8 @@ def generate(project, root):
     input_source = project.get('_source',path)
     inspection = media.load_source(input_source, include_code=True)
     code = inspection.pop('code')
+    from . import coverage
+    observed, reports=coverage.load(project.get('feedback',()),inspection)
     rustc = os.environ.get('DECOMP_3DS_RUSTC') or shutil.which('rustc')
     if not rustc:
         raise pc.PCError('3DS source export needs Rust 1.88+: https://www.rust-lang.org/tools/install . Generated CPU projects build with CMake and C/C++ only.')
@@ -102,7 +104,10 @@ def generate(project, root):
                 if len(relative)>=3:entries.update(relative)
                 relative.clear()
         if len(relative)>=3:entries.update(relative)
-    seeds.write_text('\n'.join(map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]))+'\n')
+    seeds.write_text('\n'.join([*map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]),
+                              *('hint:'+str(at) for at in sorted(observed))])+'\n')
+    if reports:
+        inspection['coverage']=dict(input_sha256=inspection['input']['sha256'],entries=sorted(observed),reports=reports)
     if project.get('instruction_boundaries'):
         from . import romfs
         modules=romfs.modules(input_source,inspection)
@@ -167,8 +172,8 @@ def probe_backend():
     return pc.Backend(BACKEND_ID, '3ds', revision(), generate, experimental=True)
 
 
-def export_probe(path, destination):
-    return pc.export_backend(dict(platform='3ds', input=str(path)), destination, probe_backend())
+def export_probe(path, destination, *, feedback=()):
+    return pc.export_backend(dict(platform='3ds', input=str(path),feedback=list(feedback)), destination, probe_backend())
 
 
 RUNTIME_BACKEND_ID = '3ds-zakuro-service-probe'
@@ -239,8 +244,8 @@ def runtime_backend():
     return pc.Backend(RUNTIME_BACKEND_ID,'3ds',revision(),generate_runtime,experimental=True)
 
 
-def export_runtime(path, destination, *, screen_mode='dual', source=None):
-    project=dict(platform='3ds',input=str(path),screen_mode=screen_mode)
+def export_runtime(path, destination, *, screen_mode='dual', source=None, feedback=()):
+    project=dict(platform='3ds',input=str(path),screen_mode=screen_mode,feedback=list(feedback))
     if source is not None:
         project['_source']=source
     return pc.export_backend(project,destination,runtime_backend())

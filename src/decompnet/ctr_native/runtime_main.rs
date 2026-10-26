@@ -155,6 +155,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
         "interpreted_instructions":system.interpreted_instructions + inline,
         "rejected_instructions":rejected,
         "interpreter_allowed":fallback, "static_misses":system.static_misses,
+        "coverage_truncated":system.coverage_truncated,
         "unimplemented_svcs":system.unimplemented_svcs,
         "unimplemented_services":system.services.unimplemented.iter().collect::<Vec<_>>(),
         "services":system.services_seen,

@@ -19,10 +19,12 @@ def add_parser(sub):
     ctr_probe.add_argument('input', type=Path)
     ctr_probe.add_argument('output', type=Path)
     ctr_probe.add_argument('--experimental', action='store_true', required=True)
+    ctr_probe.add_argument('--feedback',action='append',type=Path,default=[],help='exact-input runtime coverage report; repeat to combine runs')
     ctr_runtime = actions.add_parser('ctr-runtime', help='3DS source-shipped kernel/service development project; desktop gameplay is not qualified')
     ctr_runtime.add_argument('input', type=Path)
     ctr_runtime.add_argument('output', type=Path)
     ctr_runtime.add_argument('--experimental', action='store_true', required=True)
+    ctr_runtime.add_argument('--feedback',action='append',type=Path,default=[],help='exact-input runtime coverage report; discovery does not qualify native execution')
     ctr_runtime.add_argument('--screen-mode', choices=('dual','unified'), default='dual', help='default adaptive screen composition in the exported window')
     gba_inspect = actions.add_parser('gba-inspect', help='validate a GBA cartridge and identify its exact revision')
     gba_inspect.add_argument('input', type=Path)
@@ -81,10 +83,10 @@ def run(args):
             result = load(args.input)
         elif args.pc_action == 'ctr-probe':
             from .ctr_native import export_probe
-            result = export_probe(args.input, args.output)
+            result = export_probe(args.input, args.output,feedback=args.feedback)
         elif args.pc_action == 'ctr-runtime':
             from .ctr_native import export_runtime
-            result = export_runtime(args.input, args.output, screen_mode=args.screen_mode)
+            result = export_runtime(args.input, args.output, screen_mode=args.screen_mode,feedback=args.feedback)
         elif args.pc_action == 'gba-inspect':
             from .gba_native import inspect
             result = inspect(args.input)

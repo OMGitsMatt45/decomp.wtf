@@ -190,6 +190,14 @@ def test_compressed_executable_bytes_agree_with_independent_runtime_loader(origi
     assert report['passed'] and report['interpreted_instructions']==0
 
 
+def test_empty_streetpass_read_returns_real_absence_and_preserves_guest_buffer(original_runtime):
+    _project,image,binary,_scenes,_build,_run=original_runtime
+    probe=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    report=json.loads(command([probe,'--empty-cecd',image],timeout=30).stdout)
+    assert report['passed'] and report['cases']==4
+    assert report['interpreted_instructions']==0 and report['guest_buffer_preserved']
+
+
 def test_native_runtime_uses_host_clock_unless_a_replay_clock_is_explicit(original_runtime):
     _project,_image,_binary,_scenes,_build,run=original_runtime
     before=time.time()*1000
@@ -201,6 +209,26 @@ def test_native_runtime_uses_host_clock_unless_a_replay_clock_is_explicit(origin
     fixed=run('--cycles','1000000','--clock-ms','123000')
     assert fixed['fixed_clock'] and 123000<=fixed['clock_ms']<123100
     assert fixed['native_instructions']==168 and fixed['interpreted_instructions']==0
+
+
+def test_compatibility_run_reports_missing_region_entries_without_a_native_claim(original_runtime):
+    project,_image,_binary,_scenes,build,run=original_runtime
+    source=project/'game/code000.c';text=source.read_text()
+    hidden=0x100000+len(bytes.fromhex(Path(__file__).parents[1].joinpath('tools/fixtures/ctr-services.hex').read_text()))
+    pattern=r'(/\* 00100000 E3A08000 \*/\n).*?(?=L_00100004:)'
+    replacement=(r'\1    ctx->r[8]=0; ctx->r[14]=0x00100004; '
+                 f'ctx->r[15]=0x{hidden:08x}; ctx->thumb=1; return;\n')
+    changed=re.sub(pattern,replacement,text,flags=re.S);assert changed!=text
+    try:
+        source.write_text(changed);build()
+        strict=run('--cycles','1000000',status=1)
+        assert strict['static_misses']==[hidden|1] and strict['interpreted_instructions']==0
+        report=run('--cycles','1000000','--allow-interpreter')
+        assert report['r0']==31 and report['interpreted_instructions']==1
+        assert report['static_misses']==[hidden|1] and not report['coverage_truncated']
+        assert report['retail_qualified'] is False
+    finally:
+        source.write_text(text);build()
 
 
 def test_audio_resampling_queue_and_controller_input_merge(original_runtime):
