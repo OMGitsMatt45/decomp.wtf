@@ -3,6 +3,7 @@
 #include "anygba/system.hpp"
 #include "save/save.h"
 #include "ram_feedback.hpp"
+#include "native_idle.hpp"
 #include <filesystem>
 #include <iostream>
 #include <vector>
@@ -69,8 +70,9 @@ int main(int argc,char** argv){try{
     std::vector<uint8_t> rom(1024);const char* id="FLASH1M_V103";
     std::copy(id,id+11,rom.begin()+512);std::copy_n("BPEE",4,rom.begin()+0xac);
     timers(rom);
+    const auto program=original_idle_game(uint32_t(rom.size()));
     anygba::Options options;options.log_misses=false;options.rtc_start=1101044730;
-    auto system=std::make_unique<anygba::System>(rom,nullptr,options);auto& s=*system;
+    auto system=std::make_unique<anygba::System>(rom,&program,options);auto& s=*system;
     anygba::save::SaveFile persistence(file,s.backup());
     require(s.backup().type()==anygba::save::Type::Flash128,"Flash128 detection");
     command(s,0x90);require(s.read8(0x0e000000)==0x62&&s.read8(0x0e000001)==0x13,"Flash128 ID");command(s,0xf0);
@@ -100,7 +102,7 @@ int main(int argc,char** argv){try{
     const std::array<int64_t,3> epochs{1078012799,1078099199,1104537599};
     const std::array<std::vector<unsigned>,3> dates{{{4,2,0x29,0,0,0,0},{4,3,1,1,0,0,0},{5,1,1,6,0,0,0}}};
     for(unsigned i=0;i<epochs.size();++i){
-        options.rtc_start=epochs[i];auto rollover=std::make_unique<anygba::System>(rom,nullptr,options);
+        options.rtc_start=epochs[i];auto rollover=std::make_unique<anygba::System>(rom,&program,options);
         rollover->memory().rom[0]=0xfe;rollover->memory().rom[1]=0xff;rollover->memory().rom[2]=0xff;rollover->memory().rom[3]=0xea;
         rollover->on_vblank=[](anygba::System& x){if(x.frames()==61)x.stop();};rollover->run();Clock edge{*rollover};
         require(edge.read(0x65,7)==dates[i],"RTC midnight, leap day, month and year rollover");

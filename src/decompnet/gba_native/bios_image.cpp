@@ -1,14 +1,33 @@
 // SPDX-License-Identifier: MIT
 // Optional owner BIOS execution. No Nintendo code or BIOS image is supplied.
 #include "anygba/system.hpp"
+#include "anygba/sha256.h"
 #include <algorithm>
 
 namespace anygba {
 void System::set_bios_image(std::span<const uint8_t> image) {
     if (image.size() != Memory::kBiosSize) throw Error("GBA BIOS must contain exactly 16384 bytes");
-    if (options_.strict_static) throw Error("strict static mode rejects interpreted BIOS execution");
+    const bool native=options_.compiled_bios && options_.compiled_bios->sha256 &&
+        options_.compiled_bios->arm && options_.compiled_bios->thumb &&
+        sha256_hex(image)==options_.compiled_bios->sha256;
+    if (options_.strict_static && !native) throw Error("strict static mode rejects interpreted BIOS execution; translate the matching BIOS at export time");
     std::copy(image.begin(), image.end(), mem_.bios.begin());
     bios_image_loaded_ = true;
+    bios_native_image_ = native;
+}
+
+void System::validate_bios_native() {
+    bios_native_image_=bios_image_loaded_ && options_.compiled_bios && options_.compiled_bios->sha256 &&
+        options_.compiled_bios->arm && options_.compiled_bios->thumb &&
+        sha256_hex(mem_.bios)==options_.compiled_bios->sha256;
+    if (options_.strict_static && bios_image_loaded_ && !bios_native_image_)
+        throw Error("snapshot BIOS does not match the translated native image");
+}
+
+void System::bios_native_enter(uint32_t address,bool thumb) {
+    ++bios_native_instructions_;
+    cpu_.r[15]=address;
+    bios_prefetch(address,thumb);
 }
 
 void System::bios_prefetch(uint32_t address, bool thumb) {
@@ -50,4 +69,8 @@ void System::bios_swi() {
     --cpu_.ret_depth;
     if (unwinding) unwind();
 }
+}
+
+extern "C" void anygba_bios_enter(anygba_cpu* cpu,uint32_t address,int thumb) {
+    anygba::system_of(cpu).bios_native_enter(address,thumb!=0);
 }

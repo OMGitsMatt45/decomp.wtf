@@ -9,6 +9,15 @@ from decompnet.gba_native import PROFILE_SCHEMA
 PROGRAM = json.loads((Path(__file__).parent/'gba-native/program.json').read_text())
 
 
+def callbacks():
+    """ARM/Thumb callback tables loaded through RAM; no reviewed entry list."""
+    program=json.loads((Path(__file__).parent/'gba-native/callbacks.json').read_text())
+    data=bytearray.fromhex(program['hex'])
+    data[0xa0:0xac]=b'CALLBACK-GBA';data[0xac:0xb0]=b'TSTE';data[0xb2]=0x96
+    data[0xbd]=(-(sum(data[0xa0:0xbd])+0x19))&255
+    return bytes(data),dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest())
+
+
 def bios_sound(mode="fixed-loop"):
     """Original service/mixer cartridge; requires a separately supplied BIOS."""
     program=json.loads((Path(__file__).parent/'gba-native/bios-sound.json').read_text())
@@ -114,4 +123,22 @@ def bios_pipeline():
     put(0x200,[0x89abcdef])
     profile=dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest(),
         entries=[dict(address=address,mode='arm') for address in (0x08000100,0x08000160)])
+    return (bytes(data),profile),bytes(image)
+
+
+def bios_swi_timer():
+    """CC0 timer observations at the first firmware instruction, ARM and Thumb.
+
+    The BIOS vector first reads timer 0, increments an EWRAM call counter, then
+    returns through MOVS PC,LR. A third, false conditional SWI must not enter it.
+    """
+    program=json.loads((Path(__file__).parent/'gba-native/swi-timer.json').read_text())
+    data=bytearray.fromhex(program['hex'])
+    data[0xa0:0xac]=b'SWI-TIMER!!!';data[0xac:0xb0]=b'TSTE';data[0xb2]=0x96
+    data[0xbd]=(-(sum(data[0xa0:0xbd])+0x19))&255
+    data.extend(bytes(262148-len(data)))
+    profile=dict(schema=PROFILE_SCHEMA,input_sha256=hashlib.sha256(data).hexdigest(),
+        entries=[dict(address=program['symbols']['thumb_timer'],mode='thumb')])
+    image=bytearray(16384)
+    struct.pack_into('<5I',image,8,0xe1d400b0,0xe596700c,0xe2877001,0xe586700c,0xe1b0f00e)
     return (bytes(data),profile),bytes(image)

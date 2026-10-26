@@ -1,4 +1,4 @@
-"""Standalone GBA C/C++ projects with raw-state GPU rendering and explicit fallback."""
+"""Standalone GBA native players with GPU rendering and a separate reference probe."""
 from __future__ import annotations
 
 from contextvars import ContextVar
@@ -43,7 +43,7 @@ def _source(name):
 def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
-                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp'):
+                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -128,7 +128,7 @@ def _fingerprint(sdk):
 
 
 def _emitter(sdk):
-    emitter_key = hashlib.sha256((SDK_TREE_SHA256+_source('Emitter.cmake')+_source('overlay_emitter.cpp')).encode()).hexdigest()
+    emitter_key = hashlib.sha256((SDK_TREE_SHA256+_source('Emitter.cmake')+_source('overlay_emitter.cpp')+_source('discovery.inc')+_source('copy_discovery.cpp')+_source('bios_emitter.cpp')+_source('native_entries.cpp')+_source('relocated.cpp')).encode()).hexdigest()
     work = sdk.parent/'.gba-emitter'/emitter_key[:16]
     work.mkdir(parents=True, exist_ok=True)
     identity = dict(commit=SDK_COMMIT, sha256=_fingerprint(sdk))
@@ -137,9 +137,14 @@ def _emitter(sdk):
         raise pc.PCError('GBA cached sources changed; preserve edits and choose a clean toolchain cache')
     (work/'CMakeLists.txt').write_text(_source('Emitter.cmake'), encoding='utf-8')
     (work/'overlay_emitter.cpp').write_text(_source('overlay_emitter.cpp'), encoding='utf-8')
+    (work/'discovery.inc').write_text(_source('discovery.inc'), encoding='utf-8')
+    (work/'copy_discovery.cpp').write_text(_source('copy_discovery.cpp'), encoding='utf-8')
+    (work/'bios_emitter.cpp').write_text(_source('bios_emitter.cpp'), encoding='utf-8')
+    (work/'native_entries.cpp').write_text(_source('native_entries.cpp'), encoding='utf-8')
+    (work/'relocated.cpp').write_text(_source('relocated.cpp'), encoding='utf-8')
     _run(['cmake', '-S', work, '-B', work/'build', '-DGBA_SDK='+sdk.as_posix(),
           '-DCMAKE_BUILD_TYPE=Release'], work, 'Configure GBA static translator')
-    _run(['cmake', '--build', work/'build', '--target', 'anygba-recomp', 'gba-overlays', '--config', 'Release',
+    _run(['cmake', '--build', work/'build', '--target', 'anygba-recomp', 'gba-overlays', 'gba-copies', 'gba-bios', '--config', 'Release',
           '--parallel', '2'], work, 'Build GBA static translator')
     marker.write_text(json.dumps(identity)+'\n', encoding='utf-8')
     executable = next((p for p in (work/'build/recomp/anygba-recomp',
@@ -147,6 +152,20 @@ def _emitter(sdk):
     if executable is None:
         raise pc.PCError('GBA static translator was not built')
     return executable
+
+
+def _emitter_tool(emitter,name):
+    filename=name+('.exe' if emitter.suffix=='.exe' else '')
+    if emitter.parent.name=='Release':
+        return emitter.parent.parent.parent/'Release'/filename
+    return emitter.parent.parent/filename
+
+
+def _automatic_copies(emitter,path,work,size):
+    result=json.loads(_run([_emitter_tool(emitter,'gba-copies'),path],work,
+        'Infer guarded ROM-to-RAM code copies'))
+    _regions(dict(ram_code=result['copies'],entries=[]),size)
+    return result['copies'],result['entries'],result['rom_entries']
 
 
 def _overlay_regions(profile, feedback, size):
@@ -173,7 +192,7 @@ def _overlay_regions(profile, feedback, size):
     return [dict(address=a, mode=m, rom=r, size=n) for (a,m,r),n in sorted(copies.items()) if n]
 
 
-def _overlays(emitter, path, work, root, copies, profile, feedback):
+def _overlays(emitter, path, work, root, copies, profile, feedback, instruction_regions=()):
     config = ''
     for row in copies:
         config += f'\n[[ram_region]]\nrom_src = {row["rom"]}\nram_dst = {row["address"]}\nsize = {row["size"]}\nmode = "{row["mode"]}"\n'
@@ -186,16 +205,14 @@ def _overlays(emitter, path, work, root, copies, profile, feedback):
     for address, mode in sorted(entries):
         config += f'\n[[entry]]\naddr = {address}\nmode = "{mode}"\n'
     cfg = work/'overlays.toml'; cfg.write_text(config, encoding='utf-8')
-    name = 'gba-overlays.exe' if emitter.suffix == '.exe' else 'gba-overlays'
-    # The overlay executable belongs to the root CMake project; the original emitter
-    # belongs to its recomp/ subdirectory (both have Release/ with Visual Studio).
-    program = emitter.parent.parent/name
-    if emitter.parent.name == 'Release':
-        program = emitter.parent.parent.parent/'Release'/name
-    rows = json.loads(_run([program, path, cfg, root/'game/overlays.c'], work, 'Translate independent guarded RAM copies'))
+    program = _emitter_tool(emitter,'gba-overlays')
+    bounded=work/'bounded-instruction-regions.txt'
+    bounded.write_text(''.join(f'{source} {address} {size}\n' for source,address,size in sorted({
+        (r['rom'],r['address'],r['size']) for r in instruction_regions})),encoding='utf-8')
+    rows = json.loads(_run([program, path, cfg, root/'game/overlays.c',bounded], work, 'Translate independent guarded RAM copies'))
     header = root/'game/game.h'
     header.write_text(header.read_text(encoding='utf-8')+'\n'+''.join(
-        f'void {r[2]}(anygba_cpu* c);\n' for r in rows), encoding='utf-8')
+        f'void {name}(anygba_cpu* c);\n' for name in sorted({r[2] for r in rows})), encoding='utf-8')
     dispatch = root/'game/dispatch.c'
     text = dispatch.read_text(encoding='utf-8')
     begin = text.index('static const anygba_function_entry functions[] = {\n') + len('static const anygba_function_entry functions[] = {\n')
@@ -208,7 +225,7 @@ def _overlays(emitter, path, work, root, copies, profile, feedback):
     if count != 1:
         raise pc.PCError('GBA guarded dispatch table patch no longer applies')
     dispatch.write_text(text, encoding='utf-8')
-    return len(rows)
+    return len({r[2].removesuffix('_resume') for r in rows})
 
 
 def _profile(path, identity):
@@ -357,34 +374,55 @@ def _runtime(sdk, destination):
     old = 'struct Options {'
     if text.count(old) != 1:
         raise pc.PCError('GBA runtime option patch no longer applies')
-    text = text.replace(old, old+'\n    bool strict_static = false;')
-    text = text.replace('#include <vector>', '#include <vector>\n#include <tuple>')
+    text = text.replace(old, old+'\n    bool strict_static = false;\n    const anygba_bios* compiled_bios = nullptr;\n'
+        '    const anygba_relocated_entry* relocated_entries = nullptr;\n    uint32_t relocated_count = 0;')
+    text = text.replace('#include <vector>', '#include <vector>\n#include <tuple>\n#include "anygba/bios_native.h"\n#include "anygba/relocated.h"')
+    text=text.replace('std::vector<const anygba_function_entry*> rom_direct_;',
+        'std::vector<std::array<const anygba_function_entry*,2>> rom_direct_;')
     text = text.replace('bool ram_code_valid(std::uint32_t entry, bool thumb) const;',
-        'bool ram_code_valid(std::uint32_t entry, bool thumb) const;\n    bool ram_entry_valid(const anygba_function_entry& entry) const;')
+        'bool ram_code_valid(std::uint32_t entry, bool thumb) const;\n    bool ram_entry_valid(const anygba_function_entry& entry) const;\n'
+        '    anygba_fn lookup_relocated(std::uint32_t entry, bool thumb) const;\n'
+        '    uint64_t bios_native_instructions() const { return bios_native_instructions_; }')
     text = text.replace('std::set<std::uint32_t> misses_;',
-        'bool bios_image_loaded_ = false;\n    unsigned bios_irq_depth_ = 0;\n    std::set<std::uint32_t> misses_;\n    std::set<std::tuple<uint32_t,bool,uint32_t,uint32_t>> logged_miss_variants_;\n'
+        'bool bios_image_loaded_ = false;\n    bool bios_native_image_ = false;\n    uint64_t bios_native_instructions_ = 0;\n    unsigned bios_irq_depth_ = 0;\n    std::set<std::uint32_t> misses_;\n    std::set<std::tuple<uint32_t,bool,uint32_t,uint32_t>> logged_miss_variants_;\n'
         '    std::set<std::tuple<uint32_t,bool,std::array<uint8_t,32>>> logged_ram_signatures_;')
     text = text.replace('static constexpr std::uint32_t kStateVersion = 2;',
                         'static constexpr std::uint32_t kStateVersion = 1002;')
     text = text.replace('    void set_cpsr(',
         '    void memory_load_events();\n    void set_bios_image(std::span<const uint8_t> image);\n    void bios_swi();\n    void set_cpsr(')
     text = text.replace('    void bios_swi();',
-        '    void bios_swi();\n    void bios_irq(uint32_t return_pc);\n    void bios_prefetch(uint32_t address, bool thumb);')
+        '    void bios_swi();\n    void bios_irq(uint32_t return_pc);\n    void bios_prefetch(uint32_t address, bool thumb);\n'
+        '    void validate_bios_native();\n    void bios_native_enter(uint32_t address, bool thumb);')
     text = text.replace('ignores ROM patches and RAM contents', 'ignores ROM patches; checks RAM variants')
     header.write_text(text, encoding='utf-8')
     system = destination/'runtime/src/system.cpp'
     text = system.read_text(encoding='utf-8')
+    text=text.replace('rom_direct_.assign(mem_.rom_size / 2 + 1, nullptr);',
+        'rom_direct_.assign(mem_.rom_size / 2 + 1, std::array<const anygba_function_entry*,2>{});')
+    text=text.replace('rom_direct_[(e.addr - 0x08000000) / 2] = &e;',
+        'rom_direct_[(e.addr - 0x08000000) / 2][e.thumb!=0] = &e;')
     system.write_text(text.replace('std::sort(ram_functions_.begin(), ram_functions_.end(),',
         'std::stable_sort(ram_functions_.begin(), ram_functions_.end(),'), encoding='utf-8')
     dispatch = destination/'runtime/src/dispatch.cpp'
     text = dispatch.read_text(encoding='utf-8')
     text = '#include "ram_feedback.hpp"\n'+text
+    text=text.replace('rom_direct_[off / 2];','rom_direct_[off / 2][thumb];')
+    old='return e ? e->fn : nullptr;'
+    if text.count(old)!=1:raise pc.PCError('GBA relocated dispatch patch no longer applies')
+    text=text.replace(old,'return e ? e->fn : lookup_relocated(addr,thumb);')
     text = text.replace('bool System::in_irq_handler() const {',
         'bool System::in_irq_handler() const {\n    if (bios_irq_depth_) return true;')
     text = text.replace('    cpu_.ret_depth = 0;', '    cpu_.ret_depth = 0;\n    bios_irq_depth_ = 0;')
     start = text.index('    if (fn && (addr < 0x08000000')
     end = text.index('    if (fn && cpu_.rom_patched', start)
     text = text[:start]+text[end:]
+    old = '    if (!game_) {\n        return nullptr;\n    }'
+    if text.count(old)!=1:raise pc.PCError('GBA compiled firmware dispatch patch no longer applies')
+    text=text.replace(old,old+'''
+    if (addr < Memory::kBiosSize && bios_native_image_) {
+        if (thumb) return (addr & 1u) ? nullptr : options_.compiled_bios->thumb[addr / 2];
+        return (addr & 3u) ? nullptr : options_.compiled_bios->arm[addr / 4];
+    }''')
     start = text.index('    if (it != ram_functions_.end()')
     end = text.index('    return nullptr;', start)
     text = text[:start]+'''    for (auto candidate=it; candidate!=ram_functions_.end() && candidate->addr==addr; ++candidate) {
@@ -451,8 +489,17 @@ bool System::ram_entry_valid(const anygba_function_entry& entry) const {
     old = '    std::fflush(miss_file_);'
     if text.count(old) != 1:
         raise pc.PCError('GBA feedback flush patch no longer applies')
-    dispatch.write_text(text.replace(old,
-        '    if (std::fflush(miss_file_) != 0 || std::ferror(miss_file_)) fail("GBA coverage feedback write failed");'), encoding='utf-8')
+    text=text.replace(old,
+        '    if (std::fflush(miss_file_) != 0 || std::ferror(miss_file_)) fail("GBA coverage feedback write failed");')
+    start=text.index('void System::interpret() {')+len('void System::interpret() {')
+    end=text.index('\n}\n\n}  // namespace anygba',start)
+    text=text[:start]+'''
+#ifndef ANYGBA_ENABLE_REFERENCE
+    fail("static coverage miss at " + std::to_string(cpu_.r[15]) +
+         "; this player contains no interpreter. Use the explicit reference probe to collect coverage for re-export.");
+#else
+'''+text[start:end]+'\n#endif'+text[end:]
+    dispatch.write_text(text,encoding='utf-8')
     bios = destination/'runtime/src/bios/swi_table.cpp'
     text = bios.read_text(encoding='utf-8')
     text = text.replace('void System::swi(std::uint32_t number) {',
@@ -465,6 +512,9 @@ bool System::ram_entry_valid(const anygba_function_entry& entry) const {
     bios.write_text(text.replace(old, old+'\n    fail("unsupported GBA BIOS service " + std::to_string(number) +'
         ' " at " + std::to_string(call_pc) + "; provide your own GBA BIOS with --bios for this service");'), encoding='utf-8')
     (destination/'runtime/src/bios_image.cpp').write_text(_source('bios_image.cpp'), encoding='utf-8')
+    (destination/'runtime/include/anygba/bios_native.h').write_text(_source('bios_native.h'),encoding='utf-8')
+    (destination/'runtime/include/anygba/relocated.h').write_text(_source('relocated.h'),encoding='utf-8')
+    (destination/'runtime/src/relocated.cpp').write_text(_source('relocated_runtime.cpp'),encoding='utf-8')
     (destination/'runtime/src/timing.cpp').write_text(_source('timing.cpp'), encoding='utf-8')
     cpu_header = destination/'runtime/include/anygba/cpu.h'
     text = cpu_header.read_text(encoding='utf-8')
@@ -486,6 +536,16 @@ extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t 
         '        if (load) {\n            if (--c_.cycles <= 0) sys_.memory_load_events();\n            std::uint32_t v = 0;')
     text = text.replace('case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 1; break;',
         'case Op::LDR: case Op::LDRB: case Op::LDRH: case Op::LDRSB: case Op::LDRSH: extra = 0; break;')
+    # SWI runs a synchronous firmware service, which can observe timers or
+    # transfer audio before returning. Charge its issuing instruction first.
+    old = '        if (passes(c_, in_.cond)) {\n            dispatch();'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA reference software-interrupt timing patch no longer applies')
+    text = text.replace(old,
+        '        if (passes(c_, in_.cond)) {\n'
+        '            if (in_.op == Op::SWI) {\n'
+        '                charge();\n                dispatch();\n                return;\n            }\n'
+        '            dispatch();')
     interp.write_text(text, encoding='utf-8')
     fetch = destination/'runtime/src/interp/thumb_interp.cpp'
     text = fetch.read_text(encoding='utf-8')
@@ -509,7 +569,7 @@ extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t 
     state = destination/'runtime/src/state/state.cpp'
     text = state.read_text(encoding='utf-8')
     state.write_text(text.replace('    ar.fixed(mem_.bios, "BIOS area");',
-        '    ar.pod(bios_image_loaded_);\n    ar.fixed(mem_.bios, "BIOS area");'), encoding='utf-8')
+        '    ar.pod(bios_image_loaded_);\n    ar.fixed(mem_.bios, "BIOS area");\n    if (ar.loading()) validate_bios_native();'), encoding='utf-8')
     rtc = destination/'runtime/src/rtc.cpp'
     text = rtc.read_text(encoding='utf-8')
     text = text.replace('    case 0xC4:\n', '    case 0xC4: {\n        const auto previous=pins_;\n')
@@ -558,7 +618,8 @@ extern "C" int anygba_ram_variant_valid(anygba_cpu* c, uint32_t begin, uint32_t 
         'Options.strict_static rejects interpreter execution. Independent temporal RAM copies have whole-body guards, including on direct entry. '
         'Coverage records retain multiple bodies at one address and cache repeated signatures. '
         'Instruction and load phases synchronize peripheral events. RTC GPIO transfers require clock edges and honor chip-select aborts. '
-        'An optional owner BIOS executes software-interrupt vectors with supervisor/Thumb state and protected reads; firmware execution remains reported interpretation. '
+        'An optional owner BIOS can be translated ahead of time, including software-interrupt vectors, Thumb entries, IRQ return and protected reads. '
+        'Only an exact matching image uses compiled firmware dispatch; an explicitly supplied unmatched image remains reported interpretation and is rejected by strict mode. '
         'Without that image, unsupported sound services stop with an actionable diagnostic; disconnected MultiBoot returns failure. '
         'Internal snapshots use format 1002 to record BIOS selection. The independent desktop frontend renders raw scanline state with OpenGL.\n', encoding='utf-8')
 
@@ -567,6 +628,11 @@ def generate(project, root):
     path = Path(project['input']).resolve()
     inspection = inspect(path)
     original = inspection['input']
+    bios=Path(project['bios']).expanduser().resolve() if project.get('bios') is not None else None
+    bios_identity=None
+    if bios is not None:
+        if not bios.is_file() or bios.stat().st_size!=16384:raise pc.PCError('GBA BIOS must be an existing 16384-byte file')
+        bios_identity=dict(kind='bios',size=16384,sha256=hashlib.sha256(bios.read_bytes()).hexdigest())
     profile = _profile(project.get('profile'), original['sha256'])
     _regions(profile, original['size'])
     feedback = [_feedback(p, original['sha256'], original['size']) for p in project.get('feedback', [])]
@@ -583,12 +649,16 @@ def generate(project, root):
         (root/name).mkdir()
     with tempfile.TemporaryDirectory(prefix='.gba-analysis-', dir=root.parent) as tmp:
         work = Path(tmp)
+        automatic,automatic_entries,automatic_rom_entries=_automatic_copies(emitter,path,work,original['size'])
+        copies=[dict(address=a,mode=m,rom=r,size=n) for a,m,r,n in sorted({
+            (row['address'],row['mode'],row['rom'],row['size']) for row in [*copies,*automatic]})]
+        if len(copies)>4096:raise pc.PCError('too many independent RAM code copies')
         config = '[game]\ntitle = '+json.dumps(inspection['title'])+'\n'
         if save_type != 'auto':
             config += 'save = '+json.dumps(save_type)+'\n'
         if rtc != 'auto':
             config += 'rtc = '+('true' if rtc == 'on' else 'false')+'\n'
-        for row in profile.get('entries', []):
+        for row in [*profile.get('entries', []),*automatic_rom_entries]:
             config += f'\n[[entry]]\naddr = {row["address"]}\nmode = "{row["mode"]}"\n'
         for row in [*profile.get('ram_code', []), *inferred]:
             config += f'\n[[ram_region]]\nrom_src = {row["rom"]}\nram_dst = {row["address"]}\nsize = {row["size"]}\nmode = "{row["mode"]}"\n'
@@ -602,19 +672,37 @@ def generate(project, root):
             command.extend(['--miss-log', file])
         output = _run(command, work,
                       'Discover and translate ARM/Thumb code')
+        if game:
+            output=output.replace('it stays in the interpreter',
+                'it is untranslated and will stop the native player if executed')
         count = re.search(r'anygba-recomp: (\d+) functions written', output)
         if count is None or int(count[1]) == 0:
             raise pc.PCError('GBA translator emitted no function coverage report')
         for source in (work/'generated').iterdir():
             if source.suffix in ('.c', '.h'):
-                shutil.copyfile(source, root/'game'/source.name)
-        overlay_count = _overlays(emitter, path, work, root, copies, profile, feedback)
+                # Both directories share the export's staging filesystem. Move
+                # generated units so a large ROM does not require two complete
+                # copies of its translated source before atomic publication.
+                source.replace(root/'game'/source.name)
+        overlay_profile={**profile,'entries':[*profile.get('entries',[]),*automatic_entries]}
+        instruction_regions=[r for r in automatic if r.get('instruction_fragments')]
+        overlay_count = _overlays(emitter, path, work, root, copies, overlay_profile, feedback,instruction_regions)
+        bios_stats=None
+        if bios is not None:
+            bios_stats=json.loads(_run([_emitter_tool(emitter,'gba-bios'),bios,root/'game'],work,
+                'Translate supplied BIOS vectors and instruction entries'))
+            if bios_stats['sha256']!=bios_identity['sha256']:raise pc.PCError('GBA BIOS changed during source generation')
+        else:
+            (root/'game/bios_dispatch.c').write_text('#include <anygba/bios_native.h>\n'
+                'const anygba_bios anygba_compiled_bios={0,0,0,0,0,0};\n',encoding='utf-8')
     _runtime(sdk, root/'runtime/anygba')
+    (root/'game/source_counts.h').write_text('#pragma once\n#define GBA_GENERATED_FUNCTIONS '+str(int(count[1])+overlay_count)+'u\n',encoding='utf-8')
     for source, dest in (('Project.cmake', 'CMakeLists.txt'), ('main.cpp', 'native/main.cpp'),
                          ('video.hpp', 'native/video.hpp'), ('video.cpp', 'native/video.cpp'),
                          ('ppu.frag', 'native/ppu.frag'), ('shader.hpp.in', 'native/shader.hpp.in'),
                          ('graphics_tests.cpp', 'tests/graphics.cpp'),
                          ('cartridge_tests.cpp', 'tests/cartridge.cpp'),
+                         ('native_idle.hpp', 'tests/native_idle.hpp'),
                          ('ram_feedback.hpp', 'native/ram_feedback.hpp'),
                          ('extract.py', 'tools/extract_assets.py')):
         content = _source(source)
@@ -623,17 +711,23 @@ def generate(project, root):
                 'gba_pc EXCLUDE_FROM_ALL', 'gba_pc').replace(
                 'raw-state OpenGL rendering\" OFF)', 'raw-state OpenGL rendering\" ON)').replace(
                 'set(GBA_DEFAULT_RENDERER \"auto\")', 'set(GBA_DEFAULT_RENDERER '+json.dumps(display['renderer'])+')')
+            content=content.replace('explicit interpreter/reference probe\" ON)',
+                'explicit interpreter/reference probe\" OFF)')
         (root/dest).write_text(content, encoding='utf-8')
     (root/'assets.json').write_text(json.dumps(original, indent=2)+'\n', encoding='utf-8')
     (root/'analysis.json').write_text(json.dumps(dict(profile=profile, functions=int(count[1])+overlay_count,
         diagnostics=output, save_type=save_type, rtc=rtc, feedback=[pin for _, pin in feedback],
-        inferred_ram_code=inferred, independent_ram_code=copies, guarded_ram_functions=overlay_count), indent=2)+'\n', encoding='utf-8')
+        inferred_ram_code=inferred, automatic_ram_code=automatic,automatic_ram_entries=automatic_entries,
+        automatic_rom_entries=automatic_rom_entries,independent_ram_code=copies,
+        automatic_instruction_regions=instruction_regions,
+        guarded_ram_functions=overlay_count,compiled_bios=bios_stats), indent=2)+'\n', encoding='utf-8')
     (root/'.gitignore').write_text('/build*/\n/assets/\n*.sav\n*.sav.*\n*.ppm\n*.pcm\n', encoding='utf-8')
     (root/'README.md').write_text('''# GBA native translation probe
 
 This independent C/C++ project runs statically translated cartridge code against a
 source-shipped AnyGBA hardware core (MIT). It is a development probe, not a qualified
-PC game port. No ROM or Nintendo BIOS is included. GPU presentation is still pending;
+PC game port. Firmware is never fetched automatically. An explicitly supplied BIOS
+can be translated with the cartridge. GPU presentation is still pending;
 the internal reference PPU rasterizes at 240×160 on the CPU. No remake assets are needed.
 
 ```sh
@@ -656,17 +750,35 @@ Keep ROM-derived source private unless you have the necessary rights to share it
 ''', encoding='utf-8')
     if game:
         (root/'README.md').write_text(_game_readme(), encoding='utf-8')
+    if bios_identity:
+        with (root/'README.md').open('a',encoding='utf-8') as readme:
+            readme.write('''
+## Translated owner firmware
+
+This export includes native C and initial data derived from the BIOS explicitly
+supplied at generation. Keep that firmware-derived output private alongside the
+game-derived code. The compiled image is selected automatically; no separate
+runtime BIOS file is required. `--strict-static` permits the exact translated
+image and rejects a mismatched replacement. The reference `--interpreter` mode
+uses the same initial BIOS bytes for comparison. JSON exposes
+`bios_native_dispatches` and `interpreted_cycles` separately.
+''')
     if inspect(path)['input'] != original:
         raise pc.PCError('GBA owner input changed during source generation')
     files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(root.rglob('*')) if p.is_file()}
     manifest = dict(schema=pc.SCHEMA, platform='gba', output_kind='game' if game else 'cpu-probe',
-        backend=dict(id=GAME_BACKEND_ID if game else BACKEND_ID, revision=revision()), execution_model='hybrid',
-        runtime=dict(id='anygba-core', revision=SDK_COMMIT, license='MIT'), inputs=[original],
+        backend=dict(id=GAME_BACKEND_ID if game else BACKEND_ID, revision=revision()), execution_model='static-recompiled' if game else 'hybrid',
+        runtime=dict(id='anygba-core', revision=SDK_COMMIT, license='MIT'), inputs=[original,*([bios_identity] if bios_identity else [])],
         build=dict(system='cmake', target='gba_pc' if game else 'gba_probe'), files=files,
-        fallback=dict(interpreter=True, runtime_compilation=False),
+        fallback=dict(interpreter=not game, runtime_compilation=False),
         qualification=dict(graphics=False, retail=False, host_build=False),
         code_generation=dict(functions=int(count[1])))
+    manifest['firmware']=dict(mode='compiled' if bios is not None else 'hle' if game else 'hle-or-explicit-interpreter',
+        sha256=bios_identity['sha256'] if bios_identity else None,code_generation=bios_stats)
+    if game:
+        manifest['reference_tools']=dict(target='gba_probe',cmake_option='GBA_BUILD_REFERENCE',
+            built_by_default=False,execution_model='hybrid',interpreter=True)
     if game:
         manifest['presentation'] = display
     (root/'pc-project.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
@@ -676,11 +788,11 @@ def backend():
     return pc.Backend(BACKEND_ID, 'gba', revision(), generate, experimental=True)
 
 
-def export(rom, destination, *, profile=None, save_type='auto', rtc='auto', feedback=(), log=None):
+def export(rom, destination, *, profile=None, save_type='auto', rtc='auto', feedback=(), bios=None, log=None):
     token = _progress.set(log)
     try:
         return pc.export_backend(dict(platform='gba', input=str(rom), profile=profile,
-            save_type=save_type, rtc=rtc, feedback=feedback or ()), Path(destination), backend())
+            save_type=save_type, rtc=rtc, feedback=feedback or (),bios=bios), Path(destination), backend())
     finally:
         _progress.reset(token)
 
@@ -693,12 +805,12 @@ def generate_game(project, root):
     generate({**project, 'output_kind': 'game'}, root)
 
 
-def export_game(rom, destination, *, profile=None, save_type='auto', rtc='auto', feedback=(), renderer='auto', log=None):
+def export_game(rom, destination, *, profile=None, save_type='auto', rtc='auto', feedback=(), bios=None, renderer='auto', log=None):
     token = _progress.set(log)
     try:
         return pc.export_backend(dict(platform='gba', input=str(rom), profile=profile,
             output_kind='game', renderer=renderer, save_type=save_type, rtc=rtc,
-            feedback=feedback or ()), Path(destination), game_backend())
+            feedback=feedback or (),bios=bios), Path(destination), game_backend())
     finally:
         _progress.reset(token)
 
@@ -739,26 +851,28 @@ Stereo sound plays at 32768 Hz. Raw cartridge saves persist atomically under
 cartridge's save chip and RTC are detected automatically; generation options can
 override unusual cartridges. Close the window to flush saves.
 
-This is experimental hybrid static recompilation. Discovered functions are C;
-uncovered callbacks and modified RAM code use the shipped interpreter, with exact
-misses disclosed. No runtime compiler is used. `--strict-static` stops on a miss;
-`--interpreter` selects the CPU reference for differential testing. Unsupported BIOS
-services stop with diagnostics. `analysis.json` records the discovered functions
-and independently guarded RAM variants. Multiple code copies may overlap or reuse
-one address; dispatch and each native body verify the exact original bytes.
+This is experimental static recompilation. The `gba_pc` player contains neither an
+instruction interpreter nor a runtime compiler. Missing code stops with a coverage
+diagnostic instead of silently changing execution methods. `analysis.json` records
+discovered functions and independently guarded RAM variants. Multiple code copies
+may overlap or reuse one address. Position-independent routines can also execute
+from changing stack addresses; dispatch checks their complete original bytes.
 A bounded passing test does not establish complete retail compatibility.
 
-Most games use the built-in BIOS services. For games requiring the original BIOS
-sound driver, `--bios /path/to/your/gba-bios.bin` selects your own 16 KiB image.
-Software interrupts and BIOS callbacks then execute that image in the interpreter;
-the exit report records its SHA-256 and interpreted cycles. This option cannot be
-combined with `--strict-static`. No BIOS image is downloaded or included. The
+Most games use the built-in BIOS services. For games requiring original firmware,
+including its sound driver, supply your own 16 KiB BIOS to the exporter with
+`--bios /path/to/your/gba-bios.bin`. It emits native firmware code and initial data
+that are selected automatically at runtime. Keep those derived files private.
+The player rejects an untranslated replacement BIOS. No BIOS is downloaded. The
 BIOS-free MultiBoot service returns a disconnected-cable failure; link play is not
 implemented.
 
-For coverage, run `--miss-log NEW_FILE`, then re-export with `decomp pc gba-native
-... --feedback NEW_FILE --experimental` into a new source folder. This binds feedback
-to the cartridge hash and adds observed code without discarding existing edits.
+For differential validation or coverage investigation, configure the optional
+`-DGBA_BUILD_REFERENCE=ON` target and build `gba_probe`. Only that separate probe
+contains an interpreter: `--interpreter` selects the reference CPU, and
+`--miss-log NEW_FILE` records uncovered code during hybrid execution. Re-export with
+`decomp pc gba-native ... --feedback NEW_FILE --experimental` into a new source
+folder. Feedback binds to the cartridge hash and preserves existing project edits.
 `--frames N --unpaced --input-script FILE --capture reference.ppm
 --display-capture gpu.ppm --audio-pcm audio.pcm` supports repeatable bounded checks.
 Input script lines are `frame pressed-mask`, with increasing frames and a ten-bit
