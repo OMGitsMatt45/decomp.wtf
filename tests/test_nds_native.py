@@ -55,6 +55,56 @@ def execute(executable,root,*options,ok=True):
     return run.stderr
 
 
+def test_analysis_retries_when_decoder_fails_before_creating_config(tmp_path,monkeypatch):
+    from decompnet import nds_native
+    monkeypatch.setattr(toolchains,'ensure',lambda *a,**k:tmp_path)
+    monkeypatch.setattr(toolchains,'binary',lambda *a,**k:tmp_path/'dsd')
+    attempts=[]
+    def run(command,cwd,what):
+        if what!='DS code analysis':return
+        attempts.append(command)
+        if len(attempts)==1:raise pc.PCError('call leads to no function')
+        assert '--allow-unknown-function-calls' in command
+        raise pc.PCError('retried decoder diagnostic')
+    monkeypatch.setattr(nds_native,'_run',run)
+    with pytest.raises(pc.PCError,match='retried decoder diagnostic'):
+        nds_native._analyze(tmp_path/'original.nds',tmp_path,tmp_path,None,'auto',None)
+    assert len(attempts)==2 and not (tmp_path/'config').exists()
+
+
+def test_conditional_irq_scan_derives_only_a_balanced_ready_loop(sdk):
+    import capstone
+    import importlib.util
+    from decompnet.nds_native.abi_patch import install
+    name='decompnet._original_abi_scan_test'
+    spec=importlib.util.spec_from_file_location(name,sdk/'tools/derive_abi_config.py')
+    analyzer=importlib.util.module_from_spec(spec);sys.modules[name]=analyzer
+    spec.loader.exec_module(analyzer)
+    def load(dst,base,offset=0):return 0xe5900000|base<<16|dst<<12|offset
+    def store(src,offset):return 0xe58c0000|src<<12|offset
+    words=[load(12,15),0xe3a03000,load(12,12),0xe3a02009,
+           store(2,0x90),store(3,0xa0),store(3,0xa4),load(0,12,0xa8),store(3,0xa8),
+           load(12,15),store(3,0x10),store(3,0x14),load(12,15),0xe1dc11b8,
+           0xe28c2020,0xe3510000,0x11d109b0,0x13500009,0x15911094,0x1afffffa,
+           load(3,12,0x24),0xe1a0e00f,0xe12fff13,store(1,0x1c)]
+    literals=len(words);words.extend([0x02104000,0x02105000])
+    for index,literal in ((0,literals),(9,literals),(12,literals+1)):
+        words[index]=load(12,15,(literal-index-2)*4)
+    def function(values):
+        image=struct.pack('<'+'I'*len(values),*values)
+        decoder=capstone.Cs(capstone.CS_ARCH_ARM,capstone.CS_MODE_ARM);decoder.detail=True
+        return analyzer.Function(0x02010000,-1,0x02010000,image,list(decoder.disasm(image,0x02010000)))
+    assert analyzer.irq_layout(function(words)) is None
+    install(analyzer);install(analyzer)
+    result=analyzer.irq_layout(function(words))
+    assert result['ready_state']==9 and result['state_offset']==0x90
+    assert result['alarm_queue']==0x02104000 and result['thread_info']==0x02105000
+    assert result['list_next_offset']==0x94 and result['info_active_offset']==0x1c
+    for index,replacement in ((17,0x13500008),(18,0x05911094),(19,0x1afffff9)):
+        wrong=words.copy();wrong[index]=replacement
+        assert analyzer.irq_layout(function(wrong)) is None
+
+
 @pytest.fixture(scope='module')
 def hardware_project(tmp_path_factory,sdk):
     return generate(tmp_path_factory.mktemp('hardware-runtime')/'project',hardware)

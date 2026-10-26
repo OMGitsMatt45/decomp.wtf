@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -110,7 +110,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
         _run(init,work,'DS code analysis')
     except pc.PCError as error:
         if 'leads to no function' not in str(error):raise
-        shutil.rmtree(config_dir)
+        if config_dir.exists():shutil.rmtree(config_dir)
         _run([*init,'--allow-unknown-function-calls'],work,'DS code analysis')
     config=config_dir/'arm9/config.yaml'
     finish_layout(config)
@@ -133,6 +133,8 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm7_path,_=analyzer.write_outputs(result,work/'arm7-analysis')
     arm7=json.loads(arm7_path.read_text(encoding='utf-8'))
     derive=_tool(sdk,'derive_abi_config')
+    from .abi_patch import install
+    install(derive)
     abi={}
     for manifest in (arm9,arm7):
         path=work/(manifest['cpu']+'.manifest.json')
