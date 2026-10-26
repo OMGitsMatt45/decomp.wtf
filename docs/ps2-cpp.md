@@ -128,7 +128,7 @@ selects 2.9, SN, modern GCC, Clang or WSL as an implicit replacement.
 
 `DECOMP_TEST_PS2_CPP=1 python -m pytest -q tests/test_ps2.py tests/test_ps2_cpp.py`
 requires the pinned EE compiler, MIPS binutils, m2c and prepared homemade zlib
-sources (`python projects/zlib-n64/prepare.py`). Required Linux CI fails on skips.
+sources (`python projects/zlib/prepare.py`). Required Linux CI fails on skips.
 Tests cover C++-only syntax and `__cplusplus`, rejection by C, original code and
 relocation snapshots, invalid C++ errors, missing frontend errors, C++ m2c drafts,
 all thirteen C-built game functions, changed instructions/calls/GP references,

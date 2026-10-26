@@ -1,5 +1,5 @@
 """Build Demo Quest PS1, a PlayStation executable (PS-X EXE) made only from code we may share: the same
-Demo Quest game, main loop and tiny libc as the N64 demo (CC0, ../demo-rom/src, ../demo-n64/original) and zlib 1.1.4
+Demo Quest game, main loop and tiny libc as the shared console fixture (CC0, ../shared-game/runtime, ../shared-game/original) and zlib 1.1.4
 (Zlib license), compiled with GCC 2.7.2 for the PlayStation (decompals/old-gcc) at -O2 -G8, the way PSY-Q-era games
 put small globals in $gp-relative data.
 
@@ -21,9 +21,9 @@ from elftools.elf.elffile import ELFFile
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / "build"
-DEMO = HERE.parent / "demo-rom" / "src"
-GAME = HERE.parent / "demo-n64" / "original"
-ZLIB = HERE.parent / "zlib-n64"
+DEMO = HERE.parent / "shared-game" / "runtime"
+GAME = HERE.parent / "shared-game" / "original"
+ZLIB = HERE.parent / "zlib"
 ZLIB_UNITS = ["adler32", "compress", "crc32", "deflate", "inflate", "infblock", "infcodes", "inffast", "inftrees",
               "infutil", "trees", "uncompr", "zutil"]
 LOAD = 0x80010000

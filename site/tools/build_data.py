@@ -4,7 +4,7 @@ Everything the page shows about the demo game is real: bytes and disassembly com
 projects/demo/target/game.o, and every score comes from DecompNet's own compiler + scorer,
 compiling the plausible-but-wrong attempts below and the original source.
 
-Run from the repo root:  uv run python site/tools/build_data.py [project-dir]   (default: projects/demo-n64)
+Run from the repo root:  uv run python site/tools/build_data.py [project-dir]   (default: projects/shared-game)
 """
 
 import json
@@ -18,7 +18,7 @@ from decompnet.elfobj import extract_function
 from decompnet.project import compiler_config, load_config
 
 ROOT = Path(__file__).resolve().parents[2]
-DEMO = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "projects" / "demo-n64"
+DEMO = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "projects" / "shared-game"
 OUT = ROOT / "site" / "public" / "data" / "demo.json"
 ALIGN = 16
 

@@ -1,6 +1,6 @@
-name = "Demo Quest 64"
-slug = "demo-n64"
-description = "The demo game built for the N64 with the KMC-compatible GCC 2.7.2: big-endian MIPS, the way many N64 games were made."
+name = "Shared Demo Quest functions"
+slug = "shared-game"
+description = "Original CC0 functions for supported-console tests; this matching fixture uses PS1 GCC."
 
 [legal]
 basis = "own-code"
@@ -8,7 +8,7 @@ license = "CC0-1.0"
 notes = "Demo Quest was written for DecompNet; its full source is in original/."
 
 [compiler]
-toolchain = "gcc-2.7.2-kmc"   # pinned in decompnet/toolchains.toml; flags default to the registry's N64 set
+toolchain = "gcc-2.7.2-psx"   # pinned PS1 compiler; source is also used by DS, PS2 and GBA fixtures
 timeout = 15
 
 [target]

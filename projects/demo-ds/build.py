@@ -1,5 +1,5 @@
 """Build Demo Quest DS, a Nintendo DS ROM made only from code we may share: the same Demo Quest game, main loop and
-tiny libc as the N64 demo (CC0, ../demo-rom/src, ../demo-n64/original) and zlib 1.1.4 (Zlib license), compiled with
+tiny libc as the shared console fixture (CC0, ../shared-game/runtime, ../shared-game/original) and zlib 1.1.4 (Zlib license), compiled with
 CodeWarrior for DS 2.0 (the flags DS decomps use) and linked by CodeWarrior's linker, with a NitroSDK-style ARM9
 layout (crt0.s, demo.lcf) so that the community's ds-decomp reads it like a real game. The ROM itself is written here, then rebuilt by ds-decomp's own
 `rom extract` and `rom build` so it's in the exact form the tools produce.
@@ -24,9 +24,9 @@ from decompnet import toolchains
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / "build"
-DEMO = HERE.parent / "demo-rom" / "src"
-GAME = HERE.parent / "demo-n64" / "original"
-ZLIB = HERE.parent / "zlib-n64"
+DEMO = HERE.parent / "shared-game" / "runtime"
+GAME = HERE.parent / "shared-game" / "original"
+ZLIB = HERE.parent / "zlib"
 ZLIB_UNITS = ["adler32", "compress", "crc32", "deflate", "inflate", "infblock", "infcodes", "inffast", "inftrees",
               "infutil", "trees", "uncompr", "zutil"]
 CFLAGS = ["-O4,p", "-enum", "int", "-char", "signed", "-str", "noreuse", "-proc", "arm946e", "-gccext,on", "-fp", "soft",

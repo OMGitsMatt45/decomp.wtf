@@ -20,8 +20,8 @@ def main():
     args = parser.parse_args()
     selected = (("gcc-2.7.2-psx", "gcc-2.8.1-psx", "binutils-mips", "m2c", "maspsx") if args.psx_only else
                 ("arm-gnu", "mwccarm", "dsd", "objdiff-cli", "m2c") if args.ds_only else TOOLS)
-    fixtures = ("zlib-n64/prepare.py", "demo-psx/build.py") if args.psx_only else ("zlib-n64/prepare.py", "demo-ds/build.py") if args.ds_only else (
-        "zlib-n64/prepare.py", "demo-psx/build.py", "demo-ps2/build.py",
+    fixtures = ("zlib/prepare.py", "demo-psx/build.py") if args.psx_only else ("zlib/prepare.py", "demo-ds/build.py") if args.ds_only else (
+        "zlib/prepare.py", "demo-psx/build.py", "demo-ps2/build.py",
         "demo-gba/build.py", "demo-ds/build.py")
     try:
         for tid in selected:

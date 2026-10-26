@@ -87,7 +87,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing MIPS binutils failed' }
           uv run --no-sync decompnet toolchain install m2c
           if ($LASTEXITCODE -ne 0) { throw 'Installing m2c failed' }
-          uv run --no-sync python projects/zlib-n64/prepare.py
+          uv run --no-sync python projects/zlib/prepare.py
           if ($LASTEXITCODE -ne 0) { throw 'Preparing the redistributable demo failed' }
       - name: Install the registered Windows package without a local build override
         shell: pwsh

@@ -11,13 +11,18 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-ROM = ROOT / "projects" / "demo-rom" / "build" / "demo-quest-64.z64"
+ROM = ROOT / "projects/demo-psx/build/DEMOQ_PS1.EXE"
+ELF = ROOT / "projects/demo-psx/build/demoq_ps1.elf"
 
-pytestmark = pytest.mark.skipif(not ROM.exists(), reason="needs the demo ROM (projects/demo-rom)")
+pytestmark = pytest.mark.skipif(not ROM.exists(), reason="needs the demo ROM (projects/demo-psx)")
 
 
 def test_bridge_imports_and_works(tmp_path):
     from mcp import Client, StdioServerParameters
+    from elftools.elf.elffile import ELFFile
+    with ELF.open('rb') as source:
+        address = next(s['st_value'] for s in ELFFile(source).get_section_by_name('.symtab').iter_symbols() if s.name == 'abs_s32')
+    function = f"func_{address:08X}"
 
     env = {**os.environ, "DECOMP_HOME": str(tmp_path), "DECOMP_AGENT_NAME": "test-chat", "BROWSER": "true"}
 
@@ -34,10 +39,16 @@ def test_bridge_imports_and_works(tmp_path):
 
             out["refused"] = await call("import_game", path=str(ROM))
             out["imported"] = await call("import_game", path=str(ROM), own_copy=True)
+            # This original CC0 fixture is compiled directly, as in the other
+            # local source-project tests, independently of sandbox availability.
+            from decompnet.app.engine import RomNetwork
+            local = RomNetwork(tmp_path / ".decomp" / "decomp.db", tmp_path)
+            fixture_slug = out["imported"][1].split("Imported as ", 1)[1].split()[0].rstrip(".")
+            local._update_cfg(fixture_slug, lambda cfg: cfg["compiler"].update(sandbox="none"))
             out["projects"] = await call("list_projects")
-            out["claim"] = await call("claim_function", function="func_800007F4")
-            out["compile"] = await call("compile_and_diff", function="func_800007F4",
-                                        source="s32 func_800007F4(s32 v) { if (v < 0) return -v; return v; }")
+            out["claim"] = await call("claim_function", function=function)
+            out["compile"] = await call("compile_and_diff", function=function,
+                                        source="s32 "+function+"(s32 v) { if (v < 0) return -v; return v; }")
             out["progress"] = await call("progress")
 
         # a helper session decomp.wtf started, whose agent only loads the user's own MCP servers (Antigravity CLI):
@@ -65,8 +76,9 @@ def test_bridge_imports_and_works(tmp_path):
         subprocess.run([sys.executable, "-m", "decompnet.app.cli", "stop"], env=env, capture_output=True)
     assert "import_game" in out["instructions"] and {"import_game", "open_gui", "start_agents", "claim_function"} <= out["tools"]
     assert out["refused"][0] and "own legally obtained copy" in out["refused"][1]
-    assert not out["imported"][0] and "Imported as demo-quest-64" in out["imported"][1]
-    assert "demo-quest-64" in out["projects"][1]
+    assert not out["imported"][0] and "Imported as " in out["imported"][1]
+    slug = out["imported"][1].split("Imported as ", 1)[1].split()[0].rstrip(".")
+    assert slug in out["projects"][1]
     compiled = out["compile"][1]
     assert "MATCH" in compiled or "already matched" in compiled  # the autopilot may have been first
     assert "functions" in out["progress"][1]

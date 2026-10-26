@@ -1,6 +1,6 @@
 """What makes agents fast: free matches from identical code (twins), batches of small functions judged in one
 call, and tools that don't waste an agent's turn (names resolved, next function instead of an error, a nudge to
-move on). On Demo Quest 64 (projects/demo-rom), with twins made the way games have them: the same code at
+move on). On the original PS1 Demo Quest fixture, with twins made the way games have them: the same code at
 another address, referring to other data."""
 
 import json
@@ -21,8 +21,8 @@ from decompnet.rom import match
 
 from .test_export import DEMOS, FUNCTIONS, GAME
 
-pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
-                                reason="needs gcc-2.7.2-kmc and ld.lld to build the demo ROM")
+pytestmark = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-psx") is None or toolchains.installed("binutils-mips") is None,
+                                reason="needs gcc-2.7.2-psx and binutils-mips to build the demo ROM")
 
 
 def test_renames_follow_the_relocations():
@@ -37,7 +37,7 @@ def test_renames_follow_the_relocations():
 
 @pytest.fixture(scope="module")
 def game(tmp_path_factory):
-    rom, elf, _, build = DEMOS["n64"]
+    rom, elf, _, build = DEMOS["psx"]
     if not elf.exists():
         subprocess.run([sys.executable, str(build)], check=True)
     work = tmp_path_factory.mktemp("speed")
@@ -46,7 +46,12 @@ def game(tmp_path_factory):
     slug = net.import_rom(rom, confirmed=True, log=lambda *_: None)
     agent, _ = net.local_agent("agent")
     syms = {s.name: s["st_value"] for s in ELFFile(open(elf, "rb")).get_section_by_name(".symtab").iter_symbols()}
-    pid = net.project_row(slug)["id"]
+    proj = net.project_row(slug)
+    cfg = net.cfg(proj)
+    cfg["compiler"].update(language="c", sandbox="none")
+    with net.store.tx() as db:
+        db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
+    pid = proj["id"]
     for name in FUNCTIONS:  # as test_export does: split what the splitter merged, name what's known
         row = net.store.one("SELECT name, vram FROM functions WHERE project_id=? AND vram<=? AND vram+size>?",
                             pid, syms[name], syms[name])
@@ -54,6 +59,7 @@ def game(tmp_path_factory):
             net.split_function(agent, slug, row["name"], f"0x{syms[name]:08X}", name)
     header = "\n".join(line for line in (GAME / "game.h").read_text().splitlines() if not line.startswith("#include")
                        and not re.match(r"typedef \w+( \w+)? [su]\d+;|typedef \w+ f\d+;", line))
+    header = re.sub(r"^extern (s32|u32) (g_\w+);", r"\1 \2;", header, flags=re.M)
     assert net.edit_context(agent, slug, "", header, "the game's types").startswith("✅")
     table = net.symbols(pid)
     for name in FUNCTIONS + ["g_player", "g_entities", "g_score", "g_frame_count", "g_rng_state"]:
@@ -71,16 +77,17 @@ def twin(net, slug: str, of: str, at: int, data_to: dict[int, int] | None = None
     relocs = json.loads(fn["relocs"])
     code = bytearray(fn["target"])
     moved = []
+    byteorder = "big" if proj["big_endian"] else "little"
     for off, rtype, addr in relocs:
         new = addr
         for base, to in (data_to or {}).items():
             if base <= addr < base + 0x100:
                 new = to + (addr - base)
         if new != addr:
-            word = int.from_bytes(code[off:off + 4], "big")
+            word = int.from_bytes(code[off:off + 4], byteorder)
             mask = 0x03FFFFFF if rtype == match.R_MIPS_26 else 0xFFFF
             word = (word & ~mask) | (match.encode(rtype, new) & mask)
-            code[off:off + 4] = word.to_bytes(4, "big")
+            code[off:off + 4] = word.to_bytes(4, byteorder)
         moved.append([off, rtype, new])
     name = f"func_{at:08X}"
     with net.store.tx() as db:
@@ -155,7 +162,7 @@ def test_hand_written_code_in_a_rom_is_set_aside(game):
     with net.store.tx() as db:
         db.execute("INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,unit,vram,status) "
                    "VALUES(?,?,?,?,?,?,?,?,?,?)", (proj["id"], "func_80400400", 12, 3,
-                                                  struct.pack(">III", 0x40026000, 0x03E00008, 0), "[]", "", "", 0x80400400, "open"))
+                                                  struct.pack("<III", 0x40026000, 0x03E00008, 0), "[]", "", "", 0x80400400, "open"))
     assert net.twins.set_aside_asm(proj) == 1
     row = net._function("func_80400400", slug)
     assert row["status"] == "asm" and "coprocessor 0" in json.loads(row["meta"])["asm_code"]
@@ -268,30 +275,29 @@ def test_turns_not_wasted(game):
 def test_the_permuter_finishes_a_near_miss(game):
     """A near miss (a matching source with one rewrite that changes its code: statements swapped, a cast) is
     left to the permuter, which finds its way back to a match on its own."""
-    import random
-
     from decompnet.app.permute import State
-    from decompnet.permuter import mutate
 
     net, slug, _ = game
     agent, _ = net.local_agent("agent")
-    source = csource.get((GAME / "game.c").read_text(), "entity_update_physics")
-    assert net.attempt(agent, "entity_update_physics", source, slug)["matched"]
-    fn = net._function("entity_update_physics", slug)
-    near = None
-    for seed in range(200):  # a variant that compiles and is close, but not the same code
-        variant = mutate(source, random.Random(seed))
-        res = net.try_quietly(agent, net.project_row(slug), {**fn, "status": "open"}, variant) if variant else None
-        if res and res["score"] and res["score"] <= fn["n_insns"] * 100 * 0.06:
-            near = (variant, res["score"])
-            break
-    assert near, "no near-miss variant to start from"
+    source = csource.get((GAME / "game.c").read_text(), "entity_collides")
+    assert net.attempt(agent, "entity_collides", source, slug)["matched"]
+    fn = net._function("entity_collides", slug)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='open', matched_source=NULL, best_score=NULL, best_source=NULL WHERE id=?", (fn["id"],))
+    fn = net._function("entity_collides", slug)
+    # One signedness cast changes the PS1 compare. The mutator can remove it;
+    # strict scoring must still require the original signed instruction.
+    variant = source.replace("return abs_s32(", "return (u32)abs_s32(")
+    assert variant != source
+    result = net.try_quietly(agent, net.project_row(slug), fn, variant)
+    assert result and 0 < result["score"] <= fn["n_insns"] * 100 * 0.06
+    near = (variant, result["score"])
     with net.store.tx() as db:  # as if agents had left it there
         db.execute("UPDATE functions SET status='open', matched_source=NULL, best_score=?, best_source=? WHERE id=?",
                    (near[1], near[0], fn["id"]))
     proj = net.project_row(slug)
-    assert [r["name"] for r in net.permuter.candidates(proj)][:1] == ["entity_update_physics"]
+    assert [r["name"] for r in net.permuter.candidates(proj)][:1] == ["entity_collides"]
     permuter, _ = net.local_agent("permuter")
     st = State()
-    net.permuter._permute(permuter, proj, net._function("entity_update_physics", slug), st)
-    assert st.matched == 1 and net._function("entity_update_physics", slug)["status"] == "matched", st
+    net.permuter._permute(permuter, proj, net._function("entity_collides", slug), st)
+    assert st.matched == 1 and net._function("entity_collides", slug)["status"] == "matched", st

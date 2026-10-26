@@ -1,6 +1,6 @@
 name = "Demo Quest"
 slug = "demo"
-description = "Toy x86-64 game for trying DecompNet end to end. Swap in a real ROM project (IDO, KMC GCC, MWCC, EE-GCC) the same way."
+description = "Toy x86-64 game for trying DecompNet end to end. Swap in a real ROM project (PS1 GCC, DS CodeWarrior, EE-GCC, Arm GNU) the same way."
 
 [legal]
 basis = "own-code"
