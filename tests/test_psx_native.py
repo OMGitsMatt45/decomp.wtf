@@ -18,7 +18,8 @@ def originals(folder):
     folder.mkdir(parents=True,exist_ok=True)
     paths=[]
     for index in (1,2):
-        path=folder/f'Original disc {index}.iso';path.write_bytes(disc(index));paths.append(path)
+        boot='SLUSP314.15' if index==1 else 'SLUS_314.16'
+        path=folder/f'Original disc {index}.iso';path.write_bytes(disc(index,boot=boot));paths.append(path)
     return paths
 
 
@@ -178,6 +179,7 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     # execution modes at 360; a longer run only interprets the busy-wait loop
     # and approached the 90-second bound on Windows (600 frames took 85 s).
     first,pixels=run(native_project,'disc1','--headless','--renderer','software',frames=360)
+    assert 'does not contain the expected game ID' not in (native_project[0]/'disc1.log').read_text()
     assert first['native_dispatches']>0 and first['module_dispatches'][0]>0
     assert first['module_dispatches'][1]==0
     assert first['observed'][:4]==[1,0xd0000001,2048,0xa004]
@@ -215,6 +217,19 @@ def test_automatic_fallback_and_required_gpu_failure(native_project):
     report,_=run(native_project,'automatic-fallback','--hidden-window','--renderer','auto')
     assert report['renderer']=='software' and report['software_fallback']
     assert 'OpenGL' in run(native_project,'required-gpu-failure','--hidden-window','--renderer','opengl',ok=False)
+
+
+def test_bounded_window_logs_disc_warning_and_finishes(native_project):
+    config=native_project[1]/'game.toml'
+    original=config.read_text()
+    assert 'SLUS-31415' in original
+    try:
+        config.write_text(original.replace('SLUS-31415','SLUS-99999'))
+        report,_=run(native_project,'bounded-warning','--game',config,'--renderer','software',frames=2)
+    finally:
+        config.write_text(original)
+    assert report['frames']==2
+    assert 'Disc Image Warning' in (native_project[0]/'bounded-warning.log').read_text()
 
 
 def test_actual_gpu_geometry_adapts_to_resize_and_portrait(native_project):

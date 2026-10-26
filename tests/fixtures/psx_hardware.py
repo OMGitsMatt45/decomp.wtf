@@ -107,13 +107,13 @@ def executable(index=1):
     return bytes(header)+payload
 
 
-def disc(index=1):
+def disc(index=1,boot='PSX.EXE'):
     # Extend the ISO made by the standard-library stager with a second file.
     # pycdlib supplies a standards-complete directory/path table for BIOS reads.
     import io
     import pycdlib
     image=pycdlib.PyCdlib();image.new(interchange_level=3,sys_ident='PLAYSTATION',vol_ident=f'ORIGINAL_DISC_{index}')
-    for name,data in {'SYSTEM.CNF':b'BOOT = cdrom:\\PSX.EXE;1\r\n','PSX.EXE':executable(index),
+    for name,data in {'SYSTEM.CNF':('BOOT = cdrom:\\'+boot+';1\r\n').encode('ascii'),boot:executable(index),
                       'SAMPLE.BIN':struct.pack('<I',0xd0000000+index)+bytes(2048*index)}.items():
         image.add_fp(io.BytesIO(data),len(data),iso_path='/'+name+';1')
     out=io.BytesIO();image.write_fp(out);image.close();return out.getvalue()
