@@ -13,5 +13,7 @@ running. Tests inspect actual pixels, sound, IRQ/input state and save reload.
 
 The guest also checks selective DTCM enable, repeated one-word cartridge DMA,
 signed Thumb halfword switches, a 300-entry switch, and a BL to a shared return
-epilogue. A normal nested BL with a separate saved frame must still resume its
-caller. All paths have original assembled bytes and observable memory results.
+epilogue that releases local stack space. Its alternate inline return also
+writes an output word. Pointer-like data after the shared BL is unreachable.
+A normal nested BL with a separate saved frame must still resume its caller.
+All paths have original assembled bytes and observable memory results.

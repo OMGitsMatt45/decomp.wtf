@@ -5,7 +5,7 @@ must return to the caller whose saved frame they consume. This adapts the
 upstream emitter through its decoded instruction interface; no game addresses,
 bytes or title-specific entry lists are used.
 """
-from capstone.arm_const import ARM_OP_IMM, ARM_OP_REG
+from capstone.arm_const import ARM_OP_IMM, ARM_OP_MEM, ARM_OP_REG
 
 
 def install(emitter):
@@ -13,56 +13,138 @@ def install(emitter):
     if getattr(cls,'_decomp_bounds_fixed',False):return
     original=cls._jump_case_count
     branch=cls._branch
+    secondary=emitter._secondary_branch_entries
+
+    def secondary_entries(edges,entries,*args,**kwargs):
+        # A branch can only acquire a secondary entry in its own module/mode.
+        # Preserve the upstream ownership/overlap proof, but avoid scanning
+        # every function in every overlay for each branch in a large game.
+        groups={}
+        for entry in entries:
+            groups.setdefault((entry.module_id,entry.thumb),[]).append(entry)
+        branches={}
+        for source,target in edges:
+            branches.setdefault((source.module_id,source.thumb),[]).append((source,target))
+        result=[];sources=set()
+        for key in sorted(branches):
+            found,used=secondary(branches[key],groups.get(key,[]),*args,**kwargs)
+            result.extend(found);sources.update(used)
+        return sorted(result,key=lambda entry:(entry.module_id,entry.address,entry.thumb)),sources
+
+    discover_source=cls._discover
+
+    def adjustment(op):
+        name=cls._branch_name(op).rstrip('s');ops=op.operands
+        if name not in ('add','sub') or len(ops) not in (2,3) or op.condition!=14:
+            return None
+        if ops[0].type!=ARM_OP_REG or emitter.operand_reg(op,ops[0])!=13 or ops[-1].type!=ARM_OP_IMM:
+            return None
+        if len(ops)==3 and (ops[1].type!=ARM_OP_REG or emitter.operand_reg(op,ops[1])!=13):
+            return None
+        value=int(ops[-1].imm)
+        if value<0 or value%4:return None
+        return value if name=='add' else -value
 
     def shared_exit(self,insn,target):
-        """Prove a short Thumb target consumes this caller's saved frame.
+        """Prove a Thumb helper releases exactly this caller's stack frame.
 
-        Some Thumb compilers use BL as a long branch to a shared epilogue.
-        Its POP restores the outer PC, so C++ must not execute the next case.
-        Keep ordinary BL subroutines (with their own frame) unchanged.
+        BL can be a long branch to a shared epilogue. Match the saved registers
+        and a constant prologue allocation against ADD sp / POP {...,pc}; reject
+        new callee frames, other stack writes and ambiguous control flow.
         """
+        if not insn.thumb or insn.condition!=14:return False
+        target &= ~1
         entry=self._slot_for(target,insn)
-        if entry is None or not entry.thumb:return False
+        if entry is not None:
+            if not entry.thumb:return False
+            module,end=entry.module,entry.end
+        elif self._inside(target):
+            module,end=self.module,self.end
+        else:return False
         prologue=self.decoder.decode(self.begin)
-        if prologue is None or self._branch_name(prologue)!='push':return False
+        if prologue is None or cls._branch_name(prologue)!='push' or prologue.condition!=14:return False
         saved={emitter.operand_reg(prologue,op) for op in prologue.operands if op.type==ARM_OP_REG}
         if 14 not in saved:return False
         expected=(saved-{14})|{15}
-        # No additional stack frame or local allocation in this caller.
+        allocation=0;prologue_sites={self.begin};address=prologue.next_address
+        for _ in range(4):
+            op=self.decoder.decode(address)
+            delta=adjustment(op) if op is not None else None
+            if delta is None or delta>=0:break
+            allocation-=delta;prologue_sites.add(address);address=op.next_address
+        def epilogue(image,start,limit):
+            base=int(image['base'])
+            if image is self.module:prefix=self.image[start-base:min(limit-base,start-base+64)]
+            else:
+                with open(image['image'],'rb') as stream:
+                    stream.seek(start-base);prefix=stream.read(min(limit-start,64))
+            decoder=emitter.Decoder(prefix,start,self.arch,True)
+            released=0;sites=set();address=start
+            for _ in range(16):
+                if address>=limit:return None
+                op=decoder.decode(address)
+                if op is None or op.next_address>limit or op.condition!=14:return None
+                name=cls._branch_name(op).rstrip('s');sites.add(address)
+                if name=='pop':
+                    restored={emitter.operand_reg(op,item) for item in op.operands if item.type==ARM_OP_REG}
+                    return sites if restored==expected and released==allocation else None
+                delta=adjustment(op)
+                if delta is not None:
+                    if delta<0:return None
+                    released+=delta
+                    if released>allocation:return None
+                else:
+                    if name not in ('mov','mvn','add','sub','and','orr','eor','bic','lsl','lsr','asr','ror',
+                                    'cmp','tst','ldr','ldrb','ldrh','ldrsb','ldrsh','str','strb','strh','nop'):return None
+                    if name in ('str','strb','strh') and any(
+                            op.detail.reg_name(reg) in ('sp','pc','r13','r15')
+                            for item in op.operands if item.type==ARM_OP_MEM
+                            for reg in (item.mem.base,item.mem.index) if reg):return None
+                    _,writes=op.detail.regs_access()
+                    if any(op.detail.reg_name(r) in ('sp','lr','pc','r13','r14','r15') for r in writes):return None
+                address=op.next_address
+            return None
+        epilogue_sites=epilogue(module,target,end)
+        if epilogue_sites is None:return False
+        stack_writes=[]
         for other in self.insns.values():
-            if other.address==self.begin:continue
-            name=self._branch_name(other).rstrip('s')
             _,writes=other.detail.regs_access()
-            if any(other.detail.reg_name(r) in ('sp','r13') for r in writes) and name!='pop':return False
-        # Only the bounded epilogue prefix is needed, not another full module
-        # read for every call site in a retail manifest.
-        with open(entry.module['image'],'rb') as stream:
-            stream.seek(entry.address-int(entry.module['base']))
-            prefix=stream.read(min(entry.size,64))
-        decoder=emitter.Decoder(prefix,entry.address,self.arch,True)
-        address=entry.address
-        for _ in range(16):
-            if address>=entry.end:return False
-            op=decoder.decode(address)
-            if op is None or op.next_address>entry.end or op.condition!=14:return False
-            name=self._branch_name(op).rstrip('s')
-            if name=='pop':
-                restored={emitter.operand_reg(op,item) for item in op.operands if item.type==ARM_OP_REG}
-                return restored==expected
-            # Straight-line register work and loads are safe before the POP.
-            if name not in ('mov','mvn','add','sub','and','orr','eor','bic','lsl','lsr','asr','ror',
-                            'cmp','tst','ldr','ldrb','ldrh','ldrsb','ldrsh','nop'):return False
-            _,writes=op.detail.regs_access()
-            if any(op.detail.reg_name(r) in ('sp','lr','pc','r13','r14','r15') for r in writes):return False
-            address=op.next_address
-        return False
+            if any(other.detail.reg_name(r) in ('sp','r13') for r in writes):stack_writes.append(other)
+        # Other branches may return through equivalent inline epilogues. Prove
+        # each whole release/POP path before allowing its stack writes; a POP
+        # by itself is not evidence that the local frame was restored.
+        for other in stack_writes:
+            if other.address in prologue_sites or other.address in epilogue_sites:continue
+            delta=adjustment(other)
+            if (delta is not None and delta>=0) or (allocation==0 and cls._branch_name(other)=='pop'):
+                sites=epilogue(self.module,other.address,self.end)
+                if sites is not None:epilogue_sites.update(sites)
+        return all(op.address in prologue_sites or op.address in epilogue_sites for op in stack_writes)
+
+    def discover(self):
+        leaders=set(self.leaders);loops=set(self.loop_headers);stats=dict(self.stats)
+        discover_source(self)
+        # Establish the frame proof against the complete first-pass graph.
+        # Revisit reachability without following a proven tail's return address;
+        # literal words after it must never become executable instructions.
+        tails={op.address for op in self.insns.values() if cls._branch_name(op)=='bl'
+               and (target:=self._branch_target(op)) is not None and shared_exit(self,op,target)}
+        self._decomp_tail_exits=tails
+        if not tails or self.dispatch_entries is not None:return
+        name=self._branch_name;manual=self._manual_link
+        self.insns.clear();self.leaders=leaders;self.loop_headers=loops
+        self.stats.clear();self.stats.update(stats)
+        self._branch_name=lambda op:'b' if op.address in tails else name(op)
+        self._manual_link=lambda op:None if op.address in tails else manual(op)
+        try:discover_source(self)
+        finally:self._branch_name=name;self._manual_link=manual
 
     def emit_branch(self,insn):
         result=branch(self,insn)
         if result is None or not insn.thumb or self._branch_name(insn)!='bl':return result
         target=self._branch_target(insn)
         if target is None or (self.dispatch_entries is not None and self._inside(target&~1)):return result
-        if shared_exit(self,insn,target):
+        if insn.address in getattr(self,"_decomp_tail_exits",set()):
             return result+'\nreturn;'
         return result
 
@@ -100,6 +182,8 @@ def install(emitter):
 
     cls._jump_case_count=count
     cls._branch=emit_branch
+    cls._discover=discover
+    emitter._secondary_branch_entries=secondary_entries
     from .wider_table import make
     cls._thumb_halfword_table_info=make(emitter)
     cls._decomp_bounds_fixed=True

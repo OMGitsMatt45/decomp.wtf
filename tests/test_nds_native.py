@@ -184,6 +184,23 @@ def test_unsupported_code_does_not_publish_an_incomplete_repository(tmp_path,sdk
     assert not (tmp_path/'out').exists()
 
 
+def test_mismatched_shared_stack_frame_does_not_hide_unsupported_code(tmp_path,sdk):
+    import hashlib
+    raw,profile=hardware();raw=bytearray(raw)
+    symbols=json.loads((Path(__file__).parent/'fixtures/nds-hardware/program.json').read_text())['arm9']['symbols']
+    offset,_,base,_=struct.unpack_from('<4I',raw,0x20)
+    at=offset+symbols['shared_start']-base+2
+    allocation=struct.unpack_from('<H',raw,at)[0]
+    assert allocation&0xff80==0xb080
+    struct.pack_into('<H',raw,at,allocation+1)
+    profile['input_sha256']=hashlib.sha256(raw).hexdigest()
+    rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
+    with pytest.raises(pc.PCError,match='unsupported instruction sites'):
+        export(rom,tmp_path/'out',profile=path)
+    assert not (tmp_path/'out').exists()
+
+
 @pytest.mark.parametrize('cpu,stack',[('arm9',0x0380ff00),('arm7',0x00803f00)])
 def test_reviewed_stacks_cannot_use_the_other_processors_private_ram(tmp_path,sdk,cpu,stack):
     raw,profile=hardware();profile['processors'][cpu]['stack']=stack
