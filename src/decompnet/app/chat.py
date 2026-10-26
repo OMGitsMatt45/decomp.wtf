@@ -26,8 +26,9 @@ C++ project with a source-shipped runtime. It does not require matching every fu
 console compiler. For an existing DS reconstruction, use export_project(format="pc", save_type=...).
 For PS1, use generate_pc_project(path, own_copy=true, platform="psx", disc_paths=[additional discs in order]).
 An M3U can list the whole game. The output is one C/C++ project with adaptive OpenGL rendering and shared
-memory cards. PS1 uses one screen. Its optional runtime has noncommercial terms and hybrid execution;
-unknown code is interpreted, and runtime guest-code compilation is disabled. Existing imported PS1 disc
+memory cards. PS1 uses one screen. Its optional runtime has noncommercial terms. The normal player
+executes generated native code and fails on uncovered paths; a separate optional executable supplies
+the instruction reference. Runtime guest-code compilation is disabled. Existing imported PS1 disc
 sets can use export_project(format="pc"). DS save-chip names apply only to DS.
 For PS2, use generate_pc_project(path, own_copy=true, platform="ps2", renderer="vulkan").
 Exact-hash bundled maps are selected automatically. Closed stripped programs can be mapped automatically;

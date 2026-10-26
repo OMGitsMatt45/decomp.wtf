@@ -57,7 +57,9 @@ The [native output plan](future/ps1-native.md) records the
 pinned optional runtime, original generated-C CPU and hardware fixtures, and
 DQVII validation. The [PS1 guide](ps1-native.md) describes the implemented native
 exporter, adaptive GPU presentation, one executable for the ordered disc set,
-shared memory cards and explicit hybrid execution. Windows/Linux CI builds and
+shared memory cards. [PR #40](https://github.com/OMGitsMatt45/decomp.wtf/pull/40)
+excludes the interpreter from the normal player and retains a separate optional
+reference executable; unknown code produces a coverage failure. Windows/Linux CI builds and
 executes original fixtures; full retail playthrough acceptance stays with the
 user. New game adapters must satisfy the shared adaptive GPU contract.
 PS2 native output is implemented in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).

@@ -24,7 +24,7 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | Target | Current from-scratch support | Route toward PC output |
 | --- | --- | --- |
 | DS | ARM9/ARM7 recovery and console reconstruction; experimental native PC generation | Pinned MIT DQ9-Decomp translation/runtime integration supplies graphics, audio, input, timing and saves. Compatibility and optional enhancements remain title-specific validation. |
-| PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. Hybrid execution and noncommercial dependency terms are explicit. |
+| PS1 | Disc/EXE recovery, reviewed modules, combined disc sets and experimental native PC generation | Pinned PSXRecomp/OpenBIOS integration supplies adaptive GPU rendering, audio, input, CD and shared memory cards. The normal player uses native code and fails on uncovered paths; a separate optional executable supplies the instruction reference. Noncommercial dependency terms are explicit. |
 | GBA | ARM/Thumb matching, cartridge reconstruction, and an experimental independent native desktop project | [PR6](future/gba.md) adds translated C, guarded temporal RAM variants, a source-shipped core, raw-state OpenGL rendering, audio, controls and cartridge saves. Emerald's tested save/reload and daily-clock workflows run without interpretation. Independent timer observations and an mGBA save/room check pass. Original GPU fixtures pass on the owner's [Windows/Intel Iris Xe](gba-hardware-validation.json). Broader hardware accuracy remains experimental; full gameplay acceptance remains owner-run. |
 | PS2 | EE reconstruction; shared disc/overlay inspection and experimental native PC export | Pinned PS2Recomp/SDL3 GS sources supply adaptive Vulkan geometry, audio, input, disc access and saves. The DQVIII export builds and reaches its settings prompt. Reviewed stripped-code maps and hybrid IOP/VU execution are explicit; see [qualification scope](future/ps2.md). |
 | 3DS | [Decrypted images, native CPU/CRO source and bundled runtime projects](3ds-native.md), with original kernel/IPC/ExeFS, Vulkan and audio/input checks | Adaptive two-screen presentation, audio and keyboard/touch/gamepads are development features. Original Vulkan scenes and the two-screen window passed on the owner's [Windows/Intel Iris Xe](3ds-hardware-validation.json). Retail source/DSP/save coverage, physical audio/controllers and broader GPU coverage remain. The experimental `ctr-native` game backend ships the same standalone source/runtime contract. |
@@ -87,8 +87,10 @@ engine/VRAM module placements and recovered source. The optional
 C and ships the complete runtime, including MIT OpenBIOS, in the output source
 project. The [PS1 guide](ps1-native.md) documents ordered media, adaptive OpenGL,
 audio/input/CD services, shared memory cards and the standalone build.
-Its noncommercial terms remain visible. Execution is hybrid with an interpreter;
-runtime guest-code compilation is disabled. Reviewed module facts from retained
+Its noncommercial terms remain visible. The normal player excludes the instruction
+interpreter and runtime guest-code compilation; uncovered paths fail with a
+coverage report. An optional separate target supplies the instruction reference.
+Reviewed module facts from retained
 projects feed independent, byte-validated native modules.
 
 Original fixtures exercise one two-disc executable, actual GPU geometry,

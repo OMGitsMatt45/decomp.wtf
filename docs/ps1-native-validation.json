@@ -1,0 +1,45 @@
+{
+  "schema": "decomp.wtf.ps1-static-assessment/v1",
+  "date": "2026-10-26",
+  "execution_model": "static-recompiled",
+  "instruction_engine_present": false,
+  "runtime_guest_compilation": false,
+  "reference": "Separate optional ps1_probe executable",
+  "original_hardware_checks": {
+    "passed": 16,
+    "includes": [
+      "Native/reference register observations and final picture",
+      "Two-disc CD payloads, SPU output and memory-card save/reload",
+      "Live tray change retaining resident native code",
+      "Mesa OpenGL geometry, resize, portrait and fullscreen",
+      "Explicit renderer failure and reported software presentation fallback",
+      "Uncompiled entry fails with zero interpreted instructions",
+      "Native binary excludes exec_one_fetched_inner"
+    ]
+  },
+  "original_cpu_checks": {
+    "passed": 13,
+    "includes": [
+      "Raw/compressed disc program discovery and overlapping byte guards",
+      "Copied native routines at multiple RAM placements against Unicorn",
+      "OpenBIOS callback bridge shapes against Unicorn",
+      "Compatibility rewrite views, continuation and delay-slot targets"
+    ]
+  },
+  "private_retail_check": {
+    "title": "Dragon Quest VII",
+    "frames": 1800,
+    "native_dispatches": 12350101,
+    "interpreted_instructions": 0,
+    "coverage_misses": 0,
+    "final_picture_matches_baseline": true,
+    "audio_frames": 1323000,
+    "audio_nonzero_frames": 643082,
+    "audio_frame_counts_match_baseline": true,
+    "bit_exact_pcm_compared": false,
+    "disc_identity_matches_baseline": true,
+    "full_playthrough": false,
+    "scope": "Bounded boot sequence; not general retail or full-game compatibility qualification"
+  },
+  "privacy": "Owner inputs, derived game code, captures, RAM and saves remain private"
+}

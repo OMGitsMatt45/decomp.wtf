@@ -1,8 +1,9 @@
 # PS1 native PC output
 
 DS native output merged in [PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29)
-at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`. PS1 is the active platform in
-[PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30).
+at `9b5440283bd90472edc029d4a1be3f8cfd1ad661`. PS1 source export merged in
+[PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30); native-only execution
+is tracked in [PR #40](https://github.com/OMGitsMatt45/decomp.wtf/pull/40).
 The first retail target is DQVII: **one source repository and build for both
 ordered discs**, with runtime disc switching and shared saves. The existing
 disc parsers, reviewed module placements and private source checkpoints remain
@@ -25,9 +26,10 @@ pinned to `31df2e1e0e0a6525733e68ff70e72ecbef84bb09`:
 The dependency is optional and is not installed by application setup. Its native
 adapter is registered as experimental. Its noncommercial terms remain visible in the integration
 and generated output. This assessment does not change decomp.wtf's MIT license
-or establish commercial use rights for the candidate. The default hybrid model
-is reported honestly. This integration disables runtime guest-code compilation
-and retains the interpreter fallback.
+or establish commercial use rights for the candidate. This integration excludes
+the instruction interpreter from the normal player and disables runtime guest-code
+compilation. Uncovered code produces a coverage failure. The optional `ps1_probe`
+target preserves an original-byte instruction reference in a separate executable.
 
 ## Implemented execution proof
 

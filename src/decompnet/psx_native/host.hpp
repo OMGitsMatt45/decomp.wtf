@@ -13,6 +13,7 @@
 extern "C" uint64_t decomp_native_dispatches;
 extern "C" uint64_t decomp_module_dispatches[];
 extern "C" const unsigned decomp_module_count;
+extern "C" uint64_t decomp_copy_dispatches,decomp_kernel_stub_dispatches;
 static const CPUState *decomp_cpu=nullptr;
 static uint64_t decomp_limit=0, decomp_switch_frame=0, decomp_resize_frame=0;
 static int decomp_switch_index=0, decomp_width=0, decomp_height=0;
@@ -20,6 +21,13 @@ static int decomp_resize_w=0, decomp_resize_h=0;
 static bool decomp_fullscreen=false, decomp_require_gpu=decomp_default_require_gpu;
 static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
+static uint32_t decomp_coverage_pc=0;
+static int decomp_exit_status=0;
+#ifdef DECOMP_PSX_NATIVE_ONLY
+static constexpr const char *decomp_execution_model="static-recompiled";
+#else
+static constexpr const char *decomp_execution_model="reference";
+#endif
 static bool decomp_bounded_run() { return decomp_limit>0; }
 
 static void decomp_gpu_error() {
@@ -70,6 +78,12 @@ static void decomp_size(const char *value,int &w,int &h) {
     }
 }
 static void decomp_parse(int &argc,char **argv) {
+#ifdef DECOMP_PSX_NATIVE_ONLY
+    const char *force=std::getenv("PSX_FORCE_INTERP");
+    if(force&&*force&&*force!='0'){
+        std::fputs("PSX_FORCE_INTERP requires the optional ps1_probe reference target.\n",stderr);std::exit(2);
+    }
+#endif
     int kept=1;
     for(int i=1;i<argc;i++) {
         const std::string arg=argv[i];
@@ -207,19 +221,20 @@ static void decomp_frame_end() {
             if(applied>0){g_video_scale=applied;dynres_setup();}
         }
     }
-    if(!decomp_limit||s_frame_count<decomp_limit)return;
-    memcard_flush_all();spu_catch_up();
-    if(memcard_last_flush_result(0)<0||memcard_last_flush_result(1)<0) {
+    if(!decomp_exit_status&&(!decomp_limit||s_frame_count<decomp_limit))return;
+    if(!decomp_exit_status){memcard_flush_all();spu_catch_up();}
+    if(!decomp_exit_status&&(memcard_last_flush_result(0)<0||memcard_last_flush_result(1)<0)) {
         std::fprintf(stderr,"memory-card flush failed\n");std::exit(1);
     }
-    if(!decomp_capture(dw,dh)){std::fprintf(stderr,"capture failed\n");std::exit(1);}
+    if(!decomp_exit_status&&!decomp_capture(dw,dh)){std::fprintf(stderr,"capture failed\n");std::exit(1);}
     SpuDebugInfo audio;spu_debug_info(&audio);
     GpuDisplayInfo display;gpu_get_display_info(&display);
     const bool gl=gr_backend()==GR_BACKEND_OPENGL;
     const char *device="";
     if(gl){rt_acquire("decomp report");device=(const char*)glGetString(GL_RENDERER);}
     std::ostringstream out;
-    out<<"{\"schema\":\"decomp.wtf.ps1-run/v1\",\"execution_model\":\"hybrid\",\"runtime_compilation\":false,\"frames\":"<<s_frame_count
+    out<<"{\"schema\":\"decomp.wtf.ps1-run/v1\",\"execution_model\":"<<decomp_json(decomp_execution_model)
+       <<",\"runtime_compilation\":false,\"frames\":"<<s_frame_count
        <<",\"renderer\":"<<decomp_json(gl?"opengl":"software")<<",\"device\":"<<decomp_json(device)
        <<",\"drawable_width\":"<<dw<<",\"drawable_height\":"<<dh<<",\"internal_scale\":"<<gr_scale()
        <<",\"fullscreen\":"<<(s_window_fullscreen.mode?"true":"false")
@@ -227,6 +242,8 @@ static void decomp_frame_end() {
        <<",\"depth24\":"<<(display.depth24?"true":"false")
        <<",\"software_fallback\":"<<(!g_headless&&!gl&&g_video_renderer==1?"true":"false")
        <<",\"native_dispatches\":"<<decomp_native_dispatches<<",\"interpreted_instructions\":"<<g_dirty_ram_insns_run
+       <<",\"copied_dispatches\":"<<decomp_copy_dispatches<<",\"kernel_bridge_dispatches\":"<<decomp_kernel_stub_dispatches
+       <<",\"coverage_misses\":"<<(decomp_exit_status?1:0)<<",\"coverage_pc\":"<<decomp_coverage_pc
        <<",\"pc\":"<<(decomp_cpu?decomp_cpu->pc:0)<<",\"ra\":"<<(decomp_cpu?decomp_cpu->gpr[31]:0)
        <<",\"last_store_pc\":"<<g_debug_last_store_pc
        <<",\"disc_index\":"<<cdrom_disc_selected()<<",\"disc_count\":"<<cdrom_disc_roster_count()
@@ -243,5 +260,12 @@ static void decomp_frame_end() {
         std::ofstream file(std::filesystem::u8path(decomp_report_path));file<<out.str();
         if(!file.good()){std::fprintf(stderr,"report write failed\n");std::exit(1);}
     } else std::fputs(out.str().c_str(),stdout);
-    std::fflush(stdout);std::exit(0);
+    std::fflush(stdout);std::exit(decomp_exit_status);
+}
+extern "C" void decomp_psx_missing_native(CPUState *cpu,uint32_t pc){
+    std::fprintf(stderr,"decomp.wtf: missing native PS1 code at %08x (ra=%08x). "
+        "Regenerate source coverage; reference diagnostics use ps1_probe.\n",pc,cpu?cpu->gpr[31]:0);
+    if(cpu)cpu->pc=pc;
+    decomp_cpu=cpu;decomp_coverage_pc=pc;decomp_exit_status=3;
+    decomp_frame_end();std::exit(3);
 }

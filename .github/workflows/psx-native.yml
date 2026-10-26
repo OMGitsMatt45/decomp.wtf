@@ -43,7 +43,7 @@ jobs:
       - name: Export, build and execute the original ordered two-disc game
         run: >-
           uv run --no-sync python -m pytest -q
-          tests/test_psx_native.py tests/test_psx_native_app.py tests/test_pc_output.py
+          tests/test_psx_native.py tests/test_psx_native_discovery.py tests/test_psx_native_copies.py tests/test_psx_native_kernel.py tests/test_psx_native_compatibility.py tests/test_psx_native_app.py tests/test_pc_output.py
           --basetemp=ps1-standalone-results --junitxml=ps1-standalone-results.xml
       - uses: actions/upload-artifact@v4
         if: always()

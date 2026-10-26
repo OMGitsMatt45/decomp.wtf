@@ -9,7 +9,7 @@ import shutil
 import subprocess
 
 from .. import pc,toolchains
-from . import codegen,media,runtime_patch
+from . import codegen,compatibility,copies,media,runtime_patch
 
 BACKEND_ID='psx-psxrecomp-experimental'
 SDK_COMMIT='31df2e1e0e0a6525733e68ff70e72ecbef84bb09'
@@ -24,7 +24,7 @@ def _source(name):return resources.files(__package__).joinpath(name).read_text(e
 
 def revision():
     digest=hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','media.py','codegen.py','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake'):
+    for name in ('__init__.py','media.py','module_discovery.py','codegen.py','compatibility.py','openbios_compat.LICENSE','copies.py','execution_policy.py','kernel_stubs.inc','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -82,6 +82,8 @@ def generate(project,root):
         if len({d['identity'] for d in discs})!=len(discs):raise pc.PCError('the same disc content cannot appear twice')
         project=dict(platform='psx',discs=discs,title=project.get('title') or 'PS1 game',renderer=project.get('renderer','auto'))
     sdk=_sdk();recompiler=_recompiler(sdk)
+    compatibility.verify_profile(sdk)
+    project=dict(project,discs=compatibility.extend(project['discs']))
     for folder in ('game','native','tools','runtime','LICENSES'):(root/folder).mkdir()
     _log('Copying the pinned PS1 hardware runtime and license sources...')
     vendor=root/'runtime/psxrecomp';vendor.mkdir()
@@ -92,19 +94,30 @@ def generate(project,root):
     (root/'LICENSES/decomp.wtf-MIT.txt').write_text(resources.files('decompnet.nds_pc').joinpath('runtime.LICENSE').read_text(encoding='utf-8'),encoding='utf-8')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PSXRecomp.txt')
     shutil.copyfile(vendor/'bios/OpenBIOS.LICENSE',root/'LICENSES/OpenBIOS-MIT.txt')
+    (root/'LICENSES/OpenBIOS-compat-MIT.txt').write_text(_source('openbios_compat.LICENSE'),encoding='utf-8')
     modules=[]
     for disc in project['discs']:
         for index,item in enumerate([disc,*disc.get('modules',[])]):
             folder=root/f'game/disc{disc["index"]}'
             if index:folder=folder/f'module{index}'
-            item={**item,'module_index':len(modules)+1}
+            item={**item,'index':disc['index'],'module_index':len(modules)+1}
             modules.append(codegen.module(recompiler,item,folder,_run,sdk))
-    codegen.registry(modules,root/'native/modules.c')
+    _log('Discover position-independent input routines for guarded RAM copies...')
+    bodies=copies.discover(project['discs']);copied=[]
+    for index,item in enumerate(bodies,1):
+        folder=root/f'game/copies/body{index}'
+        copied.append(copies.emit_body(recompiler,sdk,item,folder,index,_run))
+    copies.registry(list(zip(bodies,copied)),root/'native/copies.c')
+    codegen.registry(modules,root/'native/modules.c',copied=True)
     (root/'native/defaults.hpp').write_text('#pragma once\ninline constexpr bool decomp_default_require_gpu='+
         ('true' if project['renderer']=='opengl' else 'false')+';\n',encoding='utf-8')
     for source,target in (('host.hpp','native/decomp_host.hpp'),('Project.cmake','CMakeLists.txt'),
                           ('extract_assets.py','tools/extract_assets.py')):
         (root/target).write_text(_source(source),encoding='utf-8')
+    (root/'native/static_execution.c').write_text('#define DECOMP_PSX_NATIVE_ONLY 1\n'
+        '#include "../runtime/psxrecomp/runtime/src/dirty_ram_interp.c"\n',encoding='utf-8')
+    (root/'native/static_main.cpp').write_text('#define DECOMP_PSX_NATIVE_ONLY 1\n'
+        '#include "../runtime/psxrecomp/runtime/src/main.cpp"\n',encoding='utf-8')
     discs=project['discs'];first=discs[0];info=first['info']
     recipe=dict(schema='decomp.wtf.ps1-assets/v1',discs=[dict(index=d['index'],kind=d['kind'],files=d['files']) for d in discs])
     (root/'game/assets.json').write_text(json.dumps(recipe,indent=2)+'\n',encoding='utf-8')
@@ -124,10 +137,10 @@ def generate(project,root):
     manifest=dict(schema=pc.SCHEMA,platform='psx',backend=dict(id=BACKEND_ID,revision=revision()),
         runtime=dict(id='psxrecomp',revision=SDK_COMMIT,upstream_source_sha256=SDK_SHA256,
             integration_revision=revision(),license='PolyForm-Noncommercial-1.0.0'),
-        execution_model='hybrid',build=dict(system='cmake',target='ps1_pc'),
-        fallback=dict(interpreter=True,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
+        execution_model='static-recompiled',build=dict(system='cmake',target='ps1_pc',reference_target='ps1_probe'),
+        fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
         inputs=[dict(sha256=d['files'][0]['sha256'],disc=d['index'],identity=d['identity'],files=d['files']) for d in discs],
-        code_generation=modules,presentation=pc.presentation(project['renderer']),files={})
+        code_generation=modules,copied_routines=copied,presentation=pc.presentation(project['renderer']),files={})
     for path in sorted(root.rglob('*')):
         if path.is_file():manifest['files'][path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
@@ -143,10 +156,19 @@ the bundled OpenBIOS is MIT-licensed. The optional PSXRecomp runtime and generat
 helpers have PolyForm Noncommercial 1.0.0 terms; see runtime/psxrecomp/LICENSE.
 decomp.wtf's integration remains MIT. This output has experimental compatibility.
 
-The execution model is hybrid: recognized original code runs as generated C;
-unresolved/self-modified code uses the R3000 interpreter. No guest-code compiler
-runs during play. The run report exposes native dispatch and interpreted counts.
+The normal player executes generated native C without an instruction interpreter
+or runtime guest-code compiler. Uncovered or changed code stops with its PC and
+a coverage failure in the run report. Static coverage is not a compatibility
+guarantee for every game or every path through a game.
 Source matching and readable C recovery are separate from native execution.
+
+Disc export discovers additional PS-X EXE files and address-bearing Heartbeat
+HBD program records, including compressed images and callback entries. The
+manifest records their source extents. Each module keeps its own immutable-byte
+guard, including when several images share an address. Bounded copied routines
+are compiled ahead of time with full-byte guards at their actual RAM locations.
+The pinned OpenBIOS callback bridges and recognized compatibility rewrites have
+native implementations. Unknown loaders or modifications can need further work.
 
 ## Build and run
 
@@ -176,6 +198,11 @@ adaptive internal resolution and presents at the drawable size. F9/F10 insert
 the previous/next disc through the actual tray-change path. Use this when the
 game requests a disc change. Keyboard/gamepad mapping is in config.ini; memory
 cards live under saves. Keep them when updating the source project.
+
+For development, configure with -DPS1_BUILD_REFERENCE=ON and build the separate
+ps1_probe target. PSX_FORCE_INTERP=1 selects original-byte reference execution in
+that executable. The normal player rejects this setting. Reference and native
+builds have different execution identities; their snapshots are incompatible.
 
 Useful options: --renderer auto|opengl|software, --resolution WIDTHxHEIGHT,
 --fullscreen, --headless, --frames N, --report result.json, --capture picture.ppm.

@@ -7,6 +7,7 @@ import struct
 
 from .. import pc
 from ..rom import chd, psx, psx_media
+from . import module_discovery
 
 
 def sha(path):
@@ -54,11 +55,15 @@ def read(path,index):
         for name in names:
             source=psx_media.inside(path.parent,name)
             files.append(dict(source=name,name=name,sha256=sha(source),size=source.stat().st_size))
+    modules=[]
     if head==b'PS-X EXE':
         raw=path.read_bytes();boot='PSX.EXE';kind='exe'
     else:
-        with reader(path,media) as source:raw,boot,platform=psx.from_disc(source)
-        if platform!='psx':raise pc.PCError('this disc contains a PS2 program; use the PS2 backend')
+        with reader(path,media) as source:
+            raw,boot,platform=psx.from_disc(source)
+            if platform!='psx':raise pc.PCError('this disc contains a PS2 program; use the PS2 backend')
+            psx.read_exe(raw,boot)  # Validate the boot program before optional discovery.
+            modules=module_discovery.discover(source,raw)
         kind='disc'
     image,info=psx.read_exe(raw,boot)
     # Content identity ignores cue spelling/comments, retaining all actual tracks.
@@ -66,7 +71,7 @@ def read(path,index):
     identity=hashlib.sha256(json.dumps(hashes).encode()).hexdigest()
     asset='PSX.ISO' if kind=='exe' else path.name
     return dict(index=index,path=path,files=files,kind=kind,identity=identity,
-                image=image,info=info,boot=boot,asset=f'assets/disc{index}/{asset}')
+                image=image,info=info,boot=boot,modules=modules,asset=f'assets/disc{index}/{asset}')
 
 
 def prepare(paths):
@@ -105,13 +110,22 @@ def project_input(project,index):
                 info.update(code_start=start,code_end=end)
             modules.append(dict(index=index,image=image,info=info,boot=mapping['segment']+'.EXE'))
         return modules
+    def programs(source, raw):
+        modules=reviewed(source)
+        identities={hashlib.sha256(module['image']).digest() for module in modules}
+        identities.add(hashlib.sha256(raw).digest())
+        for module in module_discovery.discover(source,raw):
+            identity=hashlib.sha256(module['image']).digest()
+            if identity not in identities:
+                identities.add(identity);modules.append(module)
+        return modules
     if container:
         with psx_media.decoded(original,container) as stream:
             raw,boot,platform=psx.from_disc(stream)
-            modules=reviewed(stream)
+            modules=programs(stream,raw)
     else:
         with original.open('rb') as stream:
-            raw,boot,platform=psx.from_disc(stream);modules=reviewed(stream)
+            raw,boot,platform=psx.from_disc(stream);modules=programs(stream,raw)
     if platform!='psx':raise pc.PCError('this is a PS2 disc, not a PS1 game')
     image,info=psx.read_exe(raw,boot)
     if container and container['kind']=='cue':

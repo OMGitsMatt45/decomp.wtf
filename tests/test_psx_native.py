@@ -131,18 +131,20 @@ def native_project(tmp_path_factory):
     inputs=originals(work/'owner media');root=work/'source'
     result=export(inputs,root,title='Original two-disc PS1 fixture')
     assert result['integrity_verified'] and result['presentation_declared']
-    assert result['manifest']['fallback']==dict(interpreter=True,runtime_compilation=False)
+    assert result['manifest']['fallback']==dict(interpreter=False,runtime_compilation=False)
+    assert result['manifest']['execution_model']=='static-recompiled'
     assert result['manifest']['presentation']['screen_mode']=='single'
     assert len(result['manifest']['code_generation'])==2
     # Use only the generated stdlib helper, without importing decomp.wtf.
     subprocess.run([sys.executable,'-I',str(root/'tools/extract_assets.py'),*map(str,inputs)],check=True,capture_output=True)
-    command=['cmake','-S',str(root),'-B',str(root/'build'),'-DCMAKE_BUILD_TYPE=Release']
+    build=Path(os.environ.get('DECOMP_PSX_BUILD_ROOT',root/'build'))
+    command=['cmake','-S',str(root),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DPS1_BUILD_REFERENCE=ON']
     # Local development can reuse already verified dependencies; CI starts cold.
     command+=json.loads(os.environ.get('DECOMP_PSX_CMAKE_ARGS','[]'))
-    for args in (command,['cmake','--build',str(root/'build'),'--config','Release','--target','ps1_pc','--parallel','2']):
+    for args in (command,['cmake','--build',str(build),'--config','Release','--target','ps1_pc','ps1_probe','--parallel','2']):
         done=subprocess.run(args,capture_output=True,text=True,timeout=1200)
         assert done.returncode==0,(done.stdout+done.stderr)[-10000:]
-    exe=next(p for p in (root/'build/ps1_pc',root/'build/ps1_pc.exe',root/'build/Release/ps1_pc.exe') if p.exists())
+    exe=next(p for p in (build/'ps1_pc',build/'ps1_pc.exe',build/'Release/ps1_pc.exe') if p.exists())
     # Build configuration must not invalidate generated-source integrity.
     assert pc.verify(root)['integrity_verified']
     yield work,root,exe
@@ -153,14 +155,16 @@ OBSERVE=[0x80020000,0x80020100,0x8002000c,0x80020010,0x80020018,0x8002001c]
 
 def run(project,name,*args,interp=False,driver='dummy',ok=True,frames=600):
     work,root,exe=project;report=work/(name+'.json');capture=work/(name+'.ppm')
+    if interp:exe=exe.with_name('ps1_probe'+exe.suffix)
     env={**os.environ,'SDL_AUDIODRIVER':'dummy','SDL_VIDEODRIVER':driver,
          'EGL_PLATFORM':'surfaceless','LIBGL_ALWAYS_SOFTWARE':'1',
          'DECOMP_PSX_TRACE':'1','PSX_FRAME_REPORT_MS':'1000'}
     if interp:env['PSX_FORCE_INTERP']='1'
-    command=[str(exe),'--frames',str(frames),'--report',str(report),'--capture',str(capture),
+    command=[str(exe),'--game',str(root/'game.toml'),'--frames',str(frames),'--report',str(report),'--capture',str(capture),
              '--memcard-dir',str(work/'shared-saves')]
     for address in OBSERVE:command+=['--observe',hex(address)]
-    try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=90)
+    timeout=180 if interp else 90
+    try:done=subprocess.run([*command,*map(str,args)],cwd=work,env=env,capture_output=True,text=True,timeout=timeout)
     except subprocess.TimeoutExpired as error:
         def decoded(value):return value.decode('utf-8','replace') if isinstance(value,bytes) else value or ''
         output=decoded(error.stdout)+decoded(error.stderr)
@@ -176,11 +180,13 @@ def run(project,name,*args,interp=False,driver='dummy',ok=True,frames=600):
 
 def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_project):
     # The guest finishes CD/card operations before frame 300. Compare both
-    # execution modes at 360; a longer run only interprets the busy-wait loop
-    # and approached the 90-second bound on Windows (600 frames took 85 s).
+    # execution modes at 360; a longer run only interprets the busy-wait loop.
+    # The separate reference gets 180 seconds: Windows reached frame 353 at
+    # the former 90-second limit, after all guest operations had completed.
     first,pixels=run(native_project,'disc1','--headless','--renderer','software',frames=360)
     assert 'does not contain the expected game ID' not in (native_project[0]/'disc1.log').read_text()
     assert first['native_dispatches']>0 and first['module_dispatches'][0]>0
+    assert first['interpreted_instructions']==0 and first['coverage_misses']==0
     assert first['module_dispatches'][1]==0
     assert first['observed'][:4]==[1,0xd0000001,2048,0xa004]
     assert first['observed'][5]==2048
@@ -188,6 +194,7 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     second,_=run(native_project,'disc2','--headless','--renderer','software','--disc',
         str(native_project[1]/'assets/disc2/Original disc 2.iso'),frames=360)
     assert second['disc_index']==2 and second['disc_count']==2
+    assert second['interpreted_instructions']==0 and second['coverage_misses']==0
     assert second['observed']==[2,0xd0000002,2048,0xa004,0xd0000001,2048]
     assert second['module_dispatches'][1]>0
     # The original helper bytes are identical on both discs and may safely
@@ -195,8 +202,29 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     assert second['depth24']
     reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True,frames=360)
     assert reference['native_dispatches']==0 and reference['interpreted_instructions']>0
+    assert reference['execution_model']=='reference'
     assert reference['observed'][:4]==first['observed'][:4]
     assert pixels.read_bytes()==other.read_bytes()
+
+
+def test_native_player_rejects_uncompiled_bytes_and_records_the_gap(native_project):
+    from decompnet.psx_native.extract_assets import iso
+    work,root,exe=native_project
+    image=bytearray(executable())
+    image[2048]^=1  # Original input's first LUI differs; no matching native CFG.
+    path=work/'changed-program.iso';path.write_bytes(iso(bytes(image)))
+    output=run(native_project,'uncompiled-entry','--headless','--renderer','software','--disc',path,ok=False,frames=360)
+    assert 'missing native PS1 code' in output
+    report=json.loads((work/'uncompiled-entry.json').read_text())
+    assert report['coverage_misses']==1 and report['coverage_pc']==0x80010000
+    assert report['interpreted_instructions']==0
+    probe=exe.with_name('ps1_probe'+exe.suffix)
+    native_contract=json.loads(exe.with_name(exe.stem+'.execution.json').read_text())
+    reference_contract=json.loads(probe.with_name(probe.stem+'.execution.json').read_text())
+    assert native_contract['identity']!=reference_contract['identity']
+    if os.name!='nt' and shutil.which('nm'):
+        symbols=subprocess.run(['nm','-a',str(exe)],capture_output=True,text=True,check=True).stdout
+        assert 'exec_one_fetched_inner' not in symbols
 
 
 def test_live_tray_change_preserves_resident_native_module(native_project):

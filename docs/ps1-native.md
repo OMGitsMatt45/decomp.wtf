@@ -17,9 +17,11 @@ In the app, select PS1 and native PC output. Use a local CUE path with its data
 and audio tracks alongside it; list additional discs in order, or choose an M3U
 playlist. A single ISO/BIN/CHD/PS-X EXE can also be used. The Source tab exports
 an existing imported game or combined disc set. Reviewed, hash-bound module
-layouts are translated when exporting retained projects; unknown modules retain
-the disclosed interpreter fallback. Original discs and prior source edits are
-preserved. PS1 has no DS save-chip or screen-merger settings.
+layouts are translated when exporting retained projects. Direct and retained
+disc exports also discover additional PS-X EXE files and address-bearing
+Heartbeat HBD program records, including compressed records. Unknown layouts
+can require further static coverage work. Original discs and prior source edits
+are preserved. PS1 has no DS save-chip or screen-merger settings.
 
 ```sh
 decomp pc psx-native /path/to/game.m3u /path/to/new-source --experimental
@@ -30,6 +32,14 @@ decomp pc verify /path/to/new-source
 
 The optional connected-agent tool `generate_pc_project` accepts `platform="psx"`
 and ordered additional `disc_paths`. Generation does not start matching or agents.
+
+Additional programs are read from their original ISO file extents. HBD type 31
+records require a bounded RAM destination and recognizable function entries in
+their decoded bytes. Allocation hints do not invent a zero-filled code tail.
+Repeated image/address pairs are deduplicated; differing images at the same
+address retain independent byte guards. The generated manifest records each
+module's file and, for HBD, its archive sector and member index. Discovery uses
+input bytes and format metadata, without a runtime trace or title profile.
 
 ## Build the standalone output
 
@@ -72,16 +82,29 @@ headless checks can explicitly override it with `--renderer software`.
 
 ## Execution model and evidence
 
-The model is **hybrid**, not fully static recovery. Recognized original code runs
-as generated C. Unresolved or changed code runs through the R3000 interpreter;
-runtime guest-code compilation is disabled. Each static module validates its
+The normal `ps1_pc` player executes **ahead-of-time generated C**. Its instruction
+interpreter is excluded at compile time, and runtime guest-code compilation is
+disabled. Unresolved or changed code stops with a coverage report instead of
+executing a fallback. Each static module validates its
 own original bytes, so two discs or overlays sharing an address cannot select
 the wrong native function merely because a particular disc is inserted.
+
+Input-derived closed routines can execute from copied RAM locations after a
+whole-body byte check. Their generated C preserves the actual PC, continuations
+and instruction-fetch interface. Native OpenBIOS callback bridges require exact
+ABI bytes inside declared patch slots. Recognized rewrites from the pinned BIOS
+produce separately guarded native views; the BIOS still owns their side effects.
+
+For an instruction reference, configure `-DPS1_BUILD_REFERENCE=ON` and build
+`ps1_probe`. Run it with `PSX_FORCE_INTERP=1`; the primary player rejects that
+setting. The executables have different execution identities and cannot share
+snapshots. Ordinary game memory cards remain shared data.
 
 Bounded checks support `--frames N --report result.json --capture frame.ppm`,
 `--observe ADDRESS`, `--switch-disc FRAME:N` and `--resize FRAME:WIDTHxHEIGHT`.
 Reports include the actual renderer/device, drawable/monitor dimensions,
-fullscreen state, native and interpreted execution counts, module dispatches,
+fullscreen state, native and interpreted execution counts, coverage failures,
+copied-routine and kernel-bridge dispatches, module dispatches,
 disc identity, audio and observed guest RAM. Manifest verification alone checks
 source integrity and declarations; it does not certify gameplay.
 
@@ -92,6 +115,15 @@ Linux additionally exercises actual Mesa OpenGL geometry, adaptive resizing,
 portrait and fullscreen, reported software fallback and explicit GPU failure.
 Windows/Linux CI builds the exported source project from its pinned dependencies.
 The smaller independent CPU probe retains its separate register/delay-slot checks.
+Original archive fixtures also exercise compressed/raw program discovery,
+packed callback pointers, overlapping destinations and stale-byte rejection.
+Their generated functions are executed against an independent CPU reference.
+
+The [native-only validation record](ps1-native-validation.json) reports a private
+1,800-frame DQVII boot check: zero interpreted instructions and coverage failures,
+with the same final picture and audio-frame counts as the prior runtime. PCM
+samples and a full playthrough were not compared in that check. No owner inputs,
+derived game source or captures are published with the record.
 
 Retail compatibility remains title-specific. DQVII is the first target; targeted
 boot/module/save/disc checks and a full playthrough establish different evidence.
