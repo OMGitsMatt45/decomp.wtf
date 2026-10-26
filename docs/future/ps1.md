@@ -98,6 +98,9 @@ keys belong in this branch. See the [main roadmap](../future-work.md).
 
 Reviewed boot-data envelopes and differing-call-site signature repairs passed native qualification at a5b1297.
 
-PC game output remains unimplemented. The active [PS1 native output plan](ps1-native.md)
-records the original CPU proof and remaining full-runtime/disc-set work.
+Experimental [PS1 PC source output](../ps1-native.md) is implemented, including
+the source-shipped hardware runtime and one build for an ordered disc set.
+The execution model remains hybrid while compiled coverage is expanded for
+disc-loaded programs, copied routines and runtime patches. The [integration
+record](ps1-native.md) describes the CPU and full-runtime qualification scope.
 Exhaustive retail source matching remains checkpointed in PR #26.

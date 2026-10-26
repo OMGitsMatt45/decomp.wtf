@@ -17,9 +17,11 @@ In the app, select PS1 and native PC output. Use a local CUE path with its data
 and audio tracks alongside it; list additional discs in order, or choose an M3U
 playlist. A single ISO/BIN/CHD/PS-X EXE can also be used. The Source tab exports
 an existing imported game or combined disc set. Reviewed, hash-bound module
-layouts are translated when exporting retained projects; unknown modules retain
-the disclosed interpreter fallback. Original discs and prior source edits are
-preserved. PS1 has no DS save-chip or screen-merger settings.
+layouts are translated when exporting retained projects. Direct and retained
+disc exports also discover additional PS-X EXE files and address-bearing
+Heartbeat HBD program records, including compressed records. Unknown layouts
+retain the disclosed interpreter fallback. Original discs and prior source edits
+are preserved. PS1 has no DS save-chip or screen-merger settings.
 
 ```sh
 decomp pc psx-native /path/to/game.m3u /path/to/new-source --experimental
@@ -30,6 +32,14 @@ decomp pc verify /path/to/new-source
 
 The optional connected-agent tool `generate_pc_project` accepts `platform="psx"`
 and ordered additional `disc_paths`. Generation does not start matching or agents.
+
+Additional programs are read from their original ISO file extents. HBD type 31
+records require a bounded RAM destination and recognizable function entries in
+their decoded bytes. Allocation hints do not invent a zero-filled code tail.
+Repeated image/address pairs are deduplicated; differing images at the same
+address retain independent byte guards. The generated manifest records each
+module's file and, for HBD, its archive sector and member index. Discovery uses
+input bytes and format metadata, without a runtime trace or title profile.
 
 ## Build the standalone output
 
@@ -92,6 +102,9 @@ Linux additionally exercises actual Mesa OpenGL geometry, adaptive resizing,
 portrait and fullscreen, reported software fallback and explicit GPU failure.
 Windows/Linux CI builds the exported source project from its pinned dependencies.
 The smaller independent CPU probe retains its separate register/delay-slot checks.
+Original archive fixtures also exercise compressed/raw program discovery,
+packed callback pointers, overlapping destinations and stale-byte rejection.
+Their generated functions are executed against an independent CPU reference.
 
 Retail compatibility remains title-specific. DQVII is the first target; targeted
 boot/module/save/disc checks and a full playthrough establish different evidence.

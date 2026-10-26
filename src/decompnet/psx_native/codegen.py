@@ -13,7 +13,7 @@ EXPORTS=('psx_game_address_in_text','psx_game_text_native_ok','psx_game_text_nat
 def seeds(image,info):
     payload=image[2048:];low=info['load'];high=low+len(payload)
     start=info.get('code_start',0);end=info.get('code_end',len(payload))
-    found={info['entrypoint']}
+    found={info['entrypoint'],*info.get('native_entries',[])}
     for offset in range(start,end-3,4):
         word=struct.unpack_from('<I',payload,offset)[0]
         if word>>26==3:
@@ -31,6 +31,18 @@ def retain_initializer(text,stem):
     return text.replace(old,new)
 
 
+def dispatch_entries(text):
+    """Read the pinned emitter's actual entries, including CFG continuations."""
+    marker='static const PsxGameDispatchEntry k_psx_game_dispatch[] = {'
+    if text.count(marker)!=1:raise ValueError('pinned PS1 entry table differs')
+    table=text.split(marker,1)[1].split('};',1)[0]
+    entries=[int(value,16) for value in re.findall(r'\{\s*0x([0-9a-fA-F]+)u,',table)]
+    count=re.search(r'#define PSX_GAME_DISPATCH_COUNT (\d+)u',text)
+    if count is None or len(entries)!=int(count[1]) or not entries or len(set(entries))!=len(entries):
+        raise ValueError('pinned PS1 entry table is incomplete or ambiguous')
+    return sorted(entries)
+
+
 def module(recompiler,disc,folder,run,sdk):
     folder.mkdir(parents=True)
     image=disc['image'];info=disc['info'];ordinal=disc.get('module_index',disc['index']);prefix=f'decomp_m{ordinal}_'
@@ -41,6 +53,7 @@ def module(recompiler,disc,folder,run,sdk):
         'PS1 static C generation for disc '+str(disc['index']))
     dispatch=folder/(exe.name+'_dispatch.c')
     original=dispatch.read_text(encoding='utf-8')
+    emitted_entries=dispatch_entries(original)
     original=retain_initializer(original,'game')
     if original.count('    entry->fn(cpu);')!=1:raise ValueError('pinned native dispatch accounting site differs')
     original=original.replace('    entry->fn(cpu);',
@@ -85,8 +98,10 @@ int {prefix}dirty_ram_text_native_ok_ranges(const uint32_t *ranges,uint32_t coun
 '''
     with dispatch.open('a',encoding='utf-8') as stream:stream.write(guard)
     return dict(index=ordinal,disc=disc['index'],prefix=prefix,seeds=len(entries),
+                entries=emitted_entries,load_address=low,image_size=len(payload),
                 image_sha256=hashlib.sha256(image).hexdigest(),
-                dispatch_sha256=hashlib.sha256(dispatch.read_bytes()).hexdigest())
+                dispatch_sha256=hashlib.sha256(dispatch.read_bytes()).hexdigest(),
+                **({'source':disc['source']} if 'source' in disc else {}))
 
 
 def registry(modules,path):
@@ -97,16 +112,51 @@ def registry(modules,path):
         prefix=item['prefix']
         lines.append(f'extern int {prefix}psx_dispatch_game_compiled(CPUState*,uint32_t);')
         for name in EXPORTS[:4]:lines.append(f'extern int {prefix}{name}(uint32_t);')
-    lines.append('int psx_dispatch_game_compiled(CPUState *cpu,uint32_t address){')
+    lines.append('typedef struct {int (*dispatch)(CPUState*,uint32_t);int (*valid)(uint32_t);'
+                 'int (*full)(uint32_t);} DecompModule;\nstatic const DecompModule modules[]={')
     for item in modules:
-        lines.append(f'if({item["prefix"]}psx_dispatch_game_compiled(cpu,address))return 1;')
-    lines.append('return 0;}')
-    for name in EXPORTS[:4]:
-        # Entry classification also uses immutable bytes; never classify an
-        # address as native merely because another disc uses the same address.
-        variant='psx_game_text_native_ok' if name=='psx_game_is_function_entry' else name
-        calls='||'.join(f'{item["prefix"]}{variant}(address)' for item in modules)
-        lines.append(f'int {name}(uint32_t address){{return {calls};}}')
+        prefix=item['prefix']
+        lines.append('{'+','.join(prefix+name for name in
+                     ('psx_dispatch_game_compiled','psx_game_text_native_ok','psx_game_text_native_ok_full'))+'},')
+    lines.append('};')
+    candidates={}
+    ranges=[]
+    for index,item in enumerate(modules):
+        for address in item['entries']:candidates.setdefault(address,[]).append(index)
+        low=item['load_address'];ranges.append((low,low+item['image_size']))
+    rows=[];owners=[]
+    for address,indices in sorted(candidates.items()):
+        rows.append(f'{{0x{address:08x}u,{len(owners)}u,{len(indices)}u}},')
+        owners.extend(indices)
+    lines.extend(['typedef struct {uint32_t pc,first,count;} DecompEntry;',
+                  'static const DecompEntry entries[]={',*rows,'};',
+                  'static const uint32_t owners[]={'+','.join(map(str,owners))+'};',
+                  '''static const DecompEntry *lookup(uint32_t address){
+    uint32_t low=0,high=(uint32_t)(sizeof(entries)/sizeof(entries[0]));
+    while(low<high){uint32_t mid=low+(high-low)/2;
+        if(entries[mid].pc<address)low=mid+1;else high=mid;}
+    return low<sizeof(entries)/sizeof(entries[0])&&entries[low].pc==address?entries+low:NULL;
+}
+int psx_dispatch_game_compiled(CPUState *cpu,uint32_t address){
+    const DecompEntry *entry=lookup(address);if(!entry)return 0;
+    for(uint32_t i=0;i<entry->count;i++)
+        if(modules[owners[entry->first+i]].dispatch(cpu,address))return 1;
+    return 0;
+}'''])
+    for name,member in (('psx_game_text_native_ok','valid'),('psx_game_text_native_ok_full','full'),
+                        ('psx_game_is_function_entry','valid')):
+        # An indexed candidate still checks its whole immutable footprint.
+        lines.append(f'int {name}(uint32_t address){{\n'
+            'const DecompEntry *entry=lookup(address);if(!entry)return 0;\n'
+            'for(uint32_t i=0;i<entry->count;i++)\n'
+            f'if(modules[owners[entry->first+i]].{member}(address))return 1;\nreturn 0;}}')
+    merged=[]
+    for low,high in sorted(ranges):
+        if merged and low<=merged[-1][1]:merged[-1]=(merged[-1][0],max(high,merged[-1][1]))
+        else:merged.append((low,high))
+    covered='||'.join(f'(physical>={low}u&&physical<{high}u)' for low,high in merged)
+    lines.append('int psx_game_address_in_text(uint32_t address){uint32_t physical=address&0x1fffffffu;'
+                 'return '+covered+';}')
     lines.append(r'''
 /* OpenBIOS 55fbf046: loadSystemCnf zeroes configuration before parsing.
  * Its const-propagated findWordItem takes (destination, key). Restore the

@@ -24,7 +24,7 @@ def _source(name):return resources.files(__package__).joinpath(name).read_text(e
 
 def revision():
     digest=hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','media.py','codegen.py','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake'):
+    for name in ('__init__.py','media.py','module_discovery.py','codegen.py','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -97,7 +97,7 @@ def generate(project,root):
         for index,item in enumerate([disc,*disc.get('modules',[])]):
             folder=root/f'game/disc{disc["index"]}'
             if index:folder=folder/f'module{index}'
-            item={**item,'module_index':len(modules)+1}
+            item={**item,'index':disc['index'],'module_index':len(modules)+1}
             modules.append(codegen.module(recompiler,item,folder,_run,sdk))
     codegen.registry(modules,root/'native/modules.c')
     (root/'native/defaults.hpp').write_text('#pragma once\ninline constexpr bool decomp_default_require_gpu='+
@@ -147,6 +147,12 @@ The execution model is hybrid: recognized original code runs as generated C;
 unresolved/self-modified code uses the R3000 interpreter. No guest-code compiler
 runs during play. The run report exposes native dispatch and interpreted counts.
 Source matching and readable C recovery are separate from native execution.
+
+Disc export discovers additional PS-X EXE files and address-bearing Heartbeat
+HBD program records, including compressed images and callback entries. The
+manifest records their source extents. Each module keeps its own immutable-byte
+guard, including when several images share an address. Unknown loader layouts,
+copied routines and runtime patches can still require interpreter execution.
 
 ## Build and run
 
