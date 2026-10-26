@@ -1,0 +1,46 @@
+{
+  "schema": "decomp.wtf.3ds-hardware-validation/v1",
+  "host": "Windows-11-10.0.26300-SP0",
+  "gpu": "Intel(R) Iris(R) Xe Graphics",
+  "backend_revision": "40a8628d8ff2ec1b083a61b0f0c68d83c1b085b362bf6f8d3165bd445d974d0b",
+  "hardware_qualified": true,
+  "original_fixture_passed": true,
+  "source_integrity_verified": true,
+  "renderer": "vulkan",
+  "player": {
+    "screens": "stacked",
+    "presented_frames": 2,
+    "drawable": [
+      1920,
+      991
+    ],
+    "render_scale": 3,
+    "native_instructions": 13443408,
+    "interpreted_instructions": 0,
+    "static_misses": 0,
+    "unimplemented_services": 0,
+    "unimplemented_svcs": 0
+  },
+  "retail": false,
+  "manual_gameplay": false,
+  "physical_audio_qualified": false,
+  "physical_controller_qualified": false,
+  "device_evidence": "Actual undecorated Vulkan device names from geometry and the two-screen window run must match integrated/discrete inventory entries.",
+  "provenance": {
+    "kind": "owner-provided command result",
+    "reported_on": "2026-10-26",
+    "command": "tools.qualify_ctr_hardware",
+    "independently_reproduced_by_agent": false
+  },
+  "scenes": {
+    "passed": true,
+    "scenes": 4,
+    "framebuffer_preserved": true,
+    "resized_scales": [
+      1,
+      2,
+      3,
+      1
+    ]
+  }
+}

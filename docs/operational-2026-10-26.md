@@ -18,6 +18,10 @@ paths, but do not qualify a physical GPU or its performance. Windows physical
 3DS qualification is available through `tools/qualify-3ds-hardware.ps1`; the
 script retains its assessment and logs. Earlier owner-run PS2 and GBA original
 fixtures qualified Intel Iris Xe hardware separately.
+The subsequent [owner-run 3DS result](3ds-hardware-validation.json) also passed
+the four original Vulkan scenes and the stacked-screen window on Windows 11 /
+Intel Iris Xe. This adds physical fixture evidence without changing the bounded
+retail or full-playthrough scope above.
 
 An additional unchanged European DQIV export generated 13,570 ARM9 and 1,059
 ARM7 functions and reached its title in 1,800 static frames. Its headless and
