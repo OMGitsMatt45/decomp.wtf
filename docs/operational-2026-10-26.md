@@ -19,6 +19,15 @@ paths, but do not qualify a physical GPU or its performance. Windows physical
 script retains its assessment and logs. Earlier owner-run PS2 and GBA original
 fixtures qualified Intel Iris Xe hardware separately.
 
+An additional unchanged European DQIV export generated 13,570 ARM9 and 1,059
+ARM7 functions and reached its title in 1,800 static frames. Its headless and
+OpenGL guest screen hashes agreed after wireless RAM was modeled correctly.
+There are still 67 unsupported wireless wait/MAC register diagnostics; this is
+an offline title check, not wireless qualification or full gameplay acceptance.
+Guarded graphics effects retain the native DS raster picture for this title
+sequence. The supplied US-only party-chat patch was not applied to the European
+input. Mobile enhancements require separate game-output integration.
+
 ## Comparison with DQIV Recompiled
 
 The reference is [GoldieLeGenie/DQIV-Recompiled](https://github.com/GoldieLeGenie/DQIV-Recompiled/tree/c1cf527ce51b888aa5a684fe9cae90123fc93667).

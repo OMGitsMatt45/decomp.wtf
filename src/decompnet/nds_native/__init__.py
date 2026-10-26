@@ -305,6 +305,9 @@ ARM9 DMA fill latches have explicit byte/halfword/word storage handling, includi
 fixed-source DMA reads. ARM7 RCNT retains its 16-bit GPIO control value without
 writing the adjacent read-only extended key input. These accesses no longer
 produce unsupported-I/O diagnostics; external serial link behavior is separate.
+The ARM7 wireless RAM window has independent 8 KiB storage and its address
+mirror, respecting the existing power gate. Wireless MAC/network services remain
+unsupported and retain their diagnostics.
 The direct boot copy uses each destination processor's bus. In the base source,
 ARM7 private WRAM receives no initialized bytes when copied through ARM9.
 Our original dual-CPU fixture covers this layout and its live literal loads.

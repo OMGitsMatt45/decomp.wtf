@@ -14,6 +14,53 @@ def install(emitter):
     original=cls._jump_case_count
     branch=cls._branch
     secondary=emitter._secondary_branch_entries
+    table_info=cls._jump_table_info
+
+    def constant(self,register,previous,depth=0):
+        if depth>8:return None
+        for index in range(len(previous)-1,-1,-1):
+            op=previous[index];name=cls._branch_name(op).rstrip('s');args=op.operands
+            if name in ('b','bl','bx','blx','pop'):return None
+            _,writes=op.detail.regs_access()
+            if not any(op.detail.reg_name(r) in (f'r{register}',{9:'sb',10:'sl',11:'fp',12:'ip'}.get(register)) for r in writes):continue
+            if op.condition!=14 or not args or args[0].type!=ARM_OP_REG:return None
+            if name in ('mov','mvn') and len(args)==2 and args[1].type==ARM_OP_IMM:
+                value=int(args[1].imm)
+                return (value if name=='mov' else ~value)&0xffffffff
+            if (name not in ('add','sub','rsb') or len(args)!=3 or args[1].type!=ARM_OP_REG
+                    or args[2].type!=ARM_OP_IMM or args[1].shift.type):return None
+            value=constant(self,emitter.operand_reg(op,args[1]),previous[:index],depth+1)
+            if value is None:return None
+            immediate=int(args[2].imm)
+            return {'add':value+immediate,'sub':value-immediate,'rsb':immediate-value}[name]&0xffffffff
+        return None
+
+    def bounded_arm_table(self,insn):
+        result=table_info(self,insn)
+        if insn.thumb or cls._branch_name(insn)!='add' or insn.condition not in (3,9):return result
+        ops=insn.operands
+        if len(ops)!=3 or any(op.type!=ARM_OP_REG for op in ops):return result
+        if emitter.operand_reg(insn,ops[0])!=15 or emitter.operand_reg(insn,ops[1])!=15:return result
+        shift,register,_=emitter.shift_kind(ops[2].shift.type)
+        if shift!=0 or register or ops[2].shift.value!=2:return result
+        previous=self._preceding(insn,20)
+        if not previous:return result
+        compare=previous[-1];args=compare.operands
+        if (cls._branch_name(compare)!='cmp' or compare.condition!=14 or len(args)!=2
+                or args[0].type!=ARM_OP_REG or args[1].type not in (ARM_OP_IMM,ARM_OP_REG)
+                or emitter.operand_reg(compare,args[0])!=emitter.operand_reg(insn,ops[2])):return result
+        bound=(int(args[1].imm) if args[1].type==ARM_OP_IMM else
+               constant(self,emitter.operand_reg(compare,args[1]),previous[:-1]))
+        if bound is None or args[1].shift.type:return result
+        count=bound+(insn.condition==9)
+        if not 0<count<=4096:return result
+        start=insn.address+8
+        cases=[(index,start+index*4) for index in range(count)]
+        if not all(self._function_contains(address) for _,address in cases):return result
+        # CMP followed immediately by unsigned ADDLO/ADDLS proves the full
+        # bound. An inline return or another instruction is a valid slot too;
+        # a contiguous run of B instructions must not truncate the table.
+        return dict(kind='add',index=emitter.operand_reg(insn,ops[2]),base=start,shift=2,cases=cases)
 
     def secondary_entries(edges,entries,*args,**kwargs):
         # A branch can only acquire a secondary entry in its own module/mode.
@@ -181,6 +228,7 @@ def install(emitter):
         return original(self,insn,index_reg,default)
 
     cls._jump_case_count=count
+    cls._jump_table_info=bounded_arm_table
     cls._branch=emit_branch
     cls._discover=discover
     emitter._secondary_branch_entries=secondary_entries

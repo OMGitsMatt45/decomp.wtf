@@ -6,6 +6,27 @@ def patch(root):
     path=Path(root)/'runtime/core/src/io.cpp'
     text=path.read_text(encoding='utf-8')
     changes={
+        '        const std::uint32_t offset = addr & 0x1fffu;\n        if (wifi_register_mapped(offset)) {\n            const std::uint32_t base =':
+        '''        const std::uint32_t ram_offset = addr & 0x7fffu;
+        if (ram_offset >= 0x4000 && ram_offset + width / 8 <= 0x6000) {
+            std::uint32_t result = 0;
+            for (int byte = 0; byte < width / 8; ++byte)
+                result |= std::uint32_t(wifi.ram[ram_offset - 0x4000 + byte]) << (8 * byte);
+            return result;
+        }
+        const std::uint32_t offset = addr & 0x1fffu;
+        if (wifi_register_mapped(offset)) {
+            const std::uint32_t base =''',
+        '        const std::uint32_t offset = addr & 0x1fffu;\n        if (wifi_register_mapped(offset)) {\n            const auto write_halfword =':
+        '''        const std::uint32_t ram_offset = addr & 0x7fffu;
+        if (ram_offset >= 0x4000 && ram_offset + width / 8 <= 0x6000) {
+            for (int byte = 0; byte < width / 8; ++byte)
+                wifi.ram[ram_offset - 0x4000 + byte] = std::uint8_t(value >> (8 * byte));
+            return;
+        }
+        const std::uint32_t offset = addr & 0x1fffu;
+        if (wifi_register_mapped(offset)) {
+            const auto write_halfword =''',
         '    case 0x0130:\n        value = keyinput':
         '''    case 0x00e0: case 0x00e4: case 0x00e8: case 0x00ec:
         // ARM9 DMA fill latches are ordinary 32-bit storage, including
@@ -36,4 +57,13 @@ def patch(root):
         if text.count(before)!=1:
             raise ValueError('pinned DS storage-register integration site differs')
         text=text.replace(before,after)
+    path.write_text(text,encoding='utf-8')
+    path=Path(root)/'runtime/core/src/core_internal.h'
+    text=path.read_text(encoding='utf-8')
+    before='struct WifiState {\n'
+    if text.count(before)!=1:raise ValueError('pinned DS wireless RAM state differs')
+    text=text.replace(before,before+'    std::array<std::uint8_t, 0x2000> ram{};\n')
+    before='    void reset() {\n        baseband.fill(0);'
+    if text.count(before)!=1:raise ValueError('pinned DS wireless RAM reset differs')
+    text=text.replace(before,'    void reset() {\n        ram.fill(0);\n        baseband.fill(0);')
     path.write_text(text,encoding='utf-8')

@@ -13,7 +13,7 @@ import pytest
 
 from decompnet import pc,toolchains
 from decompnet.nds_native import export,SDK_COMMIT,_source
-from .fixtures.nds_native import dual_cpu,hardware
+from .fixtures.nds_native import dual_cpu,hardware,mixed_arm_switch
 from .fixtures.nds_static import simple
 
 
@@ -141,6 +141,14 @@ def test_generated_guest_code_drives_video_audio_irqs_ipc_keys_and_cartridge_sav
     second=execute(exe,root,'--save',save)
     assert second['observed'][3:5]==[0,1] and save.read_bytes()[0]==1
     assert pc.verify(root)['integrity_verified']
+
+
+@pytest.mark.parametrize('wide',[False,True])
+def test_arm_switch_keeps_direct_returns_and_proven_large_bounds(tmp_path,sdk,wide):
+    _,root,exe=generate(tmp_path/'mixed-switch',lambda:mixed_arm_switch(wide=wide))
+    result=execute(exe,root,'--save',tmp_path/'switch.sav')
+    assert result['observed']==([77,299,300] if wide else [11,1,22,3])
+    assert result['unimplemented_io']==0
 
 
 def test_wrong_assets_fail_before_running_or_creating_a_save(tmp_path,hardware_project):
