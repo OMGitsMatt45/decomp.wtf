@@ -15,6 +15,22 @@ extern "C" {
 
 fn run()->Result<(),Box<dyn std::error::Error>> {
     let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len()==3 && args[0]=="--loaded-code" {
+        let expected=std::fs::read(&args[2])?;
+        let mut system=loader::load(&args[1],Config {find_recompiled:false,clock:Some(0),..Config::default()})?;
+        let title=system.title.as_ref().ok_or("fixture title was not loaded")?;
+        if title.code()?!=expected {return Err("runtime and exporter decompressed code differ".into());}
+        let ex=&title.exheader;
+        let rows=[(ex.text,0),(ex.rodata,ex.text.num_pages as usize*0x1000),
+            (ex.data,(ex.text.num_pages+ex.rodata.num_pages) as usize*0x1000)];
+        for (segment,offset) in rows {
+            let mut actual=vec![0;segment.size as usize];
+            system.memory.read_bytes(segment.address,&mut actual);
+            if actual!=expected[offset..offset+actual.len()] {return Err("loaded executable memory differs".into());}
+        }
+        println!("{{\"schema\":\"decomp.wtf.3ds-loaded-code/v1\",\"passed\":true,\"interpreted_instructions\":0}}");
+        return Ok(());
+    }
     if args.len()!=3 {return Err("usage: ctr_module_scenes ORIGINAL_FIXTURE MODULE_FILE MODULE_NAME".into());}
     let raw=std::fs::read(&args[1])?;
     if raw.len()>0x1000 || raw.get(0x80..0x84)!=Some(b"CRO0") {

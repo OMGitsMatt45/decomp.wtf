@@ -18,6 +18,17 @@ fn imported(modules:&[(cro::Module,Vec<u8>)], crs:Option<&cro::Module>, target:&
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Qualification uses the pinned independent decoder as an oracle for the
+    // Python importer, including real executable bytes and overlapping runs.
+    if args.len()==3 && args[0]=="--decode-blz" {
+        let raw=std::fs::read(&args[1])?;
+        if raw.len()<8 || raw.len()>64*1024*1024 {return Err("BLZ input exceeds its bound".into());}
+        let extra=u32::from_le_bytes(raw[raw.len()-4..].try_into()?) as usize;
+        if extra>64*1024*1024-raw.len() {return Err("BLZ output exceeds its bound".into());}
+        if std::path::Path::new(&args[2]).exists() {return Err("preserve the existing decoder output".into());}
+        std::fs::write(&args[2],rom::decompress(&raw)?)?;
+        return Ok(());
+    }
     if args.len()<4 {return Err("expected TEXT BASE SEEDS OUTPUT [--instruction-boundaries] [--analyze-only] [--modules DIRECTORY]".into());}
     let (mut boundaries,mut analyze_only,mut measure,mut directory)=(false,false,false,None);
     let mut options=args[4..].iter();

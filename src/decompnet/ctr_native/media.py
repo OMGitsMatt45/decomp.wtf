@@ -55,7 +55,9 @@ def decompress(raw: bytes, *, expected: int) -> bytes:
                     raise PCError('3DS BLZ back-reference is truncated')
                 source -= 2
                 pair = int.from_bytes(raw[source:source+2], 'little')
-                count, distance = (pair >> 12)+3, (pair & 0xfff)+2
+                # Distance is measured from the destination byte after it is
+                # decremented. The minimum backward-copy distance is three.
+                count, distance = (pair >> 12)+3, (pair & 0xfff)+3
                 if count > dest-stop:
                     raise PCError('3DS BLZ back-reference exceeds output')
                 for _ in range(count):

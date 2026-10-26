@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from decompnet import pc
-from decompnet.ctr_native import export_runtime, runtime_provider
+from decompnet.ctr_native import export_runtime, runtime_provider, media
 from tools.ctr_fixture import fixture,cro,with_romfs
 
 
@@ -151,6 +151,15 @@ def test_translated_arm_and_thumb_modules_move_reload_and_unload(original_runtim
         report=json.loads(command([probe,image,path,module],timeout=30).stdout)
         assert report['passed'] and report['native_instructions']==4
         assert report['interpreted_instructions']==0 and report['provenance_checked']
+
+
+def test_compressed_executable_bytes_agree_with_independent_runtime_loader(original_runtime):
+    project,_image,binary,_scenes,_build,_run=original_runtime
+    image=project.parent/'original-compressed.cxi';image.write_bytes(fixture('blz-arm'))
+    expected=project.parent/'original-decoded.bin';expected.write_bytes(media.load(image,include_code=True)['code'])
+    probe=binary.with_name('ctr_module_scenes'+('.exe' if os.name=='nt' else ''))
+    report=json.loads(command([probe,'--loaded-code',image,expected],timeout=30).stdout)
+    assert report['passed'] and report['interpreted_instructions']==0
 
 
 def test_audio_resampling_queue_and_controller_input_merge(original_runtime):

@@ -24,9 +24,11 @@ def fixture(kind='arm'):
         'bss': struct.pack('<IIII', 0xe59f1004, 0xe5910000, 0xef000003, BASE+0x2004),
         'loop': struct.pack('<I', 0xeafffffe),
     }
-    text = programs[kind]
+    text = programs['arm' if kind=='blz-arm' else kind]
     data=struct.pack('<I',BASE+0x20) if kind=='data-callback' else b'DATA'
     code = text+bytes(0x1000-len(text))+b'RO!!'+bytes(0xffc)+data
+    if kind=='blz-arm':
+        code=bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-arm-code.blz.hex').read_text())
     exefs_size = (0x200+len(code)+0x1ff)&~0x1ff
     out = bytearray(0xa00+exefs_size)
     out[0x100:0x104] = b'NCCH'
@@ -36,6 +38,7 @@ def fixture(kind='arm'):
     out[0x18d], out[0x18f] = 2, 4
     struct.pack_into('<II', out, 0x1a0, 5, exefs_size//0x200)
     out[0x200:0x208] = b'CTRTEST\0'
+    if kind=='blz-arm':out[0x20d]=1
     for at, values in ((0x210, (BASE, 1, len(text))), (0x220, (BASE+0x1000, 1, 4)),
                        (0x230, (BASE+0x2000, 1, 4))):
         struct.pack_into('<III', out, at, *values)
@@ -119,7 +122,7 @@ if __name__=='__main__':
     from pathlib import Path
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--kind', choices=('arm','thumb','vfp','bss','data-callback','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
+    parser.add_argument('--kind', choices=('arm','blz-arm','thumb','vfp','bss','data-callback','services','unsupported-service','unknown-target','unsupported-opcode','read-only-write','loop'), default='arm')
     parser.add_argument('--cartridge', action='store_true')
     args=parser.parse_args()
     if args.output.exists():

@@ -75,12 +75,23 @@ def test_streamed_source_has_the_same_validated_identity_as_a_file(tmp_path):
 
 def test_blz_backwards_references_have_an_independent_expected_result():
     # Three literal bytes followed backwards by 18-byte and 9-byte copies.
-    packed=b'\x01\x60\x01\xf0ABC\x18'+struct.pack('<II',0x08000010,14)
+    packed=b'\x00\x60\x00\xf0ABC\x18'+struct.pack('<II',0x08000010,14)
     assert media.decompress(packed,expected=30)==b'ABC'*10
     for bad in (packed[:-1], packed[:-4]+struct.pack('<I',0x7fffffff), b'0'*8):
         with pytest.raises(pc.PCError):media.decompress(bad,expected=30)
     broken=bytearray(packed);broken[2]=0xff
     with pytest.raises(pc.PCError,match='reads beyond'):media.decompress(broken,expected=30)
+
+
+def test_independently_compressed_original_executable_has_exact_instruction_and_data_bytes():
+    from io import BytesIO
+    from types import SimpleNamespace
+    original=fixture('arm')
+    expected=original[0xc00:0xc00+int.from_bytes(original[0xa0c:0xa10],'little')]
+    raw=fixture('blz-arm')
+    source=SimpleNamespace(stat=lambda:SimpleNamespace(st_size=len(raw)),open=lambda mode:BytesIO(raw))
+    loaded=media.load_source(source,include_code=True)
+    assert loaded['compressed'] and loaded['code']==expected
 
 
 def test_blz_accepts_final_data_page_padding_but_not_output_beyond_allocation(tmp_path):
@@ -91,7 +102,7 @@ def test_blz_accepts_final_data_page_padding_but_not_output_beyond_allocation(tm
     while remaining:
         count=min(18,remaining)
         assert count>=3
-        tokens.append(struct.pack('<H',((count-3)<<12)|1))
+        tokens.append(struct.pack('<H',(count-3)<<12))
         remaining-=count
     groups=[]
     for at in range(0,len(tokens),8):
@@ -158,7 +169,7 @@ def build_original(tmp_path, kind, cmake):
     return out,binary
 
 
-@pytest.mark.parametrize(('kind','expected'), [('arm',12),('thumb',42),('vfp',0x40000000),('bss',0),('data-callback',42)])
+@pytest.mark.parametrize(('kind','expected'), [('arm',12),('blz-arm',12),('thumb',42),('vfp',0x40000000),('bss',0),('data-callback',42)])
 def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_tools,kind,expected):
     out,binary=build_original(tmp_path,kind,native_tools)
     result=subprocess.run([str(binary),str(out/'assets')],capture_output=True,text=True,timeout=15)
@@ -166,7 +177,7 @@ def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_too
     report=json.loads(result.stdout)
     assert report['process_exited'] and report['r0']==expected and report['native_instructions']>0
     assert report['interpreted_instructions']==0 and report['retail_qualified'] is False
-    if kind in ('arm','thumb','vfp'):
+    if kind in ('arm','blz-arm','thumb','vfp'):
         from unicorn import Uc,UC_ARCH_ARM,UC_MODE_ARM,UC_HOOK_INTR
         from unicorn.arm_const import UC_ARM_REG_C1_C0_2,UC_ARM_REG_FPEXC,UC_ARM_REG_R0
         reference=Uc(UC_ARCH_ARM,UC_MODE_ARM)
@@ -177,6 +188,17 @@ def test_translated_original_3ds_program_builds_and_executes(tmp_path,native_too
         reference.hook_add(UC_HOOK_INTR,lambda cpu,*_:cpu.emu_stop())
         reference.emu_start(BASE,BASE+0x1000,count=100)
         assert reference.reg_read(UC_ARM_REG_R0)==report['r0']
+    if kind=='blz-arm':
+        from decompnet import toolchains
+        sdk=Path(os.environ.get('DECOMP_3DS_SDK') or toolchains.root()/'3dsrecomp-sdk')
+        rust=os.environ.get('DECOMP_3DS_RUSTC') or shutil.which('rustc')
+        decoder=provider.build(sdk,tmp_path/'independent decoder',rust)
+        packed=tmp_path/'original.blz'
+        packed.write_bytes(bytes.fromhex(Path(__file__).parents[1].joinpath('tools/fixtures/ctr-arm-code.blz.hex').read_text()))
+        decoded=tmp_path/'independent code.bin'
+        step=subprocess.run([str(decoder),'--decode-blz',str(packed),str(decoded)],capture_output=True,text=True,timeout=60)
+        assert step.returncode==0,step.stderr
+        assert decoded.read_bytes()==media.load(tmp_path/'blz-arm.cxi',include_code=True)['code']
     if kind=='arm':
         # C source is the executed product: editing it changes the native result.
         source=out/'game/code000.c';text=source.read_text()
