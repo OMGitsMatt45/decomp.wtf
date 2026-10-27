@@ -10,11 +10,15 @@ on:
       - 'src/decompnet/app/**'
       - 'tools/qualify_ps2_port.py'
       - 'tests/test_ps2_native_*.py'
+      - 'tests/test_ps2_iop_*.py'
+      - 'tests/test_ps2_vu_discovery.py'
       - 'tests/test_ps2_hardware.py'
       - 'tools/ps2_hardware.py'
       - 'tools/qualify_ps2_hardware.py'
       - 'tools/qualify-ps2-hardware.ps1'
       - 'tests/fixtures/ps2_port.py'
+      - 'tests/fixtures/ps2_iop.py'
+      - 'tests/fixtures/ps2_vu_native.*'
       - '.github/workflows/ps2-native-port.yml'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -53,6 +57,7 @@ jobs:
           tests/test_ps2_native_disc_files.py tests/test_ps2_native_provider.py
           tests/test_ps2_native_app.py
           tests/test_ps2_native_discovery.py tests/test_ps2_native_indirect.py tests/test_ps2_native_recovery.py
+          tests/test_ps2_vu_discovery.py
           tests/test_ps2_hardware.py
       - name: Validate the local Windows GPU command syntax
         if: runner.os == 'Windows'

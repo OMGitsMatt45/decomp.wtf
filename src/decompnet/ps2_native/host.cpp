@@ -7,6 +7,8 @@
 #include "gfx/backends/sdlgpu/sdlgpu_input.h"
 #include "game_config.hpp"
 #include "decomp_disc_files.hpp"
+#include "decomp_iop_execution.hpp"
+#include "decomp_vu_execution.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>
@@ -23,6 +25,11 @@
 namespace fs=std::filesystem;
 std::vector<std::string> decomp_ps2_resident_modules(const uint8_t *ram);
 namespace {
+#if DECOMP_PS2_REFERENCE
+constexpr bool reference_execution=true;
+#else
+constexpr bool reference_execution=false;
+#endif
 std::string quoted(const std::string &text) {
     std::string out="\"";
     for(unsigned char c:text) {
@@ -73,6 +80,8 @@ struct Host {
         captured=true;
     }
     bool pump() {
+        if(decomp_ps2::execution::iop_coverage_misses.load()||decomp_ps2::execution::vu_coverage_misses.load())
+            throw std::runtime_error("native execution coverage failure; see the run report");
         ++pumps;
         fields=runtime->eeScheduler().currentVSyncTick();
         if(gpu) {
@@ -223,6 +232,8 @@ int main(int argc,char **argv) {
         ps2_native_iop::setModules(*runtime,decomp_ps2_game::iop_modules);
         host.started=std::chrono::steady_clock::now();runtime->run();
         if(!host.callback_error.empty())throw std::runtime_error(host.callback_error);
+        if(decomp_ps2::execution::iop_coverage_misses.load()||decomp_ps2::execution::vu_coverage_misses.load())
+            throw std::runtime_error("native execution coverage failure; see the run report");
         if(runtime->decompMissingFunctions||runtime->decompExecutionFailures)throw std::runtime_error("guest execution failed; see runtime diagnostics and report");
         if(!host.capture.empty()&&!host.captured)throw std::runtime_error("the run produced no requested frame capture");
     }catch(const std::exception &failure){error=failure.what();std::fprintf(stderr,"error: %s\n",error.c_str());result=1;}
@@ -248,7 +259,19 @@ int main(int argc,char **argv) {
         out<<']'
            <<",\n  \"missing_functions\":"<<(runtime?runtime->decompMissingFunctions.load():0)
            <<",\n  \"execution_failures\":"<<(runtime?runtime->decompExecutionFailures.load():0)
-           <<",\n  \"ee_interpreter\":false,\n  \"iop_interpreter\":true,\n  \"vu_interpreter\":true,\n  \"runtime_compilation\":false\n}\n";
+           <<",\n  \"execution_model\":"<<quoted(reference_execution?"reference":"static-recompiled")
+           <<",\n  \"iop_native_instructions\":"<<decomp_ps2::execution::iop_native_instructions.load()
+           <<",\n  \"iop_interpreted_instructions\":"<<decomp_ps2::execution::iop_interpreted_instructions.load()
+           <<",\n  \"iop_coverage_misses\":"<<decomp_ps2::execution::iop_coverage_misses.load()
+           <<",\n  \"iop_coverage_pc\":"<<decomp_ps2::execution::iop_coverage_pc.load()
+           <<",\n  \"vu_native_pairs\":"<<decomp_ps2::execution::vu_native_pairs.load()
+           <<",\n  \"vu_interpreted_pairs\":"<<decomp_ps2::execution::vu_interpreted_pairs.load()
+           <<",\n  \"vu_coverage_misses\":"<<decomp_ps2::execution::vu_coverage_misses.load()
+           <<",\n  \"vu_coverage_pc\":"<<decomp_ps2::execution::vu_coverage_pc.load()
+           <<",\n  \"vu_coverage_unit\":"<<decomp_ps2::execution::vu_coverage_unit.load()
+           <<",\n  \"ee_interpreter\":false,\n  \"iop_interpreter\":"<<(reference_execution?"true":"false")
+           <<",\n  \"vu_interpreter\":"<<(reference_execution?"true":"false")
+           <<",\n  \"runtime_compilation\":false\n}\n";
         if(!out){std::fprintf(stderr,"error: cannot write run report\n");result=1;}
     }
     SDL_RemoveEventWatch(Host::watch,&host);

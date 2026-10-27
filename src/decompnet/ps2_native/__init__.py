@@ -12,6 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
+from . import iop_native,vu_native,vu_discovery,irx_fixture,vector_fixture
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -25,7 +26,7 @@ def revision():
     digest=hashlib.sha256()
     base=Path(__file__).parent
     for path in sorted(base.rglob('*')):
-        if path.is_file() and path.suffix in ('.py','.hpp','.cpp','.json','.cmake','.md','.gz','.txt','.manifest'):
+        if path.is_file() and path.suffix in ('.py','.hpp','.cpp','.inl','.json','.cmake','.md','.gz','.txt','.manifest'):
             digest.update(path.relative_to(base).as_posix().encode()+b'\0'+path.read_bytes())
     return digest.hexdigest()
 
@@ -122,9 +123,10 @@ def generate(project,root):
     rows=reviewed['modules'] if reviewed else [dict(path=boot)]
     if inspection['input_kind']=='ee-elf' and len(rows)!=1:raise pc.PCError('a standalone EE ELF has one input module')
     if rows[0]['path']!=boot:raise pc.PCError('PS2 profile must place the original boot executable first')
-    prepared=[]
+    prepared=[];vector_inputs=[]
     for row in rows:
         original=_read(path,inspection,row['path'])
+        vector_inputs.append((row['path'],original))
         if original[:4]==b'MWo3':original=modules.mwo3_elf(original)
         prepared.append((original,profile.module(original,row if reviewed else None)))
     if inspection['program']['entry'] not in {f['address'] for f in prepared[0][1]['functions']}:
@@ -134,6 +136,23 @@ def generate(project,root):
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
+    iop_native.patch(vendor);vu_native.patch(vendor)
+    _log('Translate input-bound IOP modules...')
+    iop_generation=iop_native.generate([(name,_read(path,inspection,name)) for name in inspection.get('iop_modules',[])],
+        sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'game/iop')
+    _log('Discover and translate input-derived VU operations...')
+    vectors=vu_discovery.Catalog()
+    for name,data in vector_inputs:vectors.scan(name,data,raw_programs=True)
+    if inspection['input_kind']=='disc':
+        from ..rom.psx import _Disc
+        with path.open('rb') as stream:
+            disc=_Disc(stream)
+            for item in inspection['files']:
+                if item['directory']:continue
+                _log('Inspect VU uploads in '+item['path'])
+                vectors.scan_stream(item['path'],lambda offset,size:disc.read(item['lba']+offset//2048,size),item['size'])
+    vu_generation=vu_native.generate(vectors,root/'game/vu')
+    _native_execution_tests(root,sdk)
     _dependencies(root/'native/dependencies.cmake')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PS2-runtime-GPL-3.0.txt')
     records=[];emissions=[]
@@ -193,18 +212,36 @@ def generate(project,root):
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
         ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
-        ('irx_tests.cpp','tests/irx.cpp')):
+        ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake')):
         (root/target).write_text(_source(source),encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')
     manifest=dict(schema=pc.SCHEMA,platform='ps2',backend=dict(id=BACKEND_ID,revision=revision()),
         runtime=dict(id='ps2recomp-sdlgpu',revision=runtime_pins['archives'][0]['commit'],source_sha256=runtime_pins['source_sha256'],license='GPL-3.0'),
-        execution_model='hybrid',fallback=dict(interpreter=True,runtime_compilation=False),
-        interpreter=dict(ee=False,iop=True,vu=True),build=dict(system='cmake',target='ps2_pc'),
+        execution_model='static-recompiled',fallback=dict(interpreter=False,runtime_compilation=False),
+        interpreter=dict(ee=False,iop=False,vu=False),build=dict(system='cmake',target='ps2_pc',reference_target='ps2_probe'),
+        iop_generation=iop_generation,vu_generation=vu_generation,
         inputs=[inspection['input']],code_generation=emissions,dispatch=dispatch,
         qualification=dict(experimental=True,retail=False,playthrough=False),presentation=pc.presentation(project['renderer'],gpu='vulkan'),files={})
     for file in provider.payload(root):manifest['files'][file.relative_to(root).as_posix()]=hashlib.sha256(file.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+
+
+def _native_execution_tests(root,sdk):
+    """Ship original probes separately from the game's compiled code catalogs."""
+    (root/'native/iop').mkdir();(root/'tests').mkdir(exist_ok=True)
+    for source,target in (('iop_engine.cpp','native/iop/engine.cpp'),('iop_catalog.hpp','native/iop/decomp_iop_catalog.hpp'),
+        ('iop_execution.hpp','native/iop/decomp_iop_execution.hpp'),('iop_execution.hpp','native/decomp_iop_execution.hpp'),
+        ('vu_execution.hpp','native/decomp_vu_execution.hpp'),('native_iop_probe.cpp','tests/native_iop_probe.cpp'),
+        ('native_vu_probe.cpp','tests/native_vu_probe.cpp')):
+        (root/target).write_text(_source(source),encoding='utf-8')
+    original=irx_fixture.original_irx()
+    iop_native.generate([('ORIGINAL.IRX',original)],sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'tests/iop')
+    (root/'tests/iop/original.irx').write_bytes(original)
+    catalog=vu_discovery.Catalog();programs=vector_fixture.programs()
+    for index,data in enumerate(programs):catalog.scan(str(index),data,raw_programs=True)
+    vu_native.generate(catalog,root/'tests/vu')
+    for index,data in enumerate(programs):(root/f'tests/vu/program{index}.bin').write_bytes(data)
 
 
 def _config(root,project,boot,files,recipe,iop,arena,loaded_end):
