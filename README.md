@@ -1,233 +1,163 @@
 # decomp.wtf
 
-A local game source-recovery workbench being refactored to generate buildable
-PC source repositories for Dragon Quest and Pokémon. **DS, PS1, PS2 and GBA have experimental
-native output; general retail compatibility is not qualified.** Existing console reconstruction remains available for the
-remaining supported platforms.
+Generate editable native PC source projects from supported **DS, PS1, PS2, GBA
+and 3DS** games. Run the workbench locally, export game code and a source runtime,
+then build and customize the result. Agents are optional.
 
-[PR #27 preserves main](https://github.com/OMGitsMatt45/decomp.wtf/pull/27) exactly
-at `f965c3d783415b4c0d89ea49827760b4d9cab54c`. N64, GameCube and Wii functionality
-was removed in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28). Existing project files are preserved, and
-imports, public-project registration and old project execution reject those
-platforms. Historical low-level helpers and qualification records are not claims
-of current application support.
+[Get started](#get-started) · [Consoles](#supported-consoles) ·
+[Downloads](#manual-downloads) · [Validation](#guides-and-validation) ·
+[Roadmap](docs/future-work.md) · [Report an issue](https://github.com/OMGitsMatt45/decomp.wtf/issues)
 
-| Console | Source recovery / console reconstruction | Native PC output |
-| --- | --- | --- |
-| Nintendo DS | ARM9/ARM7, overlays and reviewed source links | Experimental static C++ and DS runtime; retail validation ongoing |
-| PlayStation | EXE/discs, reviewed modules and combined multi-disc projects | Experimental native C, PS1 runtime, adaptive OpenGL and shared multi-disc build |
-| PlayStation 2 | EE program/ELF recovery | Experimental native C++, hardware runtime and Vulkan; reviewed title profiles |
-| Game Boy Advance | ARM/Thumb recovery and ROM reconstruction | [Experimental native desktop project](docs/future/gba.md): GPU rendering, audio, input and saves; Emerald's tested save/reload and clock workflows run without interpreter fallback; full gameplay acceptance remains owner-run |
-| Nintendo 3DS | [Experimental](docs/3ds-native.md): decrypted images, ARM/Thumb/VFP C and CRO/CRS modules | Independent source runtime with Vulkan, adaptive two-screen presentation, audio and controls; retail/source coverage and physical-device acceptance are still in progress |
-| Nintendo Switch | Deferred; console additions are paused after 3DS | No qualified raw-game pipeline |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/gui-dark.png">
+  <img src=".github/assets/gui-light.png" alt="The real decomp.wtf local GUI, showing native PC project creation for DS, PS1, PS2, GBA and 3DS." width="1440" height="860">
+</picture>
 
-## What the output means
+The screenshot shows a clean local workspace. No game media or generated retail
+source is included in this repository. Compatibility is experimental and is
+validated per game; a successful export alone does not certify a full playthrough.
 
-A console export combines recovered source with unresolved original code and
-rebuilds the console image. A PC export needs a separate code-generation adapter,
-console runtime and host build. Matching percentages do not establish PC output.
-Static recompilation does not require readable, byte-matching source for every
-function first.
+## Get started
 
-The new [PC-project contract](docs/pc-output.md) keeps backend/runtime revisions,
-ordered input identities, source-file hashes, host build targets and fallback
-behavior explicit. The application will not relabel a console export as a PC
-port. DQIV Recompiled is the reference for the desired product, not an existing
-generic DS backend in this application.
-
-The target repository includes host-buildable game C/C++, a native runtime layer,
-asset-extraction tools, pinned dependencies and build/run instructions. A clean
-checkout with the documented original input should build the working PC game.
-
-[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) begins the DS backend
-with an explicit [experimental generator](docs/nds-pc.md). Reviewed ARM/Thumb
-instructions become C++ and execute with two CPU contexts and overlay switching.
-The [native runtime path](docs/nds-native-runtime.md) also analyzes DS ROMs and
-ships graphics, audio, input, timing and cartridge services as source. Original
-programs verify rendering, sound, interrupts, IPC and real save reload. Retail
-compatibility remains title-specific. DS import offers experimental PC generation
-directly, without a matching compiler, and existing DS projects can export the
-same native repository from the Source tab. Select the game's cartridge save
-chip; DQV Europe defaults to the verified 64 KiB EEPROM configuration.
-
-DS output offers OpenGL rendering with both original screens.
-3D geometry renders at the current window/monitor resolution, adapting to
-resizes and high-DPI changes. Fullscreen uses the active monitor's native
-resolution. F11 toggles fullscreen. The [guide](docs/nds-native-runtime.md)
-describes native-screen fallbacks and per-title camera limits.
-
-Generated DS projects use the DS ROM's assets and sound. Mobile OBB files are
-not required. Optional mobile-remaster enhancements for DQ IV/V/VI are deferred,
-with per-title mappings and an original-DS-audio option; they are not implemented
-yet. BIOS and firmware are not runtime dependencies; an encrypted
-original may need an owner-supplied ARM7 BIOS during initial decoding.
-
-[PS1 output](docs/ps1-native.md) builds generated game C with a complete source
-runtime: adaptive OpenGL geometry, audio, keyboard/gamepad input, CD-ROM and
-shared memory cards. Ordered discs become one repository and executable; F9/F10
-change the inserted disc. It uses bundled MIT OpenBIOS and needs no retail BIOS.
-The optional pinned PSXRecomp dependency has **PolyForm Noncommercial** terms,
-shown in the app and generated README/licenses. The normal player executes
-generated native code and reports uncovered or modified code as a coverage failure.
-An optional separate executable supplies the instruction reference. Runtime
-guest-code compilation is disabled. The shared GPU standard applies to all new game outputs;
-PS1 uses one screen; DS and 3DS preserve their two original screens.
-
-## Install and run
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
+[Git](https://git-scm.com/downloads), then run from the repository directory:
 
 ```sh
-uv sync --locked --group dev
-uv run decomp
-uv run decomp pc status --platform nds
-uv run decomp pc psx-native /path/to/game.m3u /path/to/new-source --experimental
-uv run decomp pc verify /path/to/generated/pc-project
+git clone https://github.com/OMGitsMatt45/decomp.wtf.git
+cd decomp.wtf
+uv sync --locked --group dev --python 3.12
+uv run --locked decomp
 ```
 
-Linux and Windows host tools are supported. Agents are optional. Installers and
-**Compilers & tools** manage Python dependencies and pinned supported compiler
-packages; proprietary DS compiler downloads require license acceptance.
+You can also [download main as a ZIP](https://github.com/OMGitsMatt45/decomp.wtf/archive/refs/heads/main.zip).
+Extract it and open a terminal in the folder containing `pyproject.toml` before
+running the last two commands. uv installs the requested Python version and
+locked application dependencies. The app opens in your browser and runs on your
+computer. Use **New project** to select your game and native PC output.
 
-## Downloads you install yourself
+On Windows, install uv with `winget install --id astral-sh.uv --exact`, then
+reopen PowerShell. Native project builds also need the C++ tools below. See
+[Windows setup](docs/windows.md) for native tool discovery and optional agents.
 
-Install the following only for the features you choose:
+## Supported consoles
+
+| Console | Inputs and output | Graphics | Guide |
+| --- | --- | --- | --- |
+| Nintendo DS | ARM9/ARM7 and overlays from `.nds`; both original screens | Adaptive OpenGL | [DS native output](docs/nds-native-runtime.md) |
+| PlayStation | EXE or ordered disc/CUE/M3U inputs; one source project and executable for the disc set, with shared memory cards | Adaptive OpenGL | [PS1 native output](docs/ps1-native.md) |
+| PlayStation 2 | ISO/BIN or EE ELF; automatic closed-code recovery and reviewed profiles for ambiguous layouts | Adaptive Vulkan | [PS2 native output](docs/future/ps2.md) |
+| Game Boy Advance | `.gba`; ARM/Thumb, guarded RAM copies, cartridge saves and RTC | Adaptive OpenGL | [GBA native output](docs/future/gba.md) |
+| Nintendo 3DS | Decrypted NCCH/CXI or NCSD/CCI images; ARM/Thumb/VFP, CRO/CRS modules and both original screens | Adaptive Vulkan | [3DS native output](docs/3ds-native.md) |
+
+Outputs contain generated C/C++ game code, runtime sources, pinned dependencies,
+asset preparation, CMake build targets and their own build/run instructions.
+Windows and Linux host builds are qualified. Normal execution reports uncovered
+or changed code instead of automatically falling back to an interpreter;
+diagnostic/reference modes are identified separately.
+
+The renderers adapt to the user's changing window and monitor resolution.
+DS and 3DS retain their original two screens. Screen merging, mobile assets and
+other game-specific enhancements belong in the exported project. PS1's ordered
+disc set shares one executable; the guide documents disc changes and saves.
+
+Console reconstruction and readable-source recovery remain separate workflows.
+A console matching percentage is not a PC-port readiness measure. The
+[PC-project contract](docs/pc-output.md) describes source integrity, execution
+reports and the boundary between the shared backend and game-specific work.
+
+### Export from the command line
+
+Choose a new output directory for each export:
+
+```sh
+uv run --locked decomp pc status
+uv run --locked decomp pc nds-native game.nds nds-source --experimental
+uv run --locked decomp pc psx-native game.m3u ps1-source --experimental
+uv run --locked decomp pc ps2-native game.iso ps2-source --experimental
+uv run --locked decomp pc gba-native game.gba gba-source --experimental
+uv run --locked decomp pc ctr-native game.3ds 3ds-source --experimental
+uv run --locked decomp pc verify ps2-source
+```
+
+Follow the generated README to prepare your own assets, build and run the game.
+`pc verify` checks project integrity. Per-game profiles, coverage reports and
+execution validation are documented in the console guides.
+
+## Manual downloads
+
+Install the tools needed for the output you choose. Pinned translators, runtime
+sources and supported CMake dependencies download automatically; original-console
+matching compilers are not prerequisites for native PC export.
 
 | Download | When you need it |
 | --- | --- |
-| [Java 21+ JDK (Eclipse Temurin)](https://adoptium.net/temurin/releases/?version=21) | Optional Ghidra decompiler. Put `java` on PATH; check with `java -version`. |
-| [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Cloning public decomp projects. Claude Code on Windows also needs Git Bash. |
-| [Node.js LTS, including npm](https://nodejs.org/en/download) | Optional agents installed through npm, such as the app's Codex CLI and opencode installation commands. |
-| [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | Optional local model server. Install one and download a model through it if you choose that provider. |
-| [mGBA](https://mgba.io/downloads.html) | Optional independent GBA execution and raw-save comparisons during qualification. |
-| [MAME / chdman](https://www.mamedev.org/release.html) | Optional conversion of unsupported CHD variants or developer fixture regeneration. Supported CHD imports and mod builds need no external CHD tool. |
-| [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch core downloader](https://www.retroarch.com/?page=platforms) | Optional developer DS execution comparison with `tools/ds_boot.py`; see [DS qualification](docs/future/nds.md#execution-validation). Supply your own DS BIOS and firmware files. |
-| [GNU Make](https://www.gnu.org/software/make/) and [GCC/C++](https://gcc.gnu.org/install/binaries.html), or [MSYS2 on Windows](https://www.msys2.org/) | Only when building the optional DS execution core from source. A downloaded core does not need these host build tools. |
-| [Python](https://www.python.org/downloads/) | Standalone assets: 3.9+ for DS, 3.12+ for PS1/GBA. The main application uses Python 3.12+, managed by uv. |
-| [CMake](https://cmake.org/download/) | Generated native builds: 3.20+ for DS, GBA and 3DS, 3.24+ for PS1. Also required for the automatically built PS1/GBA translation tools. GBA generation discovers the Visual Studio CMake component when it is absent from PATH. |
-| [Rust](https://www.rust-lang.org/tools/install) | 3DS translator export needs 1.88+; the source-shipped 3DS runtime needs 1.95+. Use the MSVC toolchain on Windows. Pinned source and locked build crates download automatically; see [3DS output](docs/3ds-native.md). |
-| Linux development packages: [pkg-config](https://packages.ubuntu.com/noble/pkg-config), [libasound2-dev](https://packages.ubuntu.com/noble/libasound2-dev), [libudev-dev](https://packages.ubuntu.com/noble/libudev-dev) | Building the 3DS desktop audio/controller host on Linux. Install through your distribution's package manager, along with X11 libraries. Windows uses the documented Visual Studio/Rust tools instead. |
-| [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) | Windows C/C++ host builds; select Desktop development with C++. A backend may instead qualify another host compiler. |
-| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL in generated DS/PS1/GBA projects; Vulkan in PS2/3DS projects. Use the driver for your card or your distribution's packages. Automatic mode reports software fallback; an explicit GPU backend requires a working context/device. |
-| [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Optional future mobile-asset enhancements. Native DS output already uses the DS ROM; OBB playback/mappings are not implemented yet. |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | Repository commands and locked Python environments. |
+| [Git for Windows](https://git-scm.com/downloads/win) / [Git for Linux](https://git-scm.com/downloads/linux) | Clone this repository or community source projects. A source ZIP also works for local setup. |
+| [Python 3.12+](https://www.python.org/downloads/) | uv can manage the application's Python automatically. Exported asset helpers use Python; follow their README. |
+| [Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/downloads/) | Windows builds: Visual Studio 2022 or later with **Desktop development with C++** and **C++ CMake tools for Windows**. The GPU wrappers find bundled CMake. |
+| [CMake 3.24+](https://cmake.org/download/) | Build generated projects and translators. A suitable Visual Studio CMake component also works. |
+| [GCC/C++](https://gcc.gnu.org/install/binaries.html) / [Clang](https://releases.llvm.org/download.html) | Linux host builds; install through your distribution's package manager. |
+| [Rust 1.95+](https://www.rust-lang.org/tools/install) | Build the 3DS translator/runtime. Use the MSVC toolchain on Windows; pinned sources and locked crates download automatically. |
+| Graphics drivers: [NVIDIA](https://www.nvidia.com/Download/index.aspx), [AMD](https://www.amd.com/en/support), [Intel](https://www.intel.com/content/www/us/en/download-center/home.html) | OpenGL for DS/PS1/GBA; Vulkan for PS2/3DS. Use your GPU vendor's driver or your distribution's Mesa packages. |
+| Linux development packages: [pkg-config](https://packages.ubuntu.com/noble/pkg-config), [X11](https://packages.ubuntu.com/noble/libx11-dev), [Xext](https://packages.ubuntu.com/noble/libxext-dev), [OpenGL](https://packages.ubuntu.com/noble/libgl-dev), [EGL](https://packages.ubuntu.com/noble/libegl-dev), [ALSA](https://packages.ubuntu.com/noble/libasound2-dev), [libudev](https://packages.ubuntu.com/noble/libudev-dev), [FFmpeg](https://ffmpeg.org/download.html) | Desktop graphics, audio, controllers and PS2 movies. Each generated README lists its complete package-manager command; see also [SDL3's dependency guide](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies). |
 
-On Linux, the installer also expects [curl](https://curl.se/download.html).
-Older 32-bit compilers need your distribution's 32-bit runtime, such as
-[libc6-i386 on Ubuntu 24.04](https://packages.ubuntu.com/noble/libc6-i386).
-These host packages are installed through your distribution's package manager.
-Public decomp repositories can require additional build tools; follow that
-project's setup instructions. For generated PC projects on Linux, use your
-distribution's GCC or Clang C++ package.
+Use your own game inputs. Encrypted DS imports can need an owner-supplied ARM7
+BIOS during decoding; GBA can translate an optional owner BIOS into the private
+output. PS1 uses bundled MIT OpenBIOS; PS2 needs no retail BIOS. DS mobile OBB
+files and 3DS boot ROMs are not standard runtime prerequisites.
 
-Linux windowed DS builds also need desktop graphics development libraries before
-CMake builds SDL: [X11](https://packages.ubuntu.com/noble/libx11-dev),
-[Xext](https://packages.ubuntu.com/noble/libxext-dev),
-[OpenGL](https://packages.ubuntu.com/noble/libgl-dev) and
-[EGL](https://packages.ubuntu.com/noble/libegl-dev). On Ubuntu/Debian:
+<details>
+<summary>Optional source-recovery, agent and reference tools</summary>
+
+| Download | Optional use |
+| --- | --- |
+| [Java 21+ JDK (Eclipse Temurin)](https://adoptium.net/temurin/releases/?version=21) | Ghidra decompilation; put `java` on PATH. |
+| [Node.js LTS](https://nodejs.org/en/download) | Agents installed through npm, including the app's Codex and opencode setup commands. |
+| [Ollama](https://ollama.com/download) / [LM Studio](https://lmstudio.ai/download) | A local model provider, if you choose one. |
+| [mGBA](https://mgba.io/downloads.html) | Independent GBA execution and raw-save comparisons. |
+| [MAME / chdman](https://www.mamedev.org/release.html) | Unsupported CHD conversion or developer fixture regeneration. Supported imports need no external CHD tool. |
+| [melonDS libretro core](https://github.com/libretro/melonDS) / [RetroArch](https://www.retroarch.com/?page=platforms) | Developer DS execution comparisons; see [DS qualification](docs/future/nds.md#execution-validation). Provide your own BIOS and firmware. |
+| [GNU Make](https://www.gnu.org/software/make/) / [MSYS2](https://www.msys2.org/) | Build the optional DS reference core from source. A downloaded core does not need these tools. |
+| [curl](https://curl.se/download.html) / [Ubuntu 32-bit runtime](https://packages.ubuntu.com/noble/libc6-i386) | Linux installer or legacy 32-bit matching compilers. |
+| [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Future game-specific asset integrations. Generic DS output uses the DS input; mobile mappings are not implemented. |
+
+**Compilers & tools** manages supported matching compilers and optional tools.
+Proprietary DS compiler downloads require license acceptance. Community source
+projects can have additional build requirements; follow their own instructions.
+
+</details>
+
+## Guides and validation
+
+- [PC output contract](docs/pc-output.md), [current roadmap](docs/future-work.md)
+  and [pull request index](docs/pr-scope-audit.md).
+- [Windows GPU commands](docs/hardware-validation.md): original PS2, GBA and 3DS
+  fixtures, Visual Studio CMake discovery, reports and troubleshooting.
+- Owner-provided Intel Iris Xe results: [PS2](docs/ps2-hardware-validation.json),
+  [GBA](docs/gba-hardware-validation.json), [3DS](docs/3ds-hardware-validation.json).
+- Native execution evidence: [PS1](docs/ps1-native-validation.json),
+  [GBA/Emerald](docs/gba-static-validation.json),
+  [PS2](docs/ps2-native-validation.json)
+  and the [initial five-console operational run](docs/operational-2026-10-26.md).
+  Records identify tested revisions and bounded scope; full playthrough acceptance
+  remains with the user.
+
+For a focused shared-contract check:
 
 ```sh
-sudo apt-get install build-essential libx11-dev libxext-dev libgl-dev libegl-dev
+uv run --locked --group dev python -m pytest -q tests/test_platform_scope.py tests/test_pc_output.py
 ```
 
-Use the equivalent development packages on other distributions. Headless DS
-builds (`-DNDS_WITH_SDL=OFF`) do not need desktop graphics libraries.
+The repository's [Actions workflows](https://github.com/OMGitsMatt45/decomp.wtf/actions)
+qualify each backend on Windows and Linux using original fixtures. Retail media,
+BIOS dumps and generated retail source stay outside Git. The older matching
+application is preserved in [PR #27](https://github.com/OMGitsMatt45/decomp.wtf/pull/27);
+paused game-specific source recovery is preserved in [PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26).
 
-PS1/GBA's pinned SDL3 additionally needs X11 extension and audio development packages:
-[SDL3 Linux dependency guide](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies).
-Its generated README includes the complete Ubuntu/Debian install command.
-SDL3, libchdr, libwebp and the PSXRecomp source archive download automatically;
-they do not require separate manual downloads.
+## License and credits
 
-## Development and scope
-
-The [roadmap](docs/future-work.md) separates shared application work from platform
-backends and records the PR audit. Original fixtures exercise the PC-project
-contract and DS static code generation with actual host builds and execution;
-this is not DS retail execution:
-
-```sh
-uv run pytest -q tests/test_platform_scope.py tests/test_pc_output.py tests/test_nds_pc.py tests/test_nds_native.py tests/test_nds_native_app.py tests/test_nds_native_video.py
-```
-
-The DS workflow installs the pinned source runtime and requires SDL checks on
-Windows/Linux plus OpenGL execution on Linux. See the [native guide](docs/nds-native-runtime.md)
-for GPU qualification and conservative compatibility limits.
-
-DS native output is merged in PR #29. [PS1 native output](docs/ps1-native.md)
-is implemented in PR #30 with an original two-disc hardware fixture and a
-Windows/Linux standalone build/execution workflow. DQVII is the first retail
-target; boot checks and full playthrough acceptance remain distinct.
-
-[PS2 native output](docs/future/ps2.md) is implemented experimentally in PR #5. Shared disc
-and overlay discovery feed a standalone C++/CMake export with source-shipped
-runtime, adaptive Vulkan geometry, audio, input and saves. Use `decomp pc ps2-native
-GAME.iso NEW_OUTPUT --experimental`, or the GUI's native PC output. Exact-hash
-profiles are selected automatically when bundled. Closed stripped programs can
-be mapped automatically; ambiguous code and external callbacks need a reviewed
-map. Windows/Linux qualification and retail acceptance are
-reported separately; source generation alone does not certify a working port.
-
-To validate PS2 output on your Windows GPU, use Visual Studio or
-[Visual Studio Desktop C++ Build Tools](https://visualstudio.microsoft.com/downloads/)
-with **Desktop development with C++**, including **C++ CMake tools for Windows**.
-The wrapper finds Visual Studio's bundled CMake even when it is absent from PATH;
-a separate [CMake installation](https://cmake.org/download/) is optional.
-Install
-[uv](https://docs.astral.sh/uv/getting-started/installation/) from PowerShell:
-
-```powershell
-winget install --id astral-sh.uv --exact
-```
-
-Close and reopen PowerShell so it sees the updated PATH. In File Explorer, open
-the extracted repository folder containing `pyproject.toml` and `tools`, type
-`powershell` into the address bar, press Enter, and run:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1
-```
-
-The wrapper also finds uv in its standard user install folders if PATH has not
-refreshed, and chooses a short, fresh `dwg-*` output folder for each run to leave
-room for Windows compiler dependency paths. For a custom folder:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-ps2-hardware.ps1 -Output "$env:TEMP\dg-test1"
-```
-
-If PowerShell reports `uv is not recognized`, the test has not started; install uv
-and reopen the shell. If WinGet is unavailable, use the linked official uv installer.
-The command uses an original test program and reports the actual Vulkan device
-class; software/virtual rendering does not count as physical-GPU validation.
-The first run downloads and verifies pinned runtime sources, then compiles the
-standalone fixture. Allow these steps to finish; they can take several minutes.
-Progress messages identify verification and build stages. Completion prints the
-`hardware-assessment.json` path. Stopping with Ctrl+C records an interrupted test;
-retry with a new output folder.
-
-The original fixture has passed on a physical **Intel Iris Xe integrated GPU on
-Windows 11**. The [owner-provided validation record](docs/ps2-hardware-validation.json)
-identifies the tested backend revision and driver. Retail playthrough validation
-remains separate.
-
-For the GBA GPU assessment, run from the current repository folder:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\qualify-gba-hardware.ps1
-```
-
-It builds an original standalone project, compares 18 OpenGL scenes and resized
-output, and writes `hardware-assessment.json`. No ROM or BIOS is needed. The
-wrapper reuses Visual Studio's CMake and locates uv as above. See the
-[GBA GPU test details](docs/future/gba.md#test-a-windows-gpu) for device verification
-and the distinction between software and physical GPU results.
-The owner-reported original fixture has passed on **Intel Iris Xe under Windows
-11**; the [GBA hardware summary](docs/gba-hardware-validation.json) records the
-tested backend and scope.
-
-Existing DS, PS1, PS2 and GBA qualification workflows retain their own scope.
-The preserved branch contains previous N64/GameCube/Wii workflows. Private
-retail sources and all failed recovery attempts are checkpointed in
-[PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26); only layouts and hashes
-are public. Never commit original games, BIOS, SDK payloads or credentials.
-
-[MIT](LICENSE), based on the archived original project by Sam Wolfs. This fork is
-not affiliated with Nintendo, Sony or the original maintainer.
+The application uses [MIT](LICENSE), based on
+[Sam Wolfs's archived upstream](https://github.com/i12bp8/decomp.wtf).
+Generated outputs retain their runtime/dependency terms, including **PolyForm
+Noncommercial for the PS1 runtime** and **GPL-3.0 for PS2 runtime sources**.
+This fork is not affiliated with Nintendo, Sony or the original maintainer.

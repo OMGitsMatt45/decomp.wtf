@@ -53,13 +53,13 @@
 <main id="home" class="view" hidden>
   <section class="hero">
     <div class="hero-text">
-      <p class="eyebrow">DS-first PC-output development</p>
-      <h1>Pick your game.<br>Your agents turn it into C.</h1>
-      <p class="lede">Generate native DS and PS1 PC source projects with adaptive GPU rendering, or import games for source recovery and console reconstruction.</p>
+      <p class="eyebrow">Native PC source projects</p>
+      <h1>Build a PC project<br>from your game.</h1>
+      <p class="lede">Generate editable projects for DS, PS1, PS2, GBA and 3DS with adaptive GPU rendering. Source recovery and console reconstruction are also available.</p>
       <ol class="how">
-        <li><b>Drop your game</b><span>decomp.wtf finds every function and the compiler</span></li>
-        <li><b>Free matches first</b><span>the autopilot tries a machine draft of each one</span></li>
-        <li><b>Agents do the rest</b><span>Claude Code, Codex, Antigravity, opencode or any API model</span></li>
+        <li><b>Choose your game</b><span>Use a local ROM, disc set or program.</span></li>
+        <li><b>Generate PC source</b><span>Export game code, runtime sources and build instructions.</span></li>
+        <li><b>Build and customize</b><span>Test the output, then edit your project. Agents are optional.</span></li>
       </ol>
     </div>
     <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a game file">
@@ -68,8 +68,8 @@
         <div class="cart" aria-hidden="true"><span></span></div>
         <p class="drop-title">Drop a game here</p>
         <p class="muted small">ROM, disc image or program file · or <span class="link">choose a file</span></p>
-        <div class="plat-row" id="platRow"><span data-p="psx">PS1</span><span data-p="ps2">PS2</span><span data-p="gba">GBA</span><span data-p="nds">DS</span></div>
-        <p class="plat-legend muted small" id="platLegend" hidden><span class="rec-mark">★</span> recommended: the most tested path to a full decomp you can port and mod · the rest are beta</p>
+        <div class="plat-row" id="platRow"><span data-p="nds">DS</span><span data-p="psx">PS1</span><span data-p="ps2">PS2</span><span data-p="gba">GBA</span><span data-p="3ds">3DS</span></div>
+        <p class="plat-legend muted small" id="platLegend" hidden>Experimental native output. Compatibility varies by game.</p>
         <button class="link-btn" id="pathPick" type="button">Big disc? Use its path instead</button>
       </div>
       <div class="drop-picked" id="dropPicked" hidden>
@@ -114,24 +114,24 @@
           <button class="primary" id="errBack" type="button">Try another file</button>
           <button class="ghost" id="errCopy" type="button">Copy for a bug report</button>
           <a class="ghost btn" id="errLogLink" href="/api/log" target="_blank" rel="noopener">The full log</a>
-          <a class="ghost btn" href="https://github.com/i12bp8/decomp.wtf/issues/new" target="_blank" rel="noopener">Report it</a>
+          <a class="ghost btn" href="https://github.com/OMGitsMatt45/decomp.wtf/issues/new" target="_blank" rel="noopener">Report it</a>
         </div>
       </div>
     </div>
   </section>
-  <p class="privacy"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.2c0 3.3 2.3 6.3 5.5 7.3 3.2-1 5.5-4 5.5-7.3V3L8 1Zm0 1.6 4 1.5v3.1c0 2.5-1.6 4.8-4 5.7-2.4-.9-4-3.2-4-5.7V4.1l4-1.5Z"/></svg>Your game never leaves this computer. Only your AI agent's provider sees the assembly and code it works on.</p>
+  <p class="privacy"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.2c0 3.3 2.3 6.3 5.5 7.3 3.2-1 5.5-4 5.5-7.3V3L8 1Zm0 1.6 4 1.5v3.1c0 2.5-1.6 4.8-4 5.7-2.4-.9-4-3.2-4-5.7V4.1l4-1.5Z"/></svg>Game files stay on this computer. Connected agents can send assembly and source to the provider you choose.</p>
 
   <section class="starts">
     <a class="start-card accent" href="#/catalog">
       <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h5v4H2zm7 0h5v4H9zM2 9h5v4H2zm7 0h5v4H9z"/></svg></span>
       <b>Continue a public decomp</b>
-      <span>Paste a community decomp's repository, add your copy, your agents carry on.</span>
+      <span>Open a community source project and add your own game input.</span>
     </a>
 
     <button class="start-card" id="askBtn" type="button">
       <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v8H6l-3 2.5V11H2z"/></svg></span>
       <b>Use your own agent</b>
-      <span>Connect Claude Code, Codex or Antigravity once, then just ask it: “decompile my game”.</span>
+      <span>Optionally connect an agent for source recovery, debugging and project edits.</span>
     </button>
     <button class="start-card" id="joinBtn" type="button">
       <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 7a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Zm5.5 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM1 13c0-2.4 2-4 4.5-4S10 10.6 10 13v1H1v-1Zm10.5 1v-1c0-1.3-.4-2.4-1.1-3.3.2 0 .4-.1.6-.1 2.2 0 4 1.3 4 3.4v1h-3.5Z"/></svg></span>

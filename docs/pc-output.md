@@ -11,13 +11,11 @@ GBA exports an experimental C/C++ desktop project with raw-state OpenGL renderin
 audio, controls and cartridge saves. 3DS exports translated CPU/CRO source with
 a bundled runtime, adaptive Vulkan presentation, audio, input and saves.
 General retail compatibility is not yet qualified.
-The [five-console operational check](operational-2026-10-26.md) records bounded
-retail results and distinguishes strict static execution from hybrid output.
-
-The [archived upstream](https://github.com/i12bp8/decomp.wtf#platforms) also
-describes its rebuildable project as a base for ports. Resetting to upstream
-would remove importer, reconstruction and compiler improvements without adding
-a PC execution backend. Keep this fork and its reviewed game facts.
+The [initial five-console operational check](operational-2026-10-26.md) records
+its original bounded retail results. Later [PS1](ps1-native-validation.json),
+[GBA](gba-static-validation.json) and [PS2](ps2-native-validation.json) validation
+records qualify the normal execution paths without interpreter fallback. The
+[roadmap](future-work.md) records the current milestone and per-game follow-up.
 
 ## Scope and reusable work
 
@@ -28,7 +26,6 @@ a PC execution backend. Keep this fork and its reviewed game facts.
 | GBA | ARM/Thumb matching, cartridge reconstruction, and an experimental independent native desktop project | [PR6](future/gba.md) adds translated C, guarded temporal RAM variants, a source-shipped core, raw-state OpenGL rendering, audio, controls and cartridge saves. Emerald's tested save/reload and daily-clock workflows run without interpretation. Independent timer observations and an mGBA save/room check pass. Original GPU fixtures pass on the owner's [Windows/Intel Iris Xe](gba-hardware-validation.json). Broader hardware accuracy remains experimental; full gameplay acceptance remains owner-run. |
 | PS2 | EE reconstruction; shared disc/overlay inspection and experimental native PC export | Pinned PS2Recomp/SDL3 GS sources supply adaptive Vulkan geometry, audio, input, disc access and saves. Native IOP/VU catalogs preserve the platform interfaces; unknown code fails with a coverage report. An optional separate player retains instruction references; see [qualification scope](future/ps2.md). |
 | 3DS | [Decrypted images, native CPU/CRO source and bundled runtime projects](3ds-native.md), with original kernel/IPC/ExeFS, Vulkan and audio/input checks | Adaptive two-screen presentation, audio and keyboard/touch/gamepads are development features. Original Vulkan scenes and the two-screen window passed on the owner's [Windows/Intel Iris Xe](3ds-hardware-validation.json). Retail source/DSP/save coverage, physical audio/controllers and broader GPU coverage remain. The experimental `ctr-native` game backend ships the same standalone source/runtime contract. |
-| Switch | Planned; no qualified raw-game pipeline | Both program/service integration and a PC runtime are additional work. |
 
 For GBA Pokémon, [pokeemerald](https://github.com/pret/pokeemerald) and
 [pokefirered](https://github.com/pret/pokefirered) provide existing source
@@ -39,6 +36,8 @@ and Windows build are a concrete reference, not proof of a generic DS backend.
 
 GB/GBC, N64, GameCube and Wii are outside the current product scope. Their
 implementation history remains in Git; existing project files are preserved.
+Additional console proposals are [deferred planning references](pr-scope-audit.md#deferred-console-proposals),
+including Switch; they are not registered application backends.
 
 ## Generated repository acceptance target
 

@@ -283,7 +283,7 @@ function identifyHead(head, file) {
 function notSupported(head, file) {
   const text = (a, b) => String.fromCharCode(...head.slice(a, b));
   const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
-  if (text(0, 2) === "MZ") return "That's a Windows program. PC games aren't supported yet: decomp.wtf imports DS, GBA and PlayStation 1/2 games.";
+  if (text(0, 2) === "MZ") return "That's a Windows program. decomp.wtf imports DS, PS1, PS2, GBA and decrypted 3DS games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
   if (["3ds", "cci", "cxi", "cia", "3dsx"].includes(ext)) return "3DS PC source requires a decrypted NCCH/CXI or NCSD/CCI image. CIA installation and 3DSX relocation are not supported.";
@@ -321,7 +321,7 @@ async function pickFile(file) {
   $("romStatus").className = `plat-status ${level || ""}`;
   $("romStatus").innerHTML = p === "3ds" ? "<b>Experimental PC output.</b> Generates editable game code and a desktop runtime. Retail gameplay still needs validation for your image." : level === "recommended"
     ? `<b>★ Recommended platform.</b> The most tested path to a full decomp you can port and mod.`
-    : `<b>Beta.</b> ${esc(PLATFORM_NAME[p] || "This platform")} works and is tested on homemade games, less so on real ones yet. Problems are worth <a href="https://github.com/i12bp8/decomp.wtf/issues" target="_blank" rel="noopener">reporting</a>.`;
+    : `<b>Beta.</b> ${esc(PLATFORM_NAME[p] || "This platform")} works and is tested on homemade games, less so on real ones yet. Problems are worth <a href="https://github.com/OMGitsMatt45/decomp.wtf/issues" target="_blank" rel="noopener">reporting</a>.`;
   $("dsOutput").value = "pc";
   $("psxAdditionalDiscs").value = "";
   $("dsInputFormat").value = "auto";
@@ -736,8 +736,9 @@ function markPlatforms() {
   const any = Object.keys((S.st && S.st.platform_status) || {}).length;
   document.querySelectorAll("#platRow [data-p]").forEach((s) => {
     const rec = platformStatus(s.dataset.p) === "recommended";
+    const native = !!S.st?.pc_output?.[s.dataset.p]?.available;
     s.classList.toggle("rec", rec);
-    s.title = rec ? "Recommended: the most tested path to a full decomp you can port and mod" : platformStatus(s.dataset.p) === "development" ? "In development: native CPU source probes; playable game output is not available yet" : "Beta: works, less tested on real games";
+    s.title = native ? "Experimental native PC source output; validate each game" : rec ? "Recommended console source-recovery workflow" : "Console reconstruction status; see the platform guide";
     if (rec && !s.querySelector(".rec-mark")) s.insertAdjacentHTML("afterbegin", `<span class="rec-mark">★</span>`);
   });
   $("platLegend").hidden = !any;
