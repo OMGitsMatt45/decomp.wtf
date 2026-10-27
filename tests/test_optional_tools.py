@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("DECOMP_TEST_OPTIONAL_TOOLS") != 
                                 reason="requires the pinned optional tool downloads and Java 21")
 
 
-@pytest.mark.parametrize("tool", ["cloudflared", "coddog"])
+@pytest.mark.parametrize("tool", ["coddog"])
 def test_optional_native_binary_starts(tool):
     run = subprocess.run([str(toolchains.binary(tool)), "--version"], capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stdout + run.stderr

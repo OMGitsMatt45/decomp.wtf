@@ -102,7 +102,7 @@ def merge_reviewed(net, slug, head_name, tail_name, *, agent, reason):
     if not isinstance(reason, str) or not reason.strip() or len(reason) > 4096:
         raise NetworkError("provide the reviewed evidence for this boundary merge")
     project = net.project_row(slug)
-    if slug in net.links or not net.is_rom(project) or net.cfg(project).get("platform") != "psx":
+    if not net.is_rom(project) or net.cfg(project).get("platform") != "psx":
         raise NetworkError("reviewed boundary merges require a local PS1 ROM project")
     with net.store.tx() as db:
         project = db.execute("SELECT * FROM projects WHERE id=?", (project["id"],)).fetchone()

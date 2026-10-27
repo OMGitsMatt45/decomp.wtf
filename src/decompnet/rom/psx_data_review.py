@@ -48,7 +48,7 @@ def migrate(net, slug, declaration, *, agent, reason, transfer=True):
         raise NetworkError("provide the reviewed loader/data evidence for this classification")
     project = net.project_row(slug)
     cfg = net.cfg(project)
-    if slug in net.links or not net.is_rom(project) or cfg.get("platform") != "psx" or not cfg.get("psx_disc", {}).get("supported"):
+    if not net.is_rom(project) or cfg.get("platform") != "psx" or not cfg.get("psx_disc", {}).get("supported"):
         raise NetworkError("reviewed main data requires a local, reconstructable PS1 disc project")
     work = Path(project["root"])
     configs = list(work.glob("*.yaml"))

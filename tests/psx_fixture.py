@@ -1,4 +1,4 @@
-"""Original PS1 fixture shared by application and collaboration integration tests."""
+"""Original PS1 fixture shared by local application and own-agent integration tests."""
 from pathlib import Path
 import subprocess
 import sys

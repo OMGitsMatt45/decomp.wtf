@@ -159,7 +159,7 @@ def run(args):
                 result = migrate(net, args.project, json.loads(args.layout.read_text(encoding="utf-8")),
                                  agent=agent, reason=args.reason, transfer=not args.no_transfer)
             elif args.psx_cmd in ("merge", "split"):
-                if net.cfg(net.project_row(args.project)).get("platform") != "psx" or args.project in net.links:
+                if net.cfg(net.project_row(args.project)).get("platform") != "psx":
                     raise ValueError("choose a local PlayStation 1 project")
                 agent, _ = net.local_agent("console-boundary-review")
                 if args.psx_cmd == "merge":

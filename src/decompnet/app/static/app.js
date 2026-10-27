@@ -477,7 +477,7 @@ function fillDsSaves(select,code) {
 function fillCompilers(select, current, platform) {
   const tcs = (S.st?.toolchains || []).filter((t) => t.kind === "compiler" && (!platform || !t.platform || t.platform === platform));
   select.innerHTML = tcs.map((t) => {
-    const note = !t.supported ? " (not available on this computer)" : t.installed ? "" : t.license === "proprietary" ? " (install in Compilers & tools)" : " (will be installed)";
+    const note = !t.supported ? " (not available on this computer)" : t.installed ? "" : t.license === "proprietary" ? " (install in Build tools)" : " (will be installed)";
     return `<option value="${esc(t.id)}" ${t.id === current ? "selected" : ""} ${t.supported ? "" : "disabled"}>${esc(t.name)} · ${esc(t.use)}${note}</option>`;
   }).join("");
 }
@@ -1979,7 +1979,7 @@ async function openHostConnect() {
   const body = dialog("Use decomp.wtf from your AI agent", `<p>Run this once in ${esc(shell)} on ${esc(host)}: it connects Claude Code, Codex, Antigravity CLI and opencode there.</p>
     ${cmdBox("decomp connect")}
     <p>Then ask your agent, for example:</p>
-    ${cmdBox(S.st.host_os === "windows" ? "decompile my game at C:\\Games\\game.nds" : "Generate a native PC source project from my own game at ~/roms/game.nds")}
+    ${cmdBox(S.st.host_os === "windows" ? "Generate a native PC source project from my own game at C:\\Games\\game.nds" : "Generate a native PC source project from my own game at ~/roms/game.nds")}
     <p class="muted small">decomp.wtf runs in ${S.st.runtime === "wsl" ? "its own WSL 2 Linux on Windows" : "Docker"}; your agent reaches it through the command below. Anything it does shows up here as it happens.</p>
     <div class="setup-group"><h3>Any other MCP client (Cursor, Claude Desktop, Windsurf, your own)</h3><pre class="code" id="bridgeJson"></pre></div>`);
   try {
