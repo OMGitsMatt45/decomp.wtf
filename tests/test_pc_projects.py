@@ -164,7 +164,9 @@ def test_own_agent_stdio_bridge_opens_native_project_in_custom_workspace(tmp_pat
                 assert not result.is_error,text
                 return text
             assert project['id'] in await call('list_projects')
-            assert str(native) in await call('open_project',project=project['id'])
+            opened=await call('open_project',project=project['id'])
+            metadata=json.loads(opened.split('\n\nProject README:',1)[0])
+            assert Path(metadata['path']).resolve()==native.resolve()
             assert '# Original CPU fixture' in await call('inspect_pc_project',project=project['id'])
             assert '"passed": true' in await call('verify_pc_project',project=project['id'])
             assert '#/pc/'+project['id'] in await call('open_gui')
