@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <string>
+#include <vector>
 using namespace ps2x::iop::lle;
 struct Link:EeLink {
     bool readEe(uint32_t,void*,uint32_t)override{return false;}
