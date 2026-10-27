@@ -1,6 +1,6 @@
 [project]
 name = "decompnet"
-version = "0.19.0"
+version = "0.20.0"
 description = "decomp.wtf: local native PC source export for DS, PS1, PS2, GBA and 3DS."
 readme = "README.md"
 license = "MIT"
@@ -44,5 +44,5 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-# the room tests drive the room server through Starlette's TestClient, which warns about the timeouts real clients use
+# The local API tests use Starlette's TestClient, which warns about client timeout options
 filterwarnings = ["ignore:You should not use the 'timeout' argument with the TestClient"]

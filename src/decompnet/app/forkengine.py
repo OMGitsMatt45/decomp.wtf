@@ -1,8 +1,8 @@
-"""Fork projects: continue a public decomp with your agents, inside the project's own source tree.
+"""Local source recovery in a project's own source tree.
 
 Progress comes from objdiff reports. Agents claim functions (so parallel agents never collide), write them into
 the project's real source files, build just that unit with the project's own build system and let objdiff judge.
-A 100% match is committed to a local git branch, ready for the user to push or open a pull request with.
+A 100% match is committed to a local git branch, preserving a reviewable history of local changes.
 Guards from people who ran agents on decomps before: agents can only write C/C++ sources and headers (never
 targets, assembly, configs or build scripts), inline assembly is refused, and a header edit is undone if it costs a
 single match.
@@ -25,14 +25,13 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 
 from .. import platforms, similarity, toolchains
-from ..forks import catalog, csource, datadiff, drafts, ghidra, scratch_dsd
+from ..forks import csource, datadiff, drafts, ghidra, scratch_dsd
 from ..forks.objdiff import ObjdiffError
 from ..forks.project import EDITABLE, STATE, ForkError, ForkProject
 from ..network import Agent, Network, NetworkError
 from ..scoring import percent_text
 from ..textedit import replace_once
 
-_REPO = re.compile(r"^(https://(github\.com|gitlab\.com|codeberg\.org|git\.[\w.-]+)/[\w.-]+/[\w.-]+?)(\.git)?/?$")
 # A match has to come from C/C++: no inline assembly, asm functions, asm includes or embedded binaries.
 _CHEAT = re.compile(r"\b(__asm__|__asm|asm|_asm)\b|INCLUDE_ASM|GLOBAL_ASM|INCLUDE_RODATA|\.incbin|#\s*include\s*[\"<][^\">]*\.(s|S|asm|bin|inc\.c)[\">]")
 
@@ -390,31 +389,19 @@ class ForkEngine:
     def _meta(fn) -> dict:
         return json.loads(fn["meta"]) if fn["meta"] else {}
 
-    def catalog(self) -> tuple[list[dict], float | None]:
-        """decomp.dev's list as this install downloaded it before the directory was retired, and when."""
-        path = self.net.workspace / ".decomp" / "catalog.json"
-        return catalog.catalog(path), catalog.cached_at(path)
 
     # ------------------------------------------------------------------ creating a fork
 
-    def policy(self, repo: str) -> dict:
-        """What a public decomp says about AI and contributions (forks/policy.py), before it's forked."""
-        from ..forks import policy
 
-        m = _REPO.match(repo.strip())
-        if not m:
-            raise NetworkError("give a GitHub/GitLab/Codeberg repository URL (https://github.com/owner/repo)")
-        return {"repo": m.group(1), **policy.check(m.group(1))}
-
-    def clone(self, repo: str, *, name: str = "", platform: str = "", version: str | None = None, log=print) -> str:
+    def open_local(self, repo: str, *, name: str = "", platform: str = "", version: str | None = None, log=print) -> str:
         platforms.require(platform, NetworkError)
         repo = repo.strip()
         local = Path(repo).expanduser()
-        if not (_REPO.match(repo) or (local.is_dir() and (local / ".git").exists())):
-            raise NetworkError("give a GitHub/GitLab/Codeberg repository URL (https://github.com/owner/repo)")
+        if not (local.is_dir() and (local / ".git").exists()):
+            raise NetworkError("only existing local source repositories are supported; public-project import was removed")
         if not shutil.which("git"):
             raise NetworkError("forking needs git: install it from https://git-scm.com")
-        url = _REPO.match(repo).group(1) if _REPO.match(repo) else str(local.resolve())
+        url = str(local.resolve())
         for p in self.net.store.all("SELECT slug, config FROM projects"):
             if json.loads(p["config"]).get("repo_url") == url:
                 log(f"already forked as {p['slug']}")
@@ -423,7 +410,7 @@ class ForkEngine:
         slug = self._free_slug(base)
         dest = self.net.workspace / slug
         log(f"cloning {url}")
-        res = subprocess.run(["git", "clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules", url, str(dest)],
+        res = subprocess.run(["git", "clone", "--no-hardlinks", url, str(dest)],
                              capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res.returncode != 0:
             shutil.rmtree(dest, ignore_errors=True)
@@ -489,7 +476,7 @@ class ForkEngine:
                "legal": {"basis": "personal-copy", "license": "personal use only",
                          "statement": "imported by the owner of this copy of the game, who confirmed it was legally obtained",
                          "confirmed_at": time.time()}}
-        self._register(slug, facts["title"], f"{catalog.PLATFORMS[facts['platform']]} game {facts['id']}, from scratch",
+        self._register(slug, facts["title"], f"{platforms.NAMES[facts['platform']]} game {facts['id']}, from scratch",
                        dest, cfg, f"started {facts['id']} from scratch")
         self.check(slug, log=log)
         return slug
@@ -508,14 +495,6 @@ class ForkEngine:
                 tmp.write_bytes(game)
                 game, move = tmp, True
             self._match_version(proj, fp, cfg, Path(game), log)
-            if not cfg.get("program_sha1"):  # which game it is: members of a room on it need the same one
-                from .forkroom import game_identity
-
-                try:
-                    cfg["game_sha1"] = game_identity(Path(game))
-                    self._save_cfg(proj, cfg)
-                except (OSError, ForkError):
-                    pass
             dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move)
             log(f"your copy of the game is at {dest.relative_to(fp.root)}")
         if not fp.needs(cfg.get("version"))["auto"]:
@@ -854,8 +833,6 @@ class ForkEngine:
         from ..forks import arm7_project
 
         proj, fp, cfg = self.get(slug)
-        if self.net.links.get(slug) is not None:
-            raise NetworkError("configure ARM7 units on the project host")
         if not fp.is_generated_ds():
             raise NetworkError("this operation requires a generated DS project")
         source = fp.safe_path(path, write=True).relative_to(fp.root).as_posix()
@@ -1241,7 +1218,7 @@ class ForkEngine:
         m = cfg.get("measures") or {}
         units = fp.units() if cfg.get("ready") else []
         scratch = next((u.scratch for u in units if u.scratch), None) or {}
-        platform = catalog.PLATFORMS.get(cfg.get("platform"), cfg.get("platform") or "unknown platform")
+        platform = platforms.NAMES.get(cfg.get("platform"), cfg.get("platform") or "unknown platform")
         return (f"{proj['name']}: a fork of {cfg['repo_url']} ({platform}{', ' + cfg['version'] if cfg.get('version') else ''})\n"
                 f"progress: {m.get('matched_functions', '?')}/{m.get('total_functions', '?')} functions, "
                 f"{float(m.get('matched_code_percent', 0) or 0):.2f}% of code, in {len(units)} source files\n"
@@ -1475,8 +1452,6 @@ class ForkEngine:
         return text
 
     def claim(self, agent: Agent, slug: str, function: str | None = None, strategy: str = "easiest") -> str:
-        if (link := self.net.links.get(slug)) is not None:
-            return self._claim_in_room(link, agent, slug, function, strategy)
         fn = self.net.claim_row(agent, slug, function, strategy)
         if fn is None:
             left = (self.get(slug)[2].get("uncovered") or {}).get("functions")
@@ -1486,17 +1461,6 @@ class ForkEngine:
                        if left else ""))
         return self.brief(fn, agent, "CLAIMED")
 
-    def _claim_in_room(self, link, agent: Agent, slug: str, function: str | None, strategy: str) -> str:
-        """A member of a room: the host hands out functions (nobody does one twice); the brief comes from this copy."""
-        name = link.claim(agent, self._fn(slug, function)["name"] if function else None, strategy)
-        if name is None:
-            return "Nothing left to claim in this room: every function with a source file matches or someone is on it. 🎉"
-        try:
-            fn = self.net.claim_row(agent, slug, name, strategy)
-        except NetworkError:  # the host has a newer tree (new files, a split): follow it, then claim here
-            link.sync()
-            fn = self.net.claim_row(agent, slug, name, strategy)
-        return self.brief(fn, agent, "CLAIMED")
 
     def get_function(self, agent: Agent | None, slug: str, function: str) -> str:
         return self.brief(self._fn(slug, function), agent, "VIEW")
@@ -1527,26 +1491,6 @@ class ForkEngine:
             if held is not None:
                 with self.net.store.tx() as db:
                     db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (held, agent.id))
-        link = self.net.links.get(slug)
-        if link is None or res["score"] is None:
-            return res
-        name = self._fn(slug, function)["name"]
-        if res["matched"]:  # the host builds it in its own tree, against its own copy, and commits it for everyone
-            try:
-                verdict = link.attempt(agent, name, source)
-            except NetworkError as e:
-                res["text"] += f"\n⚠️ Not shared with the room yet: {e}"
-                return res
-            if verdict.get("matched"):
-                res["text"] += "\nShared with the room: the host confirmed the match."
-                threading.Thread(target=self._follow, args=(link,), daemon=True).start()
-            else:
-                res["text"] += ("\n⚠️ The room's host could not confirm this match in its tree (score "
-                                f"{verdict.get('score')}): it may have changed since; this copy follows the host's.")
-        else:
-            fn = self._fn(slug, function)
-            if fn["best_score"] is None or res["score"] <= fn["best_score"]:
-                threading.Thread(target=self._report_best, args=(link, agent, name, source, res["score"]), daemon=True).start()
         return res
 
     def _hold_for_try(self, slug: str, function: str, agent: Agent) -> int | None:
@@ -1560,19 +1504,7 @@ class ForkEngine:
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
         return fn["id"]
 
-    @staticmethod
-    def _follow(link) -> None:
-        try:
-            link.sync()
-        except NetworkError:
-            pass
 
-    @staticmethod
-    def _report_best(link, agent: Agent, name: str, source: str, score: int) -> None:
-        try:
-            link.call("/collab/best", agent, function=name, source=source, score=score)
-        except NetworkError:
-            pass
 
     def _attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
                  quiet: int | None = None) -> dict:
@@ -1715,7 +1647,7 @@ class ForkEngine:
         when it can't run here."""
         proj, fp, cfg = self.get(slug)
         if cfg.get("origin") != "scratch":
-            raise NetworkError("autopilot works on games started from scratch: a public decomp's headers don't have "
+            raise NetworkError("autopilot works on games started from scratch: this local project's headers don't have "
                                "what machine drafts need, and its easy functions are done already")
         if not cfg.get("ready"):
             raise NetworkError("finish setting the project up first")
@@ -1795,8 +1727,6 @@ class ForkEngine:
 
     def release(self, agent: Agent, slug: str, function: str, notes: str) -> str:
         fn = self._fn(slug, function)
-        if (link := self.net.links.get(slug)) is not None:
-            link.call("/collab/release", agent, function=fn["name"], notes=notes)
         latest = self.net.store.one("SELECT score FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1",
                                     fn["id"], agent.id)
         if (fn["best_source"] and fn["status"] != "matched" and latest and latest["score"] is not None
@@ -1975,11 +1905,6 @@ class ForkEngine:
         return "\n".join(hits) or "no matches"
 
     def edit_file(self, agent: Agent, slug: str, path: str, old: str, new: str, message: str) -> str:
-        if (link := self.net.links.get(slug)) is not None:  # the host makes and checks it; this copy follows
-            text = link.call("/collab/edit", agent, path=path, old=old, new=new, message=message)
-            if text.startswith(("✅", "⚠️")):
-                link.sync()
-            return text
         proj, fp, cfg = self.get(slug)
         p = fp.safe_path(path, write=True)
         if not message.strip():
@@ -2131,18 +2056,18 @@ class ForkEngine:
         need = fp.needs(cfg.get("version")) if not cfg.get("ready") else None
         return {
             "slug": slug, "title": proj["name"], "description": proj["description"], "kind": "fork",
-            "platform": cfg.get("platform"), "platform_name": catalog.PLATFORMS.get(cfg.get("platform"), cfg.get("platform") or ""),
+            "platform": cfg.get("platform"), "platform_name": platforms.NAMES.get(cfg.get("platform"), cfg.get("platform") or ""),
             "repo_url": cfg.get("repo_url"), "fork_kind": cfg.get("fork_kind"), "version": cfg.get("version"),
             "origin": cfg.get("origin"), "compiler_name": cfg.get("compiler"),
             "versions": fp.versions(), "ready": bool(cfg.get("ready")), "needs": need,
-            "rom": {"game_code": cfg.get("version") or "", "region": catalog.PLATFORMS.get(cfg.get("platform"), ""),
+            "rom": {"game_code": cfg.get("version") or "", "region": platforms.NAMES.get(cfg.get("platform"), ""),
                     "title": proj["name"]},
             "compiler": {"toolchain": "project", "name": "Project's own build", "flags": [], "installed": True,
                          "proprietary": False, "supported": True},
             "compilers": [],
             "functions": agg["total"] or 0, "matched": agg["matched"] or 0, "bytes": agg["bytes"] or 0,
             "matched_bytes": agg["matched_bytes"] or 0, "attempts": agg["attempts"] or 0,
-            "context_version": 0, "folder": proj["root"], "room": self.net._room_info(slug),
+            "context_version": 0, "folder": proj["root"],
             "measures": m, "uncovered": self.uncovered(slug) if cfg.get("ready") and fp.linkable() else None,
             "rebuild": (fp.manifest or {}).get("rebuild") if cfg.get("origin") == "scratch" else None,
         }

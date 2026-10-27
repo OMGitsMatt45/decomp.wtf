@@ -19,6 +19,10 @@ from . import agents, tools
 CHAT_INSTRUCTIONS = """\
 You are connected to decomp.wtf on the user's computer. Native PC source output and original-console
 reconstruction are separate workflows. Use the user's own game and keep derived code/assets private.
+list_projects includes native outputs. open_project and inspect_pc_project show their folder and README;
+verify_pc_project checks original source integrity without claiming a host build or gameplay success.
+Edit and build the exported source with your own coding tools. Matching-loop tools and helper sessions
+apply to console recovery projects, not to generated native projects.
 
 For a DS native PC project, use generate_pc_project(path, own_copy=true, save_type=the game's chip,
 ds_input_format="auto" or "decrypted"). This experimental path analyzes the ROM and generates a standalone
@@ -36,7 +40,10 @@ unresolved code/callbacks need ps2_profile=the local reviewed JSON map path. PS2
 The normal player executes native EE/IOP/VU code and reports uncovered code. A separate optional player retains IOP/VU instruction references.
 For GBA, use generate_pc_project(path, own_copy=true, platform="gba"). It generates an independent
 C/C++ project with raw-state OpenGL rendering, audio, keyboard/gamepad input and automatic cartridge
-save/RTC detection. Uncovered ARM/Thumb code is interpreted and reported; runtime compilation is disabled.
+save/RTC detection. The normal player runs generated ARM/Thumb code and reports uncovered code. Interpreter references are separate diagnostic executables; runtime compilation is disabled.
+For 3DS, use generate_pc_project(path, own_copy=true, platform="3ds", renderer="vulkan").
+Use a decrypted NCCH/CXI or NCSD/CCI image. Generated ARM/Thumb/VFP and module code executes natively;
+uncovered paths stop with a coverage report. Both original screens adapt to the window; StreetPass is not required.
 Read the generated README for host building and controls. Report source integrity, host execution and
 gameplay acceptance separately; a successful export does not certify a full game. Gameplay acceptance
 is owner-run. Helpers are optional; start them only when the user requests them.
@@ -69,10 +76,13 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         slug = manager.project_of(agent.id) or settings.data.get("last_project")
         if not slug:
             raise ToolError("no project is open: list_projects() and open_project(), or import_game(path)")
+        if net.pc_projects.contains(slug):
+            raise ToolError('This is a native PC project. Use inspect_pc_project and edit/build its exported folder with your own coding tools; matching helpers apply to console recovery.')
         return slug
 
     def resolve(name: str) -> str:
-        rows = net.store.all("SELECT slug, name FROM projects ORDER BY id DESC")
+        rows = [dict(row) for row in net.store.all("SELECT slug, name FROM projects ORDER BY id DESC")]
+        rows += [dict(slug=p['id'],name=p['title']) for p in net.pc_projects.list()]
         q = name.strip().lower()
         for r in rows:
             if r["slug"] == q:
@@ -85,7 +95,7 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
 
     def line(ov: dict) -> str:
         pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
-        kind = "public decomp" if ov.get("kind") == "fork" and ov.get("origin") != "scratch" else "from scratch"
+        kind = "local source recovery" if ov.get("kind") == "fork" and ov.get("origin") != "scratch" else "from scratch"
         return (f"- {ov['slug']}: {ov['title']} ({ov.get('platform_name') or ov.get('platform') or '?'}, {kind}) "
                 f"{ov['matched']}/{ov['functions']} functions, {pct:.1f}% of code")
 
@@ -99,7 +109,8 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         """The games in decomp.wtf on this computer, with progress. Open one with open_project."""
         agent = chat_agent(ctx)
         rows = net.store.all("SELECT slug FROM projects ORDER BY id DESC")
-        out = []
+        out = [f"- {p['id']}: {p['title']} ({p['platform_name']}, native PC source); folder {p['path']}"
+               for p in net.pc_projects.list()]
         for r in rows:
             try:
                 out.append(line(net.overview(r["slug"])))
@@ -116,8 +127,35 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         agent = chat_agent(ctx)
         slug = resolve(project)
         opened(agent, slug)
+        if net.pc_projects.contains(slug):
+            return native_info(slug)
         info = await anyio.to_thread.run_sync(lambda: tools.project_info(net, slug))
         return f"{info}\nShow the user the live view with open_gui()."
+
+    def native_info(key: str) -> str:
+        project = net.pc_projects.get(key)
+        import json
+        return json.dumps(project,indent=2) + '\n\nProject README:\n' + net.pc_projects.readme(key)
+
+    @mcp.tool(meta=tools.ALWAYS_LOAD)
+    async def inspect_pc_project(ctx: Context, project: str) -> str:
+        """Open a tracked native output by ID or title. Read its folder, README and integrity status. Build and gameplay success are separate."""
+        agent = chat_agent(ctx)
+        slug = resolve(project)
+        if not net.pc_projects.contains(slug):
+            raise ToolError('choose a native PC project from list_projects')
+        opened(agent,slug)
+        return await anyio.to_thread.run_sync(lambda: native_info(slug))
+
+    @mcp.tool(meta=tools.ALWAYS_LOAD)
+    async def verify_pc_project(ctx: Context, project: str) -> str:
+        """Compare native output with its original generated manifest. Edits may differ; this does not test host builds or gameplay."""
+        chat_agent(ctx)
+        slug = resolve(project)
+        if not net.pc_projects.contains(slug):
+            raise ToolError('choose a native PC project from list_projects')
+        await anyio.to_thread.run_sync(lambda: net.pc_projects.verify(slug))
+        return await anyio.to_thread.run_sync(lambda: native_info(slug))
 
     @mcp.tool(meta=tools.ALWAYS_LOAD)
     async def import_game(ctx: Context, path: str, own_copy: bool = False, compiler: str = "") -> str:
@@ -222,7 +260,11 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         if job["state"] == "error":
             raise ToolError(f"{job.get('kind','import')} failed: {job['error']}")
         if job["result"].get("format") == "pc":
+            result = job['result']
+            if not result.get('project'):
+                result['project'] = net.pc_projects.remember(Path(result['path']),result['manifest'],verified=result.get('integrity_verified',False))
             return (f"Native PC source project: {job['result']['path']}. Source integrity verified. "
+                    f"Tracked as {result['project']['id']}; use open_project or inspect_pc_project with this ID. "
                     "Read its README for building and controls. This backend is experimental; gameplay acceptance is separate.")
         slug = job["result"]["slug"]
         info = await anyio.to_thread.run_sync(lambda: tools.project_info(net, slug))
@@ -245,9 +287,10 @@ def register(mcp, net, manager, jobs, settings, port: int, secret: str) -> None:
         agent is doing, diffs, progress. Do this once when you start, so the user can watch."""
         agent = chat_agent(ctx)
         slug = manager.project_of(agent.id) or settings.data.get("last_project")
-        url = f"http://127.0.0.1:{port}/?k={secret}" + (f"#/p/{slug}" if slug else "")
+        page = f"#/pc/{slug}" if slug and net.pc_projects.contains(slug) else f"#/p/{slug}" if slug else ''
+        url = f"http://127.0.0.1:{port}/?k={secret}" + page
         ok = await anyio.to_thread.run_sync(lambda: hostenv.open_url(url))
-        where = f"http://127.0.0.1:{port}/" + (f"#/p/{slug}" if slug else "")
+        where = f"http://127.0.0.1:{port}/" + page
         if ok:
             return f"Opened the live view in the user's browser ({where})."
         if hostenv.runtime() == "docker":  # the container can't reach the user's browser: hand them the link

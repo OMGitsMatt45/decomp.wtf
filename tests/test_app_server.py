@@ -50,7 +50,7 @@ def test_gui_needs_the_secret_and_the_right_host(app):
     assert client.post("/api/settings", json={"autopilot": False}, headers={"X-Decomp": "1"}).json()["autopilot"] is False
 
 
-@pytest.mark.parametrize("endpoint", ["/api/import", "/api/collab/join"])
+@pytest.mark.parametrize("endpoint", ["/api/import"])
 def test_import_from_another_wsl_distribution_reports_which_path_to_use(app, monkeypatch, endpoint):
     client, _, _ = app
     monkeypatch.setattr(hostenv, "runtime", lambda: "wsl")
@@ -314,11 +314,12 @@ def test_a_project_that_cant_be_read_is_listed_with_the_reason(app, monkeypatch)
         db.execute("DELETE FROM projects WHERE slug='odd-game'")
 
 
-def test_the_api_agent_stays_within_a_small_local_context(app, monkeypatch):
+@needs_demo
+def test_the_api_agent_stays_within_a_small_local_context(app, monkeypatch, built):
     """A local llama.cpp model with a small context: the agent learns it from /props, trims older tool output to
     fit, and when the server still says the request is too long, trims harder and sends it again."""
     client, net, manager = app
-    slug = net.store.one("SELECT slug FROM projects")["slug"]
+    slug = net.import_rom(built, confirmed=True, name='API-context.exe')
     names = [r["name"] for r in net.store.all("SELECT name FROM functions WHERE project_id=(SELECT id FROM projects "
                                                  "WHERE slug=?) ORDER BY n_insns DESC LIMIT 6", slug)]
     script = iter([{"tool_calls": [{"id": str(k), "type": "function", "function": {

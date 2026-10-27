@@ -408,8 +408,6 @@ class Twins:
         """Bring a project's twins up to date in the background (see full_pass). Runs when agents start."""
         if (job := self.jobs.get(slug)) is not None and job.state == "running":
             return job
-        if slug in self.net.links:  # a room member: the host's copy does this, and its matches come back here
-            return None
         job = Job()
         with self._lock:
             self.jobs[slug] = job  # now: agents starting meanwhile wait for its claim order (job.ordered)
@@ -661,8 +659,6 @@ class Twins:
     def after_match(self, proj, fid: int) -> None:
         """A function just matched: try its code on its twins soon, in the background (debounced per project, so
         a burst of matches is one pass)."""
-        if proj["slug"] in self.net.links:
-            return
         with self._lock:
             self._queue[proj["id"]].add(fid)
             if proj["id"] in self._busy:

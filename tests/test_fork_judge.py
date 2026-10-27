@@ -109,7 +109,7 @@ def fork(tmp_path):
     _run(repo, "git", "commit", "-q", "-m", "initial")
     (tmp_path / "work").mkdir()
     net = RomNetwork(tmp_path / "app.db", tmp_path / "work")
-    slug = net.forks.clone(str(repo), name="Literals", platform="n64", log=lambda *_: None)
+    slug = net.forks.open_local(str(repo), name="Literals", platform="n64", log=lambda *_: None)
     net.forks.get(slug)[1].build_all()
     net.forks.check(slug, log=lambda *_: None)
     agent, _ = net.local_agent("agent-1")

@@ -51,7 +51,7 @@ def ensure_app(home: Path) -> dict:
         if sys.platform == "win32" else {"start_new_session": True}
     with open(internal / "app.log", "ab") as out:
         subprocess.Popen([sys.executable, "-m", "decompnet.app.cli", "--no-browser"], stdin=subprocess.DEVNULL,
-                         stdout=out, stderr=out, **kwargs)
+                         stdout=out, stderr=out, env={**os.environ, "DECOMP_HOME": str(home.resolve())}, **kwargs)
     for _ in range(300):
         time.sleep(0.2)
         if (info := _running(state)):

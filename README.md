@@ -35,6 +35,11 @@ running the last two commands. uv installs the requested Python version and
 locked application dependencies. The app opens in your browser and runs on your
 computer. Use **New project** to select your game and native PC output.
 
+Generated outputs appear in **Projects**, with their folder, build instructions
+and source-integrity checks. Use **Add an existing PC project** for earlier or
+CLI exports, including projects you have edited. Removing a list entry keeps
+its source, assets and saves. See the [GUI and own-agent guide](docs/gui-workflow.md).
+
 On Windows, install uv with `winget install --id astral-sh.uv --exact`, then
 reopen PowerShell. Native project builds also need the C++ tools below. See
 [Windows setup](docs/windows.md) for native tool discovery and optional agents.
