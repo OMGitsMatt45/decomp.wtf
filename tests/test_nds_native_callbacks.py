@@ -1,0 +1,115 @@
+"""Original callbacks in data-classified initialized DS module bytes."""
+import copy
+import json
+import struct
+import subprocess
+
+from decompnet import nds_native
+from decompnet.nds_native.callbacks import recover
+from .test_nds_native import sdk, hardware_project  # noqa: F401
+
+
+def callback_image(tmp_path,module_id=0,increment=1):
+    base=0x02014000;raw=bytearray(0x100)
+    def words(offset,*values):struct.pack_into('<'+'I'*len(values),raw,offset,*values)
+    words(0,0xe12fff1e)
+    words(0x10,base+0x40,base+0x61,base+0x70,base+0x80)
+    words(0x20,base+0xb1)
+    words(0x40,0xe92d4010,0xe59f0008,0xeb000010,0xe8bd8010,0,0x12345678)
+    # A prologue-free Thumb callback has two return paths.
+    struct.pack_into('<6H',raw,0x60,0x2800,0xd001,0x2009,0x4770,0x2008,0x4770)
+    words(0x70,0xe12fff1e)
+    words(0x80,0xe92d4000,0xe7f000f0)  # referenced prologue followed by UDF
+    words(0x90,0xe2800000|increment,0xe12fff1e)  # directly called leaf
+    words(0xa0,0xe92d4000,0xe8bd8000)  # unreferenced prologue stays data
+    # A prologue-free Thumb leaf uses a signed halfword dispatch table.
+    struct.pack_into('<19H',raw,0xb0,0x2802,0xd80e,0x0041,0x4479,
+        0x88c9,0x0409,0x1409,0x448f,4,8,12,
+        0x200a,0x4770,0x200b,0x4770,0x200c,0x4770,0x200d,0x4770)
+    path=tmp_path/f'original-{module_id}.bin';path.write_bytes(raw)
+    return dict(name=f'ov{module_id:03}',module_id=module_id,base=base,image=str(path),
+        functions=[dict(addr=base,thumb=False,size=4,name='existing')],labels=[],calls=[],
+        code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
+
+
+def prepare(tmp_path):
+    _,emitter,reader=nds_native._sdk()
+    manifest=dict(cpu='arm9',arch='v5te',modules=[callback_image(tmp_path)])
+    return manifest,emitter,reader
+
+
+def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
+    manifest,emitter,reader=prepare(tmp_path)
+    before=copy.deepcopy(manifest);base=manifest['modules'][0]['base']
+    added=recover(manifest,emitter,reader)
+    assert {(f['address']-base,f['thumb']) for f in added}=={
+        (0x40,False),(0x60,True),(0x70,False),(0x90,False),(0xb0,True)}
+    module=manifest['modules'][0]
+    assert any(low<=base+0x54<high for low,high in module['data_ranges'])
+    assert any(low<=base+0xa0<high for low,high in module['data_ranges'])
+    assert any(low<=base+0xc0<high for low,high in module['data_ranges'])
+    assert all(not low<=base+0xc6<high for low,high in module['data_ranges'])
+    assert all(not low<=base+0x40<high for low,high in module['data_ranges'])
+    assert module['functions'][0]==before['modules'][0]['functions'][0]
+    assert recover(manifest,emitter,reader)==[]
+    arm7={**before,'cpu':'arm7','arch':'v4t'}
+    assert recover(arm7,emitter,reader)==[] and arm7['modules']==before['modules']
+
+
+def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,sdk,hardware_project):
+    manifest,emitter,reader=prepare(tmp_path)
+    manifest['modules'].append(callback_image(tmp_path,1,increment=2))
+    assert len(recover(manifest,emitter,reader))==10
+    generated=tmp_path/'generated';generated.mkdir()
+    result=emitter.emit_manifest(manifest,generated,chunk_size=100)
+    assert result['undefined_sites']==0
+    _,project,_=hardware_project
+    libraries=list((project/'build').rglob('libds_runtime.a'))+list((project/'build').rglob('ds_runtime.lib'))
+    assert len(libraries)==1
+    runtime=project/'native/dsr/runtime'
+    (tmp_path/'checks.cpp').write_text('''
+#include <dsr/machine.h>
+#include <dsr/rt.h>
+#include "decls.h"
+#include <fstream>
+#include <vector>
+int main(int argc,char** argv) {
+  dsr::MachineConfig config;config.direct_boot=false;config.arm9_table=dsr::gen_table_arm9();
+  dsr::Machine machine(config);auto& cpu=machine.cpu(dsr::CpuId::Arm9);
+  for(int i=1;i<argc;++i) {
+    std::ifstream file(argv[i],std::ios::binary);
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x02014000+j,bytes[j]);
+    cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;
+    dsr::dsr_call(&cpu,0x02014040);
+    if(cpu.r[0]!=0x12345678u+unsigned(i))return 1;
+    dsr::dsr_call(&cpu,0x02014061);
+    if(cpu.r[0]!=9 || cpu.r[13]!=0x023ff000)return 2;
+    cpu.r[0]=0;dsr::dsr_call(&cpu,0x02014061);
+    if(cpu.r[0]!=8)return 3;
+    for(unsigned value=0;value<4;++value) {
+      cpu.r[0]=value;dsr::dsr_call(&cpu,0x020140b1);
+      if(cpu.r[0]!=10+value)return 4;
+    }
+  }
+}
+''')
+    quote=lambda p:json.dumps(p.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
+        'project(CallbackChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\n'
+        'find_package(Threads REQUIRED)\nfile(GLOB GENERATED generated/*.cpp)\n'
+        'add_executable(callback_checks checks.cpp ${GENERATED})\n'
+        f'target_include_directories(callback_checks PRIVATE generated {quote(runtime/"include")} {quote(runtime/"core/include")})\n'
+        f'target_link_libraries(callback_checks PRIVATE {quote(libraries[0])} Threads::Threads)\n')
+    with (tmp_path/'CMakeLists.txt').open('a') as file:
+        file.write('if(WIN32)\n  target_link_libraries(callback_checks PRIVATE bcrypt)\nendif()\n')
+    build=tmp_path/'build'
+    for command in (['cmake','-S',str(tmp_path),'-B',str(build)],
+                    ['cmake','--build',str(build),'--config','Release','--parallel','2']):
+        run=subprocess.run(command,capture_output=True,text=True,timeout=120)
+        assert run.returncode==0,run.stdout+run.stderr
+    exe=next(p for p in (build/'callback_checks',build/'callback_checks.exe',
+        build/'Release/callback_checks.exe') if p.exists())
+    run=subprocess.run([str(exe),*(m['image'] for m in manifest['modules'])],
+        capture_output=True,text=True,timeout=15)
+    assert run.returncode==0,run.stdout+run.stderr

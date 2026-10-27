@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -127,6 +127,9 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm9=reader.build_arm9_manifest(config)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
+    from .callbacks import recover
+    callbacks=recover(arm9,_sdk()[1],reader)
+    if callbacks:_log(f'Recovered {len(callbacks)} referenced ARM9 callbacks and callees')
     path=extracted/'arm7/arm7.bin'
     result=analyzer.analyze_image(path.read_bytes(),base=metadata['base_address'],
         entry=metadata['entry_function'],callback=metadata['autoload_callback'],image_path=path)
@@ -233,6 +236,8 @@ def _runtime(sdk, root):
     shutil.copytree(sdk/'third_party',target/'third_party')
     from .io_patch import patch
     patch(target)
+    from .geometry_patch import patch as patch_geometry
+    patch_geometry(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -324,6 +329,12 @@ DMA block sizes retain the pinned runtime's notification/rearm behavior.
 Unresolved-target diagnostics refer to this generated repository and retain
 CPU/register details. They no longer suggest a missing upstream build command
 or a guessed ARM function entry, which could conceal a translation defect.
+Geometry assembly rejects fully clipped and culled polygons before allocating
+finite geometry RAM. Rolling input slots preserve triangle/quad strip endpoints
+and share accepted vertices. The base source charges every submitted vertex
+and polygon, including off-screen scenery, which can discard later characters.
+Visible geometry retains the original buffer limits and overflow diagnostics;
+partial polygons retain the existing rasterizer's clipping arithmetic.
 ''',encoding='utf-8')
 
 
@@ -510,6 +521,9 @@ for final PPM screens, `--audio-pcm FILE` for little-endian signed stereo sample
 or `--input-script FILE` for rows `frame button_mask touch_x touch_y` (use -1 -1
 for no touch). JSON reports frame/tick totals, screen hashes, observations and
 unimplemented I/O count. A headless-only build uses `-DNDS_WITH_SDL=OFF`.
+For private diagnostics, `--dump-memory DIR` also saves graphics registers,
+OAM, palettes, physical VRAM banks and the last activated geometry beside the
+main/ARM7/DTCM RAM images. These are end-of-frame snapshots, not per-line history.
 
 The manifest records exact input, generated-file hashes, backend/runtime source
 revisions and static execution. It does not certify that gameplay is complete.

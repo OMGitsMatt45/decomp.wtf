@@ -182,6 +182,47 @@ def test_wrong_assets_fail_before_running_or_creating_a_save(tmp_path,hardware_p
         assets.write_bytes(before)
 
 
+def test_opt_in_memory_capture_contains_graphics_state(tmp_path,hardware_project):
+    _,root,exe=hardware_project
+    capture=tmp_path/'memory'
+    result=execute(exe,root,'--save',tmp_path/'memory.sav','--dump-memory',capture)
+    assert result['unimplemented_io']==0
+    assert (capture/'main.bin').stat().st_size==0x400000
+    assert (capture/'oam.bin').stat().st_size==0x800
+    assert (capture/'palettes.bin').stat().st_size==0x800
+    assert sum((capture/f'vram-{bank}.bin').stat().st_size for bank in 'ABCDEFGHI')==0xa4000
+    video=json.loads((capture/'video.json').read_text())
+    assert len(video['engines'])==2 and len(video['vramcnt'])==9
+    assert all(len(engine)>=0x50//4 for engine in video['engines'])
+    geometry=json.loads((capture/'geometry.json').read_text())
+    assert isinstance(geometry['vertices'],list) and isinstance(geometry['polygons'],list)
+    assert geometry['vertex_overflow'] is False and geometry['polygon_overflow'] is False
+
+
+def test_geometry_rejection_preserves_ram_for_visible_primitives(tmp_path,hardware_project):
+    _,root,_=hardware_project
+    source=Path(__file__).parent/'fixtures/nds_geometry.cpp'
+    libraries=list((root/'build').rglob('libds_runtime.a'))+list((root/'build').rglob('ds_runtime.lib'))
+    assert len(libraries)==1
+    quote=lambda path:json.dumps(path.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
+        'project(GeometryChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\n'
+        'find_package(Threads REQUIRED)\n'
+        f'add_executable(geometry_checks {quote(source)})\n'
+        f'target_include_directories(geometry_checks PRIVATE {quote(root/"native/dsr/runtime/include")})\n'
+        f'target_link_libraries(geometry_checks PRIVATE {quote(libraries[0])} Threads::Threads)\n'
+        'if(WIN32)\n  target_link_libraries(geometry_checks PRIVATE bcrypt)\nendif()\n')
+    build=tmp_path/'build'
+    for command in (['cmake','-S',str(tmp_path),'-B',str(build)],
+                    ['cmake','--build',str(build),'--config','Release','--parallel','2']):
+        run=subprocess.run(command,capture_output=True,text=True,timeout=120)
+        assert run.returncode==0,run.stdout+run.stderr
+    exe=next(p for p in (build/'geometry_checks',build/'geometry_checks.exe',
+        build/'Release/geometry_checks.exe') if p.exists())
+    run=subprocess.run([str(exe)],capture_output=True,text=True,timeout=30)
+    assert run.returncode==0,run.stdout+run.stderr
+
+
 def test_cartridge_save_is_durable_before_the_process_exits(tmp_path,hardware_project):
     _,root,exe=hardware_project
     save=tmp_path/'during-play.sav'
