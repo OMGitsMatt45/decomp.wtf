@@ -21,7 +21,11 @@ helper, retained code map and input hashes. No BIOS is needed. The host supplies
 Vulkan geometry rendering, reported software fallback, required-GPU errors,
 current-display startup, drawable/high-DPI resize, F11 native fullscreen,
 keyboard/gamepad input, audio and per-project saves. Unknown/changed EE code
-fails; IOP/VU interpretation is disclosed. Generation is not gameplay validation.
+fails. The default player also selects input-bound native IOP operations and
+VU0/VU1 instruction pairs, with no instruction interpreter or runtime guest-code
+compiler. Missing or changed operations stop with a coverage report. Generation
+is not gameplay validation. A separate `DECOMP_PS2_REFERENCE=ON` build produces
+`ps2_probe` with the pinned instruction references for developer comparisons.
 
 ```sh
 decomp pc ps2-native GAME.iso NEW_OUTPUT --experimental
@@ -87,7 +91,7 @@ The shared MPEG service preserves unrelated guest code/data: inherited fixed
 guest-global writes and callback addresses are removed. Original MPEG-2 input
 verifies decoded RGBA pixels, RAW8 Y/Cb/Cr macroblocks, RAW8xy padded strides,
 insufficient/out-of-RAM buffer rejection and one MiB of unchanged guest memory.
-The source-shipped optional runtime checks cover 412 cases across seventeen
+The separate reference build's optional runtime checks cover 412 cases across seventeen
 IOP/SIF/DMA, scheduler/IRQ/fiber, memory, VU, GS, pad, filesystem and media suites.
 The exhaustive VU loop matrix is intentionally allotted a longer timeout.
 Six original IRX cases exercise module-entry execution and arguments, relocation,
@@ -289,7 +293,7 @@ satisfy our [GPU geometry contract](../pc-output.md#shared-gpu-presentation-stan
   Closed reachable programs can be mapped automatically; ambiguous layouts and
   external callbacks retain reviewed profiles.
 - [x] Guard module/function entries, reject unresolved or ambiguous dispatch and
-  disclose IOP/VU interpreters in manifests. Original module-switch fixtures
+  reject missing IOP/VU operations in the default player. Original module-switch fixtures
   cover overlapping addresses. Runtime self-modification is unsupported.
 - [x] Qualify the original IOP/IRX loading, SIF RPC/DMA, VU0/VU1, VIF/GIF and
   scheduler/IRQ regressions through the source-shipped runtime. Six additional

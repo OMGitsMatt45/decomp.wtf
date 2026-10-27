@@ -44,10 +44,10 @@ evidence. Further gameplay acceptance, including combat and later saves, stays
 with the user. Continue implementation work through automated regressions and
 reported defects. The current DS scope also includes GPU geometry rendering at
 the user's changing drawable resolution, fullscreen at native monitor size,
-and an optional single-camera picture with accessible secondary-screen UI.
-Original guest/OpenGL fixtures verify geometry, UI, texture, touch, camera
-retention, resizing and preservation of DS execution. The [runtime guide](nds-native-runtime.md)
-records conservative original-screen fallbacks and remaining per-title limits.
+and both original LCDs with their native aspects and touch mapping. Screen
+merging is deferred to game-output edits. Original guest/OpenGL fixtures verify
+geometry, UI, texture, touch, resizing and preservation of DS execution. The
+[runtime guide](nds-native-runtime.md) records remaining per-title limits.
 Optional mobile assets and other Goldie extras are deferred to later
 game-specific output work; they do not block the common DS milestone.
 
@@ -68,7 +68,7 @@ C++/CMake exporter, source-shipped runtime, adaptive Vulkan geometry, audio,
 input and saves. CLI, GUI and connected tools use the same exporter. Original
 fixtures cover native instruction execution, module switching, disc services,
 save reloads, audio mixing, graphics, resize and explicit failure reports.
-The source-shipped suite includes 412 cases across seventeen runtime groups,
+The separate reference build's suite includes 412 cases across seventeen runtime groups,
 including original IRX entry/relocation and malformed-input checks. The original
 standalone fixture also has an [owner-provided physical Vulkan pass](ps2-hardware-validation.json)
 on Windows 11 with Intel Iris Xe. The required PS2 native-output milestone is
@@ -90,8 +90,12 @@ translated C. A pinned MIT source runtime supplies a Vulkan geometry renderer an
 adaptive two-screen window with keyboard/touch, host audio and controllers.
 An original native save counter persists across launches, preserves other save
 files and rejects corruption without reformatting the archive.
-Retail CRO/source coverage, DSP/save qualification and physical device acceptance remain;
-the 3DS backend is still in development.
+The supplied DQVII reached its title with over 662 million native instructions,
+zero interpreted instructions and no unresolved calls/services in the tested
+path. The owner-provided [physical Vulkan result](3ds-hardware-validation.json)
+qualifies original graphics and dual-screen fixtures on Intel Iris Xe. Broader
+retail compatibility and full-playthrough acceptance remain separate; see the
+[current 3DS guide](3ds-native.md).
 Further console additions, including Switch, are paused while the existing
 outputs and 3DS reach the standalone source-project goal. GB/GBC
 support has been removed; the previous assembly implementation remains in Git

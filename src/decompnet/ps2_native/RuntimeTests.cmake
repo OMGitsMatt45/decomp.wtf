@@ -1,6 +1,9 @@
 # Tests from the same pinned, source-shipped runtime linked by the native game.
 option(DECOMP_PS2_BUILD_RUNTIME_TESTS "Build pinned IOP/VU/IRQ/media runtime checks" OFF)
 if(DECOMP_PS2_BUILD_RUNTIME_TESTS)
+  if(NOT DECOMP_PS2_REFERENCE)
+    message(FATAL_ERROR "Configure the pinned instruction-reference suites in a separate build with -DDECOMP_PS2_REFERENCE=ON; native execution probes use -DDECOMP_PS2_BUILD_NATIVE_TESTS=ON")
+  endif()
   set(PS2_TEST_ROOT "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xTest")
   set(PS2_RUNTIME_SUITES
     pad_input ps2_runtime_io ps2_runtime_kernel ps2_runtime_interrupt ee_fiber

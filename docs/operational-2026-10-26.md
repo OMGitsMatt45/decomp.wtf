@@ -5,6 +5,12 @@ feedback lists, built, and run in bounded tests. Generated game code, original
 media, BIOS dumps, input hashes, captures and private diagnostics remain outside
 the repository. Full playthrough acceptance belongs to the owner.
 
+This table records the initial five-console run. Subsequent strict static
+execution checks supersede its PS1 and GBA fallback observations: see
+[PS1 native validation](ps1-native-validation.json) and
+[GBA native validation](gba-static-validation.json). The historical counts below
+remain unchanged so the original assessment can be distinguished from later work.
+
 | Platform and sample | Observed result | Execution scope |
 | --- | --- | --- |
 | DS, Pokémon Platinum | Normal export produced 34,788 ARM9 and 1,140 ARM7 functions. The native build completed 1,800 OpenGL frames with nonzero audio samples and zero unsupported IO accesses. | Static CPUs; the captured intro uses 2D presentation. Original fixtures separately exercise GPU geometry, touch, IRQs, audio and saves. |

@@ -32,7 +32,8 @@ the instruction reference. Runtime guest-code compilation is disabled. Existing 
 sets can use export_project(format="pc"). DS save-chip names apply only to DS.
 For PS2, use generate_pc_project(path, own_copy=true, platform="ps2", renderer="vulkan").
 Exact-hash bundled maps are selected automatically. Closed stripped programs can be mapped automatically;
-unresolved code/callbacks need ps2_profile=the local reviewed JSON map path. PS2 outputs ship a GPL-3.0 runtime and disclose IOP/VU interpretation.
+unresolved code/callbacks need ps2_profile=the local reviewed JSON map path. PS2 outputs ship a GPL-3.0 runtime.
+The normal player executes native EE/IOP/VU code and reports uncovered code. A separate optional player retains IOP/VU instruction references.
 For GBA, use generate_pc_project(path, own_copy=true, platform="gba"). It generates an independent
 C/C++ project with raw-state OpenGL rendering, audio, keyboard/gamepad input and automatic cartridge
 save/RTC detection. Uncovered ARM/Thumb code is interpreted and reported; runtime compilation is disabled.

@@ -50,7 +50,17 @@ namespace vu0_detail {
         ~Rounding() { std::fesetround(previous); }
     };
 }
-template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
+// Keep each literal's arithmetic in one native function. Inlining the full
+// arithmetic engine into every EE call site can exhaust compiler memory when
+// several generated functions share a compilation batch.
+#if defined(_MSC_VER)
+#define DECOMP_VU0_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define DECOMP_VU0_NOINLINE __attribute__((noinline))
+#else
+#define DECOMP_VU0_NOINLINE
+#endif
+template<uint32_t Word> DECOMP_VU0_NOINLINE void vu_upper(R5900Context &ctx) {
     // VF0 is a hardwired vector, independent of a host context's zero-fill.
     ctx.vu0_vf[0]=_mm_set_ps(1.0f,0.0f,0.0f,0.0f);
     constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
@@ -67,5 +77,6 @@ template<uint32_t Word> inline void vu_upper(R5900Context &ctx) {
     // guest-code compiler runs on this path.
     ps2_vu_detail::upper::computeUpper(Word,inputs,sink);
 }
+#undef DECOMP_VU0_NOINLINE
 }
 #endif
