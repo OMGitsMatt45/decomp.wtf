@@ -49,6 +49,37 @@ NATIVE_BODY=r'''
 '''
 
 
+def _shared_pipeline(folder):
+    """Retain pinned pipeline ordering without duplicating it per operation."""
+    text=(folder/'ps2_vu1_exec.inl').read_text()
+    signature='PS2_VU_FORCE_INLINE bool VU1Interpreter::runDecodedPair('
+    if text.count(signature)!=1:raise PCError('pinned VU pipeline conductor differs')
+    opening=text.index('{',text.index(signature));closing=text.index('\n}\n',opening)
+    body=text[opening+1:closing]
+    upper='if constexpr (compiled) execUpperInline(decoded.upper);\n        else execUpper(decoded.upper);'
+    lower='''if constexpr (compiled)
+            execLowerInline(decoded.lower, m_activeVuData, m_activeVuDataSize, *m_activeGs, m_activeMemory, decoded.upper);
+        else
+            execLower(decoded.lower, m_activeVuData, m_activeVuDataSize, *m_activeGs, m_activeMemory, decoded.upper);'''
+    if body.count(upper)!=1 or body.count(lower)!=1:raise PCError('pinned VU operation callbacks differ')
+    body=body.replace(upper,'upperOperation(vu);').replace(lower,'lowerOperation(vu);')
+    body=re.sub(r'\bcompiled\b','true',body)
+    body=re.sub(r'\bm_\w+',lambda match:'vu.'+match[0],body)
+    members=('reportReservedInstruction','calculatePairReadyCycleInline','calculatePairReadyCycle',
+        'advanceTo','normalizeOperand','queueVfWrite','queueAccWrite','queueViWrite',
+        'markPairWritesInline','markPairWrites','recordViWriteForBranch','microAddressMask','advanceOneCycle')
+    body=re.sub(r'\b('+ '|'.join(members)+r')\b',lambda match:'vu.'+match[0],body)
+    body=re.sub(r'\b(VfAccess|PipelineBranch|kAccForwardLatency)\b',lambda match:'VU1Interpreter::'+match[0],body)
+    (folder/'decomp_vu_pipeline.cpp').write_text('''// SPDX-License-Identifier: GPL-3.0-only
+// Pinned hardware pipeline conductor. Operation callbacks are selected at export time.
+#include "ps2_vu1_exec.inl"
+#include "ps2_vu1_program.h"
+bool ps2_vu_program::Access::decompRunPair(VU1Interpreter &vu,
+    const VU1Interpreter::DecodedInstructionPair &decoded,DecompOperation upperOperation,
+    DecompOperation lowerOperation,uint64_t budgetEnd,uint32_t codeSize) {
+'''+body+'\n}\n')
+
+
 def patch(root):
     runtime=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime'
     folder=runtime/'src/lib/vu'
@@ -60,7 +91,13 @@ def patch(root):
 {
     template <VU1Interpreter::Unit unit,uint64_t Word>
     static bool decompNativePair(VU1Interpreter&,uint64_t,uint32_t);
+    template <uint32_t Instruction> static void decompUpper(VU1Interpreter&);
+    template <uint64_t Word> static void decompLower(VU1Interpreter&);
+    using DecompOperation=void(*)(VU1Interpreter&);
+    static bool decompRunPair(VU1Interpreter&,const VU1Interpreter::DecodedInstructionPair&,
+                              DecompOperation,DecompOperation,uint64_t,uint32_t);
 ''')
+    _shared_pipeline(folder)
     core=folder/'ps2_vu1_core.cpp';text=core.read_text();opening,closing=_body(text,'run')
     original=text[opening+1:closing]
     accounting=r'''
@@ -95,7 +132,7 @@ def patch(root):
 def generate(catalog,folder):
     folder=Path(folder);folder.mkdir(parents=True)
     words=sorted(catalog.words);declarations=[];entries=[]
-    # Each pair instantiates both hardware units and the pipeline conductor.
+    # Fixed arithmetic/memory operations share one hardware pipeline conductor.
     # Small translation units bound compiler memory for retail-sized catalogs.
     batch=8
     for start in range(0,len(words),batch):
