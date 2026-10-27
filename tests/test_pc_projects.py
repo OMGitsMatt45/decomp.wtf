@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 from decompnet.app import connect
 from decompnet.app.engine import RomNetwork
 from decompnet.app.server import build
-from .test_pc_output import generate
+from .fixtures.pc_output import generate
 
 
 @pytest.mark.parametrize('command',['share','host','join'])

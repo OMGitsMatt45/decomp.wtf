@@ -1,3 +1,4 @@
+from .fixtures.pc_output import result as pc_result
 """3DS native app routes bypass matching compilers and preserve private images."""
 import argparse
 import json
@@ -21,7 +22,7 @@ def test_browser_recognizes_and_routes_decrypted_3ds_without_a_matching_project(
     net=RomNetwork(tmp_path/'db',tmp_path/'projects');calls=[]
     def generate(path,**kwargs):
         calls.append((path,kwargs))
-        return dict(path=str(tmp_path/'native'),format='pc',integrity_verified=True,gameplay_verified=False)
+        return pc_result(tmp_path / 'native','3ds')
     monkeypatch.setattr(net,'generate_ctr_pc',generate)
     def wrong(*_a,**_k):pytest.fail('3DS native generation must bypass other consoles and matching')
     for method in ('generate_ds_pc','generate_psx_pc','generate_ps2_pc','generate_gba_pc','import_rom'):
@@ -48,7 +49,7 @@ def test_engine_uses_fresh_destinations_and_preserves_source_and_edits(tmp_path,
     rom=tmp_path/'owner.cxi';raw=fixture();rom.write_bytes(raw)
     def export(path,destination,**kwargs):
         calls.append((path,destination,kwargs));destination.mkdir(parents=True)
-        return dict(path=str(destination),format='pc')
+        return pc_result(destination,'3ds')
     monkeypatch.setattr('decompnet.ctr_native.export_game',export)
     with pytest.raises(NetworkError,match='confirm'):net.generate_ctr_pc(rom)
     one=net.generate_ctr_pc(rom,confirmed=True,renderer='vulkan')
@@ -64,7 +65,7 @@ def test_connected_chat_routes_3ds_and_exact_input_feedback(tmp_path,monkeypatch
     feedback=tmp_path/'owner-run.json';feedback.write_text('{}')
     def generate(path,**kwargs):
         calls.append((path,kwargs))
-        return dict(path=str(tmp_path/'native'),format='pc',integrity_verified=True,gameplay_verified=False)
+        return pc_result(tmp_path / 'native','3ds')
     monkeypatch.setattr(net,'generate_ctr_pc',generate)
     fn=registered['generate_pc_project']
     with pytest.raises(ToolError,match='own legally obtained'):anyio.run(lambda:fn(ctx,str(rom)))
