@@ -1,118 +1,54 @@
-# DS-first native PC output
+# Roadmap
 
-The goal is a Windows-buildable game project with a console runtime and output
-similar to DQIV Recompiled. The previous matching/reconstruction application is
-preserved unchanged in [PR #27](https://github.com/OMGitsMatt45/decomp.wtf/pull/27).
-N64, GameCube and Wii are removed from application functionality in the redesign.
+The shared native-PC-output milestone is implemented for **Nintendo DS,
+PlayStation, PlayStation 2, Game Boy Advance and Nintendo 3DS**. Each backend
+exports an editable game project with runtime source, asset preparation, pinned
+build dependencies and host-build instructions. Compatibility is established per
+game; the milestone does not certify every ROM or a complete playthrough.
 
-## Shared application phase
+## Implemented on main
 
-Merged in [PR #28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28), commit
-`acacecf517100d8bb49018d41360c0a97ed1a21b`:
+| Area | Current result | Implementation and evidence |
+| --- | --- | --- |
+| Shared application | Separate native PC export from console reconstruction; preserve input identities, source hashes, build targets and execution reports | [PC contract](pc-output.md), [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28) |
+| DS | ARM9/ARM7 and overlays; GPU rendering, original dual screens, audio, input, cartridge saves and local RTC | [Guide](nds-native-runtime.md), [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29), [#36](https://github.com/OMGitsMatt45/decomp.wtf/pull/36), [#38](https://github.com/OMGitsMatt45/decomp.wtf/pull/38) |
+| PS1 | One project/executable for ordered discs; adaptive OpenGL, shared memory cards and normal execution without interpreter fallback | [Guide](ps1-native.md), [validation](ps1-native-validation.json), [#30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30), [#40](https://github.com/OMGitsMatt45/decomp.wtf/pull/40) |
+| PS2 | Translated EE, IOP and vector operations; Vulkan geometry, disc/media services, input, audio and saves | [Guide](future/ps2.md), [validation](ps2-native-validation.json), [#5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5), [#31](https://github.com/OMGitsMatt45/decomp.wtf/pull/31), [#32](https://github.com/OMGitsMatt45/decomp.wtf/pull/32), [#41](https://github.com/OMGitsMatt45/decomp.wtf/pull/41) |
+| GBA | ARM/Thumb, guarded RAM copies and optional compiled BIOS; adaptive OpenGL, audio, controls, saves and RTC | [Guide](future/gba.md), [Emerald validation](gba-static-validation.json), [#6](https://github.com/OMGitsMatt45/decomp.wtf/pull/6), [#39](https://github.com/OMGitsMatt45/decomp.wtf/pull/39) |
+| 3DS | Decrypted images, ARM/Thumb/VFP and CRO/CRS; source runtime, Vulkan, original dual screens, audio, input and saves | [Guide](3ds-native.md), [physical GPU record](3ds-hardware-validation.json), [#34](https://github.com/OMGitsMatt45/decomp.wtf/pull/34), [#37](https://github.com/OMGitsMatt45/decomp.wtf/pull/37) |
 
-- Enforce the remaining platform scope at imports, public projects, saved
-  project access, CLI, UI, setup and agent entry points without deleting data.
-- Separate console reconstruction from native PC export in capabilities and
-  project status. Matching progress is never a PC-port readiness measure.
-- Introduce one PC-project adapter contract: pinned backend/runtime, ordered
-  original input hashes, host C/C++ sources and CMake target, integrity checks,
-  explicit interpreter/runtime-code-generation fallback, and staged publication.
-- Qualify the common contract with an original fixture that builds and executes
-  on native Windows/Linux. That result does not qualify a console runtime.
+The final PS2 integration passed all nine qualification workflows on its tested
+head before [#41 merged](https://github.com/OMGitsMatt45/decomp.wtf/pull/41).
+Its original Windows/Linux checks include 64 native/reference vector comparisons,
+changed-code rejection and 412 reference-runtime cases. The bounded DQVIII boot
+ran 600 frames without interpreted instructions or coverage misses. That path
+executes no vector microprograms; original fixtures establish vector execution.
+Full playthrough acceptance remains with the user.
 
-## DS, PS1 and experimental PS2 native output
+## Work after the shared milestone
 
-[PR #29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29), merged at
-`9b5440283bd90472edc029d4a1be3f8cfd1ad661`, implements the first
-experimental DS static translator and standalone CMake repository generator.
-Original ARM9/ARM7 programs execute as generated C++, communicate through RAM,
-call Thumb code, switch overlays at one address and persist a RAM checkpoint.
-Independent original-byte execution checks registers, flags and program output.
-See [current commands and limits](nds-pc.md) and the [DS implementation plan](future/ds-native.md).
+- Validate complete playthroughs and fix concrete per-game coverage, layout or
+  platform-service problems found in them. Keep profiles tied to exact inputs.
+- Customize exported projects with game-specific camera layouts, mobile assets,
+  interpolation, settings or other enhancements. DS/3DS screen merging is not
+  a generic application option.
+- Keep host builds, source integrity, input ownership and execution evidence
+  distinct. Explicit reference/diagnostic modes do not qualify native gameplay.
+- Evaluate additional consoles when work on them is requested. The older
+  [planning PRs](pr-scope-audit.md#deferred-console-proposals) retain those ideas;
+  they are not current application support or active implementation blockers.
 
-The additional [native hardware-runtime path](nds-native-runtime.md) integrates
-retail module decoding, the pinned MIT DQ9-Decomp emitter/runtime, graphics,
-audio, timing/IRQs, input and cartridge saves. Original guest programs exercise
-those interfaces; DQV smoke-test findings have original regression cases. The
-[DQIV runtime assessment](future/ds-runtime-assessment.md) remains a product
-reference; no DQIV runtime or mobile OBB dependency is copied.
-The native adapter is available experimentally through DS import and the Source
-tab as well as the CLI; it does not require a matching console compiler.
-Original fixtures validate native execution and hardware/save interfaces;
-DQV additionally has standalone build, boot/menu/field and initial save-reload
-evidence. Further gameplay acceptance, including combat and later saves, stays
-with the user. Continue implementation work through automated regressions and
-reported defects. The current DS scope also includes GPU geometry rendering at
-the user's changing drawable resolution, fullscreen at native monitor size,
-and both original LCDs with their native aspects and touch mapping. Screen
-merging is deferred to game-output edits. Original guest/OpenGL fixtures verify
-geometry, UI, texture, touch, resizing and preservation of DS execution. The
-[runtime guide](nds-native-runtime.md) records remaining per-title limits.
-Optional mobile assets and other Goldie extras are deferred to later
-game-specific output work; they do not block the common DS milestone.
+## Preserved work and history
 
-PS1 merged in [PR #30](https://github.com/OMGitsMatt45/decomp.wtf/pull/30) at
-`701b6575d2f2775da14f5231d710d1b1f4cfaa0e`.
-The [native output plan](future/ps1-native.md) records the
-pinned optional runtime, original generated-C CPU and hardware fixtures, and
-DQVII validation. The [PS1 guide](ps1-native.md) describes the implemented native
-exporter, adaptive GPU presentation, one executable for the ordered disc set,
-shared memory cards. [PR #40](https://github.com/OMGitsMatt45/decomp.wtf/pull/40)
-excludes the interpreter from the normal player and retains a separate optional
-reference executable; unknown code produces a coverage failure. Windows/Linux CI builds and
-executes original fixtures; full retail playthrough acceptance stays with the
-user. New game adapters must satisfy the shared adaptive GPU contract.
-PS2 native output is implemented in [PR #5](https://github.com/OMGitsMatt45/decomp.wtf/pull/5).
-Its [native output guide](future/ps2.md) covers the experimental standalone
-C++/CMake exporter, source-shipped runtime, adaptive Vulkan geometry, audio,
-input and saves. CLI, GUI and connected tools use the same exporter. Original
-fixtures cover native instruction execution, module switching, disc services,
-save reloads, audio mixing, graphics, resize and explicit failure reports.
-The separate reference build's suite includes 412 cases across seventeen runtime groups,
-including original IRX entry/relocation and malformed-input checks. The original
-standalone fixture also has an [owner-provided physical Vulkan pass](ps2-hardware-validation.json)
-on Windows 11 with Intel Iris Xe. The required PS2 native-output milestone is
-implemented; further retail playthrough acceptance remains with the owner.
-Shared streaming inspection discovers EE/IOP programs and Metrowerks overlays;
-generated function guards reject changed executable bytes. The DQVIII USA
-export builds and reaches its settings prompt through the generic host. Its
-optional exact-hash profile contains code maps and SDK bindings, with no game
-instructions or assets. Full playthrough acceptance remains with the user;
-untested games still need reviewed maps and compatibility validation.
-GBA native PC output merged through [PR6](future/gba.md), including translated
-ARM/Thumb C, guarded RAM variants, adaptive GPU rendering, audio, controls and
-cartridge saves. Emerald's documented save/reload and daily-clock paths execute
-without interpretation, and the owner reports the original GPU fixtures passing
-on Intel Iris Xe. Broader compatibility and the owner's playthrough remain separate.
-3DS work includes [decrypted-image validation and native source/runtime projects](3ds-native.md).
-Original ARM/Thumb/VFP programs and memory/event/IPC/ExeFS services execute from
-translated C. A pinned MIT source runtime supplies a Vulkan geometry renderer and
-adaptive two-screen window with keyboard/touch, host audio and controllers.
-An original native save counter persists across launches, preserves other save
-files and rejects corruption without reformatting the archive.
-The supplied DQVII reached its title with over 662 million native instructions,
-zero interpreted instructions and no unresolved calls/services in the tested
-path. The owner-provided [physical Vulkan result](3ds-hardware-validation.json)
-qualifies original graphics and dual-screen fixtures on Intel Iris Xe. Broader
-retail compatibility and full-playthrough acceptance remain separate; see the
-[current 3DS guide](3ds-native.md).
-Further console additions, including Switch, are paused while the existing
-outputs and 3DS reach the standalone source-project goal. GB/GBC
-support has been removed; the previous assembly implementation remains in Git
-history. Other console plans are deferred.
+[PR #27](https://github.com/OMGitsMatt45/decomp.wtf/pull/27) preserves the previous
+matching/reconstruction application at an identical Git tree.
+[PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26) preserves paused
+DQVII and Syphon Filter source-recovery checkpoints; private source stays private.
+The separate [DSi foundation #24](https://github.com/OMGitsMatt45/decomp.wtf/pull/24)
+is deferred container-inspection work, not a sixth native backend.
 
-## PR migration
-
-The [PR scope audit](pr-scope-audit.md) records updates to all 26 pre-existing PRs.
-The shared redesign merged in [#28](https://github.com/OMGitsMatt45/decomp.wtf/pull/28),
-and [#29](https://github.com/OMGitsMatt45/decomp.wtf/pull/29) merged DS native output.
-
-Merged PRs #1, #7 and #25 qualify DS console reconstruction, not PC output; merged
-PR #3 is historical N64 work preserved by #27. Merged PRs cannot be reopened.
-Unmerged PR #2 remains closed because its compiler work was superseded. PR #4's
-shared PS1 fixes are carried into the redesign branch; source matching is paused
-in #26. PR #8's GameCube/Wii expansion is superseded by the platform removal.
-
-Active platform plans must be updated to depend on the shared PC-project contract
-and require host-build/runtime evidence. Their previous matching-focused text is
-historical scope, not proof of native output. See [PC-output details](pc-output.md).
+GB/GBC, N64, GameCube and Wii functionality is removed from the current product;
+its history remains in Git. The [current PR index](pr-scope-audit.md) distinguishes
+implemented work, superseded plans and preservation drafts. The original
+[2026-10-23 migration audit](history/pr-migration-2026-10-23.md) is retained as a
+historical snapshot.

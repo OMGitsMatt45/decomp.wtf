@@ -1,0 +1,66 @@
+{
+  "schema": "decomp.wtf.ps2-static-validation/v1",
+  "tested_head": "0e328f302ae87b3409ab452654ad7fdc4c272575",
+  "merged_commit": "ff3b487da89ec1d1a334526ab94e26226f713e03",
+  "execution_model": "static-recompiled",
+  "interpreter_fallback": false,
+  "runtime_guest_compilation": false,
+  "separate_reference_player": "ps2_probe",
+  "ci": {
+    "run": "https://github.com/OMGitsMatt45/decomp.wtf/actions/runs/40429249834",
+    "successful_workflows_at_merge": 9,
+    "hosts": {
+      "linux": {
+        "backend_revision": "4e6be2cc5def0ab0840e179921ae7e4455fda7f3391d1ac0010e7b3fefcf48d7",
+        "source_integrity_verified": true,
+        "host_build": true,
+        "graphics_executed": true,
+        "reference_cases": 412,
+        "vector_cases": 64,
+        "changed_pair_rejections": 2,
+        "iop_contexts_match": true,
+        "native_iop_changed_code_rejected": true,
+        "instruction_engine_fallback": false
+      },
+      "windows": {
+        "backend_revision": "1fec86bdd09fd8a07f6815b50104bf7f97d7a3547cd6ca9e2cab0e8f1b39c0d0",
+        "source_integrity_verified": true,
+        "host_build": true,
+        "graphics_executed": false,
+        "reference_cases": 412,
+        "vector_cases": 64,
+        "changed_pair_rejections": 2,
+        "iop_contexts_match": true,
+        "native_iop_changed_code_rejected": true,
+        "instruction_engine_fallback": false
+      }
+    }
+  },
+  "normal_binary": {
+    "dynamic_vector_upper_engine": false,
+    "dynamic_vector_lower_engine": false,
+    "whole_program_arithmetic_escape": false
+  },
+  "private_retail_check": {
+    "title": "Dragon Quest VIII (USA)",
+    "frames": 600,
+    "iop_modules_generated": 16,
+    "native_iop_operations_generated": 13666,
+    "vector_pairs_generated": 6156,
+    "native_iop_instructions": 279658,
+    "native_vector_microprogram_pairs": 0,
+    "interpreted_iop_instructions": 0,
+    "interpreted_vector_pairs": 0,
+    "iop_coverage_misses": 0,
+    "vector_coverage_misses": 0,
+    "disc_reads_match_baseline": true,
+    "resident_modules_match_baseline": true,
+    "stable_settings_picture_matches": true,
+    "whole_picture_equal": false,
+    "picture_difference_scope": "Animated cursor region identified by independent reference samples",
+    "bit_exact_pcm_compared": false,
+    "full_playthrough": false
+  },
+  "scope": "Original fixtures qualify vector execution; the bounded retail settings-screen boot executes no vector microprograms. Cloud graphics use software Vulkan; no new physical-GPU claim.",
+  "privacy": "Owner media, generated retail source, captures and saves remain private"
+}

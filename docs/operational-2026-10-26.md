@@ -6,8 +6,9 @@ media, BIOS dumps, input hashes, captures and private diagnostics remain outside
 the repository. Full playthrough acceptance belongs to the owner.
 
 This table records the initial five-console run. Subsequent strict static
-execution checks supersede its PS1 and GBA fallback observations: see
+execution checks supersede its PS1, PS2 and GBA fallback observations: see
 [PS1 native validation](ps1-native-validation.json) and
+[PS2 native validation](ps2-native-validation.json), plus
 [GBA native validation](gba-static-validation.json). The historical counts below
 remain unchanged so the original assessment can be distinguished from later work.
 

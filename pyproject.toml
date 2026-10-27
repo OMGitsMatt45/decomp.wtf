@@ -1,7 +1,7 @@
 [project]
 name = "decompnet"
 version = "0.19.0"
-description = "decomp.wtf: local game source recovery and DS-first native PC-project development."
+description = "decomp.wtf: local native PC source export for DS, PS1, PS2, GBA and 3DS."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://decomp.wtf"
+Homepage = "https://github.com/OMGitsMatt45/decomp.wtf"
 Source = "https://github.com/OMGitsMatt45/decomp.wtf"
 
 [project.scripts]

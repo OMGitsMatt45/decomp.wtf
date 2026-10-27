@@ -30,6 +30,14 @@ def test_install_info_round_trip():
     assert updates.installed()["branch"] == "" and updates.installed()["commit"] == ""
 
 
+def test_install_info_cli_defaults_to_this_fork():
+    from decompnet.app.cli import main
+    assert main(["install-info", "--channel", "branch", "--branch", "main", "--commit", "a" * 40]) == 0
+    current = updates.installed()
+    assert current["repo"] == updates.REPO
+    assert current["branch"] == "main" and current["commit"] == "a" * 40
+
+
 def test_release_update(monkeypatch):
     updates.record("release", repo=updates.UPSTREAM_REPO)
     newer = ".".join(str(x + (1 if i == 2 else 0)) for i, x in enumerate(updates.version_key(__version__)))
