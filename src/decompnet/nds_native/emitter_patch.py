@@ -15,6 +15,17 @@ def install(emitter):
     branch=cls._branch
     secondary=emitter._secondary_branch_entries
     table_info=cls._jump_table_info
+    slot_for=cls._slot_for
+
+    def overlay_slot(self,target,source):
+        entry=slot_for(self,target,source)
+        if entry is None or entry.module_id<0:return entry
+        owners={item.module_id for item in self.address_entries.get(entry.address,[])
+                if item.thumb==entry.thumb}
+        # Identical caller bytes may exist in several overlays while their
+        # callees differ. A caller's byte hash cannot establish which overlay
+        # owns a direct C++ slot. Resolve the live callee bytes at these sites.
+        return None if len(owners)>1 else entry
 
     def constant(self,register,previous,depth=0):
         if depth>8:return None
@@ -101,7 +112,7 @@ def install(emitter):
         """
         if not insn.thumb or insn.condition!=14:return False
         target &= ~1
-        entry=self._slot_for(target,insn)
+        entry=slot_for(self,target,insn)
         if entry is not None:
             if not entry.thumb:return False
             module,end=entry.module,entry.end
@@ -228,6 +239,7 @@ def install(emitter):
         return original(self,insn,index_reg,default)
 
     cls._jump_case_count=count
+    cls._slot_for=overlay_slot
     cls._jump_table_info=bounded_arm_table
     cls._branch=emit_branch
     cls._discover=discover

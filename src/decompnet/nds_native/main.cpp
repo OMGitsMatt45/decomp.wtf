@@ -2,6 +2,8 @@
 #include <dsr/session.h>
 #include <dsr/rt.h>
 #include <dsr/gpu2d.h>
+#include <dsr/gpu3d.h>
+#include <cmath>
 #include <dsr/periph.h>
 #include <filesystem>
 #include <fstream>
@@ -244,6 +246,57 @@ int main(int argc,char** argv) {
                 }
                 if(!file)throw std::runtime_error("could not write memory capture");
             }
+            // Keep the raw graphics state beside an opt-in memory dump. End
+            // registers alone cannot explain missing OBJ or VRAM mappings.
+            const auto frame=machine.gpu2d().frame_view();
+            auto binary=[&](const std::string& name,const uint8_t* data,size_t size) {
+                std::ofstream file(memory_dump/name,std::ios::binary);
+                file.write(reinterpret_cast<const char*>(data),std::streamsize(size));
+                if(!file)throw std::runtime_error("could not write graphics memory capture");
+            };
+            binary("oam.bin",frame.oam,frame.oam_byte_count);
+            binary("palettes.bin",frame.palettes,frame.palette_byte_count);
+            for(unsigned bank=0;bank<9;++bank)
+                binary(std::string("vram-")+char('A'+bank)+".bin",frame.banks[bank].bytes,frame.banks[bank].byte_count);
+            std::ofstream video(memory_dump/"video.json");
+            video<<"{\"powcnt1\":"<<frame.powcnt1<<",\"vramcnt\":[";
+            for(size_t i=0;i<frame.vramcnt_count;++i)video<<(i?",":"")<<unsigned(frame.vramcnt[i]);
+            video<<"],\"engines\":[";
+            for(unsigned engine=0;engine<2;++engine) {
+                video<<(engine?",[":"[");
+                for(size_t i=0;i<frame.engines[engine].register_count;++i)
+                    video<<(i?",":"")<<frame.engines[engine].registers[i];
+                video<<"]";
+            }
+            video<<"]}\n";
+            if(!video)throw std::runtime_error("could not write graphics register capture");
+            const auto geometry=machine.gpu3d().geometry_view();
+            const auto raster=machine.gpu3d().raster_view();
+            std::ofstream scene(memory_dump/"geometry.json");
+            scene<<"{\"generation\":"<<geometry.generation<<",\"swap_mode\":"<<geometry.swap_mode
+                 <<",\"vertex_overflow\":"<<(geometry.vertex_overflow?"true":"false")
+                 <<",\"polygon_overflow\":"<<(geometry.polygon_overflow?"true":"false")
+                 <<",\"control\":"<<raster.disp3d<<",\"clear_color\":"<<raster.clear_color
+                 <<",\"clear_depth\":"<<raster.clear_depth<<",\"alpha_reference\":"<<raster.alpha_reference
+                 <<",\"vertices\":[";
+            auto number=[&](float value){if(std::isfinite(value))scene<<value;else scene<<"null";};
+            for(size_t i=0;i<geometry.vertex_count;++i) {
+                const auto& vertex=geometry.vertices[i];scene<<(i?",[":"[");
+                for(unsigned j=0;j<4;++j){if(j)scene<<",";number(vertex.clip[j]);}
+                scene<<",";number(vertex.u);scene<<",";number(vertex.v);
+                for(unsigned j=0;j<3;++j){scene<<",";number(vertex.color[j]);}
+                scene<<"]";
+            }
+            scene<<"],\"polygons\":[";
+            for(size_t i=0;i<geometry.polygon_count;++i) {
+                const auto& polygon=geometry.polygons[i];scene<<(i?",[":"[")
+                    <<unsigned(polygon.count)<<","<<polygon.attr<<","<<polygon.texture<<","<<polygon.palette
+                    <<","<<polygon.viewport;
+                for(unsigned j=0;j<4;++j)scene<<","<<polygon.index[j];
+                scene<<"]";
+            }
+            scene<<"]}\n";
+            if(!scene)throw std::runtime_error("could not write geometry capture");
         }
         std::cout<<"{\"frames\":"<<session.frame_count()<<",\"ticks\":"<<session.ticks()
                  <<",\"top_hash\":"<<hash(session.screen_top())<<",\"bottom_hash\":"<<hash(session.screen_bottom())
