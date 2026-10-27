@@ -535,7 +535,7 @@ class Manager:
         self.sessions: dict[str, Session] = {}
         self.assignments: dict[int, str] = {}  # agent id -> project slug
         self._lock = threading.Lock()
-        self.on_stop = lambda: None  # set by the server: close tunnels when the app quits
+        self.on_stop = lambda: None  # optional local shutdown hook
         self.persist = lambda running: None  # set by the server: remember helpers to resume after a restart
 
     # -- control
@@ -655,18 +655,6 @@ class Manager:
             if (cap := self.over_budget(s.slug)) is not None:
                 s.push("info", f"stopping: the agents on this project have spent the ${cap:.2f} budget (Setup)")
                 break
-            link = self.net.links.get(s.slug)
-            if link is not None and (link.error or time.time() - link.last_ok > 30):
-                # in a room whose host is away (or that hasn't let us in yet): wait, don't fail
-                if s.state != "waiting" or not s.feed or "waiting for the room" not in s.feed[-1]["text"]:
-                    s.push("info", f"waiting for the room's host: {link.error or 'not reachable right now'}")
-                s.state = "waiting"
-                try:
-                    link.sync()
-                except Exception:
-                    pass
-                s.stop.wait(10)
-                continue
             s.state = "working"
             s.runs += 1
             t0 = time.time()
@@ -710,12 +698,6 @@ class Manager:
             s.stop.set()
             self.persist(self.running())
         held = self.net.store.one("SELECT f.name FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?", agent.id)
-        link = self.net.links.get(s.slug)
-        if held and link is not None:  # in a room, the host holds the real claim
-            try:
-                link.call("/collab/release", agent, function=held["name"], notes="")
-            except Exception:
-                pass
         with self.net.store.tx() as db:  # release any claim the agent still holds so others can take it
             db.execute("DELETE FROM claims WHERE agent_id=?", (agent.id,))
 

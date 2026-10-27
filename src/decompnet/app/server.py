@@ -33,7 +33,7 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Redire
 from .. import __version__, hostenv, toolchains
 from ..network import NetworkError
 from ..rom.errors import RomError
-from . import agents, chat, collab, connect, tools, updates
+from . import agents, chat, connect, tools, updates
 from .engine import COMPILERS, MW_VERSIONS, PLATFORM_STATUS, SHORT_NAMES, TOOLS, RomNetwork
 
 COOKIE = "decomp_live"
@@ -278,11 +278,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         slug = manager.project_of(agent.id) or settings.data.get("last_project")
         if not slug:
             raise NetworkError("no project is open in decomp.wtf; open a ROM in the app first")
+        if net.pc_projects.contains(slug):
+            raise NetworkError('Native PC projects use inspect_pc_project; edit and build the exported folder with your own coding tools. Matching tools apply to console recovery.')
         return agent, slug
-
-    threading.Thread(target=collab.local_addresses, daemon=True).start()  # `tailscale status` can take seconds
-    # rooms this computer belongs to reconnect (members keep their place; their agents wait while the host is away)
-    net.restore_links()
 
     # helpers that were working when the app last stopped carry on
     resume = [r for r in settings.data.get("running_agents", []) if isinstance(r, dict)]
@@ -405,7 +403,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return {"version": __version__, "build": build_id, "install": updates.installed(), **hostenv.info(),
                 "platform": toolchains.current_platform(), "home": hostenv.shown_path(home.parent),
                 "log_file": hostenv.shown_path(home / "logs" / "decomp.log"),
-                "projects": projects, "toolchains": tcs, "agents": agents.detect(),
+                "projects": net.pc_projects.list() + projects, "toolchains": tcs, "agents": agents.detect(),
                 "api_presets": agents.API_PRESETS, "settings": settings.public(), "mcp_url": mcp_url,
                 "platform_status": PLATFORM_STATUS,
                 "pc_output": {p: __import__("decompnet.pc", fromlist=["status"]).status(p) for p in PLATFORM_STATUS},
@@ -414,7 +412,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     def autopilot(slug: str) -> None:
         """Free matches first, in the background, when the user wants that (the default): a game started from
-        scratch, on any platform, as soon as it's ready. A public decomp, or one not set up yet, says no."""
+        scratch, on any platform, as soon as it's ready. A project not set up for recovery says no."""
         if settings.data.get("autopilot", True):
             try:
                 net.start_autopilot(slug)
@@ -431,9 +429,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         for slug, ov, why in overviews():
             out.append({k: ov.get(k) for k in ("slug", "title", "kind", "origin", "platform", "platform_name", "ready",
                                                 "functions", "matched", "bytes", "matched_bytes", "last_activity", "progress_kind")}
-                       | {"working": running.get(slug, 0), "room": (ov.get("room") or {}).get("role"),
+                       | {"working": running.get(slug, 0),
                           "autopilot": (ov.get("autopilot") or {}).get("state")} | ({"broken": why} if why else {}))
-        return out
+        return net.pc_projects.list() + out
 
     @mcp.custom_route("/api/projects", methods=["GET"])
     async def api_projects(request: Request) -> Response:
@@ -656,6 +654,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             res = net.export_rom(slug, format=str(data.get("format", "matching")),
                                  save_type=str(data.get('save_type','auto')),renderer=str(data.get('renderer','auto')),
                                  ps2_profile=hostenv.local_path(str(data['ps2_profile'])) if data.get('ps2_profile') else None,log=log)
+            if res.get('format') == 'pc':
+                res['project'] = net.pc_projects.remember(Path(res['path']),res['manifest'],verified=res.get('integrity_verified',False))
             return {k: v for k, v in res.items() if k != "log"} | {"log": res.get("log", "")[-1500:]}
         return {"job": jobs.start("export", work)}
 
@@ -736,131 +736,53 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     for path, (fn, methods) in routes.items():
         mcp.custom_route(path, methods=methods)(with_project(fn))
 
-    # ------------------------------------------------------------------ forks of public decomps
+    # ------------------------------------------------------------------ local native PC projects
 
-    @mcp.custom_route("/api/catalog", methods=["GET"])
-    async def api_catalog(request: Request) -> Response:
-        """The public decomps decomp.dev listed, as this install downloaded them before it retired its directory."""
-        if (bad := guard(request)):
-            return bad
-        projects, at = await call(net.forks.catalog)
-        return JSONResponse({"projects": projects, "downloaded": at})
+    mcp.custom_route('/api/recovery/check', methods=['POST'])(with_project(
+        lambda slug, request, data: {'job': jobs.start('recovery-check',lambda log: net.forks.check(slug,log=log))}))
+    mcp.custom_route('/api/recovery/rom-check', methods=['POST'])(with_project(
+        lambda slug, request, data: {'job': jobs.start('rom-check',lambda log: net.forks.check_rom(slug,log=log))}))
 
-    @mcp.custom_route("/api/fork/policy", methods=["POST"])
-    async def api_fork_policy(request: Request) -> Response:
-        """What a public decomp says about AI and contributions, read from its own files before it's forked."""
+    @mcp.custom_route('/api/pc-project/add', methods=['POST'])
+    async def api_pc_project_add(request: Request) -> Response:
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
         try:
-            return JSONResponse(await call(lambda: net.forks.policy(str(data.get("repo", "")))))
-        except NetworkError as e:
-            return fail(e)
+            root = hostenv.local_path(str(data.get('path') or ''))
+            if not str(data.get('path') or '').strip():
+                raise ValueError('choose the folder containing pc-project.json')
+        except ValueError as error:
+            return fail(error)
+        return JSONResponse({'job': jobs.start('pc-project-add', lambda log: net.pc_projects.add(root))})
 
-    @mcp.custom_route("/api/fork", methods=["POST"])
-    async def api_fork(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
+    @mcp.custom_route('/api/pc-project', methods=['GET', 'POST'])
+    async def api_pc_project(request: Request) -> Response:
+        if (bad := guard(request, write=request.method == 'POST')):
             return bad
-        data = await body(request)
-
-        def work(log):
-            slug = net.forks.clone(str(data.get("repo", "")), name=str(data.get("name") or ""),
-                                   platform=str(data.get("platform") or ""), version=data.get("version") or None, log=log)
-            settings.data["last_project"] = slug
-            settings.save()
-            return {"slug": slug}
-        return JSONResponse({"job": jobs.start("fork", work)})
-
-    def fork_of(slug: str):
-        if not net.fork_slug(slug):
-            raise NetworkError(f"{slug} isn't a fork")
-        return net.project_row(slug)
-
-    @mcp.custom_route("/api/fork/game", methods=["POST"])
-    async def api_fork_game(request: Request) -> Response:
-        """The user's game file, streamed to disk (GameCube and Wii discs are gigabytes)."""
-        if (bad := guard(request, write=True)):
-            return bad
-        q = request.query_params
-        slug = q.get("slug", "")
-        if q.get("confirmed") != "1":
-            return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
+        data = await body(request) if request.method == 'POST' else request.query_params
+        key = str(data.get('id') or '')
         try:
-            proj = fork_of(slug)
-        except NetworkError as e:
-            return fail(e)
-        tmp = Path(proj["root"]) / ".decomp-wtf" / f"upload-{uuid.uuid4().hex[:8]}.tmp"
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        size = 0
-        with open(tmp, "wb") as f:
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > MAX_DISC:
-                    f.close()
-                    tmp.unlink(missing_ok=True)
-                    return fail(ValueError("that file is larger than any game disc"))
-                f.write(chunk)
-        name = Path(q.get("name") or "game.iso").name
-
-        def work(log):
-            try:
-                res = net.forks.setup(slug, tmp, name, log=log, move=True)
-            finally:
-                tmp.unlink(missing_ok=True)
-            autopilot(slug)
-            return res
-        return JSONResponse({"job": jobs.start("fork-setup", work)})
-
-    @mcp.custom_route("/api/fork/setup", methods=["POST"])
-    async def api_fork_setup(request: Request) -> Response:
-        """Set up with a game file already on this computer (`path`), or with none (`path` empty: run the build)."""
-        if (bad := guard(request, write=True)):
-            return bad
-        data = await body(request)
-        slug = str(data.get("slug", ""))
-        try:
-            fork_of(slug)
-        except NetworkError as e:
-            return fail(e)
-        path = str(data.get("path") or "").strip().strip('"')
-        if path:
-            if not data.get("confirmed"):
-                return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
-            src = Path(path).expanduser()
-            if not src.is_file():
-                return fail(ValueError(f"no file at {src}"))
-
-        def work(log):
-            res = net.forks.setup(slug, src, src.name, log=log) if path else net.forks.setup(slug, None, log=log)
-            autopilot(slug)
-            return res
-        return JSONResponse({"job": jobs.start("fork-setup", work)})
-
-    @mcp.custom_route("/api/fork/check", methods=["POST"])
-    async def api_fork_check(request: Request) -> Response:
-        """Pick a hand-built project up (or re-measure one): reads its objdiff.json and progress."""
-        if (bad := guard(request, write=True)):
-            return bad
-        slug = str((await body(request)).get("slug", ""))
-        try:
-            fork_of(slug)
-        except NetworkError as e:
-            return fail(e)
-        return JSONResponse({"job": jobs.start("fork-check", lambda log: net.forks.check(slug, log=log))})
-
-    @mcp.custom_route("/api/fork/rom-check", methods=["POST"])
-    async def api_fork_rom_check(request: Request) -> Response:
-        """A DS game from scratch: rebuild the ROM and compare it with the user's copy."""
-        if (bad := guard(request, write=True)):
-            return bad
-        slug = str((await body(request)).get("slug", ""))
-        try:
-            fork_of(slug)
-        except NetworkError as e:
-            return fail(e)
-        return JSONResponse({"job": jobs.start("rom-check", lambda log: net.forks.check_rom(slug, log=log))})
-
-    mcp.custom_route("/api/fork/needs", methods=["GET"])(with_project(lambda s, r, d: net.forks.needs(fork_of(s)["slug"])))
+            project = net.pc_projects.get(key)
+            if request.method == 'GET':
+                settings.data['last_project'] = key
+                settings.save()
+                return JSONResponse(project | {'readme': net.pc_projects.readme(key)})
+            action = data.get('action')
+            if action == 'verify':
+                return JSONResponse({'job': jobs.start('pc-project-verify', lambda log: net.pc_projects.verify(key))})
+            if action == 'open':
+                why = hostenv.open_folder(Path(project['path']))
+                return JSONResponse({'ok': why is None, 'message': why})
+            if action == 'forget':
+                net.pc_projects.forget(key)
+                if settings.data.get('last_project') == key:
+                    settings.data.pop('last_project',None)
+                    settings.save()
+                return JSONResponse({'ok': True})
+            raise ValueError('choose open, verify or forget')
+        except (ValueError, OSError) as error:
+            return fail(error)
 
     # ------------------------------------------------------------------ installs, agents, settings
 
@@ -960,7 +882,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                      "command": connect.shown(a["id"])} for a, ok in zip(found, linked)]
         if (host := hostenv.host_bridge()) is not None:  # the user's agents live outside decomp.wtf's Linux
             return JSONResponse({"agents": [], "bridge": host, "host_bridge": host, **hostenv.info()})
-        return JSONResponse({"agents": await anyio.to_thread.run_sync(rows), "bridge": connect.bridge_command()})
+        return JSONResponse({"agents": await anyio.to_thread.run_sync(rows), "bridge": connect.bridge_command(), "environment": connect.environment()})
 
     @mcp.custom_route("/api/agents/token", methods=["POST"])
     async def api_agents_token(request: Request) -> Response:
@@ -1067,146 +989,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         threading.Thread(target=bye, daemon=True).start()
         return JSONResponse({"ok": True})
 
-    # ------------------------------------------------------------------ rooms (collab.py)
-    # The tunnel only ever reaches this separate little server, never the GUI or the MCP endpoint above.
-
-    share = {"servers": {}, "tunnel": None, "links": {}}
-
-    def collab_server(public_port: int | None = None) -> int:
-        """The room server: on 127.0.0.1 behind a quick tunnel, or on every network interface at `public_port` for
-        a room shared at an address the host controls (LAN, Tailscale, a server). Only the room's API is served
-        there, never the GUI or the agents' endpoint."""
-        import socket
-
-        import uvicorn
-
-        key = ("0.0.0.0", public_port) if public_port else ("127.0.0.1", None)
-        if key in share["servers"]:
-            return share["servers"][key][1]
-        host = key[0]
-        if public_port:
-            port = public_port
-        else:
-            with socket.socket() as sock:
-                sock.bind(("127.0.0.1", 0))
-                port = sock.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(collab.host_app(net, net.rooms), host=host, port=port, log_level="warning"))
-        threading.Thread(target=server.run, daemon=True, name=f"collab-{port}").start()
-        for _ in range(100):
-            if server.started:
-                break
-            if getattr(server, "should_exit", False):
-                break
-            time.sleep(0.05)
-        if not server.started:
-            raise NetworkError(f"couldn't open port {port} for the room (is something else using it?)")
-        share["servers"][key] = (server, port)
-        return port
-
-    def open_room(slug: str, mode: str, address: str = "", port: int = 0, log=print, keep: bool = False) -> str:
-        room = net.rooms.get(slug) or collab.Room(net, slug)
-        if mode == "address":
-            address = address.strip().rstrip("/")
-            if not re.match(r"^https?://[^/\s]+$", address):
-                raise NetworkError("the address teammates use, like http://192.168.1.20:6481 or https://decomp.example.org")
-            collab_server(port or 6481)
-            code = room.open_invite(keep=keep, mode="address", address=address, port=port or 6481)
-            base = address
-        else:
-            local = collab_server()
-            code = room.open_invite(keep=keep, mode="tunnel")
-            if share["tunnel"] is None or share["tunnel"].proc is None or share["tunnel"].proc.poll() is not None:
-                log("opening a private tunnel to this computer (Cloudflare quick tunnel, no account needed)")
-                share["tunnel"] = collab.Tunnel(local)
-                share["tunnel"].start(log)
-            base = share["tunnel"].url
-        net.rooms[slug] = room
-        link = f"{base}/join/{'open' if room.settings['visibility'] == 'public' else code}#room={slug}"
-        share["links"][slug] = link
-        return link
-
-    # rooms shared at an address of the host's own come back when the app starts, with the same invite
-    for p in net.store.all("SELECT slug, config FROM projects"):
-        c = json.loads(p["config"]).get("collab") or {}
-        if c.get("open") and c.get("mode") == "address" and c.get("address"):
-            try:
-                open_room(p["slug"], "address", c["address"], int(c.get("port") or 6481), keep=True)
-            except (NetworkError, OSError):
-                pass
-
-    @mcp.custom_route("/api/collab", methods=["GET"])
-    async def api_collab(request: Request) -> Response:
-        if (bad := guard(request)):
-            return bad
-        slug = request.query_params.get("slug", "")
-        try:
-            info = await call(net._room_info, slug)
-        except NetworkError as e:
-            return fail(e)
-        room = net.rooms.get(slug)
-        cfg = (json.loads(net.project_row(slug)["config"]).get("collab") or {}) if slug else {}
-        return JSONResponse({"sharing": room is not None, "link": share["links"].get(slug), "room": info,
-                             "settings": room.settings if room else {"visibility": cfg.get("visibility", "private"),
-                                                                       "approve": bool(cfg.get("approve"))},
-                             "pending": room.pending() if room else [],
-                             "mode": cfg.get("mode", "tunnel"), "address": cfg.get("address", ""), "port": cfg.get("port", 6481),
-                             "was_sharing": bool(cfg.get("open")) and room is None,
-                             "addresses": await anyio.to_thread.run_sync(collab.local_addresses),
-                             "tunnel_supported": collab.cloudflared_available()})
-
-    @mcp.custom_route("/api/collab/start", methods=["POST"])
-    async def api_collab_start(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
-            return bad
-        data = await body(request)
-        slug = str(data.get("slug", ""))
-        if slug in net.links:
-            return fail(ValueError("this project belongs to a friend's room; only its host can invite people"))
-        if net.fork_slug(slug) and not json.loads(net.project_row(slug)["config"]).get("ready"):
-            return fail(ValueError("set the project up first (its Overview): then friends can join it"))
-        mode = "address" if data.get("mode") == "address" else "tunnel"
-
-        def work(log):
-            room = net.rooms.get(slug) or collab.Room(net, slug)
-            room.configure(data.get("visibility"), data.get("approve"))
-            return {"link": open_room(slug, mode, str(data.get("address", "")), int(data.get("port") or 6481), log=log,
-                                      keep=bool(data.get("keep")))}
-        return JSONResponse({"job": jobs.start("share", work)})
-
-    @mcp.custom_route("/api/collab/manage", methods=["POST"])
-    async def api_collab_manage(request: Request) -> Response:
-        """The host's controls: who's in, public or private, a fresh invite link."""
-        if (bad := guard(request, write=True)):
-            return bad
-        data = await body(request)
-        slug, action, name = str(data.get("slug", "")), str(data.get("action", "")), str(data.get("name", ""))
-        room = net.rooms.get(slug)
-        if room is None:
-            return fail(ValueError("this project isn't being shared"))
-        try:
-            if action == "remove":
-                room.remove(name)
-            elif action in ("approve", "decline"):
-                room.approve(name, action == "approve")
-            elif action == "settings":
-                room.configure(data.get("visibility"), data.get("approve"))
-                c = room.cfg.get("collab") or {}
-                share["links"][slug] = open_room(slug, c.get("mode", "tunnel"), c.get("address", ""),
-                                                 int(c.get("port") or 6481), keep=True)
-            elif action == "rotate":
-                c = room.cfg.get("collab") or {}
-                share["links"][slug] = open_room(slug, c.get("mode", "tunnel"), c.get("address", ""),
-                                                 int(c.get("port") or 6481), keep=False)
-            else:
-                return fail(ValueError("unknown action"))
-        except NetworkError as e:
-            return fail(e)
-        return JSONResponse({"ok": True, "link": share["links"].get(slug), "members": room.members(),
-                             "pending": room.pending(), "settings": room.settings})
-
     @mcp.custom_route("/api/service", methods=["GET", "POST"])
     async def api_service(request: Request) -> Response:
-        """Run decomp.wtf as a service that starts with the computer (keeps a team's room open)."""
+        """Run decomp.wtf as a service that starts with the computer."""
         from . import service
 
         if (bad := guard(request, write=request.method == "POST")):
@@ -1220,90 +1005,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return JSONResponse({"message": msg, "installed": service.installed()})
         return JSONResponse({"installed": await anyio.to_thread.run_sync(service.installed)})
 
-    @mcp.custom_route("/api/collab/stop", methods=["POST"])
-    async def api_collab_stop(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
-            return bad
-        slug = str((await body(request)).get("slug", ""))
-        room = net.rooms.pop(slug, None)
-        if room is not None:
-            room.close()
-        share["links"].pop(slug, None)
-        if not net.rooms and share["tunnel"] is not None:
-            share["tunnel"].stop()
-            share["tunnel"] = None
-        return JSONResponse({"ok": True})
 
-    @mcp.custom_route("/api/collab/join", methods=["POST"])
-    async def api_collab_join(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
-            return bad
-        q = request.query_params
-        if q.get("confirmed") != "1":
-            return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
-        link, name = q.get("link", ""), q.get("name", "")
-        game: Path | None = None
-        if q.get("path"):  # a file on this computer (a disc is gigabytes: not through the browser)
-            try:
-                game = hostenv.local_path(q["path"])
-            except ValueError as e:
-                return fail(e)
-            if not game.is_file():
-                return fail(ValueError(f"no file at {game}"))
-        else:  # the browser's upload, streamed to disk
-            upload = home / "uploads" / uuid.uuid4().hex[:8]
-            upload.mkdir(parents=True, exist_ok=True)
-            game = upload / (Path(q.get("filename") or "game.bin").name or "game.bin")
-            size = 0
-            with open(game, "wb") as f:
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > MAX_DISC:
-                        f.close()
-                        shutil.rmtree(upload, ignore_errors=True)
-                        return fail(ValueError("that file is larger than any game disc"))
-                    f.write(chunk)
-            if size == 0:
-                shutil.rmtree(upload, ignore_errors=True)
-                game = None
-        uploaded = game is not None and game.parent.parent == home / "uploads"
-
-        def work(log):
-            try:
-                slug = collab.join_room(net, link, name, game or b"", log=log)
-            finally:
-                if uploaded:
-                    shutil.rmtree(game.parent, ignore_errors=True)
-            settings.data["last_project"] = slug
-            settings.save()
-            return {"slug": slug}
-        return JSONResponse({"job": jobs.start("join", work)})
-
-    @mcp.custom_route("/api/collab/reconnect", methods=["POST"])
-    async def api_collab_reconnect(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
-            return bad
-        data = await body(request)
-        slug, link = str(data.get("slug", "")), str(data.get("link", ""))
-        return JSONResponse({"job": jobs.start("reconnect", lambda log: {"slug": collab.reconnect(net, slug, link, log=log)})})
-
-    @mcp.custom_route("/api/collab/leave", methods=["POST"])
-    async def api_collab_leave(request: Request) -> Response:
-        if (bad := guard(request, write=True)):
-            return bad
-        try:
-            await call(net.unlink, str((await body(request)).get("slug", "")))
-        except NetworkError as e:
-            return fail(e)
-        return JSONResponse({"ok": True})
-
-    def shutdown_rooms() -> None:
-        if share["tunnel"] is not None:
-            share["tunnel"].stop()
-        for link in list(net.links.values()):
-            link.stop()
-
-    manager.on_stop = shutdown_rooms
 
     def before_restart() -> None:  # what quitting does: helpers stop now and resume in the new version
         manager.stop()

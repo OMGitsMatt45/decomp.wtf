@@ -193,7 +193,7 @@ def recover(net, slug, *, limit=0, max_insns=0, machine_drafts=True, search_prof
     if limit < 0 or max_insns < 0:
         raise NetworkError("recovery limits must be nonnegative")
     project = net.project_row(slug)
-    if net.cfg(project).get("platform") != "psx" or slug in net.links:
+    if net.cfg(project).get("platform") != "psx":
         raise NetworkError("choose a local PS1 project for console recovery")
     if net.autopilot_status(slug) and net.autopilot_status(slug)["state"] == "running":
         raise NetworkError("stop this project's browser autopilot before console recovery")

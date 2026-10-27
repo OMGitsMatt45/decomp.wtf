@@ -112,6 +112,7 @@ def test_gemini_cli_helpers_carry_on_as_antigravity():
 
 
 def test_connect_antigravity(tmp_path, monkeypatch):
+    monkeypatch.setattr(connect, "environment", lambda name: {"DECOMP_AGENT_NAME": name})
     monkeypatch.setattr(connect, "_which", lambda cmd: f"/bin/{cmd}")
     monkeypatch.setattr(connect, "bridge_command", lambda: ["/usr/bin/python3", "-m", "decompnet.app.cli", "mcp"])
     cmd = connect.commands("antigravity")

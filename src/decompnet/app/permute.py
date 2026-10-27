@@ -55,8 +55,6 @@ class Permuter:
         app runs: agents make new ones)."""
         if (st := self.jobs.get(slug)) is not None and st.state == "running":
             return st
-        if slug in self.net.links:  # a room member: the host's copy permutes, and its matches come back here
-            return None
         st = self.jobs[slug] = State()
         threading.Thread(target=self._loop, args=(slug, st), daemon=True, name=f"permuter-{slug}").start()
         return st

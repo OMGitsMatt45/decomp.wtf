@@ -24,13 +24,10 @@
   <div class="nav-scroll">
     <p class="nav-label">Projects</p>
     <div class="nav-projects" id="navProjects"><p class="nav-empty">None yet: drop in a game.</p></div>
-    <p class="nav-label">Explore</p>
-    <a class="nav-item" href="#/catalog" data-route="catalog"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h5v4H2zm7 0h5v4H9zM2 9h5v4H2zm7 0h5v4H9z"/></svg>Public decomps</a>
-    <button class="nav-item" id="navJoin" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 7a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Zm5.5 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM1 13c0-2.4 2-4 4.5-4S10 10.6 10 13v1H1v-1Zm10.5 1v-1c0-1.3-.4-2.4-1.1-3.3.2 0 .4-.1.6-.1 2.2 0 4 1.3 4 3.4v1h-3.5Z"/></svg>Join a team</button>
   </div>
   <div class="nav-foot">
     <a class="nav-item" href="#/agents" data-route="agents"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a3 3 0 0 1 3 3V6h.5A1.5 1.5 0 0 1 13 7.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 12.5v-5A1.5 1.5 0 0 1 4.5 6H5V4.5a3 3 0 0 1 3-3ZM6.25 9.25a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.5 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM8 3a1.5 1.5 0 0 0-1.5 1.5V6h3V4.5A1.5 1.5 0 0 0 8 3Z"/></svg>Agents &amp; models<span class="nav-badge" id="navAgentsBadge" hidden></span></a>
-    <a class="nav-item" href="#/tools" data-route="tools"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 1.6a3.9 3.9 0 0 0-3.9 5.2L1.9 11.6a1.5 1.5 0 0 0 2.1 2.1l4.8-4.8a3.9 3.9 0 0 0 5.2-3.9l-2.2 2.2-2.1-.6-.6-2.1 2.2-2.2c-.3 0-.5-.7-.7-.7Z"/></svg>Compilers &amp; tools</a>
+    <a class="nav-item" href="#/tools" data-route="tools"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 1.6a3.9 3.9 0 0 0-3.9 5.2L1.9 11.6a1.5 1.5 0 0 0 2.1 2.1l4.8-4.8a3.9 3.9 0 0 0 5.2-3.9l-2.2 2.2-2.1-.6-.6-2.1 2.2-2.2c-.3 0-.5-.7-.7-.7Z"/></svg>Build tools</a>
     <a class="nav-item" href="#/settings" data-route="settings"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.9 1h2.2l.4 1.9 1.3.6 1.7-1 1.5 1.5-1 1.7.6 1.3L15 6.9v2.2l-1.9.4-.6 1.3 1 1.7-1.5 1.5-1.7-1-1.3.6L9.1 15H6.9l-.4-1.9-1.3-.6-1.7 1-1.5-1.5 1-1.7-.6-1.3L1 9.1V6.9l1.9-.4.6-1.3-1-1.7 1.5-1.5 1.7 1 1.3-.6L6.9 1ZM8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>Settings</a>
     <div class="nav-meta">
       <span class="muted small" id="navVersion"></span>
@@ -55,7 +52,7 @@
     <div class="hero-text">
       <p class="eyebrow">Native PC source projects</p>
       <h1>Build a PC project<br>from your game.</h1>
-      <p class="lede">Generate editable projects for DS, PS1, PS2, GBA and 3DS with adaptive GPU rendering. Source recovery and console reconstruction are also available.</p>
+      <p class="lede">Generate editable projects for DS, PS1, PS2, GBA and 3DS with adaptive GPU rendering. Advanced source-recovery tools remain available for local projects.</p>
       <ol class="how">
         <li><b>Choose your game</b><span>Use a local ROM, disc set or program.</span></li>
         <li><b>Generate PC source</b><span>Export game code, runtime sources and build instructions.</span></li>
@@ -121,24 +118,7 @@
   </section>
   <p class="privacy"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.2c0 3.3 2.3 6.3 5.5 7.3 3.2-1 5.5-4 5.5-7.3V3L8 1Zm0 1.6 4 1.5v3.1c0 2.5-1.6 4.8-4 5.7-2.4-.9-4-3.2-4-5.7V4.1l4-1.5Z"/></svg>Game files stay on this computer. Connected agents can send assembly and source to the provider you choose.</p>
 
-  <section class="starts">
-    <a class="start-card accent" href="#/catalog">
-      <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h5v4H2zm7 0h5v4H9zM2 9h5v4H2zm7 0h5v4H9z"/></svg></span>
-      <b>Continue a public decomp</b>
-      <span>Open a community source project and add your own game input.</span>
-    </a>
-
-    <button class="start-card" id="askBtn" type="button">
-      <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v8H6l-3 2.5V11H2z"/></svg></span>
-      <b>Use your own agent</b>
-      <span>Optionally connect an agent for source recovery, debugging and project edits.</span>
-    </button>
-    <button class="start-card" id="joinBtn" type="button">
-      <span class="sc-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 7a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Zm5.5 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM1 13c0-2.4 2-4 4.5-4S10 10.6 10 13v1H1v-1Zm10.5 1v-1c0-1.3-.4-2.4-1.1-3.3.2 0 .4-.1.6-.1 2.2 0 4 1.3 4 3.4v1h-3.5Z"/></svg></span>
-      <b>Join a team</b>
-      <span>Paste a room's invite link: everyone works from their own computer and copy of the game.</span>
-    </button>
-  </section>
+  <div class="home-actions"><button class="ghost small-btn" id="askBtn" type="button">Connect your own agent (optional)</button><button class="ghost small-btn" id="trackExisting" type="button">Add an existing PC project</button></div>
 
   <section id="recent" hidden>
     <h3 class="section-title">Your projects</h3>
@@ -146,22 +126,10 @@
   </section>
 </main>
 
-<!-- ================================================================ public decomps -->
-<main id="catalog" class="view" hidden>
-  <header class="page-head">
-    <p class="eyebrow">Public decomps</p>
-    <h1>Continue a public decomp</h1>
-    <p class="muted">Paste a community decomp's repository and add your own copy of its game. Before anything is cloned, decomp.wtf shows what the project says about AI and contributions: every project decides that for itself. Your fork stays on this computer; decomp.wtf never pushes it or opens pull requests.</p>
-    <div class="row repo-row"><input id="repoUrl" class="mono" placeholder="https://github.com/owner/repo" aria-label="Repository address"><button class="primary" id="repoFork" type="button">Look at it</button></div>
-    <p class="credit small"><a href="https://decomp.dev" target="_blank" rel="noopener">decomp.dev</a>, the community's home for matching decompilation progress, made by <a href="https://github.com/encounter" target="_blank" rel="noopener">encounter</a> (who also makes decomp-toolkit and objdiff, two of the tools decomp.wtf is built on), retired its project directory on 15 October 2026. Each project's page there still has its history, files and contributors.</p>
-  </header>
-  <div class="cat-tools" id="catTools">
-    <input id="catSearch" class="search" type="search" placeholder="Search games and teams" aria-label="Search projects">
-    <label class="check inline"><input type="checkbox" id="catDone"><span>Show finished</span></label>
-  </div>
-  <div class="chips" id="catChips" role="tablist" aria-label="Platform"></div>
-  <div class="cat-grid" id="catGrid"></div>
-  <p class="muted small cat-note" id="catNote"></p>
+<!-- ================================================================ native PC project -->
+<main id="nativeProject" class="view" hidden>
+  <header class="page-head"><p class="eyebrow">Native PC source project</p><h1 id="nativeTitle"></h1><p class="muted" id="nativeSubtitle"></p></header>
+  <div id="nativeBody"></div>
 </main>
 
 <!-- ================================================================ a project -->
@@ -174,8 +142,6 @@
       </div>
       <div class="ph-actions">
         <button class="pill-btn" id="phWorking" type="button" hidden><span class="dot on"></span><span id="phWorkingText"></span></button>
-        <button class="pill-btn room" id="phRoom" type="button" hidden></button>
-        <button class="ghost together" id="phTogether" type="button" hidden title="Decompile this game together with friends who own it"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 7a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Zm5.5 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM1 13c0-2.4 2-4 4.5-4S10 10.6 10 13v1H1v-1Zm10.5 1v-1c0-1.3-.4-2.4-1.1-3.3.2 0 .4-.1.6-.1 2.2 0 4 1.3 4 3.4v1h-3.5Z"/></svg><span>Decompile together</span></button>
         <div class="pop-wrap">
           <button class="primary" id="phStart" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg><span id="phStartText">Start agents</span></button>
           <div class="popover" id="launchPop" hidden><div id="launchPopBody"></div></div>
@@ -193,7 +159,6 @@
       <a role="tab" data-ptab="functions">Functions <span class="count" id="fnTabCount"></span></a>
       <a role="tab" data-ptab="agents">Agents <span class="count" id="agTabCount"></span></a>
       <a role="tab" data-ptab="activity">Activity</a>
-      <a role="tab" data-ptab="team">Team <span class="count" id="teamTabCount"></span></a>
       <a role="tab" data-ptab="source">Source</a>
       <a role="tab" data-ptab="settings">Settings</a>
     </nav>
@@ -332,11 +297,6 @@
     </div>
   </section>
 
-  <!-- team -->
-  <section class="ptab" data-pane="team">
-    <section class="panel"><div class="pad" id="teamBox"></div></section>
-  </section>
-
   <!-- source -->
   <section class="ptab" data-pane="source">
     <section class="panel">
@@ -402,8 +362,8 @@
 
 <!-- ================================================================ compilers & tools -->
 <main id="toolsPage" class="view" hidden>
-  <header class="page-head"><p class="eyebrow">Compilers &amp; tools</p><h1>What builds your games</h1>
-    <p class="muted">decomp.wtf installs what a project needs by itself. Proprietary compilers (IDO, CodeWarrior) are only installed when you accept that.</p></header>
+  <header class="page-head"><p class="eyebrow">Build tools</p><h1>Source SDKs and build tools</h1>
+    <p class="muted">Native exporters install their pinned source tools automatically. Console-matching compilers are optional advanced recovery tools. See the README for CMake and C++ host-build prerequisites.</p></header>
   <div class="chips" id="toolChips"></div>
   <div class="tool-grid" id="toolGrid"></div>
 </main>

@@ -143,9 +143,13 @@ def test_find_similar_on_the_rom(net):
     assert all(o.startswith(("Functions that look like", "No look-alikes")) for o in outs)
 
 
-def test_autopilot_matches_machine_drafts_for_free(net):
+def test_autopilot_matches_machine_drafts_for_free(built, tmp_path, monkeypatch):
     import time
 
+    # Measure the draft pass independently of debounced twin passes from other tests.
+    net = RomNetwork(tmp_path / 'app.db', tmp_path / 'projects')
+    net.import_rom(built, confirmed=True, log=lambda *_: None)
+    monkeypatch.setattr(net.twins, 'after_match', lambda *_: None)
     before = net.overview("playstation-game")["matched"]
     net.start_autopilot("playstation-game")
     for _ in range(600):

@@ -22,7 +22,7 @@ GUIDES = {
     "data": "globals, strings, tables, floats, data you define",
     "structs": "working out struct layouts from offsets",
     "naming": "naming functions and data",
-    "fork": "working in a fork of a public decomp: the loop, conventions, what's allowed",
+    "fork": "working in a local source-recovery project",
     "objdiff": "reading objdiff's diffs and match percentages",
     "ppc": "PowerPC registers and calling conventions for external projects",
     "mwcc": "matching Metrowerks CodeWarrior for DS",
@@ -89,7 +89,7 @@ generated listings to manufacture progress. Release claims when blocked.
 """
 
 FORK_PROMPT = """\
-You are a decompilation agent in decomp.wtf, continuing {title}: a public matching-decompilation project
+You are a decompilation agent in decomp.wtf, continuing {title}: a local source-recovery project
 for {platform}. Other agents may be working on other functions of the same project at the same time; the
 tools keep you from colliding.
 
@@ -134,7 +134,7 @@ def _guide(topic: str = "") -> str:
 
 def _fork(net: RomNetwork, slug: str, what: str) -> str:
     if not net.fork_slug(slug):
-        raise NetworkError(f"{what} is for forks of public decomps; in a ROM project the shared header is get_context")
+        raise NetworkError(f"{what} is for local source-tree projects; in a ROM project the shared header is get_context")
     return slug
 
 

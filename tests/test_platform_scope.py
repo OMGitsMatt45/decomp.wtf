@@ -6,7 +6,6 @@ import pytest
 
 from decompnet import platforms, toolchains
 from decompnet.app.engine import RomNetwork
-from decompnet.forks import catalog
 from decompnet.network import NetworkError
 from decompnet.rom import boot, detect
 from decompnet.rom.errors import RomError
@@ -70,13 +69,10 @@ def test_public_project_target_rejected_before_clone(tmp_path, platform, monkeyp
     net = RomNetwork(tmp_path/'app.db',tmp_path)
     monkeypatch.setattr('subprocess.run', lambda *_a, **_k: pytest.fail('must not clone'))
     with pytest.raises(NetworkError, match='removed'):
-        net.forks.clone('https://github.com/example/game', platform=platform)
+        net.forks.open_local('https://github.com/example/game', platform=platform)
 
 
-def test_catalog_and_tool_setup_do_not_offer_retired_platforms():
-    rows = catalog.normalize({'projects': [dict(owner='a',repo=p,platform=p) for p in
-        ('nds','n64','gc','wii','gba','ps','gb','gbc','Game Boy')]})
-    assert {r['platform'] for r in rows} == {'nds','gba','ps'}
+def test_tool_setup_does_not_offer_retired_platforms():
     assert not platforms.REMOVED_TOOLS.intersection(r['id'] for r in toolchains.status())
     with pytest.raises(toolchains.ToolchainError, match='removed'):
         toolchains.install('gcc-2.7.2-kmc')

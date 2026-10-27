@@ -1,4 +1,4 @@
-"""Run decomp.wtf in the background, starting with the computer: for a home PC or a server that hosts a team's room.
+"""Run decomp.wtf in the background, starting with the computer: for local optional agent sessions.
 
 Linux: a systemd user service. macOS: a launchd agent. Windows: a startup app of this user (the Run registry key:
 a log-on task would need an administrator), without a console window. The service runs `decomp --no-browser` for this
@@ -46,7 +46,7 @@ def install() -> str:
         unit.parent.mkdir(parents=True, exist_ok=True)
         env = f"Environment=DECOMP_HOME={home}\n" if home else ""
         unit.write_text(f"""[Unit]
-Description=decomp.wtf (matching decompilation; serves your rooms)
+Description=decomp.wtf (local source projects and optional agents)
 After=network-online.target
 
 [Service]

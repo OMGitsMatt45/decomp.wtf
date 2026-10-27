@@ -1,3 +1,4 @@
+from .fixtures.pc_output import result as pc_result
 """PS2 native routes retain the owner/profile and never choose a DS/PS1 backend."""
 import argparse
 import json
@@ -15,7 +16,7 @@ from .test_psx_native_app import finish
 def test_browser_routes_owner_ps2_and_optional_profile_without_console_compilers(tmp_path,monkeypatch):
     net=RomNetwork(tmp_path/'db',tmp_path/'projects');calls=[]
     def generate(path,**kwargs):
-        calls.append((path,kwargs));return dict(path=str(tmp_path/'native'),format='pc',integrity_verified=True,gameplay_verified=False)
+        calls.append((path,kwargs));return pc_result(tmp_path / 'native','ps2')
     monkeypatch.setattr(net,'generate_ps2_pc',generate)
     monkeypatch.setattr(net,'generate_ds_pc',lambda *_a,**_k:pytest.fail('PS2 routed to DS'))
     monkeypatch.setattr(net,'generate_psx_pc',lambda *_a,**_k:pytest.fail('PS2 routed to PS1'))

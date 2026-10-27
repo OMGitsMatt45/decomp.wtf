@@ -1,3 +1,4 @@
+from .fixtures.pc_output import result as pc_result
 """GBA native routes preserve the owner cartridge and bypass matching compilers."""
 import argparse
 import json
@@ -15,7 +16,7 @@ def test_browser_detects_gba_and_routes_native_export(tmp_path, monkeypatch):
     net = RomNetwork(tmp_path/'db', tmp_path/'projects'); calls = []
     def generate(path, **kwargs):
         calls.append((path, kwargs))
-        return dict(path=str(tmp_path/'native'), format='pc', integrity_verified=True, gameplay_verified=False)
+        return pc_result(tmp_path / 'native','gba')
     monkeypatch.setattr(net, 'generate_gba_pc', generate)
     def wrong(*args, **kwargs):
         raise AssertionError('GBA must not use another console or matching compiler')
@@ -63,7 +64,7 @@ def test_existing_gba_reconstruction_exports_its_retained_cartridge(tmp_path, mo
         db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
                    ('original', 'Original', str(root), json.dumps(cfg)))
     def export(rom, destination, **kwargs):
-        calls.append((rom, destination, kwargs)); return dict(path=str(destination))
+        calls.append((rom, destination, kwargs)); return pc_result(destination,'gba')
     monkeypatch.setattr('decompnet.gba_native.export_game', export)
     result = net.export_rom('original', format='pc', renderer='opengl')
     assert result['path'] == str(root/'pc-source')
@@ -82,7 +83,7 @@ def test_connected_chat_routes_gba_without_ds_screen_or_ps1_disc_options(tmp_pat
     assert pc.input_platform(rom) == 'gba'
     def generate(path, **kwargs):
         calls.append((path, kwargs))
-        return dict(path=str(tmp_path/'native'), format='pc', integrity_verified=True, gameplay_verified=False)
+        return pc_result(tmp_path / 'native','gba')
     monkeypatch.setattr(net, 'generate_gba_pc', generate)
     fn = registered['generate_pc_project']
     with pytest.raises(ToolError, match='own legally obtained'):

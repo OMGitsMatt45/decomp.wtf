@@ -35,6 +35,11 @@ running the last two commands. uv installs the requested Python version and
 locked application dependencies. The app opens in your browser and runs on your
 computer. Use **New project** to select your game and native PC output.
 
+Generated outputs appear in **Projects**, with their folder, build instructions
+and source-integrity checks. Use **Add an existing PC project** for earlier or
+CLI exports, including projects you have edited. Removing a list entry keeps
+its source, assets and saves. See the [GUI and own-agent guide](docs/gui-workflow.md).
+
 On Windows, install uv with `winget install --id astral-sh.uv --exact`, then
 reopen PowerShell. Native project builds also need the C++ tools below. See
 [Windows setup](docs/windows.md) for native tool discovery and optional agents.
@@ -121,7 +126,7 @@ files and 3DS boot ROMs are not standard runtime prerequisites.
 | [curl](https://curl.se/download.html) / [Ubuntu 32-bit runtime](https://packages.ubuntu.com/noble/libc6-i386) | Linux installer or legacy 32-bit matching compilers. |
 | [DQ IV mobile](https://www.jp.square-enix.com/dqsp/dq4/en/), [DQ V mobile](https://www.jp.square-enix.com/dqsp/dq5/en/), [DQ VI mobile](https://www.jp.square-enix.com/dqsp/dq6/en/) | Future game-specific asset integrations. Generic DS output uses the DS input; mobile mappings are not implemented. |
 
-**Compilers & tools** manages supported matching compilers and optional tools.
+**Build tools** manages supported matching compilers and optional tools.
 Proprietary DS compiler downloads require license acceptance. Community source
 projects can have additional build requirements; follow their own instructions.
 

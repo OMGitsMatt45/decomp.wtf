@@ -124,7 +124,7 @@ def fork(tmp_path):
     _run(repo, "git", "commit", "-q", "-m", "initial")
     (tmp_path / "work").mkdir()
     net = RomNetwork(tmp_path / "app.db", tmp_path / "work")
-    slug = net.forks.clone(str(repo), name="Linking", platform="n64", log=lambda *_: None)
+    slug = net.forks.open_local(str(repo), name="Linking", platform="n64", log=lambda *_: None)
     fp = net.forks.get(slug)[1]
     assert fp.run([sys.executable, "configure.py"])[0]
     assert fp.build_all()[0] and fp.verify()[0]

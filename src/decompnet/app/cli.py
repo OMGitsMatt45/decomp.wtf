@@ -302,7 +302,7 @@ def connect_agents(args) -> int:
 
 
 def _api(path: str, body: dict | None = None) -> dict:
-    """Call the running app's API (for commands that act on it, like `decomp share`)."""
+    """Call the running app's API (for commands that act on it, like update and stop)."""
     state = home_dir() / ".decomp" / "server.json"
     try:
         info = json.loads(state.read_text(encoding="utf-8"))
@@ -336,57 +336,8 @@ def _wait(job: str, what: str) -> dict:
     return st["result"]
 
 
-def host(args) -> int:
-    """One command for a home PC or a server: run decomp.wtf in the background, import your copy of the game and open
-    a room for your team. Prints the invite link."""
-    from .bridge import ensure_app
-
-    game = Path(args.game).expanduser()
-    if not game.is_file():
-        raise SystemExit(f"no file at {game}")
-    if not args.own_copy:
-        if not sys.stdin.isatty():
-            raise SystemExit("confirm that this is your own legally obtained copy of the game: add --own-copy")
-        if input(f"Is {game.name} your own legally obtained copy of the game? [y/N] ").strip().lower() not in ("y", "yes"):
-            raise SystemExit("decomp.wtf only works with your own copy of a game")
-    if args.service:
-        from . import service
-
-        print(service.install())
-    ensure_app(home_dir())
-    print(f"importing {game.name}")
-    slug = _wait(_api(f"/api/import?confirmed=1&path={urllib.parse.quote(str(game))}", {})["job"], "importing")["slug"]
-    print(f"project: {slug}")
-    args.project = slug
-    return share(args)
 
 
-def join(args) -> int:
-    """Join a team's room with your own copy of the game (decomp.wtf starts in the background if needed)."""
-    from .bridge import ensure_app
-
-    game = Path(args.game).expanduser()
-    if not game.is_file():
-        raise SystemExit(f"no file at {game}")
-    if not args.own_copy:
-        if not sys.stdin.isatty():
-            raise SystemExit("confirm that this is your own legally obtained copy of the game: add --own-copy")
-        if input(f"Is {game.name} your own legally obtained copy of the game? [y/N] ").strip().lower() not in ("y", "yes"):
-            raise SystemExit("decomp.wtf only works with your own copy of a game")
-    info = ensure_app(home_dir())
-    q = urllib.parse.urlencode({"link": args.link, "name": args.name, "confirmed": "1", "path": str(game.resolve())})
-    req = urllib.request.Request(f"http://127.0.0.1:{info['port']}/api/collab/join?{q}", method="POST",
-                                 data=b"", headers={"Cookie": f"decomp_live={info['secret']}", "X-Decomp": "1",
-                                                                  "Host": f"127.0.0.1:{info['port']}",
-                                                                  "Content-Type": "application/octet-stream"})
-    try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            job = json.loads(r.read())["job"]
-    except urllib.error.HTTPError as e:
-        raise SystemExit(json.loads(e.read() or b"{}").get("error") or str(e)) from None
-    slug = _wait(job, "joining")["slug"]
-    print(f"In the room as {args.name}: project {slug}. Start agents in the app, or ask your own agent (decomp connect).")
-    return 0
 
 
 def service_cmd(args) -> int:
@@ -401,19 +352,6 @@ def service_cmd(args) -> int:
     return 0
 
 
-def share(args) -> int:
-    """Share a project with a team from this computer or a server (decomp --no-browser keeps running)."""
-    state = _api("/api/state")
-    slugs = [p["slug"] for p in state["projects"]]
-    if args.project not in slugs:
-        raise SystemExit(f"no project {args.project!r}; projects here: {', '.join(slugs) or 'none'}")
-    body = {"slug": args.project, "visibility": "public" if args.public else "private", "approve": args.approve,
-            "mode": "address" if args.address else "tunnel", "address": args.address or "", "port": args.port}
-    result = _wait(_api("/api/collab/start", body)["job"], "sharing")
-    print(f"Sharing {args.project} ({body['visibility']}{', you approve each member' if args.approve else ''}).")
-    print(f"Invite link: {result['link']}")
-    print("Teammates open decomp.wtf, choose Join a friend's room, paste the link and pick their own copy of the game.")
-    return 0
 
 
 def shortcut(args) -> int:
@@ -449,25 +387,6 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("connect", help="give your AI agents (Claude Code, Codex, Antigravity CLI, opencode) decomp.wtf's tools")
     c.add_argument("agents", nargs="*", metavar="agent", help="claude, codex, antigravity (agy) or opencode (default: every one installed)")
     c.add_argument("--list", action="store_true", help="only show which are connected")
-    sh = sub.add_parser("share", help="share a project with your team (the app must be running)")
-    sh.add_argument("project", help="the project's slug (see the app, or `decomp share x` lists them)")
-    sh.add_argument("--address", help="the address teammates use, e.g. http://my-server:6481 (default: a quick tunnel)")
-    sh.add_argument("--port", type=int, default=6481, help="port for --address (default 6481)")
-    sh.add_argument("--public", action="store_true", help="anyone with the address can join (default: invite link)")
-    sh.add_argument("--approve", action="store_true", help="you let each new member in")
-    ho = sub.add_parser("host", help="host a game for your team: import your copy and open a room (home PC or server)")
-    ho.add_argument("game", help="your copy of the game (ROM, disc image or program file)")
-    ho.add_argument("--own-copy", action="store_true", help="confirm it's your own legally obtained copy")
-    ho.add_argument("--address", help="the address teammates use, e.g. http://my-server:6481 (default: a quick tunnel)")
-    ho.add_argument("--port", type=int, default=6481, help="port for --address (default 6481)")
-    ho.add_argument("--public", action="store_true", help="anyone with the address can join (default: invite link)")
-    ho.add_argument("--approve", action="store_true", help="you let each new member in")
-    ho.add_argument("--service", action="store_true", help="also run decomp.wtf as a service that starts with the computer")
-    jo = sub.add_parser("join", help="join a team's room with your own copy of the game")
-    jo.add_argument("link", help="the invite link (or the room's address for a public room)")
-    jo.add_argument("game", help="your copy of the same game")
-    jo.add_argument("--name", required=True, help="your name in the room")
-    jo.add_argument("--own-copy", action="store_true", help="confirm it's your own legally obtained copy")
     sv = sub.add_parser("service", help="run decomp.wtf in the background, starting with the computer")
     sv.add_argument("action", choices=["install", "remove", "status"])
     m = sub.add_parser("mcp", help="serve decomp.wtf to the AI agent you talk to (stdio MCP; starts the app if needed)")
@@ -480,8 +399,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "mcp":
         from .bridge import main as bridge
         return bridge(args.name)
-    return {"setup": setup, "stop": stop, "shortcut": shortcut, "connect": connect_agents, "share": share,
-            "host": host, "join": join, "service": service_cmd, "url": url_cmd, "update": update_cmd,
+    return {"setup": setup, "stop": stop, "shortcut": shortcut, "connect": connect_agents,
+            "service": service_cmd, "url": url_cmd, "update": update_cmd,
             "install-info": install_info}.get(args.cmd, run)(args)
 
 

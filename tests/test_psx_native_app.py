@@ -1,3 +1,4 @@
+from .fixtures.pc_output import result as pc_result
 """Application routes preserve the ordered PS1 inputs and native export choice."""
 import argparse
 import json
@@ -31,7 +32,7 @@ def test_browser_routes_ordered_ps1_discs_without_ds_save_or_screen_options(tmp_
     net=RomNetwork(tmp_path/'db',tmp_path/'projects');calls=[]
     def generate(paths,**kwargs):
         calls.append((paths,kwargs))
-        return dict(path=str(tmp_path/'native'),format='pc',integrity_verified=True,gameplay_verified=False)
+        return pc_result(tmp_path / 'native','psx')
     monkeypatch.setattr(net,'generate_psx_pc',generate)
     monkeypatch.setattr(net,'generate_ds_pc',lambda *_a,**_k:pytest.fail('PS1 must not use DS generation'))
     one=tmp_path/'disc1.iso';two=tmp_path/'disc2.iso';one.write_bytes(disc());two.write_bytes(disc(2))
@@ -59,8 +60,7 @@ def test_connected_agent_routes_ps1_disc_set_and_requires_ownership(tmp_path,mon
     registered,net,jobs,settings,ctx=_chat_tools(tmp_path);calls=[]
     one=tmp_path/'disc1.iso';two=tmp_path/'disc2.iso';one.write_bytes(disc());two.write_bytes(disc(2))
     def generate(paths,**kwargs):
-        calls.append((paths,kwargs));return dict(path=str(tmp_path/'native'),format='pc',
-            integrity_verified=True,gameplay_verified=False,manifest=dict(qualification=dict(experimental=True)))
+        calls.append((paths,kwargs));return pc_result(tmp_path / 'native','psx')
     monkeypatch.setattr(net,'generate_psx_pc',generate)
     fn=registered['generate_pc_project']
     with pytest.raises(ToolError,match='own legally obtained'):
@@ -90,7 +90,7 @@ def test_existing_combined_project_exports_all_ordered_retained_inputs(tmp_path,
                        (f'disc{index}',f'Disc {index}',str(root),json.dumps(cfg)))
     configure(net,'disc1',['disc2','disc1'],'One ordered game')
     def publish(project,destination,backend):
-        calls.append(project);return dict(path=str(destination))
+        calls.append(project);return pc_result(destination,'psx')
     monkeypatch.setattr('decompnet.pc.export_backend',publish)
     result=net.export_rom('disc1',format='pc',renderer='opengl')
     assert result['path']==str(tmp_path/'disc1/pc-source')
@@ -104,7 +104,7 @@ def test_cli_retains_disc_order_and_separate_output_path(tmp_path,monkeypatch,ca
     parser=argparse.ArgumentParser();pc_cli.add_parser(parser.add_subparsers(dest='action'))
     args=parser.parse_args(['pc','psx-native','first.cue','second.cue',str(tmp_path/'output'),'--experimental'])
     calls=[]
-    def export(inputs,output,**kwargs):calls.append((inputs,output));return dict(path=str(output))
+    def export(inputs,output,**kwargs):calls.append((inputs,output));return pc_result(output,'psx')
     monkeypatch.setattr('decompnet.psx_native.export',export)
     pc_cli.run(args)
     assert calls==[([Path('first.cue'),Path('second.cue')],tmp_path/'output')]

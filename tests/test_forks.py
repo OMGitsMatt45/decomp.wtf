@@ -16,7 +16,7 @@ import pytest
 
 from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
-from decompnet.forks import catalog, csource
+from decompnet.forks import csource
 from decompnet.network import NetworkError
 from .psx_fixture import built  # noqa: F401
 
@@ -49,7 +49,7 @@ def fork(tmp_path_factory, built):
     _git(upstream, "commit", "-q", "-m", "initial")
     net = RomNetwork(base / "app.db", base / "work")
     (base / "work").mkdir()
-    slug = net.forks.clone(str(upstream), name="Demo Quest decomp", platform="psx", log=lambda *_: None)
+    slug = net.forks.open_local(str(upstream), name="Demo Quest decomp", platform="psx", log=lambda *_: None)
     need = net.forks.needs(slug)
     assert need["kind"] == "manifest" and need["path"] == "baserom.exe"
     with pytest.raises(NetworkError, match="sha1"):
@@ -109,6 +109,7 @@ def test_decomp_wtfs_own_tries_leave_no_claim_behind(fork):
     assert net.store.one("SELECT abandons FROM functions WHERE id=?", fn["id"])["abandons"] == fn["abandons"]
 
 
+@needs_tools
 def test_near_miss_gets_a_diff_and_release_restores_the_best(fork):
     net, slug, agent = fork
     root = Path(net.project_row(slug)["root"])
@@ -186,20 +187,13 @@ def test_csource_finds_definitions_and_stubs():
     assert "return 1" in csource.replace(src, "g", "int g(void) { return 1; }")
 
 
-def test_catalog_normalizes_decomp_dev():
-    raw = {"projects": [{"owner": "o", "repo": "r", "name": "Game", "platform": "nds", "default_version": "ABCE",
-                         "commit": {"timestamp": "2026-10-01T00:00:00Z"},
-                         "measures": {"matched_code_percent": 42.123, "total_functions": 10, "matched_functions": 4}}]}
-    p = catalog.normalize(raw)[0]
-    assert p["id"] == "o/r" and p["platform_name"] == "Nintendo DS" and p["matched"] == 42.12
-    assert p["repo_url"] == "https://github.com/o/r"
 
 
 def test_clone_rejects_odd_sources(tmp_path):
     net = RomNetwork(tmp_path / "app.db", tmp_path)
     for bad in ("file:///etc", "https://evil.example/x/y", "--upload-pack=x", str(tmp_path)):
         with pytest.raises(NetworkError):
-            net.forks.clone(bad, log=lambda *_: None)
+            net.forks.open_local(bad, log=lambda *_: None)
 
 
 @needs_tools
@@ -330,91 +324,10 @@ def test_two_functions_of_the_same_name_in_one_unit_both_get_a_row(tmp_path, mon
     assert rows["_lang@main/lang"]["vram"] == 1 and rows["_lang@main/lang#2"]["vram"] == 2
 
 
-@needs_tools
-def test_a_public_decomp_together(tmp_path):
-    """A room on a fork of a public decomp: the member gets the public project from its own host (here a local
-    'upstream'), at the commit the room's host started from, plus the room's commits as a bundle; then builds it with
-    their own copy of the game and works with the room."""
-    from starlette.testclient import TestClient
-
-    from decompnet.app import collab
-
-    upstream = tmp_path / "upstream"
-    shutil.copytree(FORK_SRC, upstream)
-    manifest = json.loads((upstream / ".decomp.wtf.json").read_text())
-    manifest["game"]["sha1"] = hashlib.sha1(ROM.read_bytes()).hexdigest()
-    (upstream / ".decomp.wtf.json").write_text(json.dumps(manifest))
-    _git(upstream, "init", "-q", "-b", "main")
-    _git(upstream, "add", "-A")
-    _git(upstream, "commit", "-q", "-m", "initial")
-    (tmp_path / "host").mkdir()
-    host = RomNetwork(tmp_path / "host.db", tmp_path / "host")
-    slug = host.forks.clone(str(upstream), name="Demo Quest decomp", platform="psx", log=lambda *_: None)
-    host.forks.setup(slug, ROM.read_bytes(), "demo.exe", log=lambda *_: None)
-    hagent, _ = host.local_agent("claude-host")
-    assert host.attempt(hagent, "count_alive_entities", _ref("count_alive_entities"), slug)["matched"]
-    _git(upstream, "commit", "-q", "--allow-empty", "-m", "upstream moved on")  # members still start where the host did
-
-    host.rooms[slug] = collab.Room(host, slug)
-    code = host.rooms[slug].open_invite()
-    client = TestClient(collab.host_app(host, host.rooms), base_url="https://abc.trycloudflare.com")
-    (tmp_path / "guest").mkdir()
-    guest = RomNetwork(tmp_path / "guest.db", tmp_path / "guest")
-    gslug = collab.join_room(guest, f"https://abc.trycloudflare.com/join/{code}#room={slug}", "alex", ROM,
-                             log=lambda *_: None, client=client, start=False)
-    hroot, groot = Path(host.project_row(slug)["root"]), Path(guest.project_row(gslug)["root"])
-    head = lambda root: subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout  # noqa: E731
-    assert head(groot) == head(hroot)
-    assert guest.overview(gslug)["functions"] == host.overview(slug)["functions"]
-    assert guest._function("count_alive_entities", gslug)["status"] == "matched"  # the host's match came along
-
-    gagent, _ = guest.local_agent("claude-1")
-    assert "CLAIMED" in guest.forks.claim(gagent, gslug, "lerp")
-    res = guest.attempt(gagent, "lerp", _ref("lerp"), gslug)
-    assert res["matched"] and "host confirmed" in res["text"], res["text"]
-    assert host._function("lerp", slug)["status"] == "matched"
-    guest.links[gslug].sync()
-    assert head(groot) == head(hroot)
 
 
-def test_the_retired_decomp_dev_directory_is_never_asked_for(tmp_path, monkeypatch):
-    """#21: decomp.dev retired its project directory (410 Gone). decomp.wtf doesn't ask for it: an install keeps
-    showing the list it downloaded before, or none."""
-    import json
-    import urllib.request
-
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("decomp.wtf asked the network"))
-    cache = tmp_path / "catalog.json"
-    assert catalog.catalog(cache) == [] and catalog.cached_at(cache) is None
-    cache.write_text(json.dumps({"projects": [{"owner": "o", "repo": "r", "platform": "nds"}]}))
-    assert [p["id"] for p in catalog.catalog(cache)] == ["o/r"] and catalog.cached_at(cache)
 
 
-def test_a_projects_own_words_on_ai_come_before_forking(tmp_path):
-    """#21: every project decides about AI for itself. What its README, CONTRIBUTING and agent files say is read
-    (a partial clone, any git host) and shown before anything is forked, with which way it leans."""
-    from decompnet.forks import policy
-
-    assert policy.lean(policy.lines_about_ai("We do **not** accept AI-generated code (ChatGPT, Copilot, ...).")) == "no"
-    assert policy.lean(policy.lines_about_ai("Contributions made with LLMs are welcome if you review them.")) == "yes"
-    assert policy.lean(policy.lines_about_ai("Said the mail: it is plain.")) == "silent"  # "AI" in capitals only
-    melee = ("Introduction - Coding Style - Compiler Notes - Pull Requests - AI Assistance\n\nUsing AI to match functions "
-             "is acceptable and frequently practiced. Do not let AI name fields in structs.")
-    assert policy.lines_about_ai(melee)[0].startswith("Using AI") and policy.lean(policy.lines_about_ai(melee)) == "rules"
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    (repo / "README.md").write_text("# Some decomp\n\nBuild with ninja.\n")
-    (repo / ".github").mkdir()
-    (repo / ".github" / "CONTRIBUTING.md").write_text("Rules.\n\nPull requests written by AI tools will be closed.\n")
-    (repo / "src.c").write_text("/* not read: AI */\n")
-    _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "initial")
-    got = policy.check(f"file://{repo}")
-    assert got["error"] is None and set(got["files"]) == {"README.md", ".github/CONTRIBUTING.md"}
-    assert got["lines"] == [{"file": ".github/CONTRIBUTING.md", "text": "Pull requests written by AI tools will be closed."}]
-    assert got["lean"] == "no"
-    assert policy.check(f"file://{tmp_path}/nothing")["error"].startswith("couldn't read the repository")
 
 
 def test_c_code_going_into_a_cpp_file_gets_c_linkage(tmp_path, monkeypatch):

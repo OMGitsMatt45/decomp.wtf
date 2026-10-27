@@ -55,8 +55,8 @@ MW_VERSIONS = {
 # Tools shown in Setup besides the compilers.
 TOOLS = {
     "m2c": "machine-made first drafts (MIPS, PowerPC, ARM)",
-    "objdiff-cli": "judges forks of public decomps, function by function",
-    "ghidra": "drafts for PC, Switch and other platforms m2c can't read (540 MB, needs Java 21+)",
+    "objdiff-cli": "judges local source-tree projects, function by function",
+    "ghidra": "optional readable-source recovery drafts (540 MB, needs Java 21+)",
     "mwccarm": "CodeWarrior for DS, the compilers of DS games (proprietary)",
     "dsd": "ds-decomp: analyses DS ROMs and rebuilds them",
 }
@@ -122,9 +122,6 @@ class RomNetwork(Network):
         self._roms: dict[int, tuple[bytes, list[split.Segment]]] = {}
         self._xrefs: dict[int, dict] = {}
         self._seed_lock = threading.Lock()
-        self.links: dict = {}  # slug -> collab.Link, for projects joined from a friend's room
-        self.rooms: dict = {}  # slug -> collab.Room, for projects this computer shares
-        self._remote_ids: dict[str, int] = {}
         self._ops: dict[int, dict] = {}  # project id -> look-alike index
         self._diffs: dict[tuple, dict] = {}  # (function, source, context, compiler) -> diff for the GUI
         self.autopilots: dict[str, dict] = {}  # slug -> progress of trying every function's machine draft
@@ -132,6 +129,8 @@ class RomNetwork(Network):
         from .permute import Permuter
         from .twins import Twins
         self.forks = ForkEngine(self)
+        from .pcprojects import PCProjects
+        self.pc_projects = PCProjects(self.store)
         self.twins = Twins(self)
         self.permuter = Permuter(self)
 
@@ -154,7 +153,7 @@ class RomNetwork(Network):
         return self._project(slug)
 
     def fork_slug(self, project: str | None) -> str | None:
-        """The slug when `project` is a fork of a public decomp, else None."""
+        """The slug when `project` is a local source-tree project, else None."""
         try:
             proj = self._project(project)
         except NetworkError:
@@ -862,13 +861,6 @@ class RomNetwork(Network):
 
     def split_function(self, agent: Agent, project: str | None, function: str, at: str, new_name: str = "") -> str:
         self._rom_only(project, "split_function")
-        link = self._link(project)
-        if link is not None:
-            name = self._function(function, project)["name"]
-            text = link.call("/collab/split", agent, function=name, at=at, new_name=new_name)
-            if text.startswith("✅"):
-                link.sync()
-            return text
         fn = self._function(function, project)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         if not self.is_rom(proj):
@@ -1014,12 +1006,6 @@ class RomNetwork(Network):
         proj = self._project(project)
         if not self.is_rom(proj):
             return super().rename_symbol(agent, project, old, new, message)
-        link = self._link(project)
-        if link is not None:
-            text = link.call("/collab/rename", agent, old=old, new=new, message=message)
-            if text.startswith("✅"):
-                link.sync()
-            return text
         old, new = old.strip(), new.strip()
         if not (IDENT.match(old) and IDENT.match(new)):
             raise NetworkError("old and new must be C identifiers")
@@ -1092,65 +1078,16 @@ class RomNetwork(Network):
         self._syms.pop(proj["id"], None)
         return f"✅ 0x{addr:08X} is now `{new}` (was `{old}`); {len(rewritten)} matched sources updated, all still match."
 
-    # ------------------------------------------------------------------ rooms (see collab.py)
+    # ------------------------------------------------------------------ local function claims
 
-    def link_project(self, slug: str, info: dict, client=None, start: bool = True):
-        from .collab import Link
 
-        proj = self._project(slug)
-        cfg = self.cfg(proj)
-        pass
-        cfg["link"] = info
-        with self.store.tx() as db:
-            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-        link = Link(self, slug, info["url"], info["room"], info["token"], info["member"], client=client)
-        self.links[slug] = link
-        if start:
-            link.run()
-        return link
 
-    def restore_links(self) -> None:
-        for p in self.store.all("SELECT slug, config FROM projects"):
-            info = json.loads(p["config"]).get("link")
-            if info and p["slug"] not in self.links:
-                self.link_project(p["slug"], info)
 
-    def unlink(self, slug: str) -> None:
-        link = self.links.pop(slug, None)
-        if link is not None:
-            link.stop()
-            try:
-                link._req("POST", "/collab/leave", {})
-            except NetworkError:
-                pass
-        proj = self._project(slug)
-        cfg = self.cfg(proj)
-        cfg.pop("link", None)
-        with self.store.tx() as db:
-            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-
-    def _link(self, project: str | None):
-        if not self.links:
-            return None
-        try:
-            return self.links.get(self._project(project)["slug"])
-        except NetworkError:
-            return None
 
     def claim(self, agent: Agent, project: str | None = None, function: str | None = None, strategy: str = "easiest") -> str:
         if (fork := self.fork_slug(project)):
             return self.forks.claim(agent, fork, function, strategy)
-        link = self._link(project)
-        if link is None:
-            return super().claim(agent, project, function, strategy)
-        if function:
-            function = self._function(function, project)["name"]
-        name = link.claim(agent, function, strategy)
-        if name is None:
-            return "Nothing left to claim in this room — every open function is matched or someone is on it. 🎉"
-        link.sync()
-        fn = self.claim_row(agent, project, name, strategy)
-        return self._brief(fn, agent, header="CLAIMED")
+        return super().claim(agent, project, function, strategy)
 
     def claim_many(self, agent: Agent, project: str | None, count: int, strategy: str = "easiest") -> str:
         """Several small functions at once (count 2-6): the next one by `strategy` and, when it's small, its
@@ -1159,7 +1096,7 @@ class RomNetwork(Network):
         count = max(1, min(int(count or 1), 6))
         if self.is_assembly(self._project(project)):
             return self.claim(agent, project, None, strategy)
-        if count == 1 or self._link(project) is not None:
+        if count == 1:
             return self.claim(agent, project, None, strategy)
         proj = self._project(project)
         held = self.store.all("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=? "
@@ -1235,94 +1172,22 @@ class RomNetwork(Network):
         self._yield_autopilot(function, project)
         if (fork := self.fork_slug(project)):
             return self.forks.attempt(agent, fork, function, source)
-        link = self._link(project)
-        before = self._function(function, project)["best_score"] if link else None
-        res = super().attempt(agent, function, source, project)
-        if link is None or res["score"] is None:
-            return res
-        name = self._function(function, project)["name"]
-        if res["matched"]:
-            res["text"] += "\nShared with the room: the host confirmed the match."
-        elif before is None or res["score"] < before:
-            threading.Thread(target=lambda: self._report(link, agent, name, source, res["score"]), daemon=True).start()
-        return res
+        return super().attempt(agent, function, source, project)
 
-    def _record(self, fn, agent, score, source, ctx_version, matched=False, compiled=None, via="agent"):
-        # Every matching path (manual, drafts, twins and permutation) requires
-        # the host's verdict before granting local room credit. Its profile
-        # can change while a member's compile is in flight.
-        proj = self.store.one("SELECT slug FROM projects WHERE id=?", fn["project_id"])
-        link = self.links.get(proj["slug"]) if proj else None
-        if matched and link is not None:
-            try:
-                verdict = link.attempt(agent, fn["name"], source)
-            except NetworkError:
-                super()._record(fn, agent, score, source, ctx_version, False, compiled, via)
-                raise
-            if not verdict.get("matched"):
-                super()._record(fn, agent, verdict.get("score"), source, ctx_version, False, compiled, via)
-                if agent.name in ("autopilot", "twins", "permuter") or via == "permuter":
-                    try:
-                        link.call("/collab/release", agent, function=fn["name"], notes="host did not confirm the local candidate")
-                    except NetworkError:
-                        pass
-                link.sync()
-                raise NetworkError("the room host did not confirm the match; compiler profiles have been synchronized")
-        return super()._record(fn, agent, score, source, ctx_version, matched, compiled, via)
 
-    @staticmethod
-    def _report(link, agent, name, source, score) -> None:
-        try:
-            link.call("/collab/best", agent, function=name, source=source, score=score)
-        except NetworkError:
-            pass
 
-    def apply_reported_best(self, slug: str, name: str, score: int, source: str, agent: Agent) -> None:
-        """Host side: a room member's better attempt, as they report it (their own compile scored it)."""
-        fn = self._function(name, slug)
-        if fn["status"] != "open" or score <= 0 or (fn["best_score"] is not None and score >= fn["best_score"]):
-            return
-        self._record(fn, agent, score, source, self._context(fn["project_id"], fn["unit"])["version"], via="room")
 
     def release(self, agent: Agent, function: str, notes: str, project: str | None = None) -> str:
         if (fork := self.fork_slug(project)):
             return self.forks.release(agent, fork, function, notes)
-        link = self._link(project)
-        if link is not None:
-            link.call("/collab/release", agent, function=self._function(function, project)["name"], notes=notes)
         return super().release(agent, function, notes, project)
 
     def edit_context(self, agent: Agent, project: str | None, old: str, new: str, message: str,
                      function: str | None = None) -> str:
         self._rom_only(project, "edit_context")
-        link = self._link(project)
-        if link is None:
-            return super().edit_context(agent, project, old, new, message, function)
-        text = link.call("/collab/context", agent, old=old, new=new, message=message, function=function)
-        if text.startswith("✅"):
-            link.sync()
-        return text
+        return super().edit_context(agent, project, old, new, message, function)
 
-    def add_note(self, agent: Agent, project: str | None, text: str, function: str | None = None) -> str:
-        link = self._link(project)
-        if link is None:
-            return super().add_note(agent, project, text, function)
-        name = self._function(function, project)["name"] if function else None
-        return link.call("/collab/note", agent, text=text, function=name) or "Noted, and shared with the room."
 
-    def _remote_agent(self, name: str) -> int:
-        label = "@" + name
-        if label in self._remote_ids:
-            return self._remote_ids[label]
-        row = self.store.one("SELECT id FROM agents WHERE name=?", label)
-        if row is None:
-            with self.store.tx() as db:
-                aid = db.execute("INSERT INTO agents(name,owner,token_hash,created_at,trusted,origin) VALUES(?,?,?,?,1,?)",
-                                 (label, "room", "remote:" + secrets.token_hex(16), time.time(), "remote")).lastrowid
-        else:
-            aid = row["id"]
-        self._remote_ids[label] = aid
-        return aid
 
     def remote_event(self, project_id: int, kind: str, detail: str, agent_name: str, created_at: float) -> None:
         aid = self._remote_agent(agent_name)
@@ -1330,163 +1195,14 @@ class RomNetwork(Network):
             db.execute("INSERT INTO events(project_id,agent_id,kind,detail,created_at) VALUES(?,?,?,?,?)",
                        (project_id, aid, kind, detail, created_at))
 
-    def _remote_function(self, slug: str, vram: int, identity=None):
-        pid = self._project(slug)["id"]
-        if identity is not None and "unit" in identity and "rom_offset" in identity:
-            return self.store.one("SELECT * FROM functions WHERE project_id=? AND unit=? AND rom_offset IS ? AND vram=?",
-                                  pid, identity["unit"], identity["rom_offset"], vram)
-        rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram=?", pid, vram)
-        if len(rows) > 1:
-            raise NetworkError("the room needs module-aware function identities for overlapping addresses")
-        return rows[0] if rows else None
 
-    def apply_remote_match(self, slug: str, vram: int, source: str, agent_name: str, identity=None) -> None:
-        proj = self._project(slug)
-        aid = self._remote_agent(agent_name)
-        row = self._remote_function(slug, vram, identity)
-        with self.store.tx() as db:
-            if row is None or row["status"] == "matched":
-                return
-            db.execute("UPDATE functions SET status='matched', matched_source=?, matched_agent_id=?, matched_at=?, "
-                       "best_score=0, best_source=? WHERE id=?", (source, aid, time.time(), source, row["id"]))
-            db.execute("DELETE FROM claims WHERE function_id=?", (row["id"],))
 
-    def apply_remote_match_named(self, slug: str, name: str, agent_name: str) -> None:
-        """A git project's room: who matched a function (the code itself arrives with the host's commits)."""
-        proj = self._project(slug)
-        aid = self._remote_agent(agent_name)
-        with self.store.tx() as db:
-            row = db.execute("SELECT id, status, matched_agent_id FROM functions WHERE project_id=? AND name=?",
-                             (proj["id"], name)).fetchone()
-            if row is None:
-                return
-            if row["status"] != "matched":
-                db.execute("UPDATE functions SET status='matched', matched_agent_id=?, matched_at=? WHERE id=?",
-                           (aid, time.time(), row["id"]))
-            elif row["matched_agent_id"] is None:
-                db.execute("UPDATE functions SET matched_agent_id=? WHERE id=?", (aid, row["id"]))
-            db.execute("DELETE FROM claims WHERE function_id=?", (row["id"],))
 
-    def apply_remote_note_named(self, slug: str, function: str | None, text: str, agent_name: str, created_at: float) -> None:
-        proj = self._project(slug)
-        row = self.store.one("SELECT id FROM functions WHERE project_id=? AND name=?", proj["id"], function) if function else None
-        fid = row["id"] if row else None
-        if self.store.one("SELECT 1 FROM notes WHERE project_id=? AND text=? AND function_id IS ?", proj["id"], text, fid):
-            return
-        aid = self._remote_agent(agent_name)
-        with self.store.tx() as db:
-            db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
-                       (proj["id"], fid, aid, text, created_at))
 
-    def apply_remote_best(self, slug: str, vram: int, score: int, source: str, identity=None) -> None:
-        proj = self._project(slug)
-        row = self._remote_function(slug, vram, identity)
-        if row is None:
-            return
-        with self.store.tx() as db:
-            db.execute("UPDATE functions SET best_score=?, best_source=? WHERE id=? AND status='open' "
-                       "AND (best_score IS NULL OR best_score > ?)", (score, source, row["id"], score))
 
-    def apply_remote_note(self, slug: str, host_id: int, vram: int | None, text: str, agent_name: str, created_at: float, identity=None) -> None:
-        proj = self._project(slug)
-        fid = None
-        if vram is not None:
-            row = self._remote_function(slug, vram, identity)
-            fid = row["id"] if row else None
-        if self.store.one("SELECT 1 FROM notes WHERE project_id=? AND text=? AND function_id IS ?", proj["id"], text, fid):
-            return
-        aid = self._remote_agent(agent_name)
-        with self.store.tx() as db:
-            db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
-                       (proj["id"], fid, aid, text, created_at))
 
-    def apply_remote_context(self, slug: str, header: str, host_version: int, unit="") -> None:
-        proj = self._project(slug)
-        if self._context(proj["id"], unit)["header"] == header and (not unit or unit in self._unit_contexts(proj["id"])):
-            return
-        with self.store.tx() as db:
-            version = self._next_version(db, proj["id"])
-            db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "
-                       "VALUES(?,?,?,?,?,?,?)", (proj["id"], version, header, None, f"from the room (host v{host_version})",
-                                                  time.time(), unit))
 
-    def apply_remote_compilers(self, slug: str, default: dict, overrides: dict) -> None:
-        raise NetworkError("cartridge compiler sync was removed")
 
-    def apply_remote_layout(self, slug: str, functions: list[dict], symbols: list[dict]) -> None:
-        """Mirror names/splits using cartridge identity, including exclusive overlays."""
-        proj = self._project(slug)
-        pid = proj["id"]
-        renamed = {}
-        for f in sorted(functions, key=lambda f: (f.get("unit", ""), f["vram"])):
-            row = self._remote_function(slug, f["vram"], f)
-            if row is None:
-                owners = self.store.all("SELECT * FROM functions WHERE project_id=? AND vram < ? AND vram+size > ?",
-                                        pid, f["vram"], f["vram"])
-                owners = [r for r in owners if "unit" not in f or (r["unit"] == f["unit"] and
-                          r["rom_offset"] is not None and r["rom_offset"] + f["vram"] - r["vram"] == f["rom_offset"])]
-                if len(owners) != 1 or owners[0]["status"] == "matched":
-                    raise NetworkError("the room's function split does not belong to one local module")
-                owner = owners[0]
-                rf = self._parse_asm(owner["name"], owner["asm"], owner["unit"])
-                head, tail = split.split_function(rf, f["vram"], f["name"])
-                syms = self.symbols(pid)
-                syms.add(Symbol(f["name"], f["vram"], tail.size, "func"))
-                th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
-                with self.store.tx() as db:
-                    db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL WHERE id=?",
-                               (head.size, len(head.lines), th.code, json.dumps(th.to_json()), self._asm_source(head), owner["id"]))
-                    db.execute("INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,unit,vram,rom_offset) "
-                               "VALUES(?,?,?,?,?,?,?,?,?,?)", (pid, f["name"], tail.size, len(tail.lines), tt.code,
-                                json.dumps(tt.to_json()), self._asm_source(tail), owner["unit"], f["vram"], tail.rom))
-                    db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
-                               (pid, f["name"], f["vram"], tail.size, "func"))
-                row = self._remote_function(slug, f["vram"], f)
-            if row["name"] != f["name"]:
-                renamed[row["name"]] = f["name"]
-                with self.store.tx() as db:
-                    db.execute("UPDATE functions SET name=? WHERE id=?", (f["name"], row["id"]))
-                    db.execute("DELETE FROM symbols WHERE project_id=? AND name=?", (pid, row["name"]))
-                    db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
-                               (pid, f["name"], row["vram"], row["size"], "func"))
-        # Function names already follow their stable module/file coordinates.
-        # Other symbols carry the host's previous name, avoiding address-only
-        # renames when several overlays reuse the same address.
-        for sym in symbols:
-            if self.store.one("SELECT 1 FROM symbols WHERE project_id=? AND name=? AND address=?", pid, sym["name"], sym["address"]):
-                continue
-            old = sym.get("previous")
-            if isinstance(old, list):
-                old = next((n for n in old if self.store.one("SELECT 1 FROM symbols WHERE project_id=? AND name=? AND address=?",
-                            pid, n, sym["address"]) or (sym.get("unit") and self._symbol_module(proj, n) == sym["unit"])), None)
-            if not old:
-                candidates = self.store.all("SELECT name FROM symbols WHERE project_id=? AND address=?", pid, sym["address"])
-                if len(candidates) == 1:
-                    old = candidates[0]["name"]
-            if old and old != sym["name"]:
-                renamed[old] = sym["name"]
-            with self.store.tx() as db:
-                if old:
-                    db.execute("DELETE FROM symbols WHERE project_id=? AND name=?", (pid, old))
-                db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
-                           (pid, sym["name"], sym["address"], sym["size"], sym["kind"]))
-        if renamed:
-            word = re.compile(r"\b(" + "|".join(re.escape(n) for n in renamed) + r")\b")
-            rewrite = lambda text: word.sub(lambda m: renamed[m[0]], text) if text else text
-            with self.store.tx() as db:
-                for row in db.execute("SELECT id,matched_source,best_source FROM functions WHERE project_id=?", (pid,)).fetchall():
-                    db.execute("UPDATE functions SET matched_source=?,best_source=? WHERE id=?",
-                               (rewrite(row["matched_source"]), rewrite(row["best_source"]), row["id"]))
-                cfg = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (pid,)).fetchone()["config"])
-                cfg["function_compilers"] = {renamed.get(n, n): v for n, v in cfg.get("function_compilers", {}).items()}
-                cfg["symbol_modules"] = {renamed.get(n, n): v for n, v in cfg.get("symbol_modules", {}).items()}
-                cfg["symbol_modules"].update({s["name"]: s["unit"] for s in symbols if s.get("unit")})
-                db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), pid))
-        elif any(s.get("unit") for s in symbols):
-            self._update_cfg(slug, lambda cfg: cfg.setdefault("symbol_modules", {}).update(
-                {s["name"]: s["unit"] for s in symbols if s.get("unit")}))
-        self._syms.pop(pid, None)
-        self._xrefs.pop(pid, None)
 
     # ------------------------------------------------------------------ export
 
@@ -1509,6 +1225,7 @@ class RomNetwork(Network):
         try:result=export(games,output,title=title,renderer=renderer,log=log)
         except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
+        result["project"] = self.pc_projects.remember(Path(result["path"]), result["manifest"], verified=result.get("integrity_verified", False))
         return result
 
     def generate_ps2_pc(self, game: Path, *, confirmed=False, profile=None, renderer='auto', log=print):
@@ -1523,6 +1240,7 @@ class RomNetwork(Network):
         try:result=export(game,output,profile=profile,renderer=renderer,log=log)
         except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
+        result["project"] = self.pc_projects.remember(Path(result["path"]), result["manifest"], verified=result.get("integrity_verified", False))
         return result
 
     def generate_gba_pc(self, game: Path, *, confirmed=False, save_type='auto', renderer='auto', log=print):
@@ -1537,6 +1255,7 @@ class RomNetwork(Network):
         try:result=export_game(game,output,save_type=save_type,renderer=renderer,log=log)
         except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
+        result["project"] = self.pc_projects.remember(Path(result["path"]), result["manifest"], verified=result.get("integrity_verified", False))
         return result
 
     def generate_ctr_pc(self,game:Path,*,confirmed=False,renderer='auto',feedback=(),log=print):
@@ -1552,6 +1271,7 @@ class RomNetwork(Network):
         try:result=export_game(game,output,renderer=renderer,feedback=feedback)
         except (pc.PCError,ValueError,OSError) as error:raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
+        result["project"] = self.pc_projects.remember(Path(result["path"]), result["manifest"], verified=result.get("integrity_verified", False))
         return result
 
     def generate_ds_pc(self, game: Path, *, confirmed=False, input_format='auto', save_type='auto',
@@ -1572,6 +1292,7 @@ class RomNetwork(Network):
         except (pc.PCError, ValueError, OSError) as error:
             raise NetworkError(str(error)) from error
         log('Native PC source project: '+result['path'])
+        result["project"] = self.pc_projects.remember(Path(result["path"]), result["manifest"], verified=result.get("integrity_verified", False))
         return result
 
     def export_rom(self, slug: str, log=print, *, format="matching", save_type='auto',renderer='auto',ps2_profile=None) -> dict:
@@ -1724,17 +1445,8 @@ class RomNetwork(Network):
                       "reason": cfg["psx_disc"].get("reason")} if cfg.get("psx_disc") else None),
             "disc_set": cfg.get("psx_disc_set"),
             "exportable": bool(cfg["rom"].get("boot_utility")) or cfg.get("platform", "") in ("psx", "ps2", "gba"),
-            "room": self._room_info(proj["slug"]),
         }
 
-    def _room_info(self, slug: str) -> dict | None:
-        if slug in self.links:
-            link = self.links[slug]
-            return {"role": "guest", "host": link.url, "member": link.member, "error": link.error,
-                    "members": link.members, "connected": time.time() - link.last_ok < 15}
-        if slug in self.rooms:
-            return {"role": "host", "members": self.rooms[slug].members()}
-        return None
 
     def function_map(self, slug: str) -> list[dict]:
         proj = self._project(slug)
@@ -1743,13 +1455,9 @@ class RomNetwork(Network):
             "a.name AS agent, m.name AS matched_by FROM functions f LEFT JOIN claims c ON c.function_id=f.id "
             "LEFT JOIN agents a ON a.id=c.agent_id LEFT JOIN agents m ON m.id=f.matched_agent_id "
             "WHERE f.project_id=? ORDER BY f.vram, f.unit, f.id", proj["id"])
-        link = self.links.get(slug)
-        # who works on what in the room: by address, or by name in a git project (its functions have no addresses)
-        key = (lambda r: r["name"]) if link is not None and link.fork else (lambda r: r["vram"])
-        remote = {key(c): "@" + c["agent"] for c in (link.claims if link is not None else [])}
         return [{"name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
-                 "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
-                 "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
+                 "status": r["status"] if r["status"] in ("matched", "asm") else "working" if r["agent"] else "open",
+                 "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"],
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"]} for r in rows]
 
     def map_signature(self, slug: str) -> str:
@@ -1762,9 +1470,7 @@ class RomNetwork(Network):
                            "COALESCE(MAX(matched_at), 0) AS ma FROM functions WHERE project_id=?", proj["id"])
         c = self.store.one("SELECT COUNT(*) AS n, COALESCE(SUM(c.function_id * 31 + c.agent_id), 0) AS k FROM claims c "
                            "JOIN functions f ON f.id=c.function_id WHERE f.project_id=?", proj["id"])
-        link = self.links.get(slug)
-        remote = sorted(str(x.get("vram") or x.get("name")) + x.get("agent", "") for x in (link.claims if link else []))
-        return f"{f['n']}.{f['hi']}.{f['at']}.{f['m']}.{f['bs']}.{f['ma']}.{c['n']}.{c['k']}.{hash(tuple(remote)) & 0xFFFFFF}"
+        return f"{f['n']}.{f['hi']}.{f['at']}.{f['m']}.{f['bs']}.{f['ma']}.{c['n']}.{c['k']}"
 
     # ------------------------------------------------------------------ what agents spend, and steering them
 
@@ -1873,10 +1579,9 @@ class RomNetwork(Network):
         proj = self._project(slug)
         try_one = try_one or self._autopilot_one
         try:  # identical code first: free, and it takes those functions off the drafts' list
-            if slug not in self.links:  # (a room member's matches come from the host)
-                job = self.twins.full_pass(slug)
-                state["twins"] = job.matched
-                state["matched"] += job.matched
+            job = self.twins.full_pass(slug)
+            state["twins"] = job.matched
+            state["matched"] += job.matched
         except Exception as e:
             logging.getLogger("decomp.wtf").info("autopilot twins: %s", e)
         state["phase"] = "drafts"
@@ -1914,7 +1619,7 @@ class RomNetwork(Network):
     def on_match(self, proj, function_id: int, agent: Agent | None = None) -> None:
         """Its twins get its code, at once. (Not for the full twins pass's own matches while it runs: it tries
         those twins itself.)"""
-        if proj is None or self.is_assembly(proj) or proj["slug"] in self.links:
+        if proj is None or self.is_assembly(proj):
             return
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
             return
@@ -2107,11 +1812,6 @@ class RomNetwork(Network):
             "SELECT f.name, f.n_insns, f.best_score, f.attempts, a.name AS agent, c.claimed_at FROM claims c "
             "JOIN functions f ON f.id=c.function_id JOIN agents a ON a.id=c.agent_id WHERE f.project_id=?", proj["id"])
         claims = [dict(c) for c in claims]
-        if slug in self.links:
-            for c in self.links[slug].claims:
-                row = self._remote_function(slug, c["vram"], c)
-                if row:
-                    claims.append(dict(row) | {"agent": "@" + c["agent"], "claimed_at": None})
         return {"events": [dict(e) for e in reversed(events)], "attempts": [dict(t) for t in reversed(attempts)],
                 "claims": claims, "overview": self.overview(slug)}
 
@@ -2137,8 +1837,6 @@ class RomNetwork(Network):
         if cfg.get("platform") != "psx" or not self.is_rom(proj):
             raise NetworkError("per-function compiler profiles require a PS1 project")
         from ..rom.psx_modules import profile
-        if slug in self.links:
-            raise NetworkError("change compiler profiles on the room host, then sync this member")
         fn = self._function(function, slug)
         original_config = json.loads(proj["config"])
         original_override = original_config.get("function_compilers", {}).get(fn["name"])
