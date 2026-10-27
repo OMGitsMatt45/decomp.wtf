@@ -1,5 +1,6 @@
 # Build-selected CPU policy. Reference builds preserve the original ISA engines.
 option(DECOMP_PS2_REFERENCE "Build the separate instruction-reference player" OFF)
+set(_decomp_ps2_vu_options "$<$<CXX_COMPILER_ID:MSVC>:/O1>" "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-O1>")
 set(DECOMP_PS2_PLAYER ps2_pc)
 if(DECOMP_PS2_REFERENCE)
   set(DECOMP_PS2_PLAYER ps2_probe)
@@ -20,7 +21,7 @@ else()
   target_compile_definitions(ps2_runtime PRIVATE DECOMP_PS2_NATIVE_VU=1)
   target_include_directories(ps2_runtime PRIVATE "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu")
   set_source_files_properties(${VU_NATIVE_OPERATIONS} TARGET_DIRECTORY ps2_runtime
-    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
 endif()
 
 option(DECOMP_PS2_BUILD_NATIVE_TESTS "Build original native IOP/vector execution probes" OFF)
@@ -32,6 +33,7 @@ if(DECOMP_PS2_BUILD_NATIVE_TESTS)
     file(GLOB TEST_VU_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/vu/*.cpp")
     file(GLOB TEST_IOP_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/iop/*.cpp")
     target_sources(ps2_vu_probe PRIVATE ${TEST_VU_OPERATIONS})
+    set_source_files_properties(${TEST_VU_OPERATIONS} PROPERTIES COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
     target_sources(ps2_iop_probe PRIVATE ${TEST_IOP_OPERATIONS})
     target_compile_definitions(ps2_vu_probe PRIVATE DECOMP_PS2_NATIVE_VU=1)
     target_compile_definitions(ps2_iop_probe PRIVATE DECOMP_PS2_NATIVE_IOP=1)

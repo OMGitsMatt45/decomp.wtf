@@ -95,17 +95,20 @@ def patch(root):
 def generate(catalog,folder):
     folder=Path(folder);folder.mkdir(parents=True)
     words=sorted(catalog.words);declarations=[];entries=[]
-    for start in range(0,len(words),32):
+    # Each pair instantiates both hardware units and the pipeline conductor.
+    # Small translation units bound compiler memory for retail-sized catalogs.
+    batch=8
+    for start in range(0,len(words),batch):
         text=['// Generated native operations from original input bytes.',
               '#include "decomp_vu_catalog.hpp"','#include "decomp_vu_native.inl"']
-        for index,word in enumerate(words[start:start+32],start):
+        for index,word in enumerate(words[start:start+batch],start):
             for unit in (0,1):
                 name=f'decomp_vu{unit}_pair{index}'
                 declaration=f'bool {name}(VU1Interpreter&,uint64_t,uint32_t);';declarations.append(declaration)
                 text.append(f'bool {name}(VU1Interpreter& vu,uint64_t budget,uint32_t size){{'
                     f'return ps2_vu_program::Access::decompNativePair<VU1Interpreter::Unit::VU{unit},0x{word:016x}ull>(vu,budget,size);}}')
             entries.append('{'+f'0x{word:016x}ull,decomp_vu0_pair{index},decomp_vu1_pair{index}'+'}')
-        (folder/f'pairs{start//32}.cpp').write_text('\n'.join(text)+'\n')
+        (folder/f'pairs{start//batch}.cpp').write_text('\n'.join(text)+'\n')
     text=['#include "decomp_vu_catalog.hpp"','#include <algorithm>',*declarations]
     if entries:
         text.extend(['namespace {struct Entry{uint64_t word;DecompVuFunction unit0,unit1;};',
