@@ -316,7 +316,14 @@ struct Display::Impl {
             SDL_GetRendererOutputSize(software,&width,&height);
             if(options.readback) {
                 last_pixels.resize(size_t(width)*height);
-                check(SDL_RenderReadPixels(software,nullptr,SDL_PIXELFORMAT_ARGB8888,last_pixels.data(),width*4)==0,SDL_GetError());
+                // SDL reads only the current viewport. Disable logical sizing
+                // for a full-drawable capture, including the letterbox area.
+                int logical_w,logical_h;SDL_RenderGetLogicalSize(software,&logical_w,&logical_h);
+                check(SDL_RenderSetLogicalSize(software,0,0)==0,SDL_GetError());
+                SDL_RenderSetViewport(software,nullptr);
+                const int captured=SDL_RenderReadPixels(software,nullptr,SDL_PIXELFORMAT_ARGB8888,last_pixels.data(),width*4);
+                const int restored=SDL_RenderSetLogicalSize(software,logical_w,logical_h);
+                check(captured==0&&restored==0,SDL_GetError());
             }
             SDL_RenderPresent(software);return;
         }

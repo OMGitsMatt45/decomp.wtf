@@ -48,6 +48,7 @@ endif()
     done=subprocess.run(command,cwd=tmp_path,env=env,capture_output=True,text=True,timeout=60)
     assert done.returncode==0,done.stdout+done.stderr
     assert 'GPU geometry, two LCDs' in done.stdout
+    assert 'Software full-window readback checks passed' in done.stdout
     for name in ('dual',):
         data=(tmp_path/(name+'.ppm')).read_bytes()
         assert data.startswith(b'P6\n960 540\n255\n') and len(data)==len(b'P6\n960 540\n255\n')+960*540*3
