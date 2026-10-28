@@ -142,6 +142,18 @@ int main() {
         require(display.captured_pixels()==256*192,"retired raster metadata is not counted as replayed");
         require(pixels[412+154*1031]==0xff0000ff,"retired raster never aliases a newer captured scene");
         std::cout<<"Captured VRAM raster history, source mapping, UI and resize checks passed\n";
+        // Even an unmasked offscreen replay must clip huge submitted vertices
+        // to their DS viewport rather than spilling across its clear border.
+        {
+            auto inset=scene;inset.serial=27;inset.clear_color=(31u<<16)|(31u<<10);
+            inset.polygons[0].viewport=(143u<<24)|(191u<<16)|(48u<<8)|64u;
+            std::deque<video::Scene> inset_history{inset};
+            for(unsigned i=0;i<256*192;++i)top_tags[i]=(27ull<<16)|(i+1);
+            video::Frame inset_frame{nullptr,top.data(),bottom.data(),mask.data(),false,top_tags.data(),bottom_tags.data(),&inset_history};
+            SDL_SetWindowSize(window,960,540);SDL_PumpEvents();display.present(inset_frame);pixels=display.read_pixels();
+            require(pixels[350+135*960]==0xff0000ff&&pixels[480+135*960]==0xff00ff00,
+                "offscreen geometry clips to its viewport and retains the clear border");
+        }
         // Software capture must read the entire window, not the letterboxed
         // viewport packed against its left edge. Touch must keep its mapping.
         {
