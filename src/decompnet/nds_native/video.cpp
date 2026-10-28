@@ -135,7 +135,8 @@ void main(){
    if(textured){float t6=ta==0?0:ta*2+1,a6=a==0?0:a*2+1;a=floor(floor(((t6+1)*(a6+1)-1)/64)/2);}}
  if(a==0 || a<float(alpha_ref))discard;
  pixel=vec4(floor(shade/2)/31,a/31);
- gl_FragDepth=wbuffer?clamp((1/gl_FragCoord.w)/4096,0,1):gl_FragCoord.z;
+ // DS far Z is 0xfffffe, below the maximum 0xffffff clear depth.
+ gl_FragDepth=wbuffer?clamp((1/gl_FragCoord.w)/4096,0,1):gl_FragCoord.z*(16777214.0/16777215.0);
 }
 )GLSL";
 const char* flat_vertex=R"GLSL(#version 330 core

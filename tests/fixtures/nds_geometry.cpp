@@ -129,5 +129,13 @@ int main() {
     if(!require(gpu.geometry_view().polygons[0].perspective,"later matrix changes do not rewrite rendered projection metadata"))return 13;
     begin(gpu);triangle(gpu);frame(gpu);
     if(!require(!gpu.geometry_view().polygons[0].perspective,"next geometry records its own projection type"))return 14;
+    // The native raster confirms the depth contract used by host GPU replay.
+    gpu.reset();begin(gpu);
+    for(const auto point:std::array<std::array<int,2>,3>{{{-1024,-1024},{1024,-1024},{0,1024}}}) {
+        send(gpu,0x23,std::uint16_t(point[0])|(std::uint32_t(std::uint16_t(point[1]))<<16));
+        send(gpu,0x23,4096);
+    }
+    frame(gpu);
+    if(!require(gpu.geometry_view().polygon_count==1,"native far-plane triangle remains visible")||!visible(gpu))return 15;
     std::cout << "Geometry rejection, clipping, strips and finite RAM passed\n";
 }

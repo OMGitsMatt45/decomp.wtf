@@ -88,6 +88,11 @@ int main() {
         auto occluded=scene;occluded.clear_depth=0;frame.scene=&occluded;
         display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xff0000ff,"DS clear depth rejects geometry behind it");
+        // DS Z maps the far plane to 0xfffffe, below its maximum clear value.
+        // OpenGL's ordinary z=1 mapping would incorrectly reject this geometry.
+        auto far_plane=scene;for(auto& v:far_plane.vertices)v.clip[2]=v.clip[3];
+        frame.scene=&far_plane;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xff00ff00,"DS far-plane geometry remains in front of maximum clear depth");
         // A conservative unsupported effect keeps the complete software frame.
         textured.supported=false;frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xff0000ff,"unsupported effects retain complete native output");
