@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -242,6 +242,8 @@ def _runtime(sdk, root):
     patch_capture(target)
     from .foreground_patch import patch as patch_foreground
     patch_foreground(target)
+    from .obj_capture_patch import patch as patch_obj_capture
+    patch_obj_capture(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -308,6 +310,9 @@ void Machine::Impl::enable_dma'''
     if text.count(before)!=1:raise pc.PCError('pinned DS runtime entry hint patch no longer matches source')
     path.write_text(text.replace(before,''),encoding='utf-8')
     (target/'DECOMP_WTF_PATCHES.md').write_text('''# decomp.wtf runtime changes
+
+Captured-scene provenance and native foreground metadata follow bitmap OBJ
+through VRAM mappings, transforms and compositing, as well as background layers.
 
 Optional captured-3D origins retain generation and source coordinates through\nVRAM captures and direct bitmaps. CPU/DMA writes invalidate touched texels;\nblended/brightness/overlapping mappings remain native. Tracking is opt-in and\nchanges no emulated colours or registers.\nBase: 0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931 (MIT).
 ARM9 DMA fill latches have explicit byte/halfword/word storage handling, including
