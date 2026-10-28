@@ -91,6 +91,24 @@ int main() {
         require(display.width()==320&&display.height()==720,"portrait drawable resolution");
         require(pixels[2+362*320]==0xffff0000,"portrait layout keeps left-edge UI on screen");
         require(display.touch(160,480,x,y)&&x==128&&y==96,"portrait touch coordinates follow fitted UI");
+        // Software capture must read the entire window, not the letterboxed
+        // viewport packed against its left edge. Touch must keep its mapping.
+        {
+            video::Display software({"software",960,540,false,true});
+            top.fill(0xffff0000);bottom.fill(0xff00ff00);mask.fill(0);
+            video::Frame screens{nullptr,top.data(),bottom.data(),mask.data(),false};
+            software.present(screens);pixels=software.read_pixels();
+            require(pixels.size()==960*540,"software full-window dimensions");
+            require(pixels[10+10*960]==0xff000000&&pixels[950+10*960]==0xff000000,"software captures both letterboxes");
+            require(pixels[480+135*960]==0xffff0000&&pixels[480+405*960]==0xff00ff00,"software captures LCDs at actual window positions");
+            require(software.touch(480,405,x,y)&&x==128&&y==96,"software capture restores logical touch mapping");
+            auto* second=SDL_GetWindowFromID(2);require(second,"software SDL window exists");
+            SDL_SetWindowSize(second,320,720);SDL_PumpEvents();software.present(screens);pixels=software.read_pixels();
+            require(pixels.size()==320*720&&pixels[160+60*320]==0xff000000,"software captures portrait letterboxing");
+            require(pixels[160+240*320]==0xffff0000&&pixels[160+480*320]==0xff00ff00,"software portrait LCD positions");
+            require(software.touch(160,480,x,y)&&x==128&&y==96,"software capture restores resized touch mapping");
+            std::cout<<"Software full-window readback checks passed\n";
+        }
         std::cout<<"GPU geometry, two LCDs, UI, texture and touch checks passed: "<<display.device()<<'\n';
     } catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     SDL_Quit();return 0;
