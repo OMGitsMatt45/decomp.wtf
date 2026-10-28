@@ -250,6 +250,8 @@ def _runtime(sdk, root):
     patch_scene_effects(target)
     from .geometry_capacity_patch import patch as patch_geometry_capacity
     patch_geometry_capacity(target)
+    from .guest_work_patch import patch as patch_guest_work
+    patch_guest_work(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
