@@ -78,5 +78,36 @@ int main(){try{
   capture(other,2,2,16);other.io_write(0x04000240,0,8);other.io_write(0x04000241,0,8);other.io_write(0x04000242,0x81,8);bitmap(other);lines(other);
   check(other.screen_top_foreground()[at]==known,"zero-weight invalid capture source is ignored");
  }
+ // A captured world may be displayed as bitmap OBJ on either engine,
+ // alternating with a bitmap BG on the other LCD. It is still scene data.
+ for(bool main:{true,false}) {
+  dsr::Gpu2D objects;objects.attach_gpu3d(&three);objects.set_capture_origin_tracking(true);
+  objects.io_write(0x04000304,0x820f,16);const unsigned bank=main?0:3,engine=main?0x04000000:0x04001000;
+  const unsigned oam=main?0x07000000:0x07000400,vram=main?0x06400000:0x06600000;
+  for(unsigned i=0;i<128;++i)objects.arm9_write(oam+i*8,0x0200,16);
+  capture(objects,bank);objects.io_write(0x04000240+bank,main?0x82:0x84,8);
+  objects.io_write(engine,0x11020,32);objects.io_write(engine+0x50,1u<<13,16);
+  objects.arm9_write(oam,0x0c00,16);objects.arm9_write(oam+2,0xc000,16);objects.arm9_write(oam+4,0xf000,16);
+  auto source=[&]{return main?objects.screen_top_origins():objects.screen_bottom_origins();};
+  auto fg=[&]{return main?objects.screen_top_foreground():objects.screen_bottom_foreground();};
+  lines(objects);check(source()[at]==tag(5,10,8),"bitmap OBJ keeps full-alpha captured source identity on either engine");
+  check(fg()[at]==known,"bitmap OBJ captured scenery does not become a duplicate native foreground");
+  const auto native=main?objects.screen_top()[at]:objects.screen_bottom()[at];
+  objects.arm9_write(oam+2,0xd000,16);lines(objects);check(source()[at]==tag(58,10,8),"flipped captured OBJ tracks exact source texel");
+  objects.arm9_write(oam+2,0xc000,16);objects.arm9_write(oam,0x0d00,16);
+  objects.arm9_write(oam+6,256,16);objects.arm9_write(oam+14,0,16);objects.arm9_write(oam+22,0,16);objects.arm9_write(oam+30,256,16);
+  lines(objects);check(source()[at]==tag(5,10,8),"affine captured OBJ retains source metadata");
+  objects.arm9_write(oam,0x1c00,16);objects.io_write(engine+0x4c,(3u<<8)|(2u<<12),16);lines(objects);
+  check(source()[at]==tag(4,9,8),"OBJ mosaic copies the selected captured texel and its provenance");
+  objects.arm9_write(oam,0x0c00,16);objects.io_write(engine+0x4c,0,16);
+  objects.arm9_write(oam+4,0x7000,16);lines(objects);check(source()[at]==0,"partial bitmap OBJ alpha is not a pure captured-scene origin");
+  objects.arm9_write(oam+4,0xf000,16);lines(objects);check(source()[at]==tag(5,10,8),"full-alpha OBJ restores pure origin");
+  objects.arm9_write(vram+at*2,objects.arm9_read(vram+at*2,16),16);lines(objects);
+  check(source()[at]==0&&source()[at+1]==tag(6,10,8),"CPU write invalidates exactly one bitmap OBJ source texel");
+  check(fg()[at]==(known|native),"invalidated OBJ texel becomes ordinary native foreground");
+  objects.arm9_write(vram+at*2,0,16);lines(objects);check(source()[at]==0&&fg()[at]==known,"transparent bitmap OBJ does not retain a stale captured texel");
+  if(main){objects.io_write(0x04000241,0x82,8);lines(objects);check(source()[at+1]==0,"OR-mapped OBJ banks reject ambiguous captured origins");}
+  objects.set_capture_origin_tracking(false);lines(objects);check(!objects.screen_top_origins()&&!objects.screen_bottom_foreground(),"bitmap OBJ tracking remains optional");
+ }
  std::cout<<checks<<" original captured-3D provenance checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
