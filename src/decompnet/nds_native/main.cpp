@@ -4,6 +4,7 @@
 #include <dsr/gpu2d.h>
 #include <dsr/gpu3d.h>
 #include <cmath>
+#include <algorithm>
 #include <dsr/periph.h>
 #include <filesystem>
 #include <fstream>
@@ -43,7 +44,8 @@ void ppm(const std::filesystem::path& path,const uint32_t* pixels,unsigned width
 #ifdef NDS_WITH_SDL
 struct Display {
     std::unique_ptr<video::Display> video;
-    video::Scene pending,latched;
+    video::Scene pending,latched;bool pending_ready=false;
+    std::deque<video::Scene> history;
     SDL_AudioDeviceID audio=0;
     SDL_AudioStream* resampler=nullptr;
     explicit Display(video::Options options) {
@@ -86,7 +88,7 @@ struct Display {
     void present(dsr::Session& session) {
         const auto& gpu=session.machine().gpu2d();
         video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
-                        (gpu.frame_view().powcnt1&(1u<<15))!=0});
+                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history});
         if(SDL_AudioStreamPut(resampler,session.audio_data(),int(session.audio_frames()*4))!=0)
             throw std::runtime_error(SDL_GetError());
         const int available=SDL_AudioStreamAvailable(resampler);
@@ -171,7 +173,8 @@ int main(int argc,char** argv) {
             display=std::make_unique<Display>(video::Options{renderer,int(width),int(height),fullscreen,!capture.empty()});
             if(display->video->renderer()=="opengl") {
                 session.machine().gpu3d().set_capture_opaque_only(true);
-                session.machine().gpu3d().on_render_complete=[&]{display->pending=video::Scene::capture(session.machine());};
+                session.machine().gpu2d().set_capture_origin_tracking(true);
+                session.machine().gpu3d().on_render_complete=[&]{display->pending=video::Scene::capture(session.machine());display->pending_ready=true;};
             }
         }
         uint64_t deadline=SDL_GetPerformanceCounter();
@@ -182,7 +185,13 @@ int main(int argc,char** argv) {
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
             if(display && !display->input(input))break;
-            if(display)display->latched=std::move(display->pending);
+            if(display&&display->pending_ready) {
+                auto& history=display->history;const auto serial=display->pending.serial;
+                if(!history.empty()&&serial<=history.back().serial)history.clear(); // reset
+                const auto retained=session.machine().gpu2d().capture_origin_generations();
+                std::erase_if(history,[&](const video::Scene& scene){return scene.serial!=display->latched.serial&&std::find(retained.begin(),retained.end(),scene.serial)==retained.end();});
+                display->latched=display->pending;history.push_back(std::move(display->pending));display->pending_ready=false;
+            }
 #endif
             session.step(input);audio_samples+=session.audio_frames();
             // Commit dirty cartridge bytes during play as well as on exit.
@@ -314,7 +323,7 @@ int main(int argc,char** argv) {
             auto& video=*display->video;
             std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
                 <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()
-                <<",\"polygons_drawn\":"<<video.polygons_drawn()<<"}";
+                <<",\"polygons_drawn\":"<<video.polygons_drawn()<<",\"captured_pixels\":"<<video.captured_pixels()<<"}";
             session.machine().gpu3d().on_render_complete=nullptr;
         }
 #endif

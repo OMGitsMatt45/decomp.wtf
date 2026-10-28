@@ -109,8 +109,12 @@ fallback when OpenGL is unavailable; `opengl` requires a working context.
 The runtime captures an owned geometry/texture/mask snapshot at the actual 3D
 render boundary. The host latches it before the following DS frame, matching
 the 3D engine's one-frame pipeline. GPU pixels replace the eligible 3D part of
-the DS composition. Display capture, UI and guarded effects retain the native
-renderer; this path draws geometry rather than only scaling a framebuffer.
+the DS composition. Captured VRAM images retain the serial and source coordinates of the
+completed 3D raster that produced each unmodified pixel. The host retains those
+owned scenes while VRAM or an LCD references them, renders each to a drawable-size
+GPU target, and replays affine source mappings without replacing UI pixels.
+CPU/DMA writes, genuine 2D blends, brightness changes and ambiguous overlapping
+banks invalidate that provenance. Unknown or guarded effects retain native pixels; this path draws geometry rather than only scaling a framebuffer.
 
 The two LCDs retain their native aspect ratios. Touch maps only to the displayed
 lower LCD. Menus, 2D-only games and guarded effects keep their original output.
@@ -126,7 +130,8 @@ path against headless frame/tick/screen results. Linux qualification executes
 OpenGL through Mesa; cloud testing does not measure physical graphics-card
 performance. Windows qualification builds the same host and exercises software
 presentation. `--capture` includes `display.ppm` at the actual drawable size;
-JSON reports the renderer, device, dimensions, both LCDs and draw count.
+JSON reports the renderer, device, dimensions, both LCDs, draw count and the
+number of native LCD texels actually replayed from captured 3D in the last frame.
 
 The original DS game supplies all required assets and audio. Mobile OBB data is
 optional enhancement material in some existing ports, and is not used here.

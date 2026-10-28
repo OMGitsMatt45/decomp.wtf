@@ -48,6 +48,7 @@ endif()
     done=subprocess.run(command,cwd=tmp_path,env=env,capture_output=True,text=True,timeout=60)
     assert done.returncode==0,done.stdout+done.stderr
     assert 'GPU geometry, two LCDs' in done.stdout
+    assert 'Captured VRAM raster history, source mapping, UI and resize checks passed' in done.stdout
     assert 'Software full-window readback checks passed' in done.stdout
     for name in ('dual',):
         data=(tmp_path/(name+'.ppm')).read_bytes()
@@ -69,6 +70,7 @@ endif()
     records=[line for line in done.stdout.splitlines() if line.startswith('{"frames":')]
     assert len(records)==1,done.stdout+done.stderr
     result=json.loads(records[0])
+    assert result['video']['captured_pixels']>0
     assert result['video']['renderer']=='opengl' and result['video']['polygons_drawn']>0
     assert result['video']['width']==960 and result['video']['height']==540
     assert all(result[key]==reference[key] for key in ('frames','ticks','top_hash','bottom_hash','cpu_pc','unimplemented_io'))

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: CC0-1.0. Original GPU/presentation qualification.
 #include "video.hpp"
 #include <dsr/gpu2d.h>
+#include <dsr/rt.h>
+#include <dsr/mem.h>
 #include <fstream>
 #include <iostream>
+#include <cmath>
 #include <stdexcept>
 
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
@@ -32,7 +35,25 @@ int main() {
         auto scene=video::Scene::capture(machine);
         require(scene.vertices.size()==4&&scene.polygons.size()==1,"capture original submitted quad");
         require(scene.vertices[0].clip[0]<-1&&scene.safe[128+96*256],"capture preclip geometry and opaque eligibility");
-        gpu.reset(); // A borrowed geometry or mask pointer would now be wrong.
+        const auto raster_serial=gpu.render_serial();gpu.render_start();
+        require(gpu.render_serial()==raster_serial+1&&gpu.geometry_view().generation==scene.generation,
+            "completed rasters have distinct identities without geometry swaps");
+        auto& two=machine.gpu2d();two.set_capture_origin_tracking(true);
+        two.io_write(0x04000304,0x820f,16);two.io_write(0x04000240,0x80,8);
+        two.io_write(0x04000064,0x81300000,32);
+        for(int y=0;y<192;++y)two.render_line(y);two.vblank_start();
+        two.io_write(0x04000240,0x81,8);two.io_write(0x04000000,0x10405,32);two.io_write(0x0400000c,0x4084,16);
+        two.io_write(0x04000020,256,16);two.io_write(0x04000026,256,16);
+        for(int y=0;y<192;++y)two.render_line(y);
+        require(two.screen_top_origins()[128+96*256]!=0,"actual Machine captures 3D origin");
+        const auto address=0x06000000u+2*(128+96*256);
+        dsr::wr16(&machine.cpu(dsr::CpuId::Arm9),address,machine.read16(dsr::CpuId::Arm9,address),0);
+        for(int y=0;y<192;++y)two.render_line(y);
+        require(two.screen_top_origins()[128+96*256]==0&&two.screen_top_origins()[129+96*256]!=0,
+            "emitted CPU store invalidates captured origin through rebuilt fast pages");
+        two.set_capture_origin_tracking(false);
+        gpu.reset();gpu.render_start();require(gpu.render_serial()>raster_serial+1,"raster identity cannot alias after reset");
+        // A borrowed geometry or mask pointer would now be wrong.
         require(scene.vertices[0].clip[0]<-1&&scene.safe[128+96*256],"capture owns geometry and masks");
         std::array<uint32_t,256*192> top,bottom;top.fill(0xff0000ff);bottom.fill(0xff0000ff);
         std::array<uint8_t,256*192> mask;mask.fill(1);
@@ -91,6 +112,36 @@ int main() {
         require(display.width()==320&&display.height()==720,"portrait drawable resolution");
         require(pixels[2+362*320]==0xffff0000,"portrait layout keeps left-edge UI on screen");
         require(display.touch(160,480,x,y)&&x==128&&y==96,"portrait touch coordinates follow fitted UI");
+        // Captured VRAM displays have no live BG0 mask. Re-render the exact
+        // older raster for each LCD, at drawable resolution, preserving UI.
+        auto old=scene,newer=textured;old.serial=11;newer.serial=12;newer.supported=true;
+        std::deque<video::Scene> history{old,newer};
+        std::array<uint64_t,256*192> top_tags,bottom_tags;
+        top.fill(0xff0000ff);bottom.fill(0xff0000ff);mask.fill(0);
+        for(unsigned i=0;i<256*192;++i){top_tags[i]=(11ull<<16)|(i+1);bottom_tags[i]=(12ull<<16)|(i+1);}
+        for(unsigned yy=0;yy<16;++yy)for(unsigned xx=0;xx<16;++xx){bottom_tags[yy*256+xx]=0;bottom[yy*256+xx]=0xffffff00;}
+        video::Frame archived{nullptr,top.data(),bottom.data(),mask.data(),false,top_tags.data(),bottom_tags.data(),&history};
+        SDL_SetWindowSize(window,960,540);SDL_PumpEvents();display.present(archived);pixels=display.read_pixels();
+        require(pixels[480+135*960]==0xff00ff00&&pixels[480+405*960]==0xffff0000,
+            "two LCDs use their own archived captured raster, without live BG0");
+        require(display.captured_pixels()>90000,"captured replay reports active pixels for the current frame");
+        require(pixels[305+275*960]==0xffffff00,"captured-3D replay keeps original UI pixels");
+        // Coordinates must be applied, rather than stretching the latest scene.
+        auto& gradient=history.back();
+        for(unsigned i=0;i<64;++i){gradient.textures[0].rgba[i*4]=(i%8)<4?255:0;gradient.textures[0].rgba[i*4+1]=(i%8)<4?0:255;}
+        gradient.serial=13;
+        for(auto& v:gradient.vertices){v.clip[0]=std::copysign(1.f,v.clip[0]);v.clip[1]=std::copysign(1.f,v.clip[1]);v.u=(v.clip[0]+1)*4;v.v=4;}
+        for(unsigned yy=0;yy<192;++yy)for(unsigned xx=0;xx<256;++xx)bottom_tags[yy*256+xx]=(13ull<<16)|(yy*256+255-xx+1);
+        SDL_SetWindowSize(window,1031,617);SDL_PumpEvents();display.present(archived);pixels=display.read_pixels();
+        require(pixels[412+463*1031]==0xff00ff00&&pixels[618+463*1031]==0xffff0000,
+            "captured source coordinates survive mirroring and odd drawable resize");
+        for(unsigned yy=90;yy<102;++yy)for(unsigned xx=122;xx<134;++xx)top_tags[yy*256+xx]=0;
+        display.present(archived);pixels=display.read_pixels();
+        require(pixels[515+154*1031]==0xff0000ff,"invalidated bitmap texels keep native output");
+        history.pop_front();display.present(archived);pixels=display.read_pixels();
+        require(display.captured_pixels()==256*192,"retired raster metadata is not counted as replayed");
+        require(pixels[412+154*1031]==0xff0000ff,"retired raster never aliases a newer captured scene");
+        std::cout<<"Captured VRAM raster history, source mapping, UI and resize checks passed\n";
         // Software capture must read the entire window, not the letterboxed
         // viewport packed against its left edge. Touch must keep its mapping.
         {

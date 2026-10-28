@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -238,6 +238,8 @@ def _runtime(sdk, root):
     patch(target)
     from .geometry_patch import patch as patch_geometry
     patch_geometry(target)
+    from .capture_patch import patch as patch_capture
+    patch_capture(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -305,7 +307,7 @@ void Machine::Impl::enable_dma'''
     path.write_text(text.replace(before,''),encoding='utf-8')
     (target/'DECOMP_WTF_PATCHES.md').write_text('''# decomp.wtf runtime changes
 
-Base: 0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931 (MIT).
+Optional captured-3D origins retain generation and source coordinates through\nVRAM captures and direct bitmaps. CPU/DMA writes invalidate touched texels;\nblended/brightness/overlapping mappings remain native. Tracking is opt-in and\nchanges no emulated colours or registers.\nBase: 0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931 (MIT).
 ARM9 DMA fill latches have explicit byte/halfword/word storage handling, including
 fixed-source DMA reads. ARM7 RCNT retains its 16-bit GPIO control value without
 writing the adjacent read-only extended key input. These accesses no longer
