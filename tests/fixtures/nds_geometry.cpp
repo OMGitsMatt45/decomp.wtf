@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <memory>
 
 using dsr::Gpu3D;
@@ -147,5 +148,21 @@ int main() {
     }
     frame(gpu);
     if(!require(gpu.geometry_view().polygon_count==1,"native far-plane triangle remains visible")||!visible(gpu))return 15;
+    gpu.reset();gpu.set_host_geometry_expansion(true);gpu.set_capture_opaque_only(true);gpu.set_render_threads(2);begin(gpu,1);
+    for(int i=0;i<2500;++i) {
+        vertex(gpu,-1024,-1024);vertex(gpu,1024,-1024);vertex(gpu,1024,1024);vertex(gpu,-1024,1024);
+    }
+    frame(gpu);geometry=gpu.geometry_view();
+    if(!require(geometry.vertex_count==10000&&geometry.polygon_count==2500&&!geometry.vertex_overflow&&!geometry.polygon_overflow,
+                "opt-in expanded presentation retains additional visible geometry"))return 18;
+    if(!require(gpu.raster_view().capture_polygon_touches!=nullptr,"expanded parallel capture owns a touch counter for each polygon"))return 21;
+    bool rejected=false;try{gpu.set_host_geometry_expansion(false);}catch(const std::logic_error&){rejected=true;}
+    if(!require(rejected,"live capacity changes are rejected"))return 19;
+    gpu.reset();gpu.set_host_geometry_expansion(false);begin(gpu,1);
+    for(int i=0;i<1537;++i) {
+        vertex(gpu,-1024,-1024);vertex(gpu,1024,-1024);vertex(gpu,1024,1024);vertex(gpu,-1024,1024);
+    }
+    frame(gpu);geometry=gpu.geometry_view();
+    if(!require(geometry.vertex_count==6144&&geometry.vertex_overflow,"reset can restore strict native hardware limits"))return 20;
     std::cout << "Geometry rejection, clipping, strips and finite RAM passed\n";
 }
