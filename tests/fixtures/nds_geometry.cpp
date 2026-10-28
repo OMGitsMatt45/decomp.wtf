@@ -129,6 +129,16 @@ int main() {
     if(!require(gpu.geometry_view().polygons[0].perspective,"later matrix changes do not rewrite rendered projection metadata"))return 13;
     begin(gpu);triangle(gpu);frame(gpu);
     if(!require(!gpu.geometry_view().polygons[0].perspective,"next geometry records its own projection type"))return 14;
+    gpu.reset();send(gpu,0x10,0);
+    projection.fill(0);projection[0]=12;projection[5]=-21;projection[10]=4096;projection[15]=4096;
+    for(auto value:projection)send(gpu,0x16,std::uint32_t(value));
+    begin(gpu);triangle(gpu);frame(gpu);
+    if(!require(gpu.geometry_view().polygon_count==1 &&
+                gpu.geometry_view().polygons[0].projection_scale==std::array<std::int32_t,2>{12,-21},
+                "orthographic scale records the submitted view"))return 16;
+    send(gpu,0x10,0);send(gpu,0x15,0);
+    if(!require(gpu.geometry_view().polygons[0].projection_scale==std::array<std::int32_t,2>{12,-21},
+                "later projection writes do not change latched scale"))return 17;
     // The native raster confirms the depth contract used by host GPU replay.
     gpu.reset();begin(gpu);
     for(const auto point:std::array<std::array<int,2>,3>{{{-1024,-1024},{1024,-1024},{0,1024}}}) {

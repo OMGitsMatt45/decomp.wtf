@@ -15,11 +15,15 @@ def patch(root):
     // Observation only. Constant per-vertex W does not prove an orthographic
     // projection (a planar mesh can have constant depth in a perspective view).
     bool perspective = false;
+    // Fixed-point XY projection scale at submission, for separating distinct
+    // orthographic views. Observation only; native raster and timing ignore it.
+    std::array<std::int32_t,2> projection_scale{};
 };''')
     p.write_text(text,encoding='utf-8')
     p=root/'runtime/gpu3d/src/gpu3d.cpp'
     text=replace(p.read_text(encoding='utf-8'),
         '        polygon.viewport = get32(0x04000580U);',
         '''        polygon.viewport = get32(0x04000580U);
-        polygon.perspective = projection[3] != 0 || projection[7] != 0 || projection[11] != 0;''')
+        polygon.perspective = projection[3] != 0 || projection[7] != 0 || projection[11] != 0;
+        polygon.projection_scale = {projection[0],projection[5]};''')
     p.write_text(text,encoding='utf-8')
