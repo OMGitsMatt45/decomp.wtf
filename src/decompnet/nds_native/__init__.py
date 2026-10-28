@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -238,6 +238,8 @@ def _runtime(sdk, root):
     patch(target)
     from .geometry_patch import patch as patch_geometry
     patch_geometry(target)
+    from .projection_patch import patch as patch_projection
+    patch_projection(target)
     from .capture_patch import patch as patch_capture
     patch_capture(target)
     from .foreground_patch import patch as patch_foreground

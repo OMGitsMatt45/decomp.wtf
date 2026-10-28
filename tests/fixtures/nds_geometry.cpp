@@ -110,5 +110,24 @@ int main() {
     frame(gpu);geometry=gpu.geometry_view();
     if(!require(geometry.polygon_count==2048 && geometry.polygon_overflow &&
                 geometry.vertex_count<=6144,"visible polygon RAM remains bounded"))return 8;
+    // Projection metadata is captured at geometry submission, not inferred
+    // from W variation or sampled later from the current matrix registers.
+    gpu.reset();begin(gpu);triangle(gpu);frame(gpu);geometry=gpu.geometry_view();
+    if(!require(geometry.polygon_count==1&&!geometry.polygons[0].perspective,
+                "identity projection is orthographic"))return 9;
+    gpu.reset();send(gpu,0x10,0);
+    std::array<std::int32_t,16> projection{};
+    projection[0]=projection[5]=projection[10]=projection[15]=4096;projection[11]=4096;
+    for(auto value:projection)send(gpu,0x16,std::uint32_t(value));
+    begin(gpu);triangle(gpu);frame(gpu);geometry=gpu.geometry_view();
+    if(!require(geometry.polygon_count==1&&geometry.polygons[0].perspective,
+                "perspective classification survives a constant-depth planar mesh"))return 10;
+    for(std::size_t i=0;i<geometry.vertex_count;++i)
+        if(!require(geometry.vertices[i].clip[3]==1.f,"classification is independent of identical vertex W"))return 11;
+    if(!visible(gpu))return 12;
+    send(gpu,0x10,0);send(gpu,0x15,0);
+    if(!require(gpu.geometry_view().polygons[0].perspective,"later matrix changes do not rewrite rendered projection metadata"))return 13;
+    begin(gpu);triangle(gpu);frame(gpu);
+    if(!require(!gpu.geometry_view().polygons[0].perspective,"next geometry records its own projection type"))return 14;
     std::cout << "Geometry rejection, clipping, strips and finite RAM passed\n";
 }
