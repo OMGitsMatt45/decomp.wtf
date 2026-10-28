@@ -229,3 +229,18 @@ native text/sprites and DS alpha darkening remain separate. CPU writes invalidat
 physical capture metadata. Tracking remains opt-in and changes no DS pixels,
 registers, or timing. The standard generated player keeps its two-LCD layout;
 projection changes and layout choices belong to individual game adaptations.
+# Native SDK callbacks from a customized host
+
+Generated projects expose `Machine::post_guest_work(cpu, callback)` for native
+extensions that must invoke translated SDK code, such as streaming audio.
+Enqueue work from the machine's owning host thread. It runs on the selected
+CPU's guest fiber at a user/system checkpoint with IRQs enabled, after pending
+interrupt delivery. It can yield through SDK calls without reentering another
+queued callback. Registers and flags are restored; memory writes and charged
+execution time remain. The queue accepts 64 pending callbacks per CPU, clears
+on machine reset, and reports callback exceptions on the host stack.
+
+Captured objects must remain alive until their callback runs or reset cancels
+it. Callbacks must obey the guest SDK's calling and locking rules; this API
+does not provide a new guest thread or permission to invoke SDK code from an
+SDL audio thread.
