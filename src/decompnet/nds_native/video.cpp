@@ -16,7 +16,7 @@ Scene Scene::capture(dsr::Machine& machine) {
     Scene scene;
     auto& gpu=machine.gpu3d();
     const auto geometry=gpu.geometry_view();const auto raster=gpu.raster_view();
-    scene.generation=geometry.generation;scene.swap_mode=geometry.swap_mode;
+    scene.generation=geometry.generation;scene.serial=gpu.render_serial();scene.swap_mode=geometry.swap_mode;
     scene.vertices.assign(geometry.vertices,geometry.vertices+geometry.vertex_count);
     scene.polygons.assign(geometry.polygons,geometry.polygons+geometry.polygon_count);
     const auto order=gpu.draw_order_view();
@@ -55,6 +55,11 @@ void check(bool ok,const std::string& message){if(!ok)throw std::runtime_error(m
 // Resolve every GL symbol through SDL, including the GL 1.x entry points.
 // Windows' opengl32 exports only 1.1; no platform GL SDK/download is required.
 #define GL_FUNCTIONS(X) \
+ X(void,GenFramebuffers,(GLsizei,GLuint*)) X(void,BindFramebuffer,(GLenum,GLuint)) \
+ X(void,DeleteFramebuffers,(GLsizei,const GLuint*)) X(void,FramebufferTexture2D,(GLenum,GLenum,GLenum,GLuint,GLint)) \
+ X(GLenum,CheckFramebufferStatus,(GLenum)) X(void,GenRenderbuffers,(GLsizei,GLuint*)) \
+ X(void,BindRenderbuffer,(GLenum,GLuint)) X(void,RenderbufferStorage,(GLenum,GLenum,GLsizei,GLsizei)) \
+ X(void,FramebufferRenderbuffer,(GLenum,GLenum,GLenum,GLuint)) X(void,DeleteRenderbuffers,(GLsizei,const GLuint*)) \
  X(const GLubyte*,GetString,(GLenum)) X(GLenum,GetError,()) \
  X(void,Viewport,(GLint,GLint,GLsizei,GLsizei)) X(void,ClearColor,(GLfloat,GLfloat,GLfloat,GLfloat)) \
  X(void,ClearDepth,(GLdouble)) X(void,Clear,(GLbitfield)) X(void,Enable,(GLenum)) X(void,Disable,(GLenum)) \
@@ -141,6 +146,27 @@ const char* flat_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;uniform sampler2D image;
 void main(){pixel=texture(image,uv);}
 )GLSL";
+// A captured bitmap may be scrolled or rotated. Reconstruct subpixel source
+// coordinates only from neighbours carrying the same raster identity; coverage
+// remains nearest-neighbour so an original UI pixel is never overwritten.
+const char* captured_fragment=R"GLSL(#version 330 core
+in vec2 uv;out vec4 pixel;
+uniform sampler2D image,origins;
+vec4 origin(ivec2 p){return texelFetch(origins,clamp(p,ivec2(0),ivec2(255,191)),0);}
+vec2 derivative(ivec2 p,ivec2 step,vec4 center){
+ vec4 a=origin(p-step),b=origin(p+step);vec2 d=vec2(0);float n=0;
+ if(all(greaterThanEqual(p-step,ivec2(0)))&&a.w>0.5&&all(lessThan(abs(a.xy-center.xy),vec2(0.04)))){d+=center.xy-a.xy;n++;}
+ if(all(lessThan(p+step,ivec2(256,192)))&&b.w>0.5&&all(lessThan(abs(b.xy-center.xy),vec2(0.04)))){d+=b.xy-center.xy;n++;}
+ return n>0?d/n:vec2(0);
+}
+void main(){
+ vec2 p=uv*vec2(256,192);ivec2 at=clamp(ivec2(floor(p)),ivec2(0),ivec2(255,191));vec4 center=origin(at);
+ if(center.z<0.5)discard;
+ vec2 local=fract(p)-vec2(0.5);
+ vec2 source=center.xy+local.x*derivative(at,ivec2(1,0),center)+local.y*derivative(at,ivec2(0,1),center);
+ pixel=vec4(texture(image,vec2(source.x,1-source.y)).rgb,1);
+}
+)GLSL";
 struct Rect {float x=0,y=0,w=0,h=0;}; // Bottom-left drawable coordinates.
 Rect fit(float width,float height,float aspect) {
     const float w=std::min(width,height*aspect),h=w/aspect;
@@ -153,12 +179,14 @@ struct Display::Impl {
     SDL_Window* window=nullptr;SDL_GLContext context=nullptr;
     SDL_Renderer* software=nullptr;SDL_Texture* software_texture=nullptr;
     std::unique_ptr<GL> gl;
-    GLuint scene_program=0,flat_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0;
+    GLuint scene_program=0,flat_program=0,captured_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0,origin_texture=0;
+    struct CapturedTarget {GLuint fbo=0,color=0,depth=0;int w=0,h=0;};
+    std::map<uint64_t,CapturedTarget> captured_targets;
     std::map<std::pair<uint32_t,uint32_t>,GLuint> textures;
     std::string renderer_name="software",device_name;
     Rect touch_rect;
     int width=0,height=0,display_index=0;
-    uint64_t draws=0;
+    uint64_t draws=0,captured_pixel_count=0;
     std::vector<uint32_t> last_pixels;
 
     explicit Impl(Options value):options(std::move(value)) {
@@ -196,11 +224,13 @@ struct Display::Impl {
         if(context)SDL_GL_MakeCurrent(window,context);
         if(gl) {
             clear_textures();
+            for(auto& [serial,target]:captured_targets)delete_target(target);captured_targets.clear();
+            if(captured_program)gl->DeleteProgram(captured_program);if(origin_texture)gl->DeleteTextures(1,&origin_texture);
             if(scene_program)gl->DeleteProgram(scene_program);if(flat_program)gl->DeleteProgram(flat_program);
             if(vbo)gl->DeleteBuffers(1,&vbo);if(vao)gl->DeleteVertexArrays(1,&vao);
             if(screen_texture)gl->DeleteTextures(1,&screen_texture);if(mask_texture)gl->DeleteTextures(1,&mask_texture);
         }
-        scene_program=flat_program=vao=vbo=screen_texture=mask_texture=0;gl.reset();
+        scene_program=flat_program=captured_program=vao=vbo=screen_texture=mask_texture=origin_texture=0;gl.reset();
         if(software_texture)SDL_DestroyTexture(software_texture);software_texture=nullptr;
         if(software)SDL_DestroyRenderer(software);software=nullptr;
         if(context)SDL_GL_DeleteContext(context);context=nullptr;
@@ -215,9 +245,9 @@ struct Display::Impl {
         check(window,SDL_GetError());context=SDL_GL_CreateContext(window);check(context,SDL_GetError());
         gl=std::make_unique<GL>();
         device_name=reinterpret_cast<const char*>(gl->GetString(GL_RENDERER));
-        scene_program=gl->program(scene_vertex,scene_fragment);flat_program=gl->program(flat_vertex,flat_fragment);
+        scene_program=gl->program(scene_vertex,scene_fragment);flat_program=gl->program(flat_vertex,flat_fragment);captured_program=gl->program(flat_vertex,captured_fragment);
         gl->GenVertexArrays(1,&vao);gl->BindVertexArray(vao);gl->GenBuffers(1,&vbo);
-        gl->GenTextures(1,&screen_texture);gl->GenTextures(1,&mask_texture);
+        gl->GenTextures(1,&screen_texture);gl->GenTextures(1,&mask_texture);gl->GenTextures(1,&origin_texture);
         SDL_GL_SetSwapInterval(1);renderer_name="opengl";
     }
     void clear_textures(){for(auto [key,value]:textures)gl->DeleteTextures(1,&value);textures.clear();}
@@ -306,8 +336,56 @@ struct Display::Impl {
         }
         gl->PolygonMode(GL_FRONT_AND_BACK,GL_FILL);gl->DepthMask(GL_TRUE);gl->Disable(GL_CULL_FACE);gl->Disable(GL_SCISSOR_TEST);
     }
+    void delete_target(CapturedTarget& t) {
+        if(t.fbo)gl->DeleteFramebuffers(1,&t.fbo);if(t.color)gl->DeleteTextures(1,&t.color);if(t.depth)gl->DeleteRenderbuffers(1,&t.depth);t={};
+    }
+    CapturedTarget& captured_target(const Scene& scene,int w,int h) {
+        auto& target=captured_targets[scene.serial];
+        if(target.fbo&&target.w==w&&target.h==h)return target;
+        delete_target(target);target.w=w;target.h=h;
+        gl->GenFramebuffers(1,&target.fbo);gl->BindFramebuffer(GL_FRAMEBUFFER,target.fbo);
+        gl->GenTextures(1,&target.color);gl->BindTexture(GL_TEXTURE_2D,target.color);
+        gl->TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target.color,0);
+        gl->GenRenderbuffers(1,&target.depth);gl->BindRenderbuffer(GL_RENDERBUFFER,target.depth);
+        gl->RenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT24,w,h);
+        gl->FramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,target.depth);
+        check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"captured-3D framebuffer unavailable");
+        const auto c=scene.clear_color;
+        gl->Viewport(0,0,w,h);gl->DepthMask(GL_TRUE);gl->ClearColor(float(c&31)/31,float((c>>5)&31)/31,float((c>>10)&31)/31,float((c>>16)&31)/31);
+        gl->Clear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        const int previous_width=width,previous_height=height;width=w;height=h;
+        geometry(scene,{0,0,float(w),float(h)},nullptr);
+        width=previous_width;height=previous_height;
+        gl->BindFramebuffer(GL_FRAMEBUFFER,0);gl->Viewport(0,0,width,height);
+        return target;
+    }
+    void captured(const Scene& scene,const uint64_t* tags,Rect rect) {
+        if(!tags||!scene.supported||scene.order.empty())return;
+        std::vector<float> mapping(256*192*4);unsigned eligible=0;
+        for(unsigned i=0;i<256*192;++i)if(tags[i]&&(tags[i]>>16)==scene.serial) {
+            const auto pixel=unsigned(tags[i]&65535)-1;if(pixel>=256*192)continue;
+            mapping[i*4]=(float(pixel%256)+.5f)/256;mapping[i*4+1]=(float(pixel/256)+.5f)/192;
+            mapping[i*4+2]=scene.safe[pixel]?1.f:0.f;mapping[i*4+3]=1;eligible+=scene.safe[pixel]!=0;
+        }
+        if(!eligible)return;captured_pixel_count+=eligible;
+        auto& target=captured_target(scene,std::max(1,int(std::ceil(rect.w))),std::max(1,int(std::ceil(rect.h))));
+        gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.color);gl->Uniform1i(uniform(captured_program,"image"),0);
+        gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,origin_texture);
+        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        gl->TexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,256,192,0,GL_RGBA,GL_FLOAT,mapping.data());gl->Uniform1i(uniform(captured_program,"origins"),1);
+        const float x0=2*rect.x/width-1,x1=2*(rect.x+rect.w)/width-1,y0=2*rect.y/height-1,y1=2*(rect.y+rect.h)/height-1;
+        const float vertices[]={x0,y0,0,1,x1,y0,1,1,x0,y1,0,0,x0,y1,0,0,x1,y0,1,1,x1,y1,1,0};
+        gl->Disable(GL_DEPTH_TEST);gl->Disable(GL_CULL_FACE);gl->Disable(GL_BLEND);gl->DepthMask(GL_FALSE);
+        gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+        gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
+        gl->ActiveTexture(GL_TEXTURE0);
+    }
     void present(const Frame& frame) {
-        check(frame.top&&frame.bottom,"missing DS video frames");
+        check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;
         if(!gl) {
             SDL_Rect top{0,0,256,192},bottom{0,192,256,192};
             check(SDL_UpdateTexture(software_texture,&top,frame.top,256*4)==0,SDL_GetError());
@@ -334,7 +412,12 @@ struct Display::Impl {
             const auto total=fit(float(width),float(height),256.0F/384);
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
-            if(has_3d) {
+            if(frame.history&&frame.top_origins&&frame.bottom_origins) {
+                for(auto it=captured_targets.begin();it!=captured_targets.end();) {
+                    if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first;})) {delete_target(it->second);it=captured_targets.erase(it);}else ++it;
+                }
+                for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
+            } else if(has_3d) {
                 std::array<uint8_t,256*192> mask{};
                 for(unsigned i=0;i<mask.size();++i)mask[i]=frame.three_d[i]&&frame.scene->safe[i]?255:0;
                 geometry(*frame.scene,frame.on_top?top:bottom,mask.data());
@@ -377,4 +460,5 @@ int Display::height() const{return impl_->height;}
 const std::string& Display::renderer() const{return impl_->renderer_name;}
 const std::string& Display::device() const{return impl_->device_name;}
 uint64_t Display::polygons_drawn() const{return impl_->draws;}
+uint64_t Display::captured_pixels() const{return impl_->captured_pixel_count;}
 }
