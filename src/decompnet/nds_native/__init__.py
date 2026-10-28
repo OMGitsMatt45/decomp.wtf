@@ -446,6 +446,8 @@ add_test(NAME native_boot COMMAND ds_pc --assets "${CMAKE_CURRENT_SOURCE_DIR}/as
 set_tests_properties(native_boot PROPERTIES TIMEOUT 30)
 ''',encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build/\n/saves/\n/captures/\n*.nds\n',encoding='utf-8')
+    # Manifest hashes cover exact bytes. Git for Windows must not rewrite them.
+    (root/'.gitattributes').write_text('* -text\n',encoding='utf-8')
     (root/'README.md').write_text('''# Experimental DS PC source project
 
 Generated ARM9/ARM7 C++ in `game/` runs with a pinned MIT DS runtime, whose

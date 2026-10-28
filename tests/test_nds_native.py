@@ -121,6 +121,23 @@ def test_full_runtime_executes_original_arm7_private_ram_and_overlay_loader(tmp_
     assert pc.verify(root)['integrity_verified']
 
 
+def test_source_hashes_survive_windows_git_checkout(tmp_path,sdk):
+    raw,profile=dual_cpu()
+    rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    reviewed=tmp_path/'reviewed.json';reviewed.write_text(json.dumps(profile))
+    root=tmp_path/'output'
+    export(rom,root,profile=reviewed,save_type='eeprom8k')
+    manifest=(root/'pc-project.json').read_bytes()
+    subprocess.run(['git','init','-q',str(root)],check=True)
+    subprocess.run(['git','-c','core.autocrlf=true','add','.'],cwd=root,check=True,capture_output=True)
+    for name in json.loads(manifest)['files']:
+        (root/name).unlink()
+    (root/'pc-project.json').unlink()
+    subprocess.run(['git','-c','core.autocrlf=true','checkout-index','-a','-f'],cwd=root,check=True)
+    assert (root/'pc-project.json').read_bytes()==manifest
+    assert pc.verify(root)['integrity_verified']
+
+
 def test_guest_rtc_defaults_to_local_date_and_accepts_explicit_fixed_utc(tmp_path,sdk):
     _,root,exe=generate(tmp_path/'clock',rtc)
     bcd=lambda value:(value//10)*16+value%10
