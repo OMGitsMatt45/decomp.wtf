@@ -220,3 +220,12 @@ reproduced the same 22,400-frame run and screen hashes. An independent emulator
 also loaded the native build's raw save and resumed the prologue. Combat,
 later retail saves and playthrough validation are owner-run acceptance checks.
 Implementation checks use automated fixtures and targeted defect reproductions.
+
+Customized game outputs can also observe native 2D foreground planes through
+`screen_top_foreground()` and `screen_bottom_foreground()`. These are borrowed
+premultiplied ARGB8 values with a known flag (bit 32) and unsupported-composition
+flag (bit 33). Captured 3D and its clear background are transparent in this plane;
+native text/sprites and DS alpha darkening remain separate. CPU writes invalidate
+physical capture metadata. Tracking remains opt-in and changes no DS pixels,
+registers, or timing. The standard generated player keeps its two-LCD layout;
+projection changes and layout choices belong to individual game adaptations.

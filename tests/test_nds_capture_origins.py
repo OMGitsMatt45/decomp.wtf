@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 from decompnet.nds_native.capture_patch import patch
+from decompnet.nds_native.foreground_patch import patch as foreground_patch
 from .test_nds_native import sdk  # noqa: F401
 
 
@@ -18,6 +19,7 @@ def capture_checks(tmp_path_factory,sdk):
     shutil.copytree(sdk/'runtime/gpu2d',root/'runtime/gpu2d')
     shutil.copytree(sdk/'runtime/gpu3d',root/'runtime/gpu3d')
     patch(root)
+    foreground_patch(root)
     original=root/'runtime/gpu2d/tests/gpu2d_tests.cpp'
     observed=original.with_name('observed.cpp')
     # Run the same upstream colour/affine/capture references with tracking on.
