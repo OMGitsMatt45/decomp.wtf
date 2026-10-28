@@ -316,7 +316,7 @@ struct Display::Impl {
             const int base_y=y>191?int(y)-255:int(y);
             const float rw=original.w*w/256,rh=original.h*h/192;
             const float rx=original.x+original.w*x/256,ry=original.y+original.h*(192-base_y-int(h))/192;
-            if(mask) {
+            { // DS viewport clipping also applies to unmasked framebuffer passes.
                 const int left=std::max(0,int(std::ceil(rx))),bottom=std::max(0,int(std::ceil(ry)));
                 const int right=std::min(width,int(std::ceil(rx+rw))),top=std::min(height,int(std::ceil(ry+rh)));
                 gl->Enable(GL_SCISSOR_TEST);gl->Scissor(left,bottom,std::max(0,right-left),std::max(0,top-bottom));
