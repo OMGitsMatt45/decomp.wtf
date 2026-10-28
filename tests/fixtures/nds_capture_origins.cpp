@@ -109,5 +109,28 @@ int main(){try{
   if(main){objects.io_write(0x04000241,0x82,8);lines(objects);check(source()[at+1]==0,"OR-mapped OBJ banks reject ambiguous captured origins");}
   objects.set_capture_origin_tracking(false);lines(objects);check(!objects.screen_top_origins()&&!objects.screen_bottom_foreground(),"bitmap OBJ tracking remains optional");
  }
+ // Scene foreground excludes LCD master brightness, whose per-line state
+ // is recorded independently so an extended scene can fade across its width.
+ {dsr::Gpu2D effects;effects.attach_gpu3d(&three);effects.set_capture_origin_tracking(true);
+  effects.io_write(0x04000304,0x820f,16);capture(effects,0);capture(effects,2);
+  effects.io_write(0x04000240,0x81,8);effects.io_write(0x04000242,0x84,8);
+  bitmap(effects);bitmap(effects,0x04001000);
+  effects.io_write(0x0400006c,0x401f,16);effects.io_write(0x0400106c,0x8008,16);
+  for(int y=0;y<192;++y){if(y==96){effects.io_write(0x04000304,0x020f,16);effects.io_write(0x0400006c,0x4004,16);}effects.render_line(y);}
+  check(effects.screen_top_brightness()[95]==48&&effects.screen_bottom_brightness()[95]==72,"pre-swap master brightness clamps factor and follows LCDs");
+  check(effects.screen_top_brightness()[96]==72&&effects.screen_bottom_brightness()[96]==36,"master brightness records HBlank state and LCD swap by row");
+  check(effects.screen_top_scene_foreground()[at]==known&&effects.screen_bottom_scene_foreground()[at]==known,"master fades retain transparent scene foreground");
+  check(effects.screen_top_foreground()[at]&invalid,"legacy final-foreground guard remains compatible");
+  effects.io_write(0x04000304,0x820f,16);effects.io_write(0x0400006c,0,16);effects.io_write(0x0400106c,0,16);
+  effects.io_write(0x04000050,0x84,16);effects.io_write(0x04000054,8,16);lines(effects);
+  check(effects.screen_top_scene_foreground()[at]==(known|0x7f7f7f7fU),"layer brighten has a valid white premultiplied foreground");
+  effects.io_write(0x04000050,0xc4,16);lines(effects);
+  check(effects.screen_top_scene_foreground()[at]==(known|0x7f000000U),"layer darken has a valid black premultiplied foreground");
+  effects.io_write(0x04000054,0,16);lines(effects);check(effects.screen_top_scene_foreground()[at]==known,"zero layer brightness is identity");
+  effects.io_write(0x04000000,0x10485,32);lines(effects);
+  check(effects.screen_top_brightness()[100]==48&&effects.screen_top_scene_foreground()[at]==known,"forced blank is a complete white scene effect");
+  effects.set_capture_origin_tracking(false);check(!effects.screen_top_scene_foreground()&&!effects.screen_bottom_brightness(),"scene effects remain optional");
+  effects.set_capture_origin_tracking(true);effects.reset();check(effects.screen_top_brightness()[100]==0&&effects.screen_top_scene_foreground()[at]==0,"reset cannot reuse a scene or fade");
+ }
  std::cout<<checks<<" original captured-3D provenance checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
