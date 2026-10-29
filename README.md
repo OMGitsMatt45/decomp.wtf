@@ -154,7 +154,8 @@ uv run --locked --group dev python -m pytest -q tests/test_platform_scope.py tes
 ```
 
 The repository's [Actions workflows](https://github.com/OMGitsMatt45/decomp.wtf/actions)
-qualify each backend on Windows and Linux using original fixtures. Retail media,
+qualify each backend on Windows using original fixtures. Linux CI is disabled;
+Linux builds can still be tested manually. Retail media,
 BIOS dumps and generated retail source stay outside Git. The older matching
 application is preserved in [PR #27](https://github.com/OMGitsMatt45/decomp.wtf/pull/27);
 paused game-specific source recovery is preserved in [PR #26](https://github.com/OMGitsMatt45/decomp.wtf/pull/26).

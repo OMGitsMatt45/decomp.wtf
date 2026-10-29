@@ -1,4 +1,4 @@
-"""A release requires both native hosts at the exact commit."""
+"""A release requires Windows qualification at the exact commit."""
 
 import pytest
 
@@ -7,11 +7,12 @@ from tools import release_gate
 
 @pytest.mark.parametrize("linux,windows,allowed", [
     ("success", "success", True),
-    ("failure", "success", False),
+    ("failure", "success", True),
     ("success", "skipped", False),
-    (None, "success", False),
+    (None, "success", True),
+    ("success", "failure", False),
 ])
-def test_release_requires_both_core_hosts(tmp_path, monkeypatch, linux, windows, allowed):
+def test_release_requires_windows_without_waiting_for_linux(tmp_path, monkeypatch, linux, windows, allowed):
     notes, output = tmp_path / "notes.md", tmp_path / "published.md"
     notes.write_text("Release notes", encoding="utf-8")
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")

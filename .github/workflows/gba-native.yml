@@ -15,11 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: [windows-2022]
     runs-on: ${{ matrix.os }}
     # MSVC qualification builds separate CPU/firmware and desktop projects.
     # Leave time for the desktop stage after the expanded native CPU suite.
-    timeout-minutes: ${{ matrix.os == 'windows-2022' && 45 || 20 }}
+    timeout-minutes: 45
     env:
       DECOMP_RUNTIME: native
       DECOMP_UPDATES: 'off'
@@ -33,9 +33,6 @@ jobs:
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/qualify-gba-hardware.ps1 -CheckTools
       - name: Check hardware-assessment failure handling
         run: uv run --no-sync python -m pytest -q tests/test_gba_hardware.py
-      - name: Install Linux desktop build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libasound2-dev libpulse-dev libudev-dev
       - name: Install pinned GBA source SDK
         run: uv run --no-sync python -c "from decompnet import toolchains; toolchains.ensure('anygba-sdk')"
       - name: Build and execute independent ARM/Thumb hardware probes
@@ -43,13 +40,6 @@ jobs:
       - name: Build and test Windows standalone desktop and cartridge services
         if: runner.os == 'Windows'
         run: uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
-      - name: Build and test Linux standalone desktop, GPU scenes and cartridge services
-        if: runner.os == 'Linux'
-        env:
-          DECOMP_REQUIRE_GBA_GPU: '1'
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          SDL_AUDIODRIVER: dummy
-        run: xvfb-run -a uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:

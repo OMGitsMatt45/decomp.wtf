@@ -125,7 +125,7 @@ jobs:
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/codex/compiler-completion'
     needs: native-windows
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     permissions:
       contents: write
     steps:
@@ -135,8 +135,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ee-windows-host-package
-          path: /tmp/ee-packages
+          path: ${{ runner.temp }}/ee-packages
       - name: Publish verified payload-free hosts and complete host source
+        shell: bash
         run: |
           set -euo pipefail
           branch=ee-windows-host-assets
@@ -147,7 +148,7 @@ jobs:
             git switch -c "$branch" origin/main
           fi
           mkdir -p toolchains/ee-windows-host
-          cp /tmp/ee-packages/*.tar.gz toolchains/ee-windows-host/
+          cp "$RUNNER_TEMP/ee-packages/"*.tar.gz toolchains/ee-windows-host/
           (cd toolchains/ee-windows-host && sha256sum *.tar.gz > SHA256SUMS)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
