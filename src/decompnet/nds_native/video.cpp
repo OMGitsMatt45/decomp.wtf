@@ -133,7 +133,7 @@ void main(){
  if(mode==1 && textured)shade=ta==0?v:(ta==31?t:floor((t*ta+v*(31-ta))/32));
  else {shade=floor(((t+1)*(shade+1)-1)/64);if(mode==2&&highlight)shade=min(vec3(63),shade+toon[int(v.r)/2]);
    if(textured){float t6=ta==0?0:ta*2+1,a6=a==0?0:a*2+1;a=floor(floor(((t6+1)*(a6+1)-1)/64)/2);}}
- if(a==0 || a<float(alpha_ref))discard;
+ if(a==0 || a<=float(alpha_ref))discard;
  pixel=vec4(floor(shade/2)/31,a/31);
  // DS far Z is 0xfffffe, below the maximum 0xffffff clear depth.
  gl_FragDepth=wbuffer?clamp((1/gl_FragCoord.w)/4096,0,1):gl_FragCoord.z*(16777214.0/16777215.0);
@@ -305,12 +305,13 @@ struct Display::Impl {
             if(faces==3)gl->Disable(GL_CULL_FACE);else{gl->Enable(GL_CULL_FACE);gl->CullFace(faces==1?GL_FRONT:GL_BACK);}
             const unsigned alpha=(polygon.attr>>16)&31;
             const unsigned format=(polygon.texture>>26)&7,mode=(polygon.attr>>4)&3;
-            const bool partial=(alpha!=0&&alpha!=31)||((format==1||format==6)&&mode!=1&&mode!=3);
+            auto texture=textures.find({polygon.texture,polygon.palette});
+            const bool textured=(scene.control&1)&&format&&texture!=textures.end();
+            const bool partial=(alpha!=0&&alpha!=31)||(textured&&(format==1||format==6)&&mode!=1&&mode!=3);
             gl->DepthMask(!partial||(polygon.attr&(1u<<11))?GL_TRUE:GL_FALSE);
             gl->PolygonMode(GL_FRONT_AND_BACK,alpha?GL_FILL:GL_LINE);
             gl->Uniform1i(uniform(scene_program,"mode"),(polygon.attr>>4)&3);gl->Uniform1i(uniform(scene_program,"alpha"),alpha);
-            auto texture=textures.find({polygon.texture,polygon.palette});
-            gl->Uniform1i(uniform(scene_program,"textured"),texture!=textures.end());
+            gl->Uniform1i(uniform(scene_program,"textured"),textured);
             gl->BindTexture(GL_TEXTURE_2D,texture==textures.end()?0:texture->second);
             const unsigned x=polygon.viewport&255,y=(polygon.viewport>>8)&255;
             const unsigned w=uint8_t((polygon.viewport>>16)-x)+1,h=uint8_t((polygon.viewport>>24)-y)+1;
