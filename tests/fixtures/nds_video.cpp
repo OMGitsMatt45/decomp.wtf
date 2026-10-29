@@ -75,12 +75,29 @@ int main() {
         require(pixels[480+405*960]==0xff0000ff,"menus keep original LCD output");
         mask.fill(1);mask[0]=0;
         // Textured geometry is shaded on the GPU, using actual texture coordinates.
-        auto textured=scene;const uint32_t parameter=7u<<26;auto& polygon=textured.polygons[0];polygon.texture=parameter;
+        auto textured=scene;textured.control|=1;const uint32_t parameter=7u<<26;auto& polygon=textured.polygons[0];polygon.texture=parameter;
         video::Texture texture;texture.param=parameter;texture.width=texture.height=8;
         for(unsigned i=0;i<64;++i)texture.rgba.insert(texture.rgba.end(),{255,0,0,255});
         textured.textures.push_back(texture);for(auto& v:textured.vertices){v.color={63,63,63};v.u=v.v=1;}
         frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xffff0000,"GPU texture sampling and modulation");
+        // The uploaded texture remains cached, but display control can turn
+        // mapping off while the polygon still carries its texture address.
+        auto threshold=textured;threshold.control|=4;threshold.alpha_ref=31;frame.scene=&threshold;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xff0000ff,"alpha equal to the enabled reference is rejected");
+        threshold.alpha_ref=30;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffff0000,"alpha above the reference passes");
+        threshold.alpha_ref=31;threshold.control&=~4u;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffff0000,"disabled alpha test ignores its stored reference");
+        auto disabled=textured;disabled.control&=~1u;disabled.textures.clear();frame.scene=&disabled;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffffffff,"disabled texture mapping ignores the previous cached texture");
+        disabled.control|=1;disabled.polygons[0].texture=0;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffffffff,"untextured polygons cannot inherit the cache");
+        frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffff0000,"texture mapping can resume from the existing cache");
+
         auto partial=scene;partial.polygons[0].viewport=0x5f7f0000;frame.scene=&partial;
         display.present(frame);pixels=display.read_pixels();
         require(pixels[350+300*960]==0xff00ff00&&pixels[550+300*960]==0xff0000ff&&pixels[350+500*960]==0xff0000ff,
