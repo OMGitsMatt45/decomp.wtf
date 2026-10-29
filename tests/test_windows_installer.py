@@ -184,7 +184,7 @@ def test_native_checkout_installs_own_copy_and_calls_native_commands(native_setu
 def test_native_download_defaults_to_published_fork_release(native_setup):
     outcome, output = native_setup(checkout=False, start=True)
     assert outcome["Error"] is None, output
-    assert outcome["BuildSpec"] == "decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/releases/download/v0.19.0/decompnet-0.19.0-py3-none-any.whl"
+    assert outcome["BuildSpec"] == "decompnet @ https://github.com/OMGitsMatt45/decomp.wtf/releases/download/v0.20.0/decompnet-0.20.0-py3-none-any.whl"
     assert native_metadata(outcome)["--repo"] == "OMGitsMatt45/decomp.wtf"
     assert native_metadata(outcome)["--channel"] == "release"
     assert any(call[0] == "start" and "FakeDecomp" in call for call in outcome["Calls"])
@@ -193,7 +193,7 @@ def test_native_download_defaults_to_published_fork_release(native_setup):
 def test_native_explicit_release_honors_fork_override(native_setup):
     outcome, output = native_setup(checkout=False, requested="release", repo="other-fork/decomp.wtf")
     assert outcome["Error"] is None, output
-    assert outcome["BuildSpec"] == "decompnet @ https://github.com/other-fork/decomp.wtf/releases/download/v0.19.0/decompnet-0.19.0-py3-none-any.whl"
+    assert outcome["BuildSpec"] == "decompnet @ https://github.com/other-fork/decomp.wtf/releases/download/v0.20.0/decompnet-0.20.0-py3-none-any.whl"
     assert native_metadata(outcome) == {"--channel": "release", "--repo": "other-fork/decomp.wtf"}
 
 

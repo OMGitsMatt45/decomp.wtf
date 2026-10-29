@@ -126,7 +126,7 @@ def test_release_honors_the_selected_repository(install):
     result, calls, metadata = install(source_arg="release", repo="fork-user/decomp.wtf")
     assert result.returncode == 0, result.stdout + result.stderr
     assert metadata["--channel"] == "release" and metadata["--repo"] == "fork-user/decomp.wtf"
-    assert any(call[0] == "uv" and "github.com/fork-user/decomp.wtf/releases/download/v0.19.0/" in call[-1] for call in calls)
+    assert any(call[0] == "uv" and "github.com/fork-user/decomp.wtf/releases/download/v0.20.0/" in call[-1] for call in calls)
 
 
 def test_source_zip_does_not_inherit_its_parent_checkout(install):
