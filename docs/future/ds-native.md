@@ -105,3 +105,12 @@ the original DS sound remains a complete choice without an OBB.
 
 Ordinary DS is first. DSi container work in PR #24 stays separate; ARM9i/ARM7i,
 TWL services and extra hardware need their own execution work after DS.
+
+
+Generated hosts hold an exclusive operating-system lease on the selected save
+before the cartridge runtime loads it. A second instance using that save exits
+with an error. The stable `.lock` sidecar remains alongside the image so atomic
+save replacement does not release ownership; the operating system releases the
+lease when the process exits, including after a crash. Different save images
+can still run independently. The original generated-fixture regression checks
+competing processes, path aliases, ordinary exits and abrupt termination.

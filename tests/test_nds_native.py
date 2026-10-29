@@ -256,6 +256,37 @@ def test_cartridge_save_is_durable_before_the_process_exits(tmp_path,hardware_pr
     assert execute(exe,root,'--save',save)['observed'][3:5]==[0,1]
 
 
+def test_exported_host_exclusively_owns_save_until_process_exit(tmp_path,hardware_project):
+    _,root,exe=hardware_project
+    save=tmp_path/'shared.sav'
+    process=subprocess.Popen([str(exe),'--assets',str(root/'assets'),'--save',str(save),
+        '--headless','--frames','1000000'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    try:
+        deadline=time.monotonic()+10
+        while not save.exists() and process.poll() is None and time.monotonic()<deadline:
+            time.sleep(.02)
+        assert save.exists() and process.poll() is None, 'first host did not commit a save while holding its lease'
+        before=save.read_bytes()
+        # The first flush replaces the save inode atomically. Its stable sidecar
+        # must still exclude the next process, including path aliases.
+        for alias in (save,tmp_path/'..'/tmp_path.name/'shared.sav'):
+            assert 'Cannot lock cartridge save' in execute(exe,root,'--save',alias,ok=False)
+            assert save.read_bytes()==before
+        execute(exe,root,'--save',tmp_path/'independent.sav')
+        assert save.read_bytes()==before
+        if os.name!='nt':
+            linked=tmp_path/'linked-folder';linked.symlink_to(tmp_path,target_is_directory=True)
+            assert 'Cannot lock cartridge save' in execute(exe,root,'--save',linked/save.name,ok=False)
+            assert save.read_bytes()==before
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+    # Abrupt process death releases OS ownership despite the persistent
+    # sidecar. A normal exit must release it too.
+    execute(exe,root,'--save',save)
+    execute(exe,root,'--save',save)
+
+
 def test_source_shipped_runtime_preserves_upstream_core_regressions(tmp_path,hardware_project):
     _,root,_=hardware_project
     runtime=root/'native/dsr/runtime'
