@@ -56,6 +56,16 @@ def execute(executable,root,*options,ok=True):
     return run.stderr
 
 
+@pytest.mark.parametrize('dependency',['guest_work_patch.py','audio_queue.hpp'])
+def test_backend_revision_changes_with_emitted_runtime_and_host_dependencies(monkeypatch,dependency):
+    from decompnet import nds_native
+    source=nds_native._source
+    before=nds_native.revision()
+    monkeypatch.setattr(nds_native,'_source',lambda name:
+        source(name)+'\n// changed export dependency\n' if name==dependency else source(name))
+    assert nds_native.revision()!=before
+
+
 def test_analysis_retries_when_decoder_fails_before_creating_config(tmp_path,monkeypatch):
     from decompnet import nds_native
     monkeypatch.setattr(toolchains,'ensure',lambda *a,**k:tmp_path)

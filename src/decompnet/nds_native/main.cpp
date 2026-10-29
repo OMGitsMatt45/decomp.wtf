@@ -17,6 +17,7 @@
 #ifdef NDS_WITH_SDL
 #include <SDL.h>
 #include "video.hpp"
+#include "audio_queue.hpp"
 #endif
 #include "profile.hpp"
 #include "save_lock.hpp"
@@ -98,8 +99,7 @@ struct Display {
             std::vector<uint8_t> bytes(size_t(available),uint8_t(0));
             const int got=SDL_AudioStreamGet(resampler,bytes.data(),available);
             if(got<0)throw std::runtime_error(SDL_GetError());
-            if(SDL_GetQueuedAudioSize(audio)>48000*4/2)SDL_ClearQueuedAudio(audio);
-            if(SDL_QueueAudio(audio,bytes.data(),uint32_t(got))!=0)throw std::runtime_error(SDL_GetError());
+            ds_host::queue_game_audio(audio,std::span<const uint8_t>(bytes.data(),size_t(got)),48000);
         }
     }
 };
