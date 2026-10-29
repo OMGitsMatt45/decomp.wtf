@@ -16,7 +16,7 @@ jobs:
 
   publish:
     needs: package
-    runs-on: ubuntu-22.04
+    runs-on: windows-2022
     permissions:
       contents: write
       actions: read
@@ -28,7 +28,11 @@ jobs:
         with:
           name: release-packages
           path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Require a tested commit on main and publish verified assets
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}

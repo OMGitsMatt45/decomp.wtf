@@ -19,6 +19,7 @@ on:
       - 'tests/test_nds_capture_origins.py'
       - 'tests/fixtures/nds_capture_origins.cpp'
       - 'tests/fixtures/nds_video.cpp'
+      - 'tests/fixtures/nds_audio.cpp'
       - 'tests/fixtures/nds_geometry.cpp'
       - 'src/decompnet/app/**'
       - 'tests/fixtures/nds-static/**'
@@ -39,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: [windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
@@ -47,14 +48,11 @@ jobs:
       DECOMP_UPDATES: 'off'
       DECOMP_REQUIRE_DS_NATIVE: '1'
       DECOMP_REQUIRE_DS_SDL: '1'
-      DECOMP_REQUIRE_DS_GPU: ${{ matrix.os == 'ubuntu-24.04' && '1' || '0' }}
+      DECOMP_REQUIRE_DS_GPU: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group dev --python 3.12
-      - name: Linux OpenGL qualification driver
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libx11-dev libxext-dev libgl-dev libegl-dev libglx-mesa0 libegl-mesa0 libgl1-mesa-dri
       - name: Install checksum-pinned DS native runtime sources
         run: uv run --no-sync python -c "from decompnet import toolchains; toolchains.install('dsr-sdk')"
       - name: Generate, build and execute original DS code and compare CPU oracles

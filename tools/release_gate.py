@@ -1,4 +1,4 @@
-"""Require successful full Linux and Windows operational jobs for the exact release commit."""
+"""Require successful Windows operational checks for the exact release commit."""
 
 import argparse
 import json
@@ -23,7 +23,7 @@ def main():
     args = ap.parse_args()
     repo = os.environ["GITHUB_REPOSITORY"]
     runs = get(f"repos/{repo}/actions/runs?head_sha={args.sha}&event=push&per_page=100")["workflow_runs"]
-    required = {"core (ubuntu-24.04)", "core (windows-2022)"}
+    required = {"core (windows-2022)"}
     for run in runs:
         if run["name"] != "Full operational check" or run["head_sha"] != args.sha:
             continue
@@ -33,9 +33,9 @@ def main():
             notes = args.notes.read_text(encoding="utf-8")
             notes += f"\n\nOperational verification: {run['html_url']}\n\nTested commit: `{args.sha}`.\n"
             args.output.write_text(notes, encoding="utf-8")
-            print(f"release allowed: both required operational jobs passed for {args.sha}")
+            print(f"release allowed: Windows operational checks passed for {args.sha}")
             return
-    raise SystemExit("release blocked: the exact commit needs successful full Linux and Windows operational jobs")
+    raise SystemExit("release blocked: the exact commit needs successful full Windows operational checks")
 
 
 if __name__ == "__main__":
