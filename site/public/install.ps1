@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $DefaultRepo = "OMGitsMatt45/decomp.wtf"
-$ReleaseVersion = "0.19.0"
+$ReleaseVersion = "0.20.0"
 $UA = "decomp.wtf-native-installer (PowerShell)"
 
 function Step($Text) { Write-Host "> " -ForegroundColor Green -NoNewline; Write-Host $Text }
