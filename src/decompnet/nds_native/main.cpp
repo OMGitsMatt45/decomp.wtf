@@ -19,6 +19,7 @@
 #include "video.hpp"
 #endif
 #include "profile.hpp"
+#include "save_lock.hpp"
 
 namespace {
 uint64_t count(const std::string& text,uint64_t maximum) {
@@ -152,6 +153,7 @@ int main(int argc,char** argv) {
         config.deterministic_rtc=rtc_fixed;config.rtc_epoch_seconds=int64_t(rtc_start);
         profile::configure(config);
         profile::verify_input(config.rom_path);
+        ds_host::SaveLock save_lock(save);
         dsr::Session session(config);profile::initialize(session.machine());
         std::map<uint64_t,dsr::InputState> inputs;
         if(!script.empty()) {

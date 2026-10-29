@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -420,6 +420,7 @@ def generate(project,root):
     (root/'game/input.json').write_text(json.dumps(dict(sha256=digest,size=len(data),
         asset_sha256=asset_digest,asset_patches=patches),indent=2)+'\n',encoding='utf-8')
     for source,destination in (('main.cpp','native/main.cpp'),('hash.hpp','native/hash.hpp'),
+                               ('save_lock.hpp','native/save_lock.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')
