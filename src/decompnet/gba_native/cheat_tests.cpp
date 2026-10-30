@@ -10,7 +10,7 @@ Program program(Format format,std::initializer_list<const char*> lines){
     std::vector<std::string> owned(lines.begin(),lines.end());return compile(format,owned);
 }
 int main(int argc,char** argv){try{
-    if(argc!=2)throw std::runtime_error("provide a new scratch directory");
+    if(argc!=2)throw std::runtime_error("provide a scratch directory");
     auto folder=std::filesystem::path(argv[1]);
     std::filesystem::create_directories(folder);
     anygba::Options options;options.log_misses=false;
@@ -34,7 +34,7 @@ int main(int argc,char** argv){try{
     check(system.read8(0x02001080)==0x91,"flag operation preserves unrelated bits");
     check(gba_frontend::native_cheat_error(program(Format::Raw,{"08000100:4770"})).has_value(),"ROM patches rejected for native execution");
     gba_frontend::Cheats manager;manager.load(folder/"prefs.toml");
-    auto draft=manager.list();auto i=draft.add_custom("Persistent RAM code",Format::CodeBreaker,{"82000208 3456"});
+    CheatList draft;auto i=draft.add_custom("Persistent RAM code",Format::CodeBreaker,{"82000208 3456"});
     check(!draft.set_enabled(i,true),"enable stored code");
     check(!manager.commit(draft),"initial preference write");
     check(!manager.commit(draft),"atomic replacement of existing preference file");
