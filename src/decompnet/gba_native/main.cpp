@@ -3,6 +3,8 @@
 #include "source_counts.h"
 #include "anygba/sha256.h"
 #include "save/save.h"
+#include "cheats.hpp"
+#include "customization.hpp"
 #include <charconv>
 #include <fstream>
 #include <iostream>
@@ -20,6 +22,16 @@ extern "C" const anygba_game anygba_game_info;
 extern "C" const anygba_bios anygba_compiled_bios;
 
 namespace {
+std::string json_string(std::string_view value) {
+    constexpr char hex[]="0123456789abcdef";
+    std::string out="\"";
+    for(unsigned char c:value){
+        if(c=='"'||c=='\\'){out+='\\';out+=char(c);}
+        else if(c<32){out+="\\u00";out+=hex[c>>4];out+=hex[c&15];}
+        else out+=char(c);
+    }
+    return out+'"';
+}
 std::uint64_t number(std::string_view text) {
     int base = 10;
     if (text.starts_with("0x")) { text.remove_prefix(2); base = 16; }
@@ -44,6 +56,9 @@ int main(int argc, char** argv) {
         std::uint64_t present_every=1,resize_frame=0;
         int resize_width=0,resize_height=0,width=0,height=0;
         bool window=false,unpaced=false,fullscreen=false;
+        bool open_settings=false;
+        std::vector<std::string> cheat_codes;
+        std::vector<std::filesystem::path> cheat_files;
         std::string renderer="auto";
 #ifdef GBA_GAME_DEFAULT
         frames=0;window=true;renderer=GBA_DEFAULT_RENDERER;
@@ -73,6 +88,7 @@ int main(int argc, char** argv) {
                     "  [--resolution WIDTHxHEIGHT] [--display-capture output.ppm]\n"
                     "  [--input-script FILE] (lines: frame pressed-mask)\n"
                     "  [--unpaced] [--present-every N] [--resize FRAME:WIDTHxHEIGHT]\n";
+                std::cout << "  [--cheat [FORMAT:]CODE] [--cheats FILE] [--settings] (Windows: F1/Esc settings, F12 cheat button)\n";
                 return 0;
             }
             if (arg == "--strict-static") { options.strict_static = true; continue; }
@@ -87,10 +103,11 @@ int main(int argc, char** argv) {
             if (arg == "--headless") { window=false;continue; }
             if (arg == "--unpaced") { unpaced=true;continue; }
             if (arg == "--fullscreen") { fullscreen=true;window=true;continue; }
+            if (arg == "--settings") { open_settings=true;window=true;continue; }
             if (arg != "--rom" && arg != "--bios" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start" &&
                 arg != "--renderer" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
-                arg != "--input-script" && arg != "--display-capture")
+                arg != "--input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
             if (arg == "--rom") rom = argv[i];
@@ -101,6 +118,8 @@ int main(int argc, char** argv) {
             else if (arg == "--miss-log") miss_log = argv[i];
             else if (arg == "--input-script") input_script=argv[i];
             else if (arg == "--display-capture") display_capture=argv[i];
+            else if (arg == "--cheat") cheat_codes.emplace_back(argv[i]);
+            else if (arg == "--cheats") cheat_files.emplace_back(argv[i]);
             else if (arg == "--renderer") renderer=argv[i];
             else if (arg == "--resolution" || arg == "--resize") {
                 std::string_view value=argv[i];
@@ -212,6 +231,17 @@ int main(int argc, char** argv) {
             persistence = std::make_unique<anygba::save::SaveFile>(save, system->backup());
             persistence->load();
         }
+        gba_frontend::Cheats cheats;
+        auto cheat_path=save;if(!cheat_path.empty())cheat_path+=".cheats.toml";
+        cheats.load(cheat_path);
+        for(const auto& file:cheat_files)cheats.load_once(file);
+        for(const auto& code:cheat_codes)cheats.add_once(code);
+        gba_customization::configure(*system);
+#if defined(GBA_WITH_DESKTOP) && defined(_WIN32)
+        if(open_settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);}
+#else
+        if(open_settings)throw anygba::Error("The native settings window is available in Windows desktop builds. Cheat files and --cheat work on every host.");
+#endif
         std::ofstream audio;
         if (!pcm.empty()) {
             audio.open(pcm, std::ios::binary | std::ios::trunc);
@@ -232,9 +262,14 @@ int main(int argc, char** argv) {
             if (persistence) if (auto error = persistence->on_frame()) s.fail(*error);
             if(auto value=script.find(s.frames());value!=script.end())scripted=value->second;
             uint16_t live=0;
+            bool cheat_button=false;
 #ifdef GBA_WITH_DESKTOP
             if(display){
-                if(!display->poll(live))s.stop();
+                bool settings=false;
+                if(!display->poll(live,&settings,&cheat_button))s.stop();
+#ifdef _WIN32
+                if(settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);live=0;}
+#endif
                 if(resize_width&&s.frames()==resize_frame)display->resize(resize_width,resize_height);
                 display->audio(samples,unpaced);
                 if(s.frames()%present_every==0||(frames&&s.frames()>=frames))display->present(scene,s.framebuffer());
@@ -242,6 +277,7 @@ int main(int argc, char** argv) {
             }
 #endif
             s.set_keys(uint16_t(keys)|scripted|live);
+            cheats.apply(s,uint16_t(keys)|scripted|live,cheat_button);
             if (frames&&s.frames() >= frames) s.stop();
         };
         system->run();
@@ -278,6 +314,9 @@ int main(int argc, char** argv) {
             << ",\"native_entry_points\":" << anygba_game_info.function_count
             << ",\"reference_interpreter\":" << (reference ? "true" : "false")
             << ",\"interpreted_cycles\":" << system->interpreted_cycles()
+            << ",\"enabled_cheats\":" << cheats.enabled()
+            << ",\"game_customized\":" << (GBA_CUSTOMIZED?"true":"false")
+            << ",\"customization\":" << json_string(gba_customization::description())
             << ",\"bios_sha256\":" << std::quoted(bios_data.empty()?std::string():anygba::sha256_hex(bios_data))
             << ",\"bios_native_dispatches\":" << system->bios_native_instructions()
             << ",\"rtc\":" << (system->has_rtc() ? "true" : "false")

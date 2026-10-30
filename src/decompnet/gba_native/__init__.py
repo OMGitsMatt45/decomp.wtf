@@ -23,7 +23,7 @@ GAME_BACKEND_ID = 'gba-anygba-experimental'
 PROFILE_SCHEMA = 'decomp.wtf.gba-profile/v1'
 SAVE_TYPES = ('auto', 'none', 'sram', 'flash64', 'flash128', 'eeprom', 'eeprom512', 'eeprom8k')
 _progress = ContextVar('gba_native_progress', default=None)
-RUNTIME_DIRS = ('apu', 'ppu', 'bios', 'save', 'state', 'interp')
+RUNTIME_DIRS = ('apu', 'ppu', 'bios', 'save', 'state', 'interp', 'cheats')
 CORE = ('runtime', 'system', 'bus', 'io_regs', 'scheduler', 'irq', 'dma', 'timers',
         'cpu_state', 'dispatch', 'rom_patch', 'rtc')
 
@@ -43,7 +43,8 @@ def _source(name):
 def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
-                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp'):
+                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp',
+                 'cheats.hpp', 'cheats.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -731,6 +732,12 @@ def generate(project, root):
     _runtime(sdk, root/'runtime/anygba')
     (root/'game/source_counts.h').write_text('#pragma once\n#define GBA_GENERATED_FUNCTIONS '+str(int(count[1])+overlay_count)+'u\n',encoding='utf-8')
     for source, dest in (('Project.cmake', 'CMakeLists.txt'), ('main.cpp', 'native/main.cpp'),
+                         ('cheats.hpp', 'native/cheats.hpp'), ('cheats.cpp', 'native/cheats.cpp'),
+                         ('settings_win32.cpp', 'native/settings_win32.cpp'),
+                         ('customization.hpp', 'native/customization.hpp'),
+                         ('customization.cpp', 'native/customization.cpp'),
+                         ('cheat_tests.cpp', 'tests/cheats.cpp'),
+                         ('tomlplusplus-license.txt', 'licenses/tomlplusplus.txt'),
                          ('video.hpp', 'native/video.hpp'), ('video.cpp', 'native/video.cpp'),
                          ('ppu.frag', 'native/ppu.frag'), ('shader.hpp.in', 'native/shader.hpp.in'),
                          ('graphics_tests.cpp', 'tests/graphics.cpp'),
@@ -746,6 +753,7 @@ def generate(project, root):
                 'set(GBA_DEFAULT_RENDERER \"auto\")', 'set(GBA_DEFAULT_RENDERER '+json.dumps(display['renderer'])+')')
             content=content.replace('explicit interpreter/reference probe\" ON)',
                 'explicit interpreter/reference probe\" OFF)')
+        (root/dest).parent.mkdir(parents=True, exist_ok=True)
         (root/dest).write_text(content, encoding='utf-8')
     (root/'assets.json').write_text(json.dumps(original, indent=2)+'\n', encoding='utf-8')
     (root/'analysis.json').write_text(json.dumps(dict(profile=profile, functions=int(count[1])+overlay_count,
@@ -918,4 +926,53 @@ These compare all six PPU modes, sprites, effects and resizing against the inter
 reference, using an unrelated CPU picture as GPU input to detect framebuffer blits.
 Keep cartridge-derived source, assets and save files private unless you have the
 necessary rights to share them.
+
+## Cheat codes and settings
+
+On Windows, F1 or Escape opens the native settings window and pauses the game.
+Add a named code, choose auto-detect or its device format, enable/disable entries,
+then choose Save and close. F12 is the cheat device button. The window also opens
+the save folder. Preferences are stored beside the cartridge save as
+`<save-name>.sav.cheats.toml`; they are separate from raw cartridge save bytes.
+
+Every host also accepts `--cheat "cb:82000200 1234"` or `--cheats FILE` for one
+run. Formats: `auto`, `arv3`, `gsv1`, `cb`, `raw`, `arv3raw`, `gsv1raw`.
+The pinned SDK decodes encrypted Action Replay v3 and GameShark v1/v2, CodeBreaker,
+conditions, pointer writes and its raw pointer/XOR extensions. Encrypted CodeBreaker
+has only deterministic upstream checks; real-device compatibility is unverified.
+Unsupported formats and DEADFACE reseeding produce errors. Master/hook codes are
+accepted as no-ops because enabled programs already run once each frame.
+
+Live ROM patches are rejected: this native-only player cannot use the SDK's
+interpreter-backed instruction-patch path. A cheat that changes cartridge code or
+folded literals requires a native source customization. RAM-code replacement can
+also invalidate a compiled body and stop with a coverage diagnostic.
+
+Example preference file (disabled until enabled by the user):
+
+```toml
+[[cheat]]
+name = "Example RAM write"
+format = "cb"
+code = ["82000200 1234"]
+enabled = false
+```
+
+Raw saves retain the original cartridge format. Close the game before editing a
+save in an external editor, then reopen and load it. No wrapper or cheat metadata
+is inserted into `.sav` files.
+Third-party notices include `runtime/anygba/LICENSE` and
+`licenses/tomlplusplus.txt`; include them with distributed builds.
+
+## Project customizations
+
+Optional `custom/game.cpp` implements `gba_customization::configure(System&)` and
+`gba_customization::description()` from `native/customization.hpp`. CMake uses it
+instead of the empty default; JSON reports `game_customized: true`. Keep optional
+invariant tests in `custom/tests.cpp` (the `gba_custom_tests` target).
+
+Generated-file integrity covers the baseline listed in `pc-project.json`.
+Record custom source hashes and validation separately. Re-export into a fresh
+folder, preserve these project-owned files, and test the combined build before
+publishing a customized game.
 """
