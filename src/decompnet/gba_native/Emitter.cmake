@@ -96,6 +96,16 @@ string(REPLACE "            if (fn().insns.contains(pc)) {"
   CFG_BOUNDED "${CFG_SOURCE}")
 string(REPLACE "Image::is_rom(addr.value)" "image_.contains(addr.value, 4)"
   CFG_BOUNDED "${CFG_BOUNDED}")
+# A path that falls through a join can carry a constant switch index while
+# branches entering that join carry other values. Retain the bounded table
+# before constant folding so the first path cannot hide the remaining cases.
+string(REPLACE "    if (rm.is_const()) {"
+  "    if (in.shift == Shift::LSL && in.shift_amount == 2 && in.rm != kPC && st.bound[in.rm] != 0) {\n        return {Val::Kind::Scaled, 0, st.bound[in.rm], in.rm};\n    }\n    if (rm.is_const()) {"
+  CFG_SWITCHES "${CFG_BOUNDED}")
+if(CFG_SWITCHES STREQUAL CFG_BOUNDED)
+  message(FATAL_ERROR "GBA bounded switch-index patch no longer applies")
+endif()
+set(CFG_BOUNDED "${CFG_SWITCHES}")
 if(CFG_BOUNDED STREQUAL CFG_SOURCE)
   message(FATAL_ERROR "GBA bounded analysis patch no longer applies")
 endif()

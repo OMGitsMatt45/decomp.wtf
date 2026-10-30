@@ -12,7 +12,7 @@ import pytest
 
 from decompnet import pc, toolchains
 from decompnet.gba_native import export, inspect, _profile, _regions, _sdk, _feedback, SDK_COMMIT
-from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_swi_timer, bios_sound, callbacks, PROGRAM
+from .fixtures.gba_native import hardware, timer_micro, bios_pipeline, bios_swi_timer, bios_sound, callbacks, switch_table, PROGRAM
 
 
 @pytest.fixture(scope='module')
@@ -91,6 +91,18 @@ def test_callback_tables_reached_through_ram_compile_without_profiles_or_feedbac
     oracle=execute(project,'--keys','2','--interpreter','--observe','0x02000044')
     assert moved['observed']==oracle['observed']==[0x03007eec]
     assert moved['misses'] and moved['interpreted_cycles']>0
+
+
+def test_bounded_thumb_switch_after_join(tmp_path, sdk):
+    project=generate(tmp_path/'switch',profile=False,fixture=switch_table())
+    observations=[value for address in range(0x02000000,0x02000014,4)
+        for value in ('--observe',hex(address))]
+    native=execute(project,'--strict-static',*observations)
+    reference=execute(project,'--interpreter',*observations)
+    assert native['observed']==reference['observed']==[5,9,13,9,17]
+    assert native['interpreted_cycles']==0 and native['misses']==[]
+    for field in ('frames','cycles','audio_frames','screen_sha256'):
+        assert native[field]==reference[field],field
 
 
 def test_original_native_code_drives_bios_keys_irq_dma_picture_audio_and_save(original, tmp_path):
