@@ -46,6 +46,8 @@ def test_player_has_no_interpreter_and_reports_unknown_ram_without_opt_in(deskto
     root,exe=desktop
     assert not (root/'build/gba_probe').exists() and not (root/'build/Release/gba_probe.exe').exists()
     assert 'contains no interpreter' in run([exe,'--interpreter'],ok=False)
+    if sys.platform == 'win32':
+        assert 'requires a desktop window' in run([exe,'--settings','--headless','--frames','1'],ok=False)
     error=run([exe,'--headless','--frames','8','--keys','2','--save',tmp_path/'mutation.sav'],ok=False)
     assert 'static coverage miss' in error and 'contains no interpreter' in error
     if shutil.which('nm'):

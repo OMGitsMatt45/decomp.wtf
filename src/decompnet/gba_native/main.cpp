@@ -238,7 +238,10 @@ int main(int argc, char** argv) {
         for(const auto& code:cheat_codes)cheats.add_once(code);
         gba_customization::configure(*system);
 #if defined(GBA_WITH_DESKTOP) && defined(_WIN32)
-        if(open_settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);}
+        if(open_settings){
+            if(!display)throw anygba::Error("--settings requires a desktop window; remove --headless.");
+            display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);
+        }
 #else
         if(open_settings)throw anygba::Error("The native settings window is available in Windows desktop builds. Cheat files and --cheat work on every host.");
 #endif
