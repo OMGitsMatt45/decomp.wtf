@@ -103,6 +103,48 @@ def install(emitter):
         if value<0 or value%4:return None
         return value if name=='add' else -value
 
+    def stack_load(op,register,offset=None):
+        if cls._branch_name(op)!='ldr' or len(op.operands)!=2 or op.writeback:return False
+        dest,source=op.operands
+        return (dest.type==ARM_OP_REG and emitter.operand_reg(op,dest)==register
+                and source.type==ARM_OP_MEM and emitter.reg_index(op,source.mem.base)==13
+                and not source.mem.index and source.mem.disp>=0 and source.mem.disp%4==0
+                and (offset is None or source.mem.disp==offset))
+
+    def registers(op,name,expected):
+        return (cls._branch_name(op)==name and all(item.type==ARM_OP_REG for item in op.operands)
+                and {emitter.operand_reg(op,item) for item in op.operands}==expected)
+
+    def probe(decoder,address,limit,entry=False):
+        # Compiler entry/exit instrumentation saves its argument around a
+        # returning helper. Recognize the whole balanced sequence, including
+        # the entry's restoration of the original LR; never ignore arbitrary
+        # PUSHes, calls or stack writes while proving a shared return.
+        ops=[]
+        for _ in range(7 if entry else 6):
+            op=decoder.decode(address)
+            if op is None or op.next_address>limit or op.condition!=14:return None
+            ops.append(op);address=op.next_address
+        call=ops[2] if entry else ops[3]
+        if (cls._branch_name(call) not in ('bl','blx') or len(call.operands)!=1
+                or call.operands[0].type!=ARM_OP_IMM):return None
+        if entry:
+            load=ops[1];move=ops[4]
+            if not (registers(ops[0],'push',{0,14}) and cls._branch_name(load)=='ldr'
+                    and len(load.operands)==2 and load.operands[0].type==ARM_OP_REG
+                    and emitter.operand_reg(load,load.operands[0])==0
+                    and load.operands[1].type==ARM_OP_MEM
+                    and emitter.reg_index(load,load.operands[1].mem.base)==15
+                    and not load.operands[1].mem.index and not load.writeback
+                    and stack_load(ops[3],0,4) and cls._branch_name(move).rstrip('s')=='mov'
+                    and len(move.operands)==2 and all(item.type==ARM_OP_REG for item in move.operands)
+                    and [emitter.operand_reg(move,item) for item in move.operands]==[14,0]
+                    and stack_load(ops[5],0,0) and adjustment(ops[6])==8):return None
+        elif not (registers(ops[0],'push',{0}) and stack_load(ops[1],0)
+                  and registers(ops[2],'push',{0}) and stack_load(ops[4],0,4)
+                  and adjustment(ops[5])==8):return None
+        return address,{op.address for op in ops}
+
     def shared_exit(self,insn,target):
         """Prove a Thumb helper releases exactly this caller's stack frame.
 
@@ -119,12 +161,14 @@ def install(emitter):
         elif self._inside(target):
             module,end=self.module,self.end
         else:return False
-        prologue=self.decoder.decode(self.begin)
+        instrumented=probe(self.decoder,self.begin,self.end,entry=True)
+        start,probe_sites=instrumented if instrumented else (self.begin,set())
+        prologue=self.decoder.decode(start)
         if prologue is None or cls._branch_name(prologue)!='push' or prologue.condition!=14:return False
         saved={emitter.operand_reg(prologue,op) for op in prologue.operands if op.type==ARM_OP_REG}
         if 14 not in saved:return False
         expected=(saved-{14})|{15}
-        allocation=0;prologue_sites={self.begin};address=prologue.next_address
+        allocation=0;prologue_sites=probe_sites|{start};address=prologue.next_address
         for _ in range(4):
             op=self.decoder.decode(address)
             delta=adjustment(op) if op is not None else None
@@ -143,6 +187,11 @@ def install(emitter):
                 op=decoder.decode(address)
                 if op is None or op.next_address>limit or op.condition!=14:return None
                 name=cls._branch_name(op).rstrip('s');sites.add(address)
+                if name=='push' and released==allocation:
+                    instrumented=probe(decoder,address,limit)
+                    if instrumented is None:return None
+                    address,probe_sites=instrumented;sites.update(probe_sites)
+                    continue
                 if name=='pop':
                     restored={emitter.operand_reg(op,item) for item in op.operands if item.type==ARM_OP_REG}
                     return sites if restored==expected and released==allocation else None
@@ -198,13 +247,21 @@ def install(emitter):
         finally:self._branch_name=name;self._manual_link=manual
 
     def emit_branch(self,insn):
-        result=branch(self,insn)
-        if result is None or not insn.thumb or self._branch_name(insn)!='bl':return result
-        target=self._branch_target(insn)
-        if target is None or (self.dispatch_entries is not None and self._inside(target&~1)):return result
         if insn.address in getattr(self,"_decomp_tail_exits",set()):
-            return result+'\nreturn;'
-        return result
+            target=self._branch_target(insn)
+            if self.dispatch_entries is None or not self._inside(target&~1):
+                link=insn.next_address|1
+                if self._inside(target&~1):
+                    body=f'goto L_{target&~1:08x};'
+                else:
+                    body=self._call_direct(insn,target,tail=True)
+                    if body is None:
+                        self.stats['dsr_call_sites']+=1
+                        body=f'::dsr::dsr_call(c, 0x{target|1:08x}u);\nreturn;'
+                # BL still sets LR, but the consumed frame belongs to our
+                # caller. A returning-call check against BL+4 is incorrect.
+                return f'c->r[14] = 0x{link:08x}u;\n'+body
+        return branch(self,insn)
 
     def count(self,insn,index_reg,default):
         if not insn.thumb:

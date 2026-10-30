@@ -27,7 +27,7 @@ def sdk():
     return toolchains.require('dsr-sdk')
 
 
-def generate(root,make):
+def generate(root,make,*,cmake_options=()):
     raw,profile=make();root.mkdir()
     rom=root/'original.nds';rom.write_bytes(raw)
     path=root/'reviewed.json';path.write_text(json.dumps(profile))
@@ -38,7 +38,7 @@ def generate(root,make):
     assert result['manifest']['runtime']['revision']==SDK_COMMIT
     assert all(s['undefined_sites']==0 for s in result['manifest']['code_generation'])
     for command in ([sys.executable,'-I',str(output/'tools/extract_assets.py'),str(rom)],
-                    ['cmake','-S',str(output),'-B',str(output/'build'),'-DNDS_WITH_SDL=OFF','-DCMAKE_BUILD_TYPE=Release'],
+                    ['cmake','-S',str(output),'-B',str(output/'build'),'-DNDS_WITH_SDL=OFF','-DCMAKE_BUILD_TYPE=Release',*cmake_options],
                     ['cmake','--build',str(output/'build'),'--config','Release','--parallel','2']):
         run=subprocess.run(command,capture_output=True,text=True,timeout=240)
         assert run.returncode==0,run.stdout+run.stderr
@@ -172,11 +172,12 @@ def test_generated_guest_code_drives_video_audio_irqs_ipc_keys_and_cartridge_sav
     save=tmp_path/'game.sav';capture=tmp_path/'capture';audio=tmp_path/'sound.pcm'
     inputs=tmp_path/'input.txt';inputs.write_text('\n'.join(f'{i} 1 -1 -1' for i in range(8)))
     result=execute(exe,root,'--save',save,'--capture',capture,'--audio-pcm',audio,'--input-script',inputs)
-    count,keys,ipc,old,new,arm7_progress,dtcm,first,last,card_irq,*switch=result['observed']
+    count,keys,ipc,old,new,arm7_progress,dtcm,first,last,card_irq,*switch=result['observed'][:17]
     assert count>0 and keys==0x3fe and ipc==0x12345678 and old==255 and new==0 and arm7_progress>0
     assert dtcm==0xa55a1234
     assert first==0xd5000000 and last==0xd500007f and card_irq==0x80000
     assert switch==[22,33,255,42,63,77,255]
+    assert result['observed'][17:]==[42,90,0,0,7,4]  # result, saved r4, SP delta, unused, inline result, probes
     assert result['unimplemented_io']==0 and result['audio_frames']>0
     for name,color in (('top',b'\xff\x00\x00'),('bottom',b'\x00\xff\x00')):
         image=(capture/(name+'.ppm')).read_bytes()
@@ -362,6 +363,40 @@ def test_sdl_window_and_audio_frontend_build_and_run(tmp_path,hardware_project):
 def test_unsupported_code_does_not_publish_an_incomplete_repository(tmp_path,sdk):
     raw,profile=simple(struct.pack('<I',0xe7f000f0))  # undefined ARM instruction
     profile.pop('save_region')
+    rom=tmp_path/'original.nds';rom.write_bytes(raw)
+    path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
+    with pytest.raises(pc.PCError,match='unsupported instruction sites'):
+        export(rom,tmp_path/'out',profile=path)
+    assert not (tmp_path/'out').exists()
+
+
+@pytest.mark.parametrize('local',[False,True])
+def test_instrumented_shared_return_preserves_caller_with_return_checks(tmp_path,sdk,local):
+    def make():
+        raw,profile=hardware()
+        if not local:
+            symbols=json.loads((Path(__file__).parent/'fixtures/nds-hardware/program.json').read_text())['arm9']['symbols']
+            entry=next(item for item in profile['code']['arm9'] if item['address']==symbols['traced_start'])
+            entry['size']=symbols['traced_exit']-symbols['traced_start']
+            profile['code']['arm9'].append(dict(address=symbols['traced_exit'],
+                size=symbols['traced_exit_end']-symbols['traced_exit'],mode='thumb'))
+        return raw,profile
+    _,root,exe=generate(tmp_path/'instrumented',make,cmake_options=('-DCMAKE_CXX_FLAGS=-DDSR_RET_CHECK',))
+    result=execute(exe,root,'--save',tmp_path/'game.sav')
+    assert result['observed'][17:]==[42,90,0,0,7,4]
+    assert result['observed'][14]==63  # ordinary nested BL still resumes its caller
+
+
+@pytest.mark.parametrize('entry_probe',[False,True])
+def test_unbalanced_instrumentation_does_not_hide_unsupported_code(tmp_path,sdk,entry_probe):
+    raw,profile=hardware();raw=bytearray(raw)
+    symbols=json.loads((Path(__file__).parent/'fixtures/nds-hardware/program.json').read_text())['arm9']['symbols']
+    offset,_,base,_=struct.unpack_from('<4I',raw,0x20)
+    begin=offset+symbols['traced_start' if entry_probe else 'traced_exit']-base
+    end=offset+symbols['traced_end']-base
+    at=raw.index(struct.pack('<H',0xb002),begin,end)  # ADD sp,#8 -> #4 leaves a saved word behind
+    struct.pack_into('<H',raw,at,0xb001)
+    profile['input_sha256']=hashlib.sha256(raw).hexdigest()
     rom=tmp_path/'original.nds';rom.write_bytes(raw)
     path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
     with pytest.raises(pc.PCError,match='unsupported instruction sites'):

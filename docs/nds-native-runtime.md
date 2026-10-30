@@ -2,9 +2,12 @@
 
 PR #29 now includes an additional experimental adapter that generates ARM9/ARM7
 C++ and ships a native DS hardware runtime as source. It uses the original MIT
-runtime/recompiler from [DQ9-Decomp](https://github.com/0bAndyWirus/DQ9-Decomp),
+runtime/recompiler from [DQ9-Remastered](https://github.com/dq9-remastered/DQ9-Remastered),
 pinned at `b8fc609c20699ad5afe36922b7f2aa42436ec931` with archive SHA-256
-`1c7d8cef88039252d8c1c250a64ad620d7f98cda0f42adb5b183bbfe11d45385`.
+`7a556630652e1173778b3e65999199dc8e77f914220a1430d2d67fc220d3ee08`.
+The repository moved after 0.20.0; its canonical archive has a new root name and
+checksum. All 389 file blobs match the same pinned commit (with the archive's
+Windows text line endings normalized for the Git comparison).
 The runtime includes memory/TCM, IRQs, timers, DMA, 2D/3D graphics, DS audio,
 buttons/touch, cartridge access and save devices. Its timings and hardware model
 still have limits; reusing it does not establish another game's compatibility.

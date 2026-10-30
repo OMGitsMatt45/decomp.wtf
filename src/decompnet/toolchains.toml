@@ -347,12 +347,12 @@ platforms = ["linux-x86_64", "windows-x86_64"]
 name = "DS static runtime and recompiler sources"
 kind = "tool"
 license = "MIT; bundled font BSD-2-Clause"
-source = "0bAndyWirus/DQ9-Decomp b8fc609c20699ad5afe36922b7f2aa42436ec931"
+source = "dq9-remastered/DQ9-Remastered b8fc609c20699ad5afe36922b7f2aa42436ec931"
 description = "Pinned ARM/Thumb C++ emitter and DS graphics, audio, timing, input and cartridge runtime sources. No games, BIOS or mobile assets."
 [[dsr-sdk.parts]]
-url = "https://codeload.github.com/0bAndyWirus/DQ9-Decomp/tar.gz/b8fc609c20699ad5afe36922b7f2aa42436ec931"
-sha256 = "1c7d8cef88039252d8c1c250a64ad620d7f98cda0f42adb5b183bbfe11d45385"
-subdir = "DQ9-Decomp-b8fc609c20699ad5afe36922b7f2aa42436ec931"
+url = "https://codeload.github.com/dq9-remastered/DQ9-Remastered/tar.gz/b8fc609c20699ad5afe36922b7f2aa42436ec931"
+sha256 = "7a556630652e1173778b3e65999199dc8e77f914220a1430d2d67fc220d3ee08"
+subdir = "DQ9-Remastered-b8fc609c20699ad5afe36922b7f2aa42436ec931"
 platforms = ["linux-x86_64", "windows-x86_64"]
 
 [binutils-arm]

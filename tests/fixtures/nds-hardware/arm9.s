@@ -6,6 +6,7 @@
 .global _start, main_end, save_read, save_read_end, save_write, save_write_end, irq_start, irq_end, thumb_start, thumb_end
 .global shared_start, shared_end, shared_exit, shared_exit_end, regular_start, regular_end, child_start, child_end
 .global large_start, large_end
+.global traced_start, traced_end, traced_exit, traced_exit_end, probe_helper, probe_helper_end
 _start:
     ldr r6, =0x02010000
     bl save_read
@@ -83,6 +84,19 @@ wait_card:
     ldr r0, =300
     blx r4
     str r0, [r6, #64]
+    /* Instrumented entry and shared return must preserve the caller's frame. */
+    mov r5, sp
+    mov r4, #90
+    ldr r7, =traced_start + 1
+    mov r0, #1
+    blx r7
+    str r0, [r6, #68]
+    str r4, [r6, #72]
+    sub r0, sp, r5
+    str r0, [r6, #76]
+    mov r0, #0
+    blx r7
+    str r0, [r6, #84]
     /* Engine A: direct VRAM display, solid red. */
     ldr r0, =0x04000240
     mov r1, #0x80
@@ -282,3 +296,43 @@ large_last:
     movs r0, #77
     bx lr
 large_end:
+.align 2
+traced_start:
+    push {r0, lr}
+    ldr r0, =0x12345678
+    blx probe_helper
+    ldr r0, [sp, #4]
+    mov lr, r0
+    ldr r0, [sp]
+    add sp, #8
+    push {r3, r4, r5, r6, r7, lr}
+    sub sp, #16
+    cmp r0, #0
+    beq traced_inline
+    movs r0, #42
+    bl traced_exit
+    .word 0x02fff400 /* unreachable data, never a BL continuation */
+traced_inline:
+    movs r0, #7
+    b traced_exit
+traced_exit:
+    add sp, #16
+    push {r0}
+    ldr r0, [sp, #20]
+    push {r0}
+    blx probe_helper
+    ldr r0, [sp, #4]
+    add sp, #8
+    pop {r3, r4, r5, r6, r7, pc}
+traced_exit_end:
+traced_end:
+.align 2
+.arm
+probe_helper:
+    ldr r12, =0x02010058
+    ldr r2, [r12]
+    add r2, r2, #1
+    str r2, [r12]
+    mov r0, #85
+    bx lr
+probe_helper_end:

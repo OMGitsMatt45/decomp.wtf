@@ -36,7 +36,8 @@ def main():
                            if s.name in ('_start','main_end','thumb_start','thumb_end','loader','overlay1_source','overlay2_source',
                                          'save_read','save_read_end','save_write','save_write_end','irq_start','irq_end',
                                          'shared_start','shared_end','shared_exit','shared_exit_end','regular_start','regular_end','child_start','child_end',
-                                         'large_start','large_end')}
+                                         'large_start','large_end','traced_start','traced_end',
+                                         'traced_exit','traced_exit_end','probe_helper','probe_helper_end')}
             result[cpu] = dict(hex=binary.read_bytes().hex(),symbols=symbols)
     (ROOT/'tests/fixtures'/fixture/'program.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
 

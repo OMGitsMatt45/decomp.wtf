@@ -17,3 +17,10 @@ epilogue that releases local stack space. Its alternate inline return also
 writes an output word. Pointer-like data after the shared BL is unreachable.
 A normal nested BL with a separate saved frame must still resume its caller.
 All paths have original assembled bytes and observable memory results.
+
+An instrumented Thumb function also saves/restores its argument and original LR
+around an ARM entry helper, and runs a balanced exit helper before popping its
+caller's PC. Both a BL to the shared return and an ordinary inline branch must
+preserve the result, saved r4, and caller SP. The two calls execute exactly four
+probes. Tests cover local and separately outlined return entries with runtime
+return checking enabled, and reject malformed entry/exit stack restoration.
