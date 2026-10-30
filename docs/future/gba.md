@@ -27,6 +27,10 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Large dispatch initializers use bounded `.inc` fragments so individual generated
   files fit ordinary Git hosting limits. Includes preserve the exact table order,
   duplicate RAM guards, entry count and C layout in the same translation unit.
+- Bounded Thumb switch tables retain all cases after a control-flow join, even
+  when the first analyzed path carries a constant index. An original cartridge
+  exercises untagged case labels and shared interworking returns in strict
+  native execution against the reference CPU.
 - Input-bound runtime coverage feedback. Re-exporting with `--feedback` translates
   newly observed code, with ROM checksums and source-file preservation checks.
 - Instruction-boundary scheduler updates keep timer, DMA and audio accesses synchronized

@@ -71,3 +71,10 @@ strict native execution without a runtime coverage-discovery run.
 It also checks an even code pointer with a deferred stack save, a computed jump
 inside a BIOS-wrapper copy, and a 2,300-instruction loop crossing native C pieces.
 A copied PC-dependent body must be rejected by placement-independent matching.
+
+`switch-table.s` is an original CC0 join followed by a bounded Thumb switch.
+Its first linear path has a constant index, while branches into the same block
+provide other indices. Untagged, even case labels include a halfword-aligned
+non-leaf body without its own stack prologue. An unprofiled strict-native run
+must execute every reachable case and match the reference interpreter. Rebuild
+this fixture with `--fixture switch-table`.
