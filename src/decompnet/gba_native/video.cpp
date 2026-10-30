@@ -121,7 +121,12 @@ struct Display::Impl {
         SDL_WindowFlags flags=SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY;
         if(gpu)flags|=SDL_WINDOW_OPENGL;
         if(options.hidden)flags|=SDL_WINDOW_HIDDEN;
-        window=SDL_CreateWindow("GBA native PC",w,h,flags);check(window,SDL_GetError());
+#ifdef _WIN32
+        window=SDL_CreateWindow("GBA native PC — F1/Esc: Settings",w,h,flags);
+#else
+        window=SDL_CreateWindow("GBA native PC",w,h,flags);
+#endif
+        check(window,SDL_GetError());
         check(SDL_SetWindowPosition(window,SDL_WINDOWPOS_CENTERED_DISPLAY(monitor),SDL_WINDOWPOS_CENTERED_DISPLAY(monitor)),SDL_GetError());
         if(options.fullscreen)check(SDL_SetWindowFullscreen(window,true),SDL_GetError());
     }
@@ -157,15 +162,18 @@ struct Display::Impl {
 };
 Display::Display(Options options):p(std::make_unique<Impl>()){p->init(std::move(options));}
 Display::~Display()=default;
-bool Display::poll(uint16_t& keys){
+bool Display::poll(uint16_t& keys,bool* settings,bool* cheat_button){
     SDL_Event event;while(SDL_PollEvent(&event)) {
         if(event.type==SDL_EVENT_QUIT||event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED)return false;
         if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_F11)
             check(SDL_SetWindowFullscreen(p->window,!(SDL_GetWindowFlags(p->window)&SDL_WINDOW_FULLSCREEN)),SDL_GetError());
+        if(settings&&event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&
+           (event.key.scancode==SDL_SCANCODE_F1||event.key.scancode==SDL_SCANCODE_ESCAPE))*settings=true;
         if(event.type==SDL_EVENT_GAMEPAD_ADDED&&!p->pad)p->pad=SDL_OpenGamepad(event.gdevice.which);
         if(event.type==SDL_EVENT_GAMEPAD_REMOVED&&p->pad&&SDL_GetGamepadID(p->pad)==event.gdevice.which){SDL_CloseGamepad(p->pad);p->pad=nullptr;}
     }
     keys=0;
+    if(cheat_button)*cheat_button=SDL_GetKeyboardFocus()==p->window&&SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_F12];
     if(SDL_GetKeyboardFocus()==p->window){const auto* k=SDL_GetKeyboardState(nullptr);
         const SDL_Scancode sc[]={SDL_SCANCODE_X,SDL_SCANCODE_Z,SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_RETURN,
             SDL_SCANCODE_RIGHT,SDL_SCANCODE_LEFT,SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,SDL_SCANCODE_W,SDL_SCANCODE_Q};
@@ -230,4 +238,18 @@ bool Display::audio_device()const{return p->sound!=nullptr;}
 int Display::width()const{return p->width;}
 int Display::height()const{return p->height;}
 const std::vector<uint8_t>& Display::pixels()const{return p->pixels;}
+void* Display::native_window()const{
+#ifdef _WIN32
+    return SDL_GetPointerProperty(SDL_GetWindowProperties(p->window),SDL_PROP_WINDOW_WIN32_HWND_POINTER,nullptr);
+#else
+    return nullptr;
+#endif
+}
+void Display::pause(bool paused){
+    if(p->sound){
+        if(paused){SDL_PauseAudioStreamDevice(p->sound);SDL_ClearAudioStream(p->sound);}
+        else SDL_ResumeAudioStreamDevice(p->sound);
+    }
+    p->deadline=std::chrono::steady_clock::now();
+}
 }

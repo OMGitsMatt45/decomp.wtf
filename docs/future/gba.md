@@ -17,6 +17,12 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Headless frame/PCM capture, input, RAM observations and raw save persistence.
   The player contains no interpreter; an optional separate probe retains the
   reference implementation for validation and coverage investigation.
+- The standalone frontend includes the pinned SDK's Action Replay/GameShark,
+  CodeBreaker and raw cheat decoder, per-frame execution and separate preferences.
+  Windows F1/Escape opens a paused code-management/save-folder window; every host
+  accepts cheat files and command-line codes. ROM patches are explicitly rejected
+  because this player has no interpreter. Optional project-owned native extensions
+  support intentional game modifications while keeping baseline hashes intact.
 - Automatic callback discovery includes aligned tables, packed script pointers,
   longer leaf functions and tail-call bodies. Native secondary entries cover
   decoded instruction boundaries. BIOS/memcpy/inline/DMA copy hypotheses and

@@ -24,7 +24,9 @@ class Display {
 public:
     explicit Display(Options options);
     ~Display();
-    bool poll(uint16_t& keys);
+    bool poll(uint16_t& keys, bool* settings=nullptr, bool* cheat_button=nullptr);
+    void* native_window() const;
+    void pause(bool paused);
     void present(const Scene& scene,std::span<const uint16_t> software_frame);
     void audio(std::span<const int16_t> samples,bool unpaced=false);
     void resize(int width,int height);
