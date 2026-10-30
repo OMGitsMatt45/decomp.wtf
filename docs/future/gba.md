@@ -24,6 +24,9 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Bounded BIOS/DMA copies with verified code also get native instruction entries
   for computed jumps. Large functions split at instruction boundaries, and C
   source units use a byte budget to keep host compilation within ordinary memory.
+- Large dispatch initializers use bounded `.inc` fragments so individual generated
+  files fit ordinary Git hosting limits. Includes preserve the exact table order,
+  duplicate RAM guards, entry count and C layout in the same translation unit.
 - Input-bound runtime coverage feedback. Re-exporting with `--feedback` translates
   newly observed code, with ROM checksums and source-file preservation checks.
 - Instruction-boundary scheduler updates keep timer, DMA and audio accesses synchronized

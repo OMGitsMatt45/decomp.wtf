@@ -228,6 +228,38 @@ def _overlays(emitter, path, work, root, copies, profile, feedback, instruction_
     return len({r[2].removesuffix('_resume') for r in rows})
 
 
+def _fragment_dispatch(root, *, max_bytes=1024*1024):
+    """Keep large generated tables in ordinary Git without changing their C layout."""
+    path = root/'game/dispatch.c'
+    if path.stat().st_size <= max_bytes:
+        return
+    text = path.read_text(encoding='utf-8')
+    marker = 'static const anygba_function_entry functions[] = {\n'
+    begin = text.find(marker)
+    if begin < 0:
+        raise pc.PCError('GBA native dispatch table marker differs')
+    begin += len(marker)
+    end = text.find('};\n', begin)
+    if end < 0:
+        raise pc.PCError('GBA native dispatch table terminator differs')
+    fragments = []
+    offset = begin
+    while offset < end:
+        stop = min(offset+max_bytes, end)
+        if stop < end:
+            stop = text.rfind('\n', offset, stop)+1
+        if stop <= offset:
+            raise pc.PCError('GBA native dispatch entry exceeds the source fragment budget')
+        fragments.append(text[offset:stop])
+        offset = stop
+    includes = []
+    for index, fragment in enumerate(fragments):
+        name = f'dispatch_entries_{index:03d}.inc'
+        (path.parent/name).write_text(fragment, encoding='utf-8', newline='\n')
+        includes.append(f'#include "{name}"\n')
+    path.write_text(text[:begin]+''.join(includes)+text[end:], encoding='utf-8', newline='\n')
+
+
 def _profile(path, identity):
     if path is None:
         return {}
@@ -695,6 +727,7 @@ def generate(project, root):
         else:
             (root/'game/bios_dispatch.c').write_text('#include <anygba/bios_native.h>\n'
                 'const anygba_bios anygba_compiled_bios={0,0,0,0,0,0};\n',encoding='utf-8')
+    _fragment_dispatch(root)
     _runtime(sdk, root/'runtime/anygba')
     (root/'game/source_counts.h').write_text('#pragma once\n#define GBA_GENERATED_FUNCTIONS '+str(int(count[1])+overlay_count)+'u\n',encoding='utf-8')
     for source, dest in (('Project.cmake', 'CMakeLists.txt'), ('main.cpp', 'native/main.cpp'),
