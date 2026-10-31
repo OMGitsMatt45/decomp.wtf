@@ -58,6 +58,10 @@ ARM/Thumb exchange. This recovers routines mislabeled as data even when the
 only caller lives in resident code or another overlay. Ambiguous overlay
 destinations and unreferenced prologues do not seed recovery. The recovery
 metadata records pointer and qualified-call evidence separately.
+PC-relative ARM stores are accepted only when their destinations can be
+retained as initialized data, disjoint from decoded instructions. Recovered
+regions exclude literal data from overlay identity hashes, allowing callbacks
+to update return-address slots without losing their compiled dispatch entry.
 
 Generated players include an F1 settings menu and optional ROM-bound data
 cheat catalogs. See [DS settings and data cheats](nds-cheats.md).

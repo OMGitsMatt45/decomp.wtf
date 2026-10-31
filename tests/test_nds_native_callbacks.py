@@ -3,6 +3,7 @@ import copy
 import json
 import struct
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -38,6 +39,32 @@ def prepare(tmp_path):
     _,emitter,reader=nds_native._sdk()
     manifest=dict(cpu='arm9',arch='v5te',modules=[callback_image(tmp_path)])
     return manifest,emitter,reader
+
+
+def mutable_image(tmp_path,module_id,increment):
+    base=0x02016000;raw=bytearray(0x40)
+    struct.pack_into('<I',raw,0,0xe12fff1e)
+    struct.pack_into('<I',raw,0x10,base+0x20)
+    struct.pack_into('<5I',raw,0x20,0xe59f0008,0xe2800000|increment,0xe58f0000,0xe12fff1e,41)
+    path=tmp_path/f'mutable-{module_id}.bin';path.write_bytes(raw)
+    return dict(name=f'ov{module_id:03}',module_id=module_id,base=base,image=str(path),
+        functions=[dict(addr=base,thumb=False,size=4,name='existing')],labels=[],calls=[],
+        code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
+
+
+def test_pc_relative_data_stores_keep_mutable_literals_out_of_dispatch_hashes(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk()
+    module=mutable_image(tmp_path,2,1)
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    assert len(recover(manifest,emitter,reader))==1
+    region=module['dispatch_regions'][0]
+    assert region['data_ranges']==[[0x02016030,0x02016034]]
+    # A store into an actual decoded instruction is rejected.
+    other=mutable_image(tmp_path,3,1)
+    image=bytearray(Path(other['image']).read_bytes())
+    struct.pack_into('<I',image,0x28,0xe50f0008)  # str r0,[pc,#-8] -> itself
+    Path(other['image']).write_bytes(image)
+    assert recover(dict(cpu='arm9',arch='v5te',modules=[other]),emitter,reader)==[]
 
 
 def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
@@ -88,7 +115,8 @@ def test_qualified_direct_calls_seed_only_the_referenced_overlay(tmp_path,sdk,ta
 def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,sdk,hardware_project):
     manifest,emitter,reader=prepare(tmp_path)
     manifest['modules'].append(callback_image(tmp_path,1,increment=2))
-    assert len(recover(manifest,emitter,reader))==10
+    manifest['modules'].extend([mutable_image(tmp_path,2,1),mutable_image(tmp_path,3,2)])
+    assert len(recover(manifest,emitter,reader))==12
     generated=tmp_path/'generated';generated.mkdir()
     result=emitter.emit_manifest(manifest,generated,chunk_size=100)
     assert result['undefined_sites']==0
@@ -104,8 +132,9 @@ def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,s
 #include <vector>
 int main(int argc,char** argv) {
   dsr::MachineConfig config;config.direct_boot=false;config.arm9_table=dsr::gen_table_arm9();
+  config.arm9_regions=dsr::gen_dispatch_regions_arm9();
   dsr::Machine machine(config);auto& cpu=machine.cpu(dsr::CpuId::Arm9);
-  for(int i=1;i<argc;++i) {
+  for(int i=1;i<=2;++i) {
     std::ifstream file(argv[i],std::ios::binary);
     std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
     for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x02014000+j,bytes[j]);
@@ -120,6 +149,14 @@ int main(int argc,char** argv) {
       cpu.r[0]=value;dsr::dsr_call(&cpu,0x020140b1);
       if(cpu.r[0]!=10+value)return 4;
     }
+  }
+  for(int i=3;i<argc;++i) {
+    std::ifstream file(argv[i],std::ios::binary);
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x02016000+j,bytes[j]);
+    cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;
+    dsr::dsr_call(&cpu,0x02016020);dsr::dsr_call(&cpu,0x02016020);
+    if(cpu.r[0]!=41+2*unsigned(i-2))return 5;
   }
 }
 ''')
