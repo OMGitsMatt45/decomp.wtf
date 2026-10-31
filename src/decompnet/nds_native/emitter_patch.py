@@ -211,7 +211,77 @@ def install(emitter):
                     if any(op.detail.reg_name(r) in ('sp','lr','pc','r13','r14','r15') for r in writes):return None
                 address=op.next_address
             return None
+        def body_exit(start):
+            # A Thumb BL may be the compiler's long branch into a large arm
+            # of the same function. Follow its decoded graph, including loops
+            # and ordinary external calls, and prove every exit consumes the
+            # caller's frame. A new frame, LR return, unknown dispatch, missing
+            # instruction or inconsistent stack delta makes this inconclusive.
+            if not self._inside(start) or start not in self.insns:return None
+            pending=[(start,0)];states={};sites=set();returned=False;edges=set();tables=[]
+            def follow(source,destination,released):
+                edges.add((source,destination));pending.append((destination,released))
+            while pending:
+                address,released=pending.pop()
+                if address in states:
+                    if states[address]!=released:return None
+                    continue
+                op=self.insns.get(address)
+                if op is None:return None
+                states[address]=released;sites.add(address)
+                name=cls._branch_name(op).rstrip('s')
+                if op.condition!=14 and name!='b':return None
+                if name=='pop':
+                    restored={emitter.operand_reg(op,item) for item in op.operands if item.type==ARM_OP_REG}
+                    if restored!=expected or released!=allocation:return None
+                    returned=True;continue
+                if name=='b':
+                    destination=self._branch_target(op)
+                    if destination is None or not self._inside(destination&~1):return None
+                    follow(address,destination&~1,released)
+                    if op.condition!=14:follow(address,op.next_address,released)
+                    continue
+                if name in ('bl','blx'):
+                    destination=self._branch_target(op)
+                    if destination is None:return None
+                    if self._inside(destination&~1):
+                        if released or epilogue(self.module,destination&~1,self.end) is None:return None
+                        follow(address,destination&~1,released)
+                    else:follow(address,op.next_address,released)
+                    continue
+                if name=='bx':return None
+                delta=adjustment(op)
+                if delta is not None:
+                    if delta<0 or released+delta>allocation:return None
+                    released+=delta
+                else:
+                    _,writes=op.detail.regs_access()
+                    if any(op.detail.reg_name(r) in ('sp','r13') for r in writes):return None
+                    if any(op.detail.reg_name(r) in ('pc','r15') for r in writes):
+                        info=self._jump_table_info(op)
+                        if info is None or not info.get('guard'):return None
+                        tables.append((address,info['guard']))
+                        for _,destination in info['cases']:
+                            if not self._inside(destination):return None
+                            follow(address,destination,released)
+                        continue
+                follow(address,op.next_address,released)
+            for dispatch,guard in tables:
+                # No edge may enter between the range guard and its dispatch.
+                # The table recognizer also proves this straight-line segment
+                # leaves the guarded key unchanged. This excludes bypasses and
+                # loops which could invalidate the range on a later visit.
+                address=guard['fallthrough'];previous=guard['address'];predecessors={}
+                while address<=dispatch:
+                    if address not in self.insns:return None
+                    predecessors[address]=previous
+                    previous,address=address,self.insns[address].next_address
+                if dispatch not in predecessors or start in predecessors:return None
+                if any(destination in predecessors and source!=predecessors[destination]
+                       for source,destination in edges):return None
+            return sites if returned else None
         epilogue_sites=epilogue(module,target,end)
+        if epilogue_sites is None and module is self.module:epilogue_sites=body_exit(target)
         if epilogue_sites is None:return False
         stack_writes=[]
         for other in self.insns.values():
