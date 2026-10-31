@@ -13,6 +13,11 @@
 #include <thread>
 
 namespace gba_video {
+void Scene::bitmap(std::span<const uint16_t> pixels){
+    if(pixels.size()!=240*160)throw std::runtime_error("invalid menu bitmap size");
+    rows.fill(0);vram.assign(96*1024/4,0);std::memcpy(vram.data(),pixels.data(),pixels.size_bytes());
+    for(unsigned y=0;y<160;++y){auto* row=rows.data()+y*row_words;row[0]=0x0403;row[8]=0x00000100;row[9]=0x01000000;row[769]=y<<8;}
+}
 void Scene::capture(anygba::System& system,unsigned line) {
     if(line>=160)throw std::runtime_error("invalid GBA scanline");
     if(line==0){vram.clear();generation=~uint64_t{0};}
@@ -88,6 +93,7 @@ struct GL {
 }
 struct Display::Impl {
     Options options;
+    std::unique_ptr<Scene> bitmap_scene;
     SDL_Window* window=nullptr;SDL_GLContext context=nullptr;
     SDL_Renderer* software=nullptr;SDL_Texture* software_texture=nullptr;
     SDL_AudioStream* sound=nullptr;SDL_Gamepad* pad=nullptr;
@@ -162,11 +168,12 @@ struct Display::Impl {
 };
 Display::Display(Options options):p(std::make_unique<Impl>()){p->init(std::move(options));}
 Display::~Display()=default;
-bool Display::poll(uint16_t& keys,bool* settings,bool* cheat_button){
+bool Display::poll(uint16_t& keys,bool* settings,bool* cheat_button,bool* advanced){
     SDL_Event event;while(SDL_PollEvent(&event)) {
         if(event.type==SDL_EVENT_QUIT||event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED)return false;
         if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_F11)
             check(SDL_SetWindowFullscreen(p->window,!(SDL_GetWindowFlags(p->window)&SDL_WINDOW_FULLSCREEN)),SDL_GetError());
+        if(advanced&&event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_F2)*advanced=true;
         if(settings&&event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&
            (event.key.scancode==SDL_SCANCODE_F1||event.key.scancode==SDL_SCANCODE_ESCAPE))*settings=true;
         if(event.type==SDL_EVENT_GAMEPAD_ADDED&&!p->pad)p->pad=SDL_OpenGamepad(event.gdevice.which);
@@ -216,6 +223,10 @@ void Display::present(const Scene& scene,std::span<const uint16_t> frame){
             p->pixels.resize(size_t(p->width)*p->height*3);for(int y=0;y<p->height;++y)std::memcpy(p->pixels.data()+size_t(y)*p->width*3,static_cast<uint8_t*>(rgb->pixels)+size_t(y)*rgb->pitch,size_t(p->width)*3);SDL_DestroySurface(rgb);}
         check(SDL_RenderPresent(p->software),SDL_GetError());
     }
+}
+void Display::present_pixels(std::span<const uint16_t> pixels){
+    if(!p->bitmap_scene)p->bitmap_scene=std::make_unique<Scene>();
+    p->bitmap_scene->bitmap(pixels);present(*p->bitmap_scene,pixels);
 }
 void Display::audio(std::span<const int16_t> samples,bool unpaced){
     if(!p->sound||unpaced)return;

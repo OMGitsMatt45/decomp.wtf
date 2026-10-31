@@ -4,6 +4,7 @@
 #include "anygba/sha256.h"
 #include "save/save.h"
 #include "cheats.hpp"
+#include "cheat_catalog.hpp"
 #include "customization.hpp"
 #include <charconv>
 #include <fstream>
@@ -17,6 +18,7 @@
 #ifdef GBA_WITH_DESKTOP
 #include "video.hpp"
 #include "frame_input.hpp"
+#include "cheat_menu.hpp"
 #endif
 
 extern "C" const anygba_game anygba_game_info;
@@ -59,6 +61,7 @@ int main(int argc, char** argv) {
         bool window=false,unpaced=false,fullscreen=false;
         bool open_settings=false;
         std::vector<std::string> cheat_codes;
+        std::vector<std::string> preset_picks;
         std::vector<std::filesystem::path> cheat_files;
         std::string renderer="auto";
 #ifdef GBA_GAME_DEFAULT
@@ -89,7 +92,7 @@ int main(int argc, char** argv) {
                     "  [--resolution WIDTHxHEIGHT] [--display-capture output.ppm]\n"
                     "  [--input-script FILE] (lines: frame pressed-mask)\n"
                     "  [--unpaced] [--present-every N] [--resize FRAME:WIDTHxHEIGHT]\n";
-                std::cout << "  [--cheat [FORMAT:]CODE] [--cheats FILE] [--settings] (Windows: F1/Esc settings, F12 cheat button)\n";
+                std::cout << "  [--cheat [FORMAT:]CODE] [--cheats FILE] [--preset ID] [--settings] (F1/Esc cheat browser, F12 cheat button)\n";
                 return 0;
             }
             if (arg == "--strict-static") { options.strict_static = true; continue; }
@@ -108,7 +111,7 @@ int main(int argc, char** argv) {
             if (arg != "--rom" && arg != "--bios" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start" &&
                 arg != "--renderer" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
-                arg != "--input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats")
+                arg != "--input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats" && arg != "--preset")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
             if (arg == "--rom") rom = argv[i];
@@ -120,6 +123,7 @@ int main(int argc, char** argv) {
             else if (arg == "--input-script") input_script=argv[i];
             else if (arg == "--display-capture") display_capture=argv[i];
             else if (arg == "--cheat") cheat_codes.emplace_back(argv[i]);
+            else if (arg == "--preset") preset_picks.emplace_back(argv[i]);
             else if (arg == "--cheats") cheat_files.emplace_back(argv[i]);
             else if (arg == "--renderer") renderer=argv[i];
             else if (arg == "--resolution" || arg == "--resize") {
@@ -238,13 +242,18 @@ int main(int argc, char** argv) {
         for(const auto& file:cheat_files)cheats.load_once(file);
         for(const auto& code:cheat_codes)cheats.add_once(code);
         gba_customization::configure(*system);
-#if defined(GBA_WITH_DESKTOP) && defined(_WIN32)
+        auto& catalog=gba_frontend::game_cheat_catalog();catalog.load(save);
+        for(const auto& id:preset_picks)if(auto error=catalog.set_enabled(id,true,false))throw anygba::Error(*error);
+#if defined(GBA_WITH_DESKTOP)
+        gba_frontend::CheatBrowser browser;
+        uint16_t menu_blocked=0,previous_menu_keys=0;
         if(open_settings){
             if(!display)throw anygba::Error("--settings requires a desktop window; remove --headless.");
-            display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);
+            if(!browser.show(*display,catalog,cheats,gba_customization::description()))return 0;
+            menu_blocked=browser.held_on_close();
         }
 #else
-        if(open_settings)throw anygba::Error("The native settings window is available in Windows desktop builds. Cheat files and --cheat work on every host.");
+        if(open_settings)throw anygba::Error("The cheat browser requires a desktop build. Cheat files and --preset work headlessly.");
 #endif
         std::ofstream audio;
         if (!pcm.empty()) {
@@ -269,20 +278,28 @@ int main(int argc, char** argv) {
             bool cheat_button=false;
 #ifdef GBA_WITH_DESKTOP
             if(display){
+                const bool in_menu=catalog.available(s);
                 auto input=gba_frontend::present_and_sample(*display,[&]{
                     if(resize_width&&s.frames()==resize_frame)display->resize(resize_width,resize_height);
                     display->audio(samples,unpaced);
-                    if(s.frames()%present_every==0||(frames&&s.frames()>=frames))display->present(scene,s.framebuffer());
+                    if(s.frames()%present_every==0||(frames&&s.frames()>=frames)){
+                        if(in_menu)browser.present_hint(*display,s.framebuffer());else display->present(scene,s.framebuffer());
+                    }
                 },!unpaced);
                 live=input.keys;cheat_button=input.cheat_button;
+                menu_blocked&=live;live&=uint16_t(~menu_blocked);
                 if(!input.running)s.stop();
-#ifdef _WIN32
-                if(input.settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);live=0;}
-#endif
+                const auto menu_keys=uint16_t(live|scripted|keys);
+                if(input.running&&(input.settings||(in_menu&&(menu_keys&~previous_menu_keys&256)))){
+                    if(!browser.show(*display,catalog,cheats,gba_customization::description()))s.stop();
+                    menu_blocked=browser.held_on_close();live=0;
+                }
+                previous_menu_keys=menu_keys;
             }
 #endif
             s.set_keys(uint16_t(keys)|scripted|live);
             cheats.apply(s,uint16_t(keys)|scripted|live,cheat_button);
+            catalog.apply(s,uint16_t(keys)|scripted|live,cheat_button);
             if (frames&&s.frames() >= frames) s.stop();
         };
         system->run();

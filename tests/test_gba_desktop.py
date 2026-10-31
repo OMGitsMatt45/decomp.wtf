@@ -93,6 +93,7 @@ def test_original_gpu_modes_effects_sprites_scanline_changes_and_resize(desktop,
     data=json.loads(report.read_text())
     assert data['passed'] and data['scenes']==18 and data['reference_picture_ignored']
     assert data['resize_passed'] and data['device'] and data['renderer']=='opengl'
+    assert data['bitmap_overlay_cases']==3
     assert data['resized_drawable'][0]>data['initial_drawable'][0]
     assert data['resized_drawable'][1]>data['initial_drawable'][1]
     assert all(value>0 for value in data['odd_drawable'])

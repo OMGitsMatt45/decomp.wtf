@@ -44,7 +44,7 @@ def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
                  'video.hpp', 'video.cpp', 'frame_input.hpp', 'frame_input_tests.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp',
-                 'cheats.hpp', 'cheats.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt'):
+                 'cheats.hpp', 'cheats.cpp', 'cheat_catalog.hpp', 'cheat_catalog.cpp', 'cheat_menu.hpp', 'cheat_menu.cpp', 'native_hooks.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -401,9 +401,40 @@ def _runtime(sdk, destination):
     for name in ('sha256.cpp', 'crc32.cpp'):
         shutil.copyfile(sdk/'common/src'/name, destination/'common/src'/name)
     shutil.copyfile(sdk/'LICENSE', destination/'LICENSE')
+    (destination/'runtime/src/native_hooks.cpp').write_text(_source('native_hooks.cpp'), encoding='utf-8')
+    codes = destination/'runtime/src/cheats/codes.cpp'
+    text = codes.read_text(encoding='utf-8')
+    old = 'in(0x02000000, 0x40000) || in(0x03000000, 0x8000)'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA mirrored cheat address patch no longer applies')
+    codes.write_text(text.replace(old, 'in(0x02000000, 0x1000000) || in(0x03000000, 0x1000000)'), encoding='utf-8')
+    cpu_header = destination/'runtime/include/anygba/cpu.h'
+    text = cpu_header.read_text(encoding='utf-8')
+    text = text.replace('uint32_t rom_patched;', 'uint32_t rom_patched;\n    uint32_t native_hooks;')
+    text = text.replace('/* ---- Runtime services (implemented by libanygba) ---- */',
+        'int anygba_native_entry_hook(anygba_cpu* cpu, uint32_t address);\n\n/* ---- Runtime services (implemented by libanygba) ---- */')
+    old = '        if ((cpu)->rom_patched && anygba_rom_patched'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA native entry hook patch no longer applies')
+    text = text.replace(old, '        if ((cpu)->native_hooks && anygba_native_entry_hook((cpu), (entry))) return; \\\n'+old)
+    cpu_header.write_text(text, encoding='utf-8')
+    boot = destination/'runtime/src/bios/boot_state.cpp'
+    text = boot.read_text(encoding='utf-8')
+    old = '    std::memset(&cpu_, 0, sizeof cpu_);'
+    if text.count(old) != 1:
+        raise pc.PCError('GBA native hook reset patch no longer applies')
+    boot.write_text(text.replace(old, '    const auto native_hooks = cpu_.native_hooks;\n'+old+'\n    cpu_.native_hooks = native_hooks;'), encoding='utf-8')
     # Strict qualification must detect misses and unsupported services immediately.
     header = destination/'runtime/include/anygba/system.hpp'
     text = header.read_text(encoding='utf-8')
+    text = text.replace('#include <vector>', '#include <map>\n#include <vector>')
+    text = text.replace('anygba_cpu& cpu() { return cpu_; }',
+        'anygba_cpu& cpu() { return cpu_; }\n'
+        '    void set_native_entry_hook(uint32_t address, bool thumb, std::function<bool(System&)> hook);\n'
+        '    bool intercept_native_entry(uint32_t address, bool thumb);')
+    text = text.replace('std::set<std::uint32_t> breakpoints_;',
+        'std::set<std::uint32_t> breakpoints_;\n'
+        '    std::map<std::pair<uint32_t,bool>,std::function<bool(System&)>> native_entry_hooks_;')
     old = 'struct Options {'
     if text.count(old) != 1:
         raise pc.PCError('GBA runtime option patch no longer applies')
@@ -733,6 +764,8 @@ def generate(project, root):
     (root/'game/source_counts.h').write_text('#pragma once\n#define GBA_GENERATED_FUNCTIONS '+str(int(count[1])+overlay_count)+'u\n',encoding='utf-8')
     for source, dest in (('Project.cmake', 'CMakeLists.txt'), ('main.cpp', 'native/main.cpp'),
                          ('cheats.hpp', 'native/cheats.hpp'), ('cheats.cpp', 'native/cheats.cpp'),
+                         ('cheat_catalog.hpp', 'native/cheat_catalog.hpp'), ('cheat_catalog.cpp', 'native/cheat_catalog.cpp'),
+                         ('cheat_menu.hpp', 'native/cheat_menu.hpp'), ('cheat_menu.cpp', 'native/cheat_menu.cpp'),
                          ('settings_win32.cpp', 'native/settings_win32.cpp'),
                          ('customization.hpp', 'native/customization.hpp'),
                          ('customization.cpp', 'native/customization.cpp'),

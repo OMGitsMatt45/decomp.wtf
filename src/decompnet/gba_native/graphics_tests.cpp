@@ -95,11 +95,17 @@ int main(int argc,char** argv){try{
             odd_width=display.width();odd_height=display.height();
         }
     }
+    // The in-window browser uses a host bitmap through the same GPU pipeline.
+    std::vector<uint16_t> menu(240*160);
+    for(unsigned y=0;y<160;++y)for(unsigned x=0;x<240;++x)menu[y*240+x]=uint16_t((x%32)|((y%32)<<5)|(((x+y)%32)<<10));
+    for(const auto size:{std::pair{240,160},std::pair{720,480},std::pair{477,317}}){
+        display.resize(size.first,size.second);display.present_pixels(menu);compare(display,rgb(menu),18);
+    }
     if(argc==3){
         if(std::filesystem::exists(argv[2]))throw std::runtime_error("choose a new GPU report path");
         std::ofstream report(argv[2]);if(!report)throw std::runtime_error("cannot open GPU report");
         report<<"{\"schema\":\"decomp.wtf.gba-gpu-scenes/v1\",\"passed\":true,\"scenes\":18,\"renderer\":\"opengl\",\"device\":"<<std::quoted(display.device())
-            <<",\"initial_drawable\":["<<initial_width<<','<<initial_height<<"],\"resized_drawable\":["<<resized_width<<','<<resized_height<<"],\"odd_drawable\":["<<odd_width<<','<<odd_height<<"],\"reference_picture_ignored\":true,\"resize_passed\":true}";
+            <<",\"initial_drawable\":["<<initial_width<<','<<initial_height<<"],\"resized_drawable\":["<<resized_width<<','<<resized_height<<"],\"odd_drawable\":["<<odd_width<<','<<odd_height<<"],\"reference_picture_ignored\":true,\"resize_passed\":true,\"bitmap_overlay_cases\":3}";
         report.close();if(!report)throw std::runtime_error("GPU report write failed");
     }
     std::cout<<"18 GPU/reference scenes and drawable resize passed on "<<display.device()<<"\n";return 0;
