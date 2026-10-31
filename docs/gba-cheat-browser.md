@@ -37,3 +37,10 @@ same GPU renderer. No game VRAM or game graphics registers are changed. Regressi
 coverage includes three bitmap sizes with a pixel-varying pattern, eighteen
 original hardware scenes, native argument/replacement hooks, reset, RAM mirrors,
 exclusive choices, preference reload, all-off behavior and failed persistence.
+
+For reproducible player qualification, `--menu-input-script FILE` supplies the
+same frame/mask format as `--input-script`, counted in presented menu frames.
+Each opening starts at frame zero; B/Start returns to the game. If the script
+ends without returning, two trailing menu frames are retained and the player
+closes cleanly. The report records menu openings/frames and enabled preset count.
+This tests the actual browser/controller/renderer without OS keyboard injection.

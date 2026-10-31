@@ -60,6 +60,16 @@ def test_live_input_arriving_during_host_work_reaches_next_frame(desktop):
         binary(root, 'gba_frame_input_tests')])
 
 
+def test_in_window_browser_returns_to_native_game_with_scripted_menu_input(desktop,tmp_path):
+    _,exe=desktop
+    script=tmp_path/'menu.txt';script.write_text('0 0\n3 2\n4 0\n')
+    report=json.loads(run([exe,'--settings','--menu-input-script',script,'--frames','8',
+        '--unpaced','--resolution','240x160','--save',tmp_path/'browser.sav'],
+        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}))
+    assert report['menu_openings']==1 and report['menu_frames']==3
+    assert report['frames']==8 and report['interpreted_cycles']==0 and report['misses']==[]
+
+
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):
     root, exe = desktop
     env = {**os.environ, 'SDL_VIDEODRIVER': 'dummy', 'SDL_AUDIODRIVER': 'dummy'}

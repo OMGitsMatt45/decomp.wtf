@@ -50,11 +50,28 @@ void bytes(const std::filesystem::path& path, const char* data, std::size_t size
     if (!out || !out.write(data, static_cast<std::streamsize>(size)))
         throw anygba::Error("cannot write capture: "+path.string());
 }
+std::map<uint64_t,uint16_t> buttons(const std::filesystem::path& path){
+    std::map<uint64_t,uint16_t> result;if(path.empty())return result;
+    std::ifstream file(path);if(!file)throw anygba::Error("cannot open input script");
+    std::string line;
+    while(std::getline(file,line)){
+        if(auto at=line.find('#');at!=line.npos)line.resize(at);
+        std::istringstream stream(line);std::string f,k,extra;
+        if(!(stream>>f))continue;
+        if(!(stream>>k)||(stream>>extra))throw anygba::Error("input script needs frame and pressed mask");
+        auto frame=number(f),mask=number(k);
+        if(frame>1000000||mask>1023||result.size()>=100000||(!result.empty()&&frame<=result.rbegin()->first))
+            throw anygba::Error("input script frames must increase and masks fit ten buttons");
+        result[frame]=uint16_t(mask);
+    }
+    if(file.bad())throw anygba::Error("cannot read input script");
+    return result;
+}
 }
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path rom, save, capture, pcm, miss_log, input_script, display_capture, bios;
+        std::filesystem::path rom, save, capture, pcm, miss_log, input_script, menu_input_script, display_capture, bios;
         std::uint64_t frames = 8, keys = 0;
         std::uint64_t present_every=1,resize_frame=0;
         int resize_width=0,resize_height=0,width=0,height=0;
@@ -90,7 +107,7 @@ int main(int argc, char** argv) {
                     "  [--miss-log NEW_FILE] (input-bound feedback for the next translation)\n"
                     "  [--window] [--renderer auto|opengl|software] [--fullscreen]\n"
                     "  [--resolution WIDTHxHEIGHT] [--display-capture output.ppm]\n"
-                    "  [--input-script FILE] (lines: frame pressed-mask)\n"
+                    "  [--input-script FILE] [--menu-input-script FILE] (lines: frame pressed-mask)\n"
                     "  [--unpaced] [--present-every N] [--resize FRAME:WIDTHxHEIGHT]\n";
                 std::cout << "  [--cheat [FORMAT:]CODE] [--cheats FILE] [--preset ID] [--settings] (F1/Esc cheat browser, F12 cheat button)\n";
                 return 0;
@@ -111,7 +128,7 @@ int main(int argc, char** argv) {
             if (arg != "--rom" && arg != "--bios" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start" &&
                 arg != "--renderer" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
-                arg != "--input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats" && arg != "--preset")
+                arg != "--input-script" && arg != "--menu-input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats" && arg != "--preset")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
             if (arg == "--rom") rom = argv[i];
@@ -121,6 +138,7 @@ int main(int argc, char** argv) {
             else if (arg == "--audio-pcm") pcm = argv[i];
             else if (arg == "--miss-log") miss_log = argv[i];
             else if (arg == "--input-script") input_script=argv[i];
+            else if (arg == "--menu-input-script") menu_input_script=argv[i];
             else if (arg == "--display-capture") display_capture=argv[i];
             else if (arg == "--cheat") cheat_codes.emplace_back(argv[i]);
             else if (arg == "--preset") preset_picks.emplace_back(argv[i]);
@@ -169,21 +187,8 @@ int main(int argc, char** argv) {
             throw anygba::Error("provide a ROM, 1..1000000 frames, valid keys and one CPU mode");
         if(renderer!="auto"&&renderer!="opengl"&&renderer!="software")throw anygba::Error("invalid renderer");
         if(!window&&!display_capture.empty())throw anygba::Error("display capture requires --window");
-        std::map<uint64_t,uint16_t> script;
-        if(!input_script.empty()) {
-            std::ifstream file(input_script);if(!file)throw anygba::Error("cannot open input script");
-            std::string line;
-            while(std::getline(file,line)) {
-                if(auto at=line.find('#');at!=line.npos)line.resize(at);
-                std::istringstream stream(line);std::string f,k,extra;
-                if(!(stream>>f))continue;
-                if(!(stream>>k)||(stream>>extra))throw anygba::Error("input script needs frame and pressed mask");
-                auto frame=number(f),mask=number(k);
-                if(frame>1000000||mask>1023||script.size()>=100000||(!script.empty()&&frame<=script.rbegin()->first))
-                    throw anygba::Error("input script frames must increase and masks fit ten buttons");
-                script[frame]=uint16_t(mask);
-            }
-        }
+        auto script=buttons(input_script),menu_script=buttons(menu_input_script);
+        if(!menu_input_script.empty()&&(!window||menu_script.empty()))throw anygba::Error("menu input scripts require a desktop window and at least one input row");
         std::ifstream in(rom, std::ios::binary);
         if (!in || std::filesystem::file_size(rom) != anygba_game_info.rom_size)
             throw anygba::Error("cartridge size differs from generated code");
@@ -246,6 +251,7 @@ int main(int argc, char** argv) {
         for(const auto& id:preset_picks)if(auto error=catalog.set_enabled(id,true,false))throw anygba::Error(*error);
 #if defined(GBA_WITH_DESKTOP)
         gba_frontend::CheatBrowser browser;
+        browser.set_input_script(menu_script);
         uint16_t menu_blocked=0,previous_menu_keys=0;
         if(open_settings){
             if(!display)throw anygba::Error("--settings requires a desktop window; remove --headless.");
@@ -317,9 +323,10 @@ int main(int argc, char** argv) {
             bytes(capture, image.data(), image.size());
         }
         bool gpu=false,audio_device=false;std::string selected="headless",device;
+        uint64_t menu_openings=0,menu_frames=0;
         int drawable_width=0,drawable_height=0;
 #ifdef GBA_WITH_DESKTOP
-        if(display){selected=display->renderer();device=display->device();gpu=selected=="opengl";audio_device=display->audio_device();
+        if(display){selected=display->renderer();device=display->device();gpu=selected=="opengl";audio_device=display->audio_device();menu_openings=browser.openings();menu_frames=browser.presented_frames();
             drawable_width=display->width();drawable_height=display->height();
             if(!display_capture.empty()){
                 if(display->pixels().empty())throw anygba::Error("no display frame was captured");
@@ -336,7 +343,10 @@ int main(int argc, char** argv) {
             << ",\"native_entry_points\":" << anygba_game_info.function_count
             << ",\"reference_interpreter\":" << (reference ? "true" : "false")
             << ",\"interpreted_cycles\":" << system->interpreted_cycles()
-            << ",\"enabled_cheats\":" << cheats.enabled()
+            << ",\"enabled_cheats\":" << cheats.enabled()+catalog.enabled_count()
+            << ",\"builtin_presets\":" << catalog.presets().size()
+            << ",\"enabled_presets\":" << catalog.enabled_count()
+            << ",\"menu_openings\":" << menu_openings << ",\"menu_frames\":" << menu_frames
             << ",\"game_customized\":" << (GBA_CUSTOMIZED?"true":"false")
             << ",\"customization\":" << json_string(gba_customization::description())
             << ",\"bios_sha256\":" << std::quoted(bios_data.empty()?std::string():anygba::sha256_hex(bios_data))

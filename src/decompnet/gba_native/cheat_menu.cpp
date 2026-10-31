@@ -56,12 +56,14 @@ void CheatBrowser::present_hint(gba_video::Display& display,std::span<const uint
  pixels_.assign(game.begin(),game.end());box(pixels_,169,149,71,11,background);text(pixels_,175,151,"W:CHEATS",gold);display.present_pixels(pixels_);
 }
 bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats& custom,const std::string& status){
+ ++openings_;
  display.pause(true);
  struct Resume {gba_video::Display& d;~Resume(){d.pause(false);}} resume{display};
  std::vector<std::string> categories{"All"};for(const auto& p:catalog.presets())if(std::find(categories.begin(),categories.end(),p.category)==categories.end())categories.push_back(p.category);
  if(category_>=categories.size())category_=0;
  std::string message=catalog.warning();
- uint16_t previous=0;if(!display.poll(previous))return false;
+ uint64_t frame=0;uint16_t script_keys=script_.contains(0)?script_.at(0):0;
+ uint16_t previous=0;if(!display.poll(previous))return false;if(!script_.empty())previous=script_keys;
  unsigned hold=0;uint16_t last_direction=0;
  for(;;){
   std::vector<size_t> rows;for(size_t i=0;i<catalog.presets().size();++i)if(category_==0||catalog.presets()[i].category==categories[category_])rows.push_back(i);
@@ -79,9 +81,14 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
   else wrap(pixels_,8,122,status,37,2);
   box(pixels_,0,149,240,11,panel);text(pixels_,5,151,"X:TOGGLE Z:BACK BS:OFF F2:CODES",ink,39);
   if(!message.empty()){box(pixels_,9,43,222,99,panel);box(pixels_,9,43,222,2,gold);text(pixels_,17,51,"CHEAT INFO",gold);wrap(pixels_,17,65,message,34,6,ink);text(pixels_,17,131,"X/Z RETURN",gold);}
-  display.present_pixels(pixels_);display.pace();
+  display.present_pixels(pixels_);++presented_frames_;if(script_.empty())display.pace();
   uint16_t keys=0;bool close=false,advanced=false;
   if(!display.poll(keys,&close,nullptr,&advanced)){held_=keys;return false;}
+  if(!script_.empty()){
+   ++frame;if(auto it=script_.find(frame);it!=script_.end())script_keys=it->second;
+   if(frame>script_.rbegin()->first+2){held_=0;return false;}
+   keys=script_keys;close=false;advanced=false;
+  }
   const uint16_t down=keys&~previous;previous=keys;
   if(close||((down&(2|8))&&message.empty())){held_=keys;return true;}
   if(!message.empty()){if(down&(1|2|8))message.clear();continue;}

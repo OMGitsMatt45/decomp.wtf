@@ -964,10 +964,12 @@ necessary rights to share them.
 ## Cheat codes and settings
 
 F1 or Escape opens the cheat browser inside the game window and pauses the game.
-Add a named code, choose auto-detect or its device format, enable/disable entries,
-then choose Save and close. F12 is the cheat device button. The window also opens
-the save folder. Preferences are stored beside the cartridge save as
-`<save-name>.sav.cheats.toml`; they are separate from raw cartridge save bytes.
+Use arrows to select a preset/category, X to toggle, Z to return, Q/W to page,
+and Backspace to disable all cheats. Project-provided game-menu shortcuts use
+GBA R (W). Built-in choices are stored beside the save in `.preset-picks`.
+Windows F2 opens custom code entry and the save-folder shortcut; these codes use
+`<save-name>.sav.cheats.toml`. Both files are separate from raw save bytes.
+F12 is the cheat device button.
 
 Every host also accepts `--cheat "cb:82000200 1234"` or `--cheats FILE` for one
 run. Formats: `auto`, `arv3`, `gsv1`, `cb`, `raw`, `arv3raw`, `gsv1raw`.
