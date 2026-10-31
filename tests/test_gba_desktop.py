@@ -54,6 +54,12 @@ def test_player_has_no_interpreter_and_reports_unknown_ram_without_opt_in(deskto
         assert 'anygba::interp::' not in run(['nm','-C',exe])
 
 
+def test_live_input_arriving_during_host_work_reaches_next_frame(desktop):
+    root, _ = desktop
+    assert 'Live presses, releases and close events reach the next frame' in run([
+        binary(root, 'gba_frame_input_tests')])
+
+
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):
     root, exe = desktop
     env = {**os.environ, 'SDL_VIDEODRIVER': 'dummy', 'SDL_AUDIODRIVER': 'dummy'}

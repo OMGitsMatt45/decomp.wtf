@@ -16,6 +16,7 @@
 #include <map>
 #ifdef GBA_WITH_DESKTOP
 #include "video.hpp"
+#include "frame_input.hpp"
 #endif
 
 extern "C" const anygba_game anygba_game_info;
@@ -268,15 +269,16 @@ int main(int argc, char** argv) {
             bool cheat_button=false;
 #ifdef GBA_WITH_DESKTOP
             if(display){
-                bool settings=false;
-                if(!display->poll(live,&settings,&cheat_button))s.stop();
+                auto input=gba_frontend::present_and_sample(*display,[&]{
+                    if(resize_width&&s.frames()==resize_frame)display->resize(resize_width,resize_height);
+                    display->audio(samples,unpaced);
+                    if(s.frames()%present_every==0||(frames&&s.frames()>=frames))display->present(scene,s.framebuffer());
+                },!unpaced);
+                live=input.keys;cheat_button=input.cheat_button;
+                if(!input.running)s.stop();
 #ifdef _WIN32
-                if(settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);live=0;}
+                if(input.settings){display->pause(true);gba_frontend::show_settings(display->native_window(),cheats,gba_customization::description());display->pause(false);live=0;}
 #endif
-                if(resize_width&&s.frames()==resize_frame)display->resize(resize_width,resize_height);
-                display->audio(samples,unpaced);
-                if(s.frames()%present_every==0||(frames&&s.frames()>=frames))display->present(scene,s.framebuffer());
-                if(!unpaced)display->pace();
             }
 #endif
             s.set_keys(uint16_t(keys)|scripted|live);

@@ -43,7 +43,7 @@ def _source(name):
 def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
-                 'video.hpp', 'video.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp',
+                 'video.hpp', 'video.cpp', 'frame_input.hpp', 'frame_input_tests.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp',
                  'cheats.hpp', 'cheats.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
@@ -739,6 +739,7 @@ def generate(project, root):
                          ('cheat_tests.cpp', 'tests/cheats.cpp'),
                          ('tomlplusplus-license.txt', 'licenses/tomlplusplus.txt'),
                          ('video.hpp', 'native/video.hpp'), ('video.cpp', 'native/video.cpp'),
+                         ('frame_input.hpp', 'native/frame_input.hpp'), ('frame_input_tests.cpp', 'tests/frame_input.cpp'),
                          ('ppu.frag', 'native/ppu.frag'), ('shader.hpp.in', 'native/shader.hpp.in'),
                          ('graphics_tests.cpp', 'tests/graphics.cpp'),
                          ('cartridge_tests.cpp', 'tests/cartridge.cpp'),
