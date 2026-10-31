@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -360,6 +360,7 @@ partial polygons retain the existing rasterizer's clipping arithmetic.
 def _profile(root, digest, reviewed, save_type, renderer):
     observations=reviewed.get('observe_words',[])
     lines=['#pragma once','#include "hash.hpp"','#include <dsr/machine.h>','namespace profile {',
+           'inline constexpr const char* asset_sha256='+json.dumps(digest)+';',
            'inline constexpr const char* save_type='+json.dumps(save_type)+';',
            'inline constexpr const char* renderer='+json.dumps(renderer)+';',
            'inline constexpr uint32_t observations[]={'+','.join(hex(a)+'u' for a in observations or [0])+'};',
@@ -422,6 +423,7 @@ def generate(project,root):
     for source,destination in (('main.cpp','native/main.cpp'),('hash.hpp','native/hash.hpp'),
                                ('save_lock.hpp','native/save_lock.hpp'),
                                ('audio_queue.hpp','native/audio_queue.hpp'),
+                               ('cheats.hpp','native/cheats.hpp'),('settings.hpp','native/settings.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')
@@ -493,6 +495,8 @@ ctest --test-dir build -C Release --output-on-failure
 Run `build/ds_pc --assets assets` on Linux or
 `build/Release/ds_pc.exe --assets assets` with Visual Studio.
 Arrow keys move; X/Z are A/B; S/A are X/Y; Q/W are L/R;
+F1 opens Game settings, including the ROM-bound data-cheat menu. Cheats start
+disabled each launch. Game projects can supply `cheats.txt` beside `assets`.
 Enter/Backspace are Start/Select. Click the lower screen for touch; Escape quits.
 F11 switches fullscreen at the current monitor's native resolution. The initial
 window size comes from the active monitor's usable area. Resizing or moving

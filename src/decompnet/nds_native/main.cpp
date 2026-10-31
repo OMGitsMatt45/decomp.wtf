@@ -21,6 +21,10 @@
 #endif
 #include "profile.hpp"
 #include "save_lock.hpp"
+#include "cheats.hpp"
+#ifdef NDS_WITH_SDL
+#include "settings.hpp"
+#endif
 
 namespace {
 uint64_t count(const std::string& text,uint64_t maximum) {
@@ -70,11 +74,16 @@ struct Display {
         video.reset();
         SDL_Quit();
     }
-    bool input(dsr::InputState& input) {
+    bool input(dsr::InputState& input,ds_host::Cheats& cheats) {
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
             if(event.type==SDL_QUIT)return false;
-            if(event.type==SDL_KEYDOWN)video->key(event.key);
+            if(event.type==SDL_KEYDOWN) {
+                if(event.key.keysym.sym==SDLK_F1&&!event.key.repeat) {
+                    SDL_ClearQueuedAudio(audio);
+                    if(!ds_host::settings(cheats))return false;
+                } else video->key(event.key);
+            }
         }
         const auto* keys=SDL_GetKeyboardState(nullptr);
         const SDL_Scancode codes[]={SDL_SCANCODE_X,SDL_SCANCODE_Z,SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_RETURN,
@@ -108,8 +117,9 @@ struct Display {
 
 int main(int argc,char** argv) {
     try {
-        std::filesystem::path assets="assets",save="saves/game.sav",capture,script,audio_path,memory_dump;
-        uint64_t frames=0,rtc_start=0;bool headless=false,diagnostics=false,rtc_fixed=false;
+        std::filesystem::path assets="assets",save="saves/game.sav",capture,script,audio_path,memory_dump,cheat_file,menu_script;
+        std::vector<std::string> enabled_cheats;
+        uint64_t frames=0,rtc_start=0;bool headless=false,diagnostics=false,rtc_fixed=false,open_settings=false;
         std::string renderer=profile::renderer;
         unsigned width=0,height=0;bool fullscreen=false;
         for(int i=1;i<argc;++i) {
@@ -117,6 +127,7 @@ int main(int argc,char** argv) {
             if(option=="--headless"){headless=true;continue;}
             if(option=="--diagnostics"){diagnostics=true;continue;}
             if(option=="--fullscreen"){fullscreen=true;continue;}
+            if(option=="--settings"){open_settings=true;continue;}
             if(i+1>=argc)throw std::runtime_error("missing option value");
             const std::string value=argv[++i];
             if(option=="--assets")assets=value;
@@ -131,6 +142,9 @@ int main(int argc,char** argv) {
             else if(option=="--input-script")script=value;
             else if(option=="--audio-pcm")audio_path=value;
             else if(option=="--dump-memory")memory_dump=value;
+            else if(option=="--cheats")cheat_file=value;
+            else if(option=="--enable-cheat")enabled_cheats.push_back(value);
+            else if(option=="--menu-input-script")menu_script=value;
             else if(option=="--renderer")renderer=value;
             else if(option=="--resolution") {
                 const auto split=value.find('x');
@@ -140,6 +154,8 @@ int main(int argc,char** argv) {
             else throw std::runtime_error("unknown option: "+option);
         }
         if(headless && !frames)throw std::runtime_error("headless mode requires --frames N");
+        if(headless&&(open_settings||!menu_script.empty()))throw std::runtime_error("settings require a desktop window");
+        if(!menu_script.empty()&&!open_settings)throw std::runtime_error("settings input script requires --settings");
         if(renderer!="auto"&&renderer!="opengl"&&renderer!="software")throw std::runtime_error("renderer must be auto, opengl or software");
 #ifndef NDS_WITH_SDL
         if(!headless)throw std::runtime_error("rebuild with NDS_WITH_SDL=ON for a window");
@@ -153,6 +169,11 @@ int main(int argc,char** argv) {
         config.deterministic_rtc=rtc_fixed;config.rtc_epoch_seconds=int64_t(rtc_start);
         profile::configure(config);
         profile::verify_input(config.rom_path);
+        ds_host::Cheats cheats;
+        const bool explicit_catalog=!cheat_file.empty();
+        if(!explicit_catalog)cheat_file=assets.parent_path()/"cheats.txt";
+        if(explicit_catalog||std::filesystem::exists(cheat_file))cheats.load(cheat_file,profile::asset_sha256,config);
+        for(const auto& name:enabled_cheats)cheats.enable(name);
         ds_host::SaveLock save_lock(save);
         dsr::Session session(config);profile::initialize(session.machine());
         std::map<uint64_t,dsr::InputState> inputs;
@@ -180,13 +201,15 @@ int main(int argc,char** argv) {
             }
         }
         uint64_t deadline=SDL_GetPerformanceCounter();
+        bool running=true;
+        if(display&&open_settings)running=ds_host::settings(cheats,menu_script,capture.empty()?std::filesystem::path{}:capture/"settings.png");
 #endif
         uint64_t audio_samples=0;
         for(uint64_t frame=0;!frames || frame<frames;++frame) {
             dsr::InputState input;
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
-            if(display && !display->input(input))break;
+            if(!running||(display&&!display->input(input,cheats)))break;
             if(display&&display->pending_ready) {
                 auto& history=display->history;const auto serial=display->pending.serial;
                 if(!history.empty()&&serial<=history.back().serial)history.clear(); // reset
@@ -196,6 +219,7 @@ int main(int argc,char** argv) {
             }
 #endif
             session.step(input);audio_samples+=session.audio_frames();
+            cheats.apply(session.machine());
             // Commit dirty cartridge bytes during play as well as on exit.
             // The runtime writes atomically and retains dirty data for retry
             // if the destination is temporarily unwritable.
@@ -312,6 +336,8 @@ int main(int argc,char** argv) {
         std::cout<<"{\"frames\":"<<session.frame_count()<<",\"ticks\":"<<session.ticks()
                  <<",\"top_hash\":"<<hash(session.screen_top())<<",\"bottom_hash\":"<<hash(session.screen_bottom())
                  <<",\"audio_frames\":"<<audio_samples
+                 <<",\"cheats\":{\"available\":"<<cheats.entries.size()<<",\"enabled\":"<<cheats.enabled_count()
+                 <<",\"applications\":"<<cheats.applications<<",\"menu_openings\":"<<cheats.menu_openings<<",\"menu_frames\":"<<cheats.menu_frames<<"}"
                  <<",\"rtc\":{\"mode\":"<<std::quoted(rtc_fixed?"fixed-utc":"local")<<",\"start_unix\":";
         if(rtc_fixed)std::cout<<rtc_start;else std::cout<<"null";
         std::cout<<"},\"observed\":[";

@@ -1,7 +1,7 @@
 """Recover referenced ARM9 callbacks that the DS importer classified as data.
 
-Same-image pointers from declared data seed the normal ARM/Thumb translator's
-control-flow decoder. Unreferenced prologues and cross-overlay guesses do not.
+Same-image pointers and module-qualified direct calls seed the normal ARM/Thumb
+translator's control-flow decoder. Unreferenced prologues and overlay guesses do not.
 Only validated instruction bytes are removed from the importer's data ranges.
 """
 from bisect import bisect_right
@@ -47,11 +47,36 @@ def recover(manifest,emitter,reader):
     address_entries=defaultdict(list)
     for entry in entries:address_entries[entry.address].append(entry)
     mode_entries={(e.module_id,e.address,e.thumb):e for e in entries}
+    direct_roots=defaultdict(lambda:defaultdict(list))
+    for source in manifest['modules']:
+        image=images[int(source['module_id'])];base=int(source['base'])
+        ranges=sorted((int(f['addr']),int(f['addr'])+int(f['size']),bool(f['thumb']))
+                      for f in source['functions'])
+        source_starts=[low for low,_,_ in ranges];source_ends=[]
+        for _,end,_ in ranges:source_ends.append(max(end,source_ends[-1] if source_ends else end))
+        for call in source.get('calls',[]):
+            targets=call.get('modules',[])
+            if len(targets)!=1:continue
+            site=int(call['from']);target=int(call['to'])&~1
+            index=bisect_right(source_starts,site)-1;modes=set()
+            while index>=0 and source_ends[index]>site:
+                if site<ranges[index][1]:modes.add(ranges[index][2])
+                index-=1
+            if len(modes)!=1 or not base<=site<base+len(image):continue
+            thumb=modes.pop()
+            if site%(2 if thumb else 4):continue
+            decoded=next(reader._disassembler(thumb).disasm(image[site-base:site-base+4],site,1),None)
+            effect=reader._effect(decoded,thumb) if decoded is not None else None
+            if (effect is None or effect.flow not in ('call','branch') or
+                    effect.target is None or effect.target&~1!=target):continue
+            mode=thumb!=decoded.mnemonic.startswith('blx')
+            direct_roots[int(targets[0])][(target,mode)].append(
+                dict(module_id=int(source['module_id']),address=site))
     additions=[]
     for module in manifest['modules']:
         image=images[int(module['module_id'])];base=int(module['base']);limit=base+len(image)
         declared=_merge(module.get('data_ranges',[]))
-        if not image or not declared:continue
+        if not image:continue
         data_starts=[low for low,_ in declared]
         functions=module['functions']
         intervals=sorted((int(f['addr']),int(f['addr'])+int(f['size'])) for f in functions)
@@ -71,6 +96,11 @@ def recover(manifest,emitter,reader):
             return (op is not None and op.condition==14 and
                 classify(op,thumb) is not None)
         roots={}
+        call_sources={}
+        for key,sources in direct_roots[int(module['module_id'])].items():
+            address,thumb=key
+            if not covered(address) and plausible(address,thumb):
+                roots[key]=[];call_sources[key]=sources
         for offset in range((-base)%4,len(image)-3,4):
             source=base+offset;index=bisect_right(data_starts,source)-1
             if index<0 or source+4>declared[index][1]:continue
@@ -143,7 +173,8 @@ def recover(manifest,emitter,reader):
             labels.update((leader,thumb) for leader in leaders if address<=leader<address+function['size'])
             module.setdefault('calls',[]).extend(body_calls)
             evidence.append(dict(module_id=module['module_id'],address=address,thumb=thumb,
-                size=function['size'],pointer_sources=roots.get((address,thumb),[])))
+                size=function['size'],pointer_sources=roots.get((address,thumb),[]),
+                call_sources=call_sources.get((address,thumb),[])))
         module['callback_recovery']=evidence;additions.extend(evidence)
         module['labels']=[dict(addr=address,thumb=thumb) for address,thumb in sorted(labels)]
         functions.sort(key=lambda f:(f['addr'],f['thumb']))

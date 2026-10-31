@@ -52,6 +52,16 @@ It rejects ambiguous or incomplete bindings and unsupported instruction sites.
 The bindings are input-derived metadata, not a public database of game addresses.
 Existing source-recovery projects and their matching work remain separate.
 
+The callback recovery pass also follows direct call relocations that identify
+exactly one destination module, checking the actual calling instruction and
+ARM/Thumb exchange. This recovers routines mislabeled as data even when the
+only caller lives in resident code or another overlay. Ambiguous overlay
+destinations and unreferenced prologues do not seed recovery. The recovery
+metadata records pointer and qualified-call evidence separately.
+
+Generated players include an F1 settings menu and optional ROM-bound data
+cheat catalogs. See [DS settings and data cheats](nds-cheats.md).
+
 The original fixture route accepts `--profile reviewed.json`; that route requires
 the original loader code rather than the small backend's native overlay hook.
 Its optional RAM checkpoint belongs to `nds-generate`; `nds-native` uses the

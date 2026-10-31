@@ -4,6 +4,8 @@ import json
 import struct
 import subprocess
 
+import pytest
+
 from decompnet import nds_native
 from decompnet.nds_native.callbacks import recover
 from .test_nds_native import sdk, hardware_project  # noqa: F401
@@ -54,6 +56,33 @@ def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
     assert recover(manifest,emitter,reader)==[]
     arm7={**before,'cpu':'arm7','arch':'v4t'}
     assert recover(arm7,emitter,reader)==[] and arm7['modules']==before['modules']
+
+
+@pytest.mark.parametrize('targets,source_thumb', [([0],False),([0],True),([0,1],False)])
+def test_qualified_direct_calls_seed_only_the_referenced_overlay(tmp_path,sdk,targets,source_thumb):
+    _,emitter,reader=nds_native._sdk()
+    destination=callback_image(tmp_path,0)
+    other=callback_image(tmp_path,1)
+    base=0x02001000;target=destination['base']+0xa0
+    if source_thumb:
+        # Thumb BLX immediate exchanges into ARM code in the named overlay.
+        offset=target-(base+4)
+        raw=struct.pack('<3H',0xf000|((offset>>12)&0x7ff),0xe800|((offset>>1)&0x7fe),0x4770)
+    else:
+        raw=struct.pack('<2I',0xeb000000|(((target-base-8)//4)&0xffffff),0xe12fff1e)
+    path=tmp_path/'caller.bin';path.write_bytes(raw)
+    source=dict(name='main',module_id=-1,base=base,image=str(path),
+        functions=[dict(addr=base,size=len(raw),thumb=source_thumb,name='caller')],labels=[],
+        code_ranges=[[base,base+len(raw)]],data_ranges=[],
+        calls=[dict(**{'from':base,'to':target},modules=targets)])
+    manifest=dict(cpu='arm9',arch='v5te',modules=[source,destination,other])
+    recovered=recover(manifest,emitter,reader)
+    selected=[x for x in recovered if x['address']==target]
+    if len(targets)==1:
+        assert len(selected)==1 and selected[0]['module_id']==0 and not selected[0]['thumb']
+        assert selected[0]['call_sources']==[dict(module_id=-1,address=base)]
+    else:
+        assert selected==[]
 
 
 def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,sdk,hardware_project):
