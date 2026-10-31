@@ -51,6 +51,26 @@ def test_generated_sdl_audio_preserves_queued_sound_without_a_gpu(tmp_path,deskt
     assert 'SDL audio backlog preservation checks passed' in done.stdout
 
 
+def test_settings_toggle_cheats_then_resume_the_generated_game(tmp_path,desktop_project):
+    import hashlib
+    rom,root,_,build=desktop_project
+    exe=next(p for p in (build/'ds_pc',build/'ds_pc.exe',build/'Release/ds_pc.exe') if p.is_file())
+    catalog=tmp_path/'catalog.txt'
+    catalog.write_text('rom '+hashlib.sha256(rom.read_bytes()).hexdigest()+'\n'
+        'cheat "Original counter"\nwrite32 0x02010000 42\nend\n')
+    script=tmp_path/'menu.txt';script.write_text('0 enter\n1 enter\n2 back\n3 back\n')
+    env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}
+    done=subprocess.run([str(exe),'--assets',str(root/'assets'),'--save',str(tmp_path/'game.sav'),
+        '--renderer','software','--frames','8','--cheats',str(catalog),'--settings',
+        '--menu-input-script',str(script),'--capture',str(tmp_path/'capture')],
+        env=env,capture_output=True,text=True,timeout=30)
+    assert done.returncode==0,done.stdout+done.stderr
+    report=json.loads(done.stdout)
+    assert report['frames']==8
+    assert report['cheats']==dict(available=1,enabled=1,applications=8,menu_openings=1,menu_frames=4)
+    assert (tmp_path/'capture/settings.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+
+
 def test_generated_opengl_renderer_preserves_both_lcds_and_ui(tmp_path,desktop_project):
     if os.environ.get('DECOMP_REQUIRE_DS_GPU')!='1':
         pytest.skip('GPU execution is a separate explicit qualification')
