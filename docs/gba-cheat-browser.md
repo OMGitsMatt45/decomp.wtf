@@ -44,3 +44,9 @@ Each opening starts at frame zero; B/Start returns to the game. If the script
 ends without returning, two trailing menu frames are retained and the player
 closes cleanly. The report records menu openings/frames and enabled preset count.
 This tests the actual browser/controller/renderer without OS keyboard injection.
+
+The scanline scene (over 560 KiB) is allocated on the heap only for desktop
+presentation. Keeping it in the player's `main` stack frame exhausted the default
+1 MiB Windows stack during a large project's initialization. The retail one-frame
+startup reproducer failed with `0xC00000FD` before this change and succeeds with
+zero interpreted cycles after it; the headless path does not allocate the scene.

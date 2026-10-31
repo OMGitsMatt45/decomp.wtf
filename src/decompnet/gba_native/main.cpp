@@ -230,10 +230,10 @@ int main(int argc, char** argv) {
         system->set_keys(static_cast<std::uint16_t>(keys)|scripted);
 #ifdef GBA_WITH_DESKTOP
         std::unique_ptr<gba_video::Display> display;
-        gba_video::Scene scene;
-        if(window){gba_video::Options view;view.renderer=renderer;view.width=width;view.height=height;
+        std::unique_ptr<gba_video::Scene> scene;
+        if(window){scene=std::make_unique<gba_video::Scene>();gba_video::Options view;view.renderer=renderer;view.width=width;view.height=height;
             view.fullscreen=fullscreen;view.readback=!display_capture.empty();display=std::make_unique<gba_video::Display>(view);
-            system->on_line_rendered=[&](anygba::System& s,unsigned line){scene.capture(s,line);};}
+            system->on_line_rendered=[&](anygba::System& s,unsigned line){scene->capture(s,line);};}
 #else
         if(window)throw anygba::Error("this build is headless; configure with -DGBA_WITH_DESKTOP=ON");
 #endif
@@ -290,7 +290,7 @@ int main(int argc, char** argv) {
                     if(resize_width&&s.frames()==resize_frame)display->resize(resize_width,resize_height);
                     display->audio(samples,unpaced);
                     if(s.frames()%present_every==0||(frames&&s.frames()>=frames)){
-                        if(in_menu)browser.present_hint(*display,s.framebuffer());else display->present(scene,s.framebuffer());
+                        if(in_menu)browser.present_hint(*display,s.framebuffer());else display->present(*scene,s.framebuffer());
                     }
                 },!unpaced);
                 live=input.keys;cheat_button=input.cheat_button;
