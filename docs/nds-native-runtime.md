@@ -66,6 +66,12 @@ Referenced-callback recovery and strict code-gap discovery alternate until
 neither adds a function. Newly recovered wrappers can bound previously rejected
 gaps; the later scan retains existing dispatch regions and records additional
 gap evidence separately.
+For DS Protect modules, decoded toolkit metadata supplies the protected ARM
+function boundaries and known literal pools. These replace overlapping gap
+guesses before callback recovery. Each protected routine has its own dispatch
+identity so another routine being encrypted, decrypted or updating a pool does
+not invalidate the active entry. Boundary alignment, module extent and overlap
+checks reject inconsistent metadata.
 
 Generated players include an F1 settings menu and optional ROM-bound data
 cheat catalogs. See [DS settings and data cheats](nds-cheats.md).

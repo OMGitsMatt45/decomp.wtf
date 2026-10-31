@@ -6,6 +6,7 @@ Only validated instruction bytes are removed from the importer's data ranges.
 """
 from bisect import bisect_right
 from collections import defaultdict,deque
+from pathlib import Path
 import struct
 
 from capstone.arm_const import ARM_OP_MEM, ARM_REG_PC
@@ -40,6 +41,55 @@ def _subtract(ranges,removed):
             if position>=high:break
         if position<high:result.append([position,high])
     return result
+
+
+def codec_functions(manifest,metadata,reader):
+    """Use decoded DS Protect function boundaries instead of broad gap guesses.
+
+    These are the toolkit's input-derived codec records, not signature guesses.
+    Separating each protected function prevents its inactive encrypted neighbors
+    from invalidating live dispatch identity.
+    """
+    if manifest['cpu']!='arm9':return []
+    additions=[]
+    for module in manifest['modules']:
+        item=metadata.get(int(module['module_id']),{})
+        protect=item.get('dsprot') if isinstance(item,dict) else None
+        state=protect.get('unencrypted') if isinstance(protect,dict) else None
+        if not isinstance(state,dict) or not state.get('functions'):continue
+        base=int(module['base']);limit=base+Path(module['image']).stat().st_size
+        records=[]
+        for record in state['functions']:
+            start=int(record['address']);size=int(record['size']);pool=int(record.get('pool_size') or 0)
+            if start%4 or size<=0 or size%4 or pool<0 or pool%4 or not base<=start<start+size+pool<=limit:
+                raise ValueError('DS Protect function boundary exceeds its decoded module or is unaligned')
+            records.append((start,size,pool,record))
+        records.sort(key=lambda item:item[0])
+        if any(a[0]+a[1]+a[2]>b[0] for a,b in zip(records,records[1:])):
+            raise ValueError('overlapping DS Protect function boundaries')
+        extents=[(start,start+size+pool) for start,size,pool,_ in records]
+        code=[[start,start+size] for start,size,_,_ in records]
+        pools=[[start+size,start+size+pool] for start,size,pool,_ in records if pool]
+        def overlaps(start,end):return any(start<high and low<end for low,high in extents)
+        names={int(f['addr']):f['name'] for f in module['functions'] if not f['thumb']}
+        module['functions']=[f for f in module['functions'] if not overlaps(int(f['addr']),int(f['addr'])+int(f['size']))]
+        module['dispatch_regions']=[r for r in module.get('dispatch_regions',[]) if not overlaps(int(r['addr']),int(r['addr'])+int(r['size']))]
+        module['labels']=[label for label in module.get('labels',[]) if not any(low<=int(label['addr'])<high for low,high in pools)]
+        module['data_ranges']=_merge(_subtract(module.get('data_ranges',[]),code)+pools)
+        module['code_ranges']=_merge(module.get('code_ranges',[])+code)
+        evidence=[]
+        for start,size,pool,record in records:
+            module['functions'].append(dict(addr=start,size=size+pool,thumb=False,
+                name=names.get(start,reader._function_name(module,start))))
+            module['dispatch_regions'].append(dict(addr=start,size=size+pool,thumb=False,
+                data_ranges=[[start+size,start+size+pool]] if pool else [],entries=[start]))
+            evidence.append(dict(module_id=module['module_id'],address=start,code_size=size,
+                pool_size=pool,version=state.get('version'),encryption=record.get('encryption')))
+        module['codec_recovery']=evidence;additions.extend(evidence)
+        module['functions'].sort(key=lambda f:(f['addr'],f['thumb']))
+        module['dispatch_regions'].sort(key=lambda r:(r['addr'],r['thumb']))
+    manifest['codec_recovery']=additions
+    return additions
 
 
 def recover(manifest,emitter,reader):

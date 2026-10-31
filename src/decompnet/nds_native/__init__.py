@@ -127,7 +127,13 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm9=reader.build_arm9_manifest(config)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
-    from .callbacks import complete
+    from .callbacks import complete,codec_functions
+    codec_metadata={module_id:yaml.safe_load((images/(name+'.yaml')).read_text(encoding='utf-8'))
+                    for module_id,name in ((-1,'arm9'),(-2,'itcm'),(-3,'dtcm'))}
+    overlay_metadata=yaml.safe_load((images/'arm9_overlays.yaml').read_text(encoding='utf-8'))
+    codec_metadata.update({int(item['id']):item for item in overlay_metadata.get('overlays',[])})
+    protected=codec_functions(arm9,codec_metadata,reader)
+    if protected:_log(f'Registered {len(protected)} codec-qualified ARM9 function boundaries')
     recovered=complete(arm9,_sdk()[1],reader)
     if recovered['callbacks']:_log(f"Recovered {len(recovered['callbacks'])} referenced ARM9 callbacks and callees")
     if recovered['gaps']:_log(f"Recovered {len(recovered['gaps'])} additional ARM9 code-gap functions")

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from decompnet import nds_native
-from decompnet.nds_native.callbacks import recover,complete
+from decompnet.nds_native.callbacks import recover,complete,codec_functions
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
@@ -91,6 +91,22 @@ def test_callback_boundaries_enable_a_later_gap_pass_without_losing_regions(tmp_
     assert module['dispatch_regions']==regions and len(manifest['callback_recovery'])==1
 
 
+def test_codec_boundaries_replace_broad_guesses_and_keep_pools_as_data(tmp_path,sdk):
+    _,_,reader=nds_native._sdk();module=mutable_image(tmp_path,2,1);base=module['base']
+    module['functions'].append(dict(addr=base+0x1c,size=0x24,thumb=False,name='broad_guess'))
+    module['dispatch_regions']=[dict(addr=base+0x1c,size=0x24,thumb=False,data_ranges=[],entries=[base+0x1c])]
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    metadata={2:dict(dsprot=dict(unencrypted=dict(version='fixture',functions=[dict(address=base+0x20,size=16,pool_size=4,encryption='unkeyed')])))}
+    assert len(codec_functions(manifest,metadata,reader))==1
+    assert {f['addr'] for f in module['functions']}=={base,base+0x20}
+    assert module['dispatch_regions']==[dict(addr=base+0x20,size=20,thumb=False,data_ranges=[[base+0x30,base+0x34]],entries=[base+0x20])]
+    assert any(low<=base+0x30<high for low,high in module['data_ranges'])
+    assert all(not low<=base+0x20<high for low,high in module['data_ranges'])
+    invalid=copy.deepcopy(metadata);invalid[2]['dsprot']['unencrypted']['functions'][0]['size']=128
+    with pytest.raises(ValueError,match='boundary exceeds'):
+        codec_functions(manifest,invalid,reader)
+
+
 def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
     manifest,emitter,reader=prepare(tmp_path)
     before=copy.deepcopy(manifest);base=manifest['modules'][0]['base']
@@ -140,7 +156,11 @@ def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,s
     manifest,emitter,reader=prepare(tmp_path)
     manifest['modules'].append(callback_image(tmp_path,1,increment=2))
     manifest['modules'].extend([mutable_image(tmp_path,2,1),mutable_image(tmp_path,3,2)])
-    assert len(recover(manifest,emitter,reader))==12
+    metadata={i:dict(dsprot=dict(unencrypted=dict(version='fixture',functions=[
+        dict(address=0x02016020,size=16,pool_size=4,encryption='unkeyed')
+    ]))) for i in (2,3)}
+    assert len(codec_functions(manifest,metadata,reader))==2
+    assert len(recover(manifest,emitter,reader))==10
     generated=tmp_path/'generated';generated.mkdir()
     result=emitter.emit_manifest(manifest,generated,chunk_size=100)
     assert result['undefined_sites']==0
