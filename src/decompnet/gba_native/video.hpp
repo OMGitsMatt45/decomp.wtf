@@ -14,6 +14,7 @@ struct Scene {
     uint64_t generation=~uint64_t{0};
     uint32_t vram_offset=0;
     void capture(anygba::System& system,unsigned line);
+    void bitmap(std::span<const uint16_t> pixels);
 };
 struct Options {
     std::string renderer="auto";
@@ -24,10 +25,11 @@ class Display {
 public:
     explicit Display(Options options);
     ~Display();
-    bool poll(uint16_t& keys, bool* settings=nullptr, bool* cheat_button=nullptr);
+    bool poll(uint16_t& keys, bool* settings=nullptr, bool* cheat_button=nullptr, bool* advanced=nullptr);
     void* native_window() const;
     void pause(bool paused);
     void present(const Scene& scene,std::span<const uint16_t> software_frame);
+    void present_pixels(std::span<const uint16_t> pixels);
     void audio(std::span<const int16_t> samples,bool unpaced=false);
     void resize(int width,int height);
     void pace();

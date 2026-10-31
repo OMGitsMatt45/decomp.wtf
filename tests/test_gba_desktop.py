@@ -60,6 +60,23 @@ def test_live_input_arriving_during_host_work_reaches_next_frame(desktop):
         binary(root, 'gba_frame_input_tests')])
 
 
+def test_in_window_browser_returns_to_native_game_with_scripted_menu_input(desktop,tmp_path):
+    _,exe=desktop
+    script=tmp_path/'menu.txt';script.write_text('0 0\n3 2\n4 0\n')
+    report=json.loads(run([exe,'--settings','--menu-input-script',script,'--frames','8',
+        '--unpaced','--resolution','240x160','--save',tmp_path/'browser.sav'],
+        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}))
+    assert report['menu_openings']==1 and report['menu_frames']==3
+    assert report['frames']==8 and report['interpreted_cycles']==0 and report['misses']==[]
+    script.write_text('0 0\n');capture=tmp_path/'browser.ppm'
+    closed=json.loads(run([exe,'--settings','--menu-input-script',script,'--frames','8',
+        '--unpaced','--resolution','240x160','--display-capture',capture,'--save',tmp_path/'closed.sav'],
+        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}))
+    assert closed['frames']==0 and closed['menu_openings']==1 and closed['menu_frames']==3
+    assert closed['interpreted_cycles']==0 and closed['misses']==[]
+    assert capture.read_bytes().startswith(b'P6\n240 160\n255\n'+bytes((41,156,123)))
+
+
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):
     root, exe = desktop
     env = {**os.environ, 'SDL_VIDEODRIVER': 'dummy', 'SDL_AUDIODRIVER': 'dummy'}
@@ -93,6 +110,7 @@ def test_original_gpu_modes_effects_sprites_scanline_changes_and_resize(desktop,
     data=json.loads(report.read_text())
     assert data['passed'] and data['scenes']==18 and data['reference_picture_ignored']
     assert data['resize_passed'] and data['device'] and data['renderer']=='opengl'
+    assert data['bitmap_overlay_cases']==3
     assert data['resized_drawable'][0]>data['initial_drawable'][0]
     assert data['resized_drawable'][1]>data['initial_drawable'][1]
     assert all(value>0 for value in data['odd_drawable'])

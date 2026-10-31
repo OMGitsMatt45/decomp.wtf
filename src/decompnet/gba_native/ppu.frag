@@ -163,8 +163,9 @@ int pixel(int x,int y) {
     return result;
 }
 void main() {
-    vec2 f=gl_FragCoord.xy-viewport_origin;
-    ivec2 p=ivec2(f.x*240.0/viewport_size.x,(viewport_size.y-f.y)*160.0/viewport_size.y);
+    ivec2 f=ivec2(gl_FragCoord.xy-viewport_origin), size=ivec2(viewport_size);
+    // Integer pixel centers keep odd-size scaling exact at source-pixel boundaries.
+    ivec2 p=ivec2((2*f.x+1)*240/(2*size.x),(2*(size.y-1-f.y)+1)*160/(2*size.y));
     row=clamp(p.y,0,159);p.x=clamp(p.x,0,239);
     int color=pixel(p.x,p.y);
     if((reg(0)&128)==0&&(reg(2)&1)!=0)color=(color&~992)|(pixel(p.x^1,p.y)&992);

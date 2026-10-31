@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "cheats.hpp"
+#include "cheat_catalog.hpp"
 #include "anygba/system.hpp"
 #include <iostream>
 #include <stdexcept>
@@ -45,6 +46,33 @@ int main(int argc,char** argv){try{
     check(!reopened.commit(disabled),"save disabled preference");
     gba_frontend::Cheats off;off.load(folder/"prefs.toml");system.write16(0x02000208,7);off.apply(system,0,false);
     check(off.enabled()==0&&system.read16(0x02000208)==7,"disabled preference stays inactive");
-    std::cout<<"Cheat decryption, RAM operations, native policy and preferences passed\n";
+    run(program(Format::Auto,{"8131CFD1 C068843F"}),system,{});
+    check(system.read16(0x02000040)==0x1234,"encrypted Action Replay EWRAM mirror autodetection");
+    run(program(Format::Auto,{"02308040 00001234"}),system,{});
+    check(system.read16(0x03000040)==0x1234,"decrypted Action Replay IWRAM mirror autodetection");
+    auto native=[](anygba_cpu* c){AG_ENTER(c,0x08000000u);c->r[0]++;c->r[15]=c->r[14]&~1u;};
+    auto& cpu=system.cpu();cpu.t=1;cpu.r[14]=0x08000005;cpu.r[0]=10;
+    system.set_native_entry_hook(0x08000000,true,[](anygba::System& s){s.cpu().r[0]=70;return false;});
+    native(&cpu);check(cpu.r[0]==71,"native hook can adjust direct-call arguments and continue compiled code");
+    system.set_native_entry_hook(0x08000000,true,[](anygba::System& s){auto& c=s.cpu();c.r[0]=77;c.r[15]=c.r[14]&~1u;return true;});
+    native(&cpu);check(cpu.r[0]==77&&cpu.r[15]==0x08000004,"native hook can replace direct compiled calls without interpreting");
+    system.reset();cpu.t=1;cpu.r[14]=0x08000005;
+    check(cpu.native_hooks,"active native hook survives reset");native(&cpu);check(cpu.r[0]==77,"native hook runs after reset");
+    system.set_native_entry_hook(0x08000000,true,{});native(&cpu);check(cpu.r[0]==78&&!cpu.native_hooks,"removing native hook restores original code");
+    std::vector<gba_frontend::CheatPreset> presets{
+        {"first","First","Items","slot","","",Format::Raw,{"02000220:1234"}},
+        {"second","Second","Items","slot","","",Format::Raw,{"02000220:5678"}},
+        {"bad","Unsupported","Other","","","",Format::Raw,{"08000100:4770"}}};
+    gba_frontend::CheatCatalog catalog;catalog.configure(presets);catalog.load(folder/"catalog.sav");
+    check(!catalog.all_off(),"initial catalog preference write");
+    system.write16(0x02000220,9);catalog.apply(system,0,false);check(system.read16(0x02000220)==9,"catalog defaults to no writes");
+    check(!catalog.set_enabled("first",true),"catalog toggle persists");catalog.apply(system,0,false);check(system.read16(0x02000220)==0x1234,"catalog preset takes effect");
+    check(!catalog.set_enabled("second",true)&&!catalog.enabled("first"),"exclusive presets cannot conflict");
+    gba_frontend::CheatCatalog restored;restored.configure(presets);restored.load(folder/"catalog.sav");
+    check(restored.enabled("second")&&!restored.enabled("first"),"catalog selections survive process reload");
+    check(restored.set_enabled("bad",true).has_value()&&!restored.enabled("bad"),"unsupported catalog code cannot become silently active");
+    check(!restored.all_off(),"catalog all-off persists");system.write16(0x02000220,9);restored.apply(system,0,false);check(system.read16(0x02000220)==9,"all-off stops future writes");
+    gba_frontend::CheatCatalog no_path;no_path.configure(presets);check(no_path.set_enabled("first",true).has_value()&&!no_path.enabled("first"),"failed persistence rolls back toggle");
+    std::cout<<"Cheat decryption, RAM operations, native policy and preferences passed\nNative direct-call hooks, mirrored codes and preset persistence passed\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
