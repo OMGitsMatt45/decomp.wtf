@@ -127,7 +127,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm9=reader.build_arm9_manifest(config)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
-    from .callbacks import complete,codec_functions
+    from .callbacks import complete,codec_functions,recover
     codec_metadata={module_id:yaml.safe_load((images/(name+'.yaml')).read_text(encoding='utf-8'))
                     for module_id,name in ((-1,'arm9'),(-2,'itcm'),(-3,'dtcm'))}
     overlay_metadata=yaml.safe_load((images/'arm9_overlays.yaml').read_text(encoding='utf-8'))
@@ -142,6 +142,8 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
         entry=metadata['entry_function'],callback=metadata['autoload_callback'],image_path=path)
     arm7_path,_=analyzer.write_outputs(result,work/'arm7-analysis')
     arm7=json.loads(arm7_path.read_text(encoding='utf-8'))
+    callbacks=recover(arm7,_sdk()[1],reader)
+    if callbacks:_log(f'Recovered {len(callbacks)} referenced ARM7 callbacks and callees')
     derive=_tool(sdk,'derive_abi_config')
     from .abi_patch import install
     install(derive)
@@ -361,6 +363,24 @@ and share accepted vertices. The base source charges every submitted vertex
 and polygon, including off-screen scenery, which can discard later characters.
 Visible geometry retains the original buffer limits and overflow diagnostics;
 partial polygons retain the existing rasterizer's clipping arithmetic.
+Wireless MAC configuration latches retain documented writable bits, allowing
+initialization readback checks. Baseband register 47h is writable and 4Dh is
+read-only; the pinned bitmap interchanges these permissions. W_IF acknowledges
+ones, W_IF_SET cannot set nonexistent IRQ10, and primary IF24 is requested only
+on a zero-to-nonzero W_IF/W_IE edge. Wireless STRB writes are ignored. Offline
+RF power requests expose disabled/idle and wake/ack states with wake IRQ11;
+this does not implement packet transport or wireless timer/transmit behavior.
+These register semantics follow GBATEK's DS Wifi chapters:
+https://problemkaputt.de/gbatek.htm#dswirelesscommunications
+ARM7 recovery also validates direct callees reached by the emitted graph,
+including initialized bytes left unclassified by the importer's flow decoder.
+It uses ARMv4T decoding and records call evidence alongside callback pointers.
+Thumb long branches into large regions of their own function are checked by
+control-flow graph and stack effect, including loops and ordinary calls.
+Guarded halfword dispatches require complete table entries, an unsigned range
+check, an unchanged key, and no incoming edges bypassing that check. Every exit
+must release the caller's allocation and restore its saved register frame.
+Unproven bodies retain ordinary call/fallthrough handling and diagnostics.
 ''',encoding='utf-8')
 
 

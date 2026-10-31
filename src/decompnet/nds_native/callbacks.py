@@ -1,4 +1,4 @@
-"""Recover referenced ARM9 callbacks that the DS importer classified as data.
+"""Recover referenced callbacks/callees omitted by the DS importers.
 
 Same-image pointers and module-qualified direct calls seed the normal ARM/Thumb
 translator's control-flow decoder. Unreferenced prologues and overlay guesses do not.
@@ -94,7 +94,8 @@ def codec_functions(manifest,metadata,reader):
 
 def recover(manifest,emitter,reader):
     """Supplement a decoded manifest with statically validated callbacks/callees."""
-    if manifest['cpu']!='arm9':return []
+    cpu=manifest['cpu'];arch=manifest['arch']
+    if cpu not in ('arm9','arm7'):return []
     entries,images,module_entries,calls=emitter._prepare_entries(manifest,None)
     address_entries=defaultdict(list)
     for entry in entries:address_entries[entry.address].append(entry)
@@ -137,7 +138,7 @@ def recover(manifest,emitter,reader):
         def covered(address):
             index=bisect_right(starts,address)-1
             return index>=0 and address<ends[index]
-        decoders={thumb:emitter.Decoder(image,base,'v5te',thumb) for thumb in (False,True)}
+        decoders={thumb:emitter.Decoder(image,base,arch,thumb) for thumb in (False,True)}
         def classify(op,thumb):
             decoded=next(reader._disassembler(thumb).disasm(
                 image[op.address-base:op.address-base+4],op.address,1),None)
@@ -170,6 +171,24 @@ def recover(manifest,emitter,reader):
             value=struct.unpack_from('<I',image,offset)[0];address=value&~1;thumb=bool(value&1)
             if covered(address) or not plausible(address,thumb):continue
             roots.setdefault((address,thumb),[]).append(source)
+        # ARM7 analysis and emission have different switch/flow decoders.
+        # Also validate direct calls in the emitted graph; their destinations
+        # may be initialized bytes with no data classification or call record.
+        if cpu=='arm7':
+            for entry in entries:
+                if entry.module_id!=int(module['module_id']):continue
+                body=emitter.FunctionEmitter(cpu,arch,module,image,entry,address_entries,
+                    calls,{},module_entries,decoders[entry.thumb],module_mode_entries=mode_entries)
+                body._discover()
+                for op in body.insns.values():
+                    effect=classify(op,entry.thumb)
+                    if effect is None or effect.flow!='call' or effect.target is None:continue
+                    target=effect.target&~1
+                    mode=entry.thumb!=(body._branch_name(op)=='blx')
+                    if covered(target) or not plausible(target,mode):continue
+                    roots.setdefault((target,mode),[])
+                    call_sources.setdefault((target,mode),[]).append(
+                        dict(module_id=int(module['module_id']),address=op.address))
         boundaries=sorted({*starts,*(address for address,_ in roots),limit})
         pending=deque(roots);visited=set();accepted={}
         while pending:
@@ -179,8 +198,8 @@ def recover(manifest,emitter,reader):
             end=boundaries[bisect_right(boundaries,address)]
             function=dict(addr=address,size=end-address,thumb=thumb,
                 name=reader._function_name(module,address))
-            entry=emitter.Entry(module,function,address,thumb,function['name'],False,'arm9')
-            body=emitter.FunctionEmitter('arm9','v5te',module,image,entry,address_entries,
+            entry=emitter.Entry(module,function,address,thumb,function['name'],False,cpu)
+            body=emitter.FunctionEmitter(cpu,arch,module,image,entry,address_entries,
                 calls,{},module_entries,decoders[thumb],module_mode_entries=mode_entries)
             body._discover()
             if address not in body.insns:continue
@@ -246,7 +265,8 @@ def recover(manifest,emitter,reader):
             module.setdefault('calls',[]).extend(body_calls)
             evidence.append(dict(module_id=module['module_id'],address=address,thumb=thumb,
                 size=function['size'],pointer_sources=roots.get((address,thumb),[]),
-                call_sources=call_sources.get((address,thumb),[])))
+                call_sources=[dict(module_id=mid,address=site) for mid,site in sorted({
+                    (x['module_id'],x['address']) for x in call_sources.get((address,thumb),[])})]))
         module.setdefault('callback_recovery',[]).extend(evidence);additions.extend(evidence)
         module['labels']=[dict(addr=address,thumb=thumb) for address,thumb in sorted(labels)]
         functions.sort(key=lambda f:(f['addr'],f['thumb']))

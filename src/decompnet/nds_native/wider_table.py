@@ -140,6 +140,7 @@ def make(emitter):
 
         branch_pc = insn.address + 4
         count = self._jump_case_count(insn, key_reg, None) if key_reg is not None else None
+        requested_count = count
         if count is None:
             # The case code follows the table: stop at the first entry whose
             # address reaches the lowest target seen so far.
@@ -163,9 +164,11 @@ def make(emitter):
 
         cases: list[tuple[int, int]] = []
         seen: set[int] = set()
+        complete = True
         for index in range(count):
             raw = self._literal(insn, table + index * 2, 2)
             if raw is None:
+                complete = False
                 break
             offset = raw - 0x10000 if signed and raw & 0x8000 else raw
             target = (branch_pc + offset) & ~1
@@ -174,7 +177,34 @@ def make(emitter):
                 if key not in seen:
                     cases.append((key, target))
                     seen.add(key)
+            else:
+                complete = False
         if not cases:
             return None
-        return {"kind": "thumb_halfword", "index": target_reg, "base": branch_pc, "cases": cases}
+        # Optional proof of a complete, explicitly guarded dispatch. Inferred
+        # table length alone must not establish control-flow exhaustiveness.
+        guard = None
+        if complete and requested_count == count and key_reg is not None:
+            for pos in range(len(previous)-1):
+                compare, branch = previous[pos:pos+2]
+                args = compare.operands
+                if (self._branch_name(compare) != 'cmp' or compare.condition != 14 or len(args) != 2
+                        or args[0].type != ARM_OP_REG or operand_reg(compare,args[0]) != key_reg
+                        or args[1].type != ARM_OP_IMM or self._branch_name(branch) != 'b'
+                        or branch.condition not in (2,8) or compare.next_address != branch.address):continue
+                destination = self._branch_target(branch)
+                if (destination is None or destination < insn.next_address
+                        or int(args[1].imm)+(branch.condition==8) != count):continue
+                address = branch.next_address
+                for following in previous[pos+2:]+[insn]:
+                    if following.address != address:break
+                    if following is insn:
+                        guard = dict(address=branch.address,fallthrough=branch.next_address)
+                        break
+                    if self._branch_name(following) in ('b','bl','blx','bx'):break
+                    _, writes = following.detail.regs_access()
+                    if any(reg_index(following,reg)==key_reg for reg in writes):break
+                    address = following.next_address
+        return {"kind": "thumb_halfword", "index": target_reg, "base": branch_pc,
+                "cases": cases, "guard": guard}
     return table_info
