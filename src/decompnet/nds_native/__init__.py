@@ -127,7 +127,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm9=reader.build_arm9_manifest(config)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
-    from .callbacks import complete,codec_functions,recover
+    from .callbacks import complete,codec_functions,recover,arm7_executable_ranges
     codec_metadata={module_id:yaml.safe_load((images/(name+'.yaml')).read_text(encoding='utf-8'))
                     for module_id,name in ((-1,'arm9'),(-2,'itcm'),(-3,'dtcm'))}
     overlay_metadata=yaml.safe_load((images/'arm9_overlays.yaml').read_text(encoding='utf-8'))
@@ -142,6 +142,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
         entry=metadata['entry_function'],callback=metadata['autoload_callback'],image_path=path)
     arm7_path,_=analyzer.write_outputs(result,work/'arm7-analysis')
     arm7=json.loads(arm7_path.read_text(encoding='utf-8'))
+    arm7_executable_ranges(arm7,result.modules)
     callbacks=recover(arm7,_sdk()[1],reader)
     if callbacks:_log(f'Recovered {len(callbacks)} referenced ARM7 callbacks and callees')
     derive=_tool(sdk,'derive_abi_config')

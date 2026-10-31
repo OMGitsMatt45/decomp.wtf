@@ -92,6 +92,21 @@ def codec_functions(manifest,metadata,reader):
     return additions
 
 
+def arm7_executable_ranges(manifest,states):
+    """Retain the pinned importer's hard autoload exclusions during recovery."""
+    by_id={state.module_id:state for state in states}
+    reasons={'autoload source payload','autoload block descriptors',
+             'autoload/module parameter words','crt0-cleared static BSS',
+             'autoload block BSS zeroed by crt0'}
+    for module in manifest['modules']:
+        state=by_id[int(module['module_id'])]
+        allowed=[[state.base+low,state.base+min(high,state.loaded_size)]
+                 for low,high in state.executable_ranges]
+        excluded=[[state.base+low,state.base+high]
+                  for low,high,reason in state.data_ranges if reason in reasons]
+        module['executable_ranges']=_subtract(allowed,_merge(excluded))
+
+
 def recover(manifest,emitter,reader):
     """Supplement a decoded manifest with statically validated callbacks/callees."""
     cpu=manifest['cpu'];arch=manifest['arch']
@@ -128,6 +143,11 @@ def recover(manifest,emitter,reader):
     additions=[]
     for module in manifest['modules']:
         image=images[int(module['module_id'])];base=int(module['base']);limit=base+len(image)
+        executable=_merge(module.get('executable_ranges',[[base,limit]]))
+        if any(not base<=low<high<=limit for low,high in executable):
+            raise ValueError('callback executable range exceeds its initialized module')
+        def executable_bytes(address,size):
+            return any(low<=address and address+size<=high for low,high in executable)
         declared=_merge(module.get('data_ranges',[]))
         if not image:continue
         data_starts=[low for low,_ in declared]
@@ -156,6 +176,7 @@ def recover(manifest,emitter,reader):
             return None
         def plausible(address,thumb):
             if not base<=address<limit or address%(2 if thumb else 4):return False
+            if not executable_bytes(address,2 if thumb else 4):return False
             op=decoders[thumb].decode(address)
             return (op is not None and op.condition==14 and
                 classify(op,thumb) is not None)
@@ -189,7 +210,8 @@ def recover(manifest,emitter,reader):
                     roots.setdefault((target,mode),[])
                     call_sources.setdefault((target,mode),[]).append(
                         dict(module_id=int(module['module_id']),address=op.address))
-        boundaries=sorted({*starts,*(address for address,_ in roots),limit})
+        boundaries=sorted({*starts,*(address for address,_ in roots),
+                           *(edge for interval in executable for edge in interval),limit})
         pending=deque(roots);visited=set();accepted={}
         while pending:
             address,thumb=pending.popleft();key=(address,thumb)
@@ -205,6 +227,7 @@ def recover(manifest,emitter,reader):
             if address not in body.insns:continue
             valid=True;code=set();extent=address;targets=[];body_calls=[]
             for op in body.insns.values():
+                if not executable_bytes(op.address,op.size):valid=False;break
                 effect=classify(op,thumb)
                 if effect is None:valid=False;break
                 if ((effect.flow in ('next','call') or effect.conditional) and
