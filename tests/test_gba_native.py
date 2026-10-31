@@ -76,11 +76,11 @@ def test_callback_tables_reached_through_ram_compile_without_profiles_or_feedbac
     # The fixture places rejected packed/isolated aliases before real tables.
     # Discovery must retry when the later occurrence supplies stronger evidence.
     project=generate(tmp_path/'callbacks',profile=False,fixture=callbacks())
-    options=[v for address in [*range(0x02000004,0x02000044,4),*range(0x02000048,0x02000060,4)]
+    options=[v for address in [*range(0x02000004,0x02000044,4),*range(0x02000048,0x02000064,4)]
              for v in ('--observe',hex(address))]
     native=execute(project,'--strict-static',*options)
     reference=execute(project,'--interpreter',*options)
-    assert native['observed']==[11,22,33,44,55,33,25,7,42,55,12,13,69,79,89,42,77,97,2300,107,109,44]
+    assert native['observed']==[11,22,33,44,55,33,25,7,42,55,12,13,69,79,89,42,77,97,2300,107,109,44,131]
     assert native['misses']==[] and native['interpreted_cycles']==0
     for field in ('observed','frames','cycles','screen_sha256','audio_frames'):
         assert native[field]==reference[field],field

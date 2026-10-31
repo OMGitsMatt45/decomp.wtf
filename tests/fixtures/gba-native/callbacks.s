@@ -163,6 +163,20 @@ long_callbacks:
     mov lr, pc
     bx r1
     str r0, [r5, #92]
+    /* Packed script callbacks can be leaf functions without a stack frame. */
+    ldr r3, =packed_leaf_record + 1
+    ldrb r1, [r3]
+    ldrb r0, [r3, #1]
+    orr r1, r1, r0, lsl #8
+    ldrb r0, [r3, #2]
+    orr r1, r1, r0, lsl #16
+    ldrb r0, [r3, #3]
+    orr r1, r1, r0, lsl #24
+    str r1, [r5]
+    ldr r1, [r5]
+    mov lr, pc
+    bx r1
+    str r0, [r5, #96]
     ldr r0, =0x04000130
     ldrh r0, [r0]
     tst r0, #2
@@ -192,6 +206,11 @@ packed_record:
     .word packed_callback
     .byte 0, 0, 0
 .align 2
+packed_leaf_record:
+    .byte 0xa9
+    .word packed_leaf
+    .byte 0, 0, 0
+.align 2
 isolated_leaf_record:
     .word 0, isolated_long_leaf, 0
 tail_table:
@@ -202,6 +221,15 @@ packed_callback:
     movs r0, #107
     pop {r3}
     bx r3
+.thumb_func
+packed_leaf:
+    lsls r0, r0, #24
+    lsrs r0, r0, #24
+    ldr r2, =0x02000100
+    str r0, [r2]
+    movs r0, #131
+    bx lr
+    .ltorg
 .thumb_func
 isolated_long_leaf:
     movs r0, #99
