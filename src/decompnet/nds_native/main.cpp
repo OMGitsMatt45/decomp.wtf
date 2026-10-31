@@ -22,6 +22,7 @@
 #include "profile.hpp"
 #include "save_lock.hpp"
 #include "cheats.hpp"
+#include "input.hpp"
 #ifdef NDS_WITH_SDL
 #include "settings.hpp"
 #endif
@@ -92,8 +93,9 @@ struct Display {
         for(unsigned i=0;i<12;++i)if(keys[codes[i]])input.buttons|=1u<<i;
         if(keys[SDL_SCANCODE_ESCAPE])return false;
         int x,y;const auto buttons=SDL_GetMouseState(&x,&y);
-        int dx=0,dy=0;input.pen_down=(buttons&SDL_BUTTON_LMASK) && video->touch(x,y,dx,dy);
-        input.pen_x=dx;input.pen_y=dy;
+        int dx=0,dy=0;
+        const bool touching=(buttons&SDL_BUTTON_LMASK) && video->touch(x,y,dx,dy);
+        ds_host::merge_live_touch(input,touching,dx,dy);
         return true;
     }
     void present(dsr::Session& session) {

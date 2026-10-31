@@ -20,9 +20,13 @@ def desktop_project(tmp_path_factory,sdk):
     shutil.copyfile(source,root/'tests/video_checks.cpp')
     shutil.copyfile(source.with_name('nds_audio.cpp'),root/'tests/audio_checks.cpp')
     shutil.copyfile(source.with_name('nds_settings.cpp'),root/'tests/settings_checks.cpp')
+    shutil.copyfile(source.with_name('nds_input.cpp'),root/'tests/input_checks.cpp')
     with (root/'CMakeLists.txt').open('a') as file:
         file.write('''
 if(NDS_WITH_SDL)
+  add_executable(input_checks tests/input_checks.cpp)
+  target_include_directories(input_checks PRIVATE native)
+  target_link_libraries(input_checks PRIVATE ds_runtime)
   add_executable(video_checks tests/video_checks.cpp native/video.cpp)
   target_include_directories(video_checks PRIVATE native ${DSR_ROOT}/runtime/gpu3d/src)
   target_compile_definitions(video_checks PRIVATE SDL_MAIN_HANDLED)
@@ -54,6 +58,14 @@ def test_generated_sdl_audio_preserves_queued_sound_without_a_gpu(tmp_path,deskt
     done=subprocess.run([str(exe)],cwd=tmp_path,env=env,capture_output=True,text=True,timeout=30)
     assert done.returncode==0,done.stdout+done.stderr
     assert 'SDL audio backlog preservation checks passed' in done.stdout
+
+
+def test_scripted_touch_survives_idle_desktop_pointer(desktop_project):
+    _,_,_,build=desktop_project
+    exe=next(p for p in (build/'input_checks',build/'input_checks.exe',build/'Release/input_checks.exe') if p.is_file())
+    done=subprocess.run([str(exe)],capture_output=True,text=True,timeout=30)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert 'Scripted and live touch merge checks passed' in done.stdout
 
 
 def test_settings_toggle_cheats_then_resume_the_generated_game(tmp_path,desktop_project):
