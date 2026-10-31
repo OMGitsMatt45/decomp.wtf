@@ -5,6 +5,11 @@
 #include <memory>
 
 namespace ds_host {
+inline bool capture_settings(SDL_Renderer* renderer,const std::filesystem::path& path) {
+    int width=0,height=0;
+    if(SDL_GetRendererOutputSize(renderer,&width,&height)!=0)return false;
+    return dsr::ui_detail::save_renderer_png(renderer,path,width,height);
+}
 // The game pauses while this built-in settings window owns input.
 inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const std::filesystem::path& capture={}) {
     using namespace dsr::ui_detail;
@@ -25,6 +30,7 @@ inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const
     if(!window)throw std::runtime_error(SDL_GetError());
     Renderer renderer(SDL_CreateRenderer(window.get(),-1,SDL_RENDERER_SOFTWARE),SDL_DestroyRenderer);
     if(!renderer)throw std::runtime_error(SDL_GetError());
+    if(SDL_RenderSetLogicalSize(renderer.get(),800,520)!=0)throw std::runtime_error(SDL_GetError());
     UiCanvas canvas(renderer.get());
     bool page=false,done=false,running=true;size_t selected=0;
     auto key=[&](SDL_Keycode code) {
@@ -69,7 +75,7 @@ inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const
         }
         canvas.text(24,442,"Cheats start OFF each launch. Gameplay is paused.",{175,190,215,255},2);
         canvas.text(24,472,"Granted items/stats remain when a cheat is turned off.",{175,190,215,255},2);
-        if(!capture.empty()&&frame==0&&!save_renderer_png(renderer.get(),capture,800,520))throw std::runtime_error("could not capture settings");
+        if(!capture.empty()&&frame==0&&!capture_settings(renderer.get(),capture))throw std::runtime_error("could not capture settings");
         SDL_RenderPresent(renderer.get());++cheats.menu_frames;
         SDL_Delay(16);
     }

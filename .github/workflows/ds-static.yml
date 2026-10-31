@@ -21,6 +21,7 @@ on:
       - 'tests/fixtures/nds_capture_origins.cpp'
       - 'tests/fixtures/nds_video.cpp'
       - 'tests/fixtures/nds_audio.cpp'
+      - 'tests/fixtures/nds_settings.cpp'
       - 'tests/fixtures/nds_geometry.cpp'
       - 'src/decompnet/app/**'
       - 'tests/fixtures/nds-static/**'

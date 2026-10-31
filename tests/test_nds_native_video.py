@@ -19,6 +19,7 @@ def desktop_project(tmp_path_factory,sdk):
     source=Path(__file__).parent/'fixtures/nds_video.cpp'
     shutil.copyfile(source,root/'tests/video_checks.cpp')
     shutil.copyfile(source.with_name('nds_audio.cpp'),root/'tests/audio_checks.cpp')
+    shutil.copyfile(source.with_name('nds_settings.cpp'),root/'tests/settings_checks.cpp')
     with (root/'CMakeLists.txt').open('a') as file:
         file.write('''
 if(NDS_WITH_SDL)
@@ -30,6 +31,10 @@ if(NDS_WITH_SDL)
   target_include_directories(audio_checks PRIVATE native)
   target_compile_definitions(audio_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(audio_checks PRIVATE SDL2::SDL2-static)
+  add_executable(settings_checks tests/settings_checks.cpp ${DSR_ROOT}/runtime/frontend/src/ui_toolkit.cpp)
+  target_include_directories(settings_checks PRIVATE native)
+  target_compile_definitions(settings_checks PRIVATE SDL_MAIN_HANDLED)
+  target_link_libraries(settings_checks PRIVATE ds_runtime SDL2::SDL2-static)
 endif()
 ''')
     build=root/'build-video'
@@ -69,6 +74,20 @@ def test_settings_toggle_cheats_then_resume_the_generated_game(tmp_path,desktop_
     assert report['frames']==8
     assert report['cheats']==dict(available=1,enabled=1,applications=8,menu_openings=1,menu_frames=4)
     assert (tmp_path/'capture/settings.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+
+
+def test_settings_capture_allocates_for_drawable_pixels(tmp_path,desktop_project):
+    import struct
+    _,_,_,build=desktop_project
+    exe=next(p for p in (build/'settings_checks',build/'settings_checks.exe',build/'Release/settings_checks.exe') if p.is_file())
+    env={**os.environ,'SDL_VIDEODRIVER':'dummy'}
+    done=subprocess.run([str(exe),str(tmp_path)],env=env,capture_output=True,text=True,timeout=30)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert 'Settings capture uses drawable dimensions' in done.stdout
+    for width,height in ((1600,1040),(1100,715)):
+        png=(tmp_path/f'{width}x{height}.png').read_bytes()
+        assert png.startswith(b'\x89PNG\r\n\x1a\n')
+        assert struct.unpack_from('>II',png,16)==(width,height)
 
 
 def test_generated_opengl_renderer_preserves_both_lcds_and_ui(tmp_path,desktop_project):
