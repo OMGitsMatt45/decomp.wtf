@@ -107,8 +107,10 @@ def test_codec_boundaries_replace_broad_guesses_and_keep_pools_as_data(tmp_path,
         codec_functions(manifest,invalid,reader)
 
 
-def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
+@pytest.mark.parametrize('cpu', ['arm9', 'arm7'])
+def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk,cpu):
     manifest,emitter,reader=prepare(tmp_path)
+    manifest.update(cpu=cpu,arch='v4t' if cpu=='arm7' else 'v5te')
     before=copy.deepcopy(manifest);base=manifest['modules'][0]['base']
     added=recover(manifest,emitter,reader)
     assert {(f['address']-base,f['thumb']) for f in added}=={
@@ -121,8 +123,6 @@ def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):
     assert all(not low<=base+0x40<high for low,high in module['data_ranges'])
     assert module['functions'][0]==before['modules'][0]['functions'][0]
     assert recover(manifest,emitter,reader)==[]
-    arm7={**before,'cpu':'arm7','arch':'v4t'}
-    assert recover(arm7,emitter,reader)==[] and arm7['modules']==before['modules']
 
 
 @pytest.mark.parametrize('targets,source_thumb', [([0],False),([0],True),([0,1],False)])
