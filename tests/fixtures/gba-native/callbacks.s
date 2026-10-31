@@ -7,11 +7,11 @@
 _start:
     b main
 /* Earlier rejected hypotheses must not suppress a later real callback table.
- * The packed even alias lacks a stack prologue; the isolated ARM tail needs
+ * The packed alias lacks a stack prologue; the isolated ARM tail needs
  * the independent evidence supplied by its dense table below. */
 .org 0x50
     .byte 0
-    .word thumb_leaf - 1
+    .word thumb_leaf
 .org 0x60
     .word arm_tail
 .org 0xc0
