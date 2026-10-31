@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from decompnet import nds_native
-from decompnet.nds_native.callbacks import recover,complete,codec_functions
+from decompnet.nds_native.callbacks import recover,complete,codec_functions,arm7_executable_ranges
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
@@ -39,6 +39,36 @@ def prepare(tmp_path):
     _,emitter,reader=nds_native._sdk()
     manifest=dict(cpu='arm9',arch='v5te',modules=[callback_image(tmp_path)])
     return manifest,emitter,reader
+
+
+def test_arm7_recovery_excludes_autoload_source_payload(tmp_path,sdk):
+    from types import SimpleNamespace
+    _,emitter,reader=nds_native._sdk()
+    base=0x02380000;raw=bytearray(0x80)
+    struct.pack_into('<I',raw,0,0xe12fff1e)
+    struct.pack_into('<3I',raw,0x10,base+0x20,base+0x40,base+0x2c)
+    struct.pack_into('<2I',raw,0x20,0xe3a00029,0xe12fff1e)
+    # A relocated routine's source bytes also look like valid executable code.
+    struct.pack_into('<2I',raw,0x40,0xe3a00029,0xe12fff1e)
+    # This candidate falls through across the executable boundary.
+    struct.pack_into('<2I',raw,0x2c,0xe3a00001,0xe12fff1e)
+    image=tmp_path/'autoload-source.bin';image.write_bytes(raw)
+    module=dict(name='arm7main',module_id=-4,base=base,image=str(image),
+        functions=[dict(addr=base,thumb=False,size=4,name='entry')],labels=[],calls=[],
+        code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]],
+        executable_ranges=[])
+    manifest=dict(cpu='arm7',arch='v4t',modules=[module])
+    state=SimpleNamespace(module_id=-4,base=base,loaded_size=len(raw),
+        executable_ranges=[(0,len(raw))],
+        data_ranges=[(0x30,len(raw),'autoload source payload'),(0x10,0x20,'literal pool')])
+    arm7_executable_ranges(manifest,[state])
+    assert module['executable_ranges']==[[base,base+0x30]]
+    assert [item['address'] for item in recover(manifest,emitter,reader)]==[base+0x20]
+    assert any(low<=base+0x40<high for low,high in module['data_ranges'])
+    assert recover(manifest,emitter,reader)==[]
+    module['executable_ranges']=[[base,base+len(raw)+4]]
+    with pytest.raises(ValueError,match='executable range exceeds'):
+        recover(manifest,emitter,reader)
 
 
 def mutable_image(tmp_path,module_id,increment):
