@@ -73,6 +73,8 @@ def execute(original, *options, ok=True, frames=8):
 
 
 def test_callback_tables_reached_through_ram_compile_without_profiles_or_feedback(tmp_path,sdk):
+    # The fixture places rejected packed/isolated aliases before real tables.
+    # Discovery must retry when the later occurrence supplies stronger evidence.
     project=generate(tmp_path/'callbacks',profile=False,fixture=callbacks())
     options=[v for address in [*range(0x02000004,0x02000044,4),*range(0x02000048,0x02000060,4)]
              for v in ('--observe',hex(address))]

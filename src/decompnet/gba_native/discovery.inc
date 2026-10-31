@@ -19,8 +19,7 @@
             if (mode == Mode::Arm && (*raw & 3u)) continue;
             const std::uint32_t address = Image::canonical(*raw & ~1u);
             if (!image_.contains(address, mode == Mode::Thumb ? 2 : 4) || skipped(address)) continue;
-            const auto key = (std::uint64_t(address) << 1) | (mode == Mode::Thumb);
-            if (!checked.insert(key).second || known_.contains(address)) continue;
+            if (known_.contains(address)) continue;
             const auto first = decode_at(image_, address, mode);
             if (!first.valid() || first.cond != decode::Cond::AL) continue;
             const bool saves_lr =
@@ -31,15 +30,6 @@
             // Packed data supplies weaker evidence than an aligned pointer
             // table. Require an immediate stack-save prologue in that case.
             if((offset&3u) && !saves_lr)continue;
-            bool deferred_stack=false;
-            for(auto pc=address;pc<address+64;) {
-                const auto in=decode_at(image_,pc,mode);if(!in.valid())break;
-                if(in.cond==decode::Cond::AL &&
-                    ((in.op==decode::Op::STM && in.rn==decode::kSP && (in.reglist&(1u<<decode::kLR))) ||
-                     (in.op==decode::Op::STR && in.rn==decode::kSP && in.rd==decode::kLR &&
-                      in.pre && !in.up && in.writeback && in.imm && in.imm_value==4)))deferred_stack=true;
-                pc=in.next();
-            }
             unsigned neighbors=1;
             for(int direction : {-1,1}) {
                 for(int distance=1;distance<=2;++distance) {
@@ -56,6 +46,21 @@
             // A dense table supplies independent evidence for longer naked
             // assembly callbacks, without assuming a compiler's stack prologue.
             const bool callback_table=neighbors>=3;
+            // Rejection depends on the evidence at this occurrence. A packed
+            // alias rejected above must not poison a later aligned pointer,
+            // and an isolated pointer must not suppress a later dense table.
+            const auto key = (std::uint64_t(address) << 2) |
+                (mode == Mode::Thumb ? 2u : 0u) | (callback_table ? 1u : 0u);
+            if (!checked.insert(key).second) continue;
+            bool deferred_stack=false;
+            for(auto pc=address;pc<address+64;) {
+                const auto in=decode_at(image_,pc,mode);if(!in.valid())break;
+                if(in.cond==decode::Cond::AL &&
+                    ((in.op==decode::Op::STM && in.rn==decode::kSP && (in.reglist&(1u<<decode::kLR))) ||
+                     (in.op==decode::Op::STR && in.rn==decode::kSP && in.rd==decode::kLR &&
+                      in.pre && !in.up && in.writeback && in.imm && in.imm_value==4)))deferred_stack=true;
+                pc=in.next();
+            }
             bool short_leaf = false;
             if (!saves_lr) {
                 auto pc = address;
