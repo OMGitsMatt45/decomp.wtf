@@ -62,6 +62,10 @@ PC-relative ARM stores are accepted only when their destinations can be
 retained as initialized data, disjoint from decoded instructions. Recovered
 regions exclude literal data from overlay identity hashes, allowing callbacks
 to update return-address slots without losing their compiled dispatch entry.
+Referenced-callback recovery and strict code-gap discovery alternate until
+neither adds a function. Newly recovered wrappers can bound previously rejected
+gaps; the later scan retains existing dispatch regions and records additional
+gap evidence separately.
 
 Generated players include an F1 settings menu and optional ROM-bound data
 cheat catalogs. See [DS settings and data cheats](nds-cheats.md).

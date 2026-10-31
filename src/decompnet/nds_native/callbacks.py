@@ -197,8 +197,34 @@ def recover(manifest,emitter,reader):
             evidence.append(dict(module_id=module['module_id'],address=address,thumb=thumb,
                 size=function['size'],pointer_sources=roots.get((address,thumb),[]),
                 call_sources=call_sources.get((address,thumb),[])))
-        module['callback_recovery']=evidence;additions.extend(evidence)
+        module.setdefault('callback_recovery',[]).extend(evidence);additions.extend(evidence)
         module['labels']=[dict(addr=address,thumb=thumb) for address,thumb in sorted(labels)]
         functions.sort(key=lambda f:(f['addr'],f['thumb']))
     manifest['callback_recovery']=additions
     return additions
+
+
+def complete(manifest,emitter,reader):
+    """Alternate referenced callbacks and strict code-gap scans to a fixed point.
+
+    Recovering a callback can partition a previously rejected gap into valid
+    bounded functions. Keep established dispatch regions while the upstream
+    gap scanner builds regions for those newly inferred functions.
+    """
+    if manifest['cpu']!='arm9':return dict(callbacks=[],gaps=[])
+    callbacks=[];gaps=[]
+    while True:
+        added=recover(manifest,emitter,reader);callbacks.extend(added)
+        previous={int(m['module_id']):list(m.get('dispatch_regions',[])) for m in manifest['modules']}
+        scan=reader._GapDiscovery(manifest['modules'],[m.get('code_ranges',[]) for m in manifest['modules']])
+        for module in manifest['modules']:
+            regions={}
+            for region in previous[int(module['module_id'])]+module.get('dispatch_regions',[]):
+                regions[(int(region['addr']),int(region['size']),bool(region['thumb']))]=region
+            module['dispatch_regions']=[regions[key] for key in sorted(regions)]
+            records=[record for record in scan.added if int(record['module_id'])==int(module['module_id'])]
+            if records:module.setdefault('callback_gap_recovery',[]).extend(records)
+        gaps.extend(scan.added)
+        if not added and not scan.added:break
+    manifest['callback_recovery']=[record for module in manifest['modules'] for record in module.get('callback_recovery',[])]
+    return dict(callbacks=callbacks,gaps=gaps)
