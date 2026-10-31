@@ -27,9 +27,26 @@
                  (first.reglist & (1u << decode::kLR))) ||
                 (first.op == decode::Op::STR && first.rn == decode::kSP && first.rd == decode::kLR &&
                  first.pre && !first.up && first.writeback && first.imm && first.imm_value == 4);
-            // Packed data supplies weaker evidence than an aligned pointer
-            // table. Require an immediate stack-save prologue in that case.
-            if((offset&3u) && !saves_lr)continue;
+            // Packed script callbacks need not save LR: a short leaf can
+            // return directly to its caller. Verify the entire straight-line
+            // body before deduplication, so rejected packed aliases still
+            // cannot suppress stronger aligned/table evidence later.
+            const bool packed=(offset&3u)!=0;
+            if(packed && !saves_lr) {
+                bool leaf_return=false;
+                auto pc=address;
+                for(unsigned count=0;count<32;++count) {
+                    const auto in=decode_at(image_,pc,mode);
+                    if(!in.valid() || in.cond!=decode::Cond::AL)break;
+                    if(is_return(in)){leaf_return=true;break;}
+                    if(in.op==decode::Op::B || in.op==decode::Op::BL ||
+                       in.op==decode::Op::BX || in.op==decode::Op::BL_HI ||
+                       in.op==decode::Op::BL_LO || in.op==decode::Op::SWI ||
+                       in.rd==decode::kPC)break;
+                    pc=in.next();
+                }
+                if(!leaf_return)continue;
+            }
             unsigned neighbors=1;
             for(int direction : {-1,1}) {
                 for(int distance=1;distance<=2;++distance) {
@@ -91,6 +108,7 @@
             // register and BX it. A verified stack entry need not contain a
             // literal BX LR or POP PC to be a callable function.
             if (walk.function.hit_undefined || (!walk.function.has_exit && !known_tail) ||
+                (packed && !saves_lr && walk.function.insns.size()>32) ||
                 (!saves_lr && !deferred_stack && !callback_table && !(short_leaf && walk.function.insns.size()<=32))) continue;
             enqueue(candidate);
             ++adopted;
