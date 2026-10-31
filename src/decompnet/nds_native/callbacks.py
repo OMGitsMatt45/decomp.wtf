@@ -8,6 +8,8 @@ from bisect import bisect_right
 from collections import defaultdict,deque
 import struct
 
+from capstone.arm_const import ARM_OP_MEM, ARM_REG_PC
+
 
 def _runs(values):
     result=[]
@@ -89,7 +91,18 @@ def recover(manifest,emitter,reader):
         def classify(op,thumb):
             decoded=next(reader._disassembler(thumb).disasm(
                 image[op.address-base:op.address-base+4],op.address,1),None)
-            return reader._effect(decoded,thumb) if decoded is not None and decoded.size==op.size else None
+            if decoded is None or decoded.size!=op.size:return None
+            result=reader._effect(decoded,thumb)
+            if result is not None:return result
+            # ARM permits PC-relative stores to nearby data. Prove that the
+            # destination is initialized non-code bytes using the same literal
+            # checks as loads, rather than allowing a write into instructions.
+            width={'str':4,'strb':1,'strh':2}.get(decoded.insn_name())
+            memory=next((operand.mem for operand in decoded.operands if operand.type==ARM_OP_MEM),None)
+            if (not thumb and width and memory is not None and memory.base==ARM_REG_PC
+                    and not memory.index and not decoded.writeback):
+                return reader._Effect('next',op.condition!=14,literal=(op.address+8+memory.disp,width))
+            return None
         def plausible(address,thumb):
             if not base<=address<limit or address%(2 if thumb else 4):return False
             op=decoders[thumb].decode(address)
@@ -168,8 +181,17 @@ def recover(manifest,emitter,reader):
         module['code_ranges']=_merge(module.get('code_ranges',[])+runs)
         labels={(int(x['addr']),bool(x['thumb'])) for x in module.get('labels',[])}
         evidence=[]
-        for (address,thumb),(function,_,leaders,body_calls) in accepted.items():
+        for (address,thumb),(function,code,leaders,body_calls) in accepted.items():
             functions.append(function)
+            end=address+function['size']
+            holes=_subtract([[address,end]],_runs(code))
+            if holes:
+                # Mutable literals must not participate in overlay identity.
+                # The existing region runtime hashes instructions while still
+                # executing loads/stores against the actual guest data bytes.
+                module.setdefault('dispatch_regions',[]).append(dict(addr=address,
+                    size=function['size'],thumb=thumb,data_ranges=holes,
+                    entries=sorted({address,*(leader for leader in leaders if address<=leader<end)})))
             labels.update((leader,thumb) for leader in leaders if address<=leader<address+function['size'])
             module.setdefault('calls',[]).extend(body_calls)
             evidence.append(dict(module_id=module['module_id'],address=address,thumb=thumb,
