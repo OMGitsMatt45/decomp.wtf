@@ -375,6 +375,12 @@ https://problemkaputt.de/gbatek.htm#dswirelesscommunications
 ARM7 recovery also validates direct callees reached by the emitted graph,
 including initialized bytes left unclassified by the importer's flow decoder.
 It uses ARMv4T decoding and records call evidence alongside callback pointers.
+Thumb long branches into large regions of their own function are checked by
+control-flow graph and stack effect, including loops and ordinary calls.
+Guarded halfword dispatches require complete table entries, an unsigned range
+check, an unchanged key, and no incoming edges bypassing that check. Every exit
+must release the caller's allocation and restore its saved register frame.
+Unproven bodies retain ordinary call/fallthrough handling and diagnostics.
 ''',encoding='utf-8')
 
 
