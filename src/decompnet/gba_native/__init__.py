@@ -963,7 +963,7 @@ necessary rights to share them.
 
 ## Cheat codes and settings
 
-On Windows, F1 or Escape opens the native settings window and pauses the game.
+F1 or Escape opens the cheat browser inside the game window and pauses the game.
 Add a named code, choose auto-detect or its device format, enable/disable entries,
 then choose Save and close. F12 is the cheat device button. The window also opens
 the save folder. Preferences are stored beside the cartridge save as
