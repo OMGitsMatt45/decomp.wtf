@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from decompnet import nds_native
-from decompnet.nds_native.callbacks import recover
+from decompnet.nds_native.callbacks import recover,complete
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
@@ -65,6 +65,30 @@ def test_pc_relative_data_stores_keep_mutable_literals_out_of_dispatch_hashes(tm
     struct.pack_into('<I',image,0x28,0xe50f0008)  # str r0,[pc,#-8] -> itself
     Path(other['image']).write_bytes(image)
     assert recover(dict(cpu='arm9',arch='v5te',modules=[other]),emitter,reader)==[]
+
+
+def test_callback_boundaries_enable_a_later_gap_pass_without_losing_regions(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk()
+    module=mutable_image(tmp_path,2,1);base=module['base']
+    image=bytearray(Path(module['image']).read_bytes());image.extend(bytes(0x40))
+    struct.pack_into('<2I',image,4,0xe3a00011,0xe12fff1e)
+    struct.pack_into('<I',image,0x10,0)
+    struct.pack_into('<I',image,0x60,base+0x20)
+    Path(module['image']).write_bytes(image)
+    module['code_ranges']=[[base,base+0x34]]
+    module['data_ranges']=[[base+0x60,base+0x80]]
+    control=copy.deepcopy(module)
+    first=reader._GapDiscovery([control],[control['code_ranges']])
+    assert not any(record['addr']==base+4 for record in first.added)
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    result=complete(manifest,emitter,reader)
+    assert len(result['callbacks'])==1
+    assert any(record['addr']==base+4 for record in result['gaps'])
+    assert any(region['addr']==base+0x20 and region['data_ranges']==[[base+0x30,base+0x34]]
+               for region in module['dispatch_regions'])
+    regions=copy.deepcopy(module['dispatch_regions'])
+    assert complete(manifest,emitter,reader)==dict(callbacks=[],gaps=[])
+    assert module['dispatch_regions']==regions and len(manifest['callback_recovery'])==1
 
 
 def test_only_referenced_valid_callbacks_reclassify_code_bytes(tmp_path,sdk):

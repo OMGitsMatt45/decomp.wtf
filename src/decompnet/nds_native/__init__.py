@@ -127,9 +127,10 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm9=reader.build_arm9_manifest(config)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
-    from .callbacks import recover
-    callbacks=recover(arm9,_sdk()[1],reader)
-    if callbacks:_log(f'Recovered {len(callbacks)} referenced ARM9 callbacks and callees')
+    from .callbacks import complete
+    recovered=complete(arm9,_sdk()[1],reader)
+    if recovered['callbacks']:_log(f"Recovered {len(recovered['callbacks'])} referenced ARM9 callbacks and callees")
+    if recovered['gaps']:_log(f"Recovered {len(recovered['gaps'])} additional ARM9 code-gap functions")
     path=extracted/'arm7/arm7.bin'
     result=analyzer.analyze_image(path.read_bytes(),base=metadata['base_address'],
         entry=metadata['entry_function'],callback=metadata['autoload_callback'],image_path=path)
