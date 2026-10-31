@@ -68,6 +68,13 @@ def test_in_window_browser_returns_to_native_game_with_scripted_menu_input(deskt
         env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}))
     assert report['menu_openings']==1 and report['menu_frames']==3
     assert report['frames']==8 and report['interpreted_cycles']==0 and report['misses']==[]
+    script.write_text('0 0\n');capture=tmp_path/'browser.ppm'
+    closed=json.loads(run([exe,'--settings','--menu-input-script',script,'--frames','8',
+        '--unpaced','--resolution','240x160','--display-capture',capture,'--save',tmp_path/'closed.sav'],
+        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}))
+    assert closed['frames']==0 and closed['menu_openings']==1 and closed['menu_frames']==3
+    assert closed['interpreted_cycles']==0 and closed['misses']==[]
+    assert capture.read_bytes().startswith(b'P6\n240 160\n255\n'+bytes((41,156,123)))
 
 
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):

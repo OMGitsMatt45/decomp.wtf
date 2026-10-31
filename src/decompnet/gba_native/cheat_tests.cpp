@@ -46,10 +46,10 @@ int main(int argc,char** argv){try{
     check(!reopened.commit(disabled),"save disabled preference");
     gba_frontend::Cheats off;off.load(folder/"prefs.toml");system.write16(0x02000208,7);off.apply(system,0,false);
     check(off.enabled()==0&&system.read16(0x02000208)==7,"disabled preference stays inactive");
-    run(program(Format::Auto,{"6266061B C8C9D80F"}),system,{});
-    check(system.read16(0x020322e4)==1,"encrypted Action Replay EWRAM mirror autodetection");
-    run(program(Format::Auto,{"0230FC00 00001234"}),system,{});
-    check(system.read16(0x03007c00)==0x1234,"decrypted Action Replay IWRAM mirror autodetection");
+    run(program(Format::Auto,{"8131CFD1 C068843F"}),system,{});
+    check(system.read16(0x02000040)==0x1234,"encrypted Action Replay EWRAM mirror autodetection");
+    run(program(Format::Auto,{"02308040 00001234"}),system,{});
+    check(system.read16(0x03000040)==0x1234,"decrypted Action Replay IWRAM mirror autodetection");
     auto native=[](anygba_cpu* c){AG_ENTER(c,0x08000000u);c->r[0]++;c->r[15]=c->r[14]&~1u;};
     auto& cpu=system.cpu();cpu.t=1;cpu.r[14]=0x08000005;cpu.r[0]=10;
     system.set_native_entry_hook(0x08000000,true,[](anygba::System& s){s.cpu().r[0]=70;return false;});

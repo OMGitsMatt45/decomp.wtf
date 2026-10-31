@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
         std::uint64_t present_every=1,resize_frame=0;
         int resize_width=0,resize_height=0,width=0,height=0;
         bool window=false,unpaced=false,fullscreen=false;
+        bool run_game=true;
         bool open_settings=false;
         std::vector<std::string> cheat_codes;
         std::vector<std::string> preset_picks;
@@ -255,7 +256,7 @@ int main(int argc, char** argv) {
         uint16_t menu_blocked=0,previous_menu_keys=0;
         if(open_settings){
             if(!display)throw anygba::Error("--settings requires a desktop window; remove --headless.");
-            if(!browser.show(*display,catalog,cheats,gba_customization::description()))return 0;
+            if(!browser.show(*display,catalog,cheats,gba_customization::description()))run_game=false;
             menu_blocked=browser.held_on_close();
         }
 #else
@@ -308,7 +309,7 @@ int main(int argc, char** argv) {
             catalog.apply(s,uint16_t(keys)|scripted|live,cheat_button);
             if (frames&&s.frames() >= frames) s.stop();
         };
-        system->run();
+        if(run_game)system->run();
         if (persistence) if (auto error = persistence->flush()) throw anygba::Error(*error);
         if (audio.is_open()) { audio.close(); if (!audio) throw anygba::Error("PCM close failed"); }
         std::string rgb;
