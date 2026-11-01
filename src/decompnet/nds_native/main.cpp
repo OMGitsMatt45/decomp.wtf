@@ -90,6 +90,9 @@ struct Display {
                 if(event.key.keysym.sym==SDLK_F1&&!event.key.repeat) {
                     SDL_ClearQueuedAudio(audio);
                     SDL_AudioStreamClear(resampler);
+                    // The modal event loop consumes releases and focus changes.
+                    // Discard pre-menu input so it cannot remain held afterward.
+                    keyboard = {};
                     if(!ds_host::settings(cheats))return false;
                 } else video->key(event.key);
             }
