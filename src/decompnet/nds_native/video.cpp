@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT. Original decomp.wtf SDL/OpenGL presentation.
 #include "video.hpp"
+#include "dynamic_layout.hpp"
 #include <dsr/gpu2d.h>
 #include "texture_rgba.h"
 #include <SDL_opengl.h>
@@ -24,13 +25,30 @@ namespace video {
 Scene Scene::capture(dsr::Machine& machine) {
     Scene scene;
     auto& gpu=machine.gpu3d();
-    const auto geometry=gpu.geometry_view();const auto raster=gpu.raster_view();
+    scene.widescreen=gpu.host_widescreen_aspect()>0;
+    const auto geometry=scene.widescreen?gpu.widescreen_geometry_view():gpu.geometry_view();const auto raster=gpu.raster_view();
     scene.generation=geometry.generation;scene.serial=gpu.render_serial();scene.swap_mode=geometry.swap_mode;
     scene.vertices.assign(geometry.vertices,geometry.vertices+geometry.vertex_count);
     scene.polygons.assign(geometry.polygons,geometry.polygons+geometry.polygon_count);
-    const auto order=gpu.draw_order_view();
-    scene.order.assign(order.opaque,order.opaque+order.opaque_count);
-    scene.order.insert(scene.order.end(),order.translucent,order.translucent+order.translucent_count);
+    if(!scene.widescreen) {
+        const auto order=gpu.draw_order_view();
+        scene.order.assign(order.opaque,order.opaque+order.opaque_count);
+        scene.order.insert(scene.order.end(),order.translucent,order.translucent+order.translucent_count);
+    } else {
+        std::vector<uint16_t> opaque,partial;
+        for(size_t i=0;i<scene.polygons.size();++i) {
+            const auto& p=scene.polygons[i];const unsigned alpha=(p.attr>>16)&31,format=(p.texture>>26)&7,mode=(p.attr>>4)&3;
+            ((alpha!=0&&alpha!=31)||((format==1||format==6)&&mode!=1&&mode!=3)?partial:opaque).push_back(uint16_t(i));
+        }
+        auto range=[&](uint16_t i){float low=1e30f,high=-1e30f;const auto& p=scene.polygons[i];
+            for(unsigned n=0;n<p.count;++n){const auto& v=scene.vertices[p.index[n]];const float w=v.clip[3]!=0?v.clip[3]:.00000001f;
+                const float y=1-(v.clip[1]+w)/(2*w);low=std::min(low,y);high=std::max(high,y);}
+            return std::pair{high,low};};
+        auto before=[&](uint16_t a,uint16_t b){return range(a)<range(b);};
+        std::stable_sort(opaque.begin(),opaque.end(),before);
+        if(!(scene.swap_mode&1))std::stable_sort(partial.begin(),partial.end(),before);
+        scene.order=std::move(opaque);scene.order.insert(scene.order.end(),partial.begin(),partial.end());
+    }
     scene.control=raster.disp3d;scene.clear_color=raster.clear_color;
     scene.clear_depth=raster.clear_depth;scene.alpha_ref=raster.alpha_reference;
     scene.fog_color=raster.fog_color;scene.fog_offset=raster.fog_offset;
@@ -208,7 +226,10 @@ void main(){gl_Position=vec4(vertex.xy,0,1);uv=vertex.zw;}
 )GLSL";
 const char* flat_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;uniform sampler2D image;
-void main(){pixel=texture(image,uv);}
+uniform int brightness;uniform bool premultiplied;
+void main(){pixel=texture(image,uv);float f=float(brightness&31)/16;
+ if((brightness>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(premultiplied?pixel.a:1),f);
+ if((brightness>>5)==2)pixel.rgb*=1-f;}
 )GLSL";
 // A captured bitmap may be scrolled or rotated. Reconstruct subpixel source
 // coordinates only from neighbours carrying the same raster identity; coverage
@@ -240,6 +261,19 @@ Rect fit(float width,float height,float aspect) {
     const float w=std::min(width,height*aspect),h=w/aspect;
     return {(width-w)/2,(height-h)/2,w,h};
 }
+using layout_detail::Box;
+Box polygon_box(const Scene& scene,const dsr::Gpu3DPolygon& p) {
+    float left=256,top=192,right=0,bottom=0;
+    for(unsigned i=0;i<p.count;++i){if(p.index[i]>=scene.vertices.size())return {};const auto& v=scene.vertices[p.index[i]];
+        if(v.clip[3]<=0)return {};const float x=(v.clip[0]/v.clip[3]+1)*128,y=(1-v.clip[1]/v.clip[3])*96;
+        left=std::min(left,x);right=std::max(right,x);top=std::min(top,y);bottom=std::max(bottom,y);}
+    const int x=int(std::floor(std::clamp(left,0.f,256.f))),y=int(std::floor(std::clamp(top,0.f,192.f)));
+    return {x,y,int(std::ceil(std::clamp(right,float(x),256.f)))-x,int(std::ceil(std::clamp(bottom,float(y),192.f)))-y};
+}
+bool world_polygon(const dsr::Gpu3DPolygon& p){return p.perspective&&p.viewport==0xbfff0000;}
+bool background_polygon(const Scene& scene,const dsr::Gpu3DPolygon& p) {
+    if(p.perspective)return false;const auto b=polygon_box(scene,p);return b.w>=254&&b.h>=190;
+}
 }
 
 struct Display::Impl {
@@ -249,14 +283,18 @@ struct Display::Impl {
     std::unique_ptr<GL> gl;
     GLuint scene_program=0,effects_program=0,flat_program=0,captured_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0,origin_texture=0;
     struct CapturedTarget {GLuint fbo=0,color=0,state=0,depth=0,effects_fbo=0,result=0,previous_color=0,previous_state=0;int w=0,h=0;};
-    std::map<uint64_t,CapturedTarget> captured_targets;
+    std::map<std::pair<uint64_t,unsigned>,CapturedTarget> captured_targets;
     std::vector<CapturedTarget> spare_targets;
     std::map<std::pair<uint32_t,uint32_t>,GLuint> textures;
     std::string renderer_name="software",device_name;
     Rect touch_rect;
+    struct Touch {Rect destination;Box source;bool enabled;};
+    std::vector<Touch> touch_regions;
+    std::string layout_name="dual";
     int width=0,height=0,display_index=0;
     int scale=0;
     int maximum_scale=12;
+    int maximum_texture_size=0;
     CapturedTarget* active_target=nullptr;
     uint64_t draws=0,captured_pixel_count=0;
     std::vector<uint32_t> last_pixels;
@@ -318,7 +356,7 @@ struct Display::Impl {
         check(window,SDL_GetError());context=SDL_GL_CreateContext(window);check(context,SDL_GetError());
         gl=std::make_unique<GL>();
         device_name=reinterpret_cast<const char*>(gl->GetString(GL_RENDERER));
-        GLint maximum_texture=0;gl->GetIntegerv(GL_MAX_TEXTURE_SIZE,&maximum_texture);maximum_scale=std::clamp(maximum_texture/256,1,12);
+        GLint maximum_texture=0;gl->GetIntegerv(GL_MAX_TEXTURE_SIZE,&maximum_texture);maximum_texture_size=maximum_texture;maximum_scale=std::clamp(maximum_texture/256,1,12);
         scene_program=gl->program(scene_vertex,scene_fragment);effects_program=gl->program(flat_vertex,effects_fragment);
         flat_program=gl->program(flat_vertex,flat_fragment);captured_program=gl->program(flat_vertex,captured_fragment);
         gl->GenVertexArrays(1,&vao);gl->BindVertexArray(vao);gl->GenBuffers(1,&vbo);
@@ -337,6 +375,7 @@ struct Display::Impl {
     void flat(const uint32_t* pixels,int w,int h,Rect rect) {
         gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,w,h,pixels,GL_BGRA);
         gl->Uniform1i(uniform(flat_program,"image"),0);
+        gl->Uniform1i(uniform(flat_program,"brightness"),0);gl->Uniform1i(uniform(flat_program,"premultiplied"),false);
         const float x0=2*rect.x/width-1,x1=2*(rect.x+rect.w)/width-1;
         const float y0=2*rect.y/height-1,y1=2*(rect.y+rect.h)/height-1;
         const float vertices[]={x0,y0,0,1,x1,y0,1,1,x0,y1,0,0,x0,y1,0,0,x1,y0,1,1,x1,y1,1,0};
@@ -346,7 +385,7 @@ struct Display::Impl {
         gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);
         gl->DrawArrays(GL_TRIANGLES,0,6);
     }
-    void geometry(const Scene& scene,Rect original) {
+    void geometry(const Scene& scene,Rect original,unsigned layer=0,float aspect=4.f/3) {
         clear_textures();
         gl->ActiveTexture(GL_TEXTURE0);
         for(const auto& texture:scene.textures) {
@@ -369,6 +408,9 @@ struct Display::Impl {
         for(const auto index:scene.order) {
             if(index>=scene.polygons.size())continue;
             const auto& polygon=scene.polygons[index];
+            const bool world=world_polygon(polygon),background=background_polygon(scene,polygon);
+            if(layer==1&&!world&&!background)continue;
+            if(layer==2&&(world||background))continue;
             if(polygon.count<3||polygon.count>4)continue;
             const unsigned faces=(polygon.attr>>6)&3;if(!faces)continue;
             if(faces==3)gl->Disable(GL_CULL_FACE);else{gl->Enable(GL_CULL_FACE);gl->CullFace(faces==1?GL_FRONT:GL_BACK);}
@@ -400,6 +442,7 @@ struct Display::Impl {
             const unsigned count=alpha?(polygon.count==4?6:3):polygon.count;bool valid=true;
             for(unsigned i=0;i<count;++i){const auto v=polygon.index[alpha?indices[i]:i];if(v>=scene.vertices.size()){valid=false;break;}vertices[i]=scene.vertices[v];}
             if(!valid)continue;
+            if(layer==1&&world)for(unsigned i=0;i<count;++i)vertices[i].clip[0]*=(4.f/3)/aspect;
             float min_x=rx,min_y=ry,max_x=rx+rw,max_y=ry+rh;
             // Feedback copies only cover this polygon. Near-plane crossings
             // conservatively use the viewport; other quads use projected bounds.
@@ -435,9 +478,13 @@ struct Display::Impl {
         for(auto texture:{t.color,t.state,t.result,t.previous_color,t.previous_state})if(texture)gl->DeleteTextures(1,&texture);
         if(t.depth)gl->DeleteRenderbuffers(1,&t.depth);t={};
     }
-    CapturedTarget& captured_target(const Scene& scene,int w,int h,bool cache=true) {
-        auto [position,inserted]=captured_targets.try_emplace(scene.serial);auto& target=position->second;
-        if(inserted&&!spare_targets.empty()){target=spare_targets.back();spare_targets.pop_back();}
+    CapturedTarget& captured_target(const Scene& scene,int w,int h,bool cache=true,unsigned layer=0,float aspect=4.f/3) {
+        auto [position,inserted]=captured_targets.try_emplace(std::pair{scene.serial,layer});auto& target=position->second;
+        if(inserted&&!spare_targets.empty()){
+            auto spare=std::find_if(spare_targets.begin(),spare_targets.end(),[&](const auto& t){return t.w==w&&t.h==h;});
+            if(spare==spare_targets.end())spare=spare_targets.end()-1;
+            target=*spare;spare_targets.erase(spare);
+        }
         if(!inserted&&target.fbo&&target.w==w&&target.h==h&&cache)return target;
         if(!target.fbo||target.w!=w||target.h!=h) {
             delete_target(target);target.w=w;target.h=h;
@@ -461,19 +508,19 @@ struct Display::Impl {
             check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"enhanced effects framebuffer unavailable");
         }
         gl->BindFramebuffer(GL_FRAMEBUFFER,target.fbo);active_target=&target;
-        const auto c=scene.clear_color;
+        const auto c=layer==2?0:scene.clear_color;
         const float clear_depth=float(((scene.clear_depth&0x7fff)<<9)|0x1ff)/0xffffff;
         const float color[]={float(c&31)/31,float((c>>5)&31)/31,float((c>>10)&31)/31,float((c>>16)&31)/31};
         const float state[]={clear_depth,float(((c>>24)&63)|(((c>>15)&1)<<13)),0,0};
         gl->Viewport(0,0,w,h);gl->DepthMask(GL_TRUE);gl->Disable(GL_SCISSOR_TEST);gl->ClearDepth(clear_depth);
         gl->ClearBufferfv(GL_COLOR,0,color);gl->ClearBufferfv(GL_COLOR,1,state);gl->Clear(GL_DEPTH_BUFFER_BIT);
         const int previous_width=width,previous_height=height;width=w;height=h;
-        geometry(scene,{0,0,float(w),float(h)});
+        geometry(scene,{0,0,float(w),float(h)},layer,aspect);
         gl->BindFramebuffer(GL_FRAMEBUFFER,target.effects_fbo);gl->UseProgram(effects_program);
         gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.color);gl->Uniform1i(uniform(effects_program,"image"),0);
         gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,target.state);gl->Uniform1i(uniform(effects_program,"states"),1);
         gl->Uniform1i(uniform(effects_program,"edges"),(scene.control&(1u<<5))!=0);gl->Uniform1i(uniform(effects_program,"edge_blend"),(scene.control&(1u<<4))!=0);
-        gl->Uniform1i(uniform(effects_program,"edge_step"),std::max(1,w/512));
+        gl->Uniform1i(uniform(effects_program,"edge_step"),std::max(1,h/384));
         gl->Uniform1i(uniform(effects_program,"fog"),(scene.control&(1u<<7))!=0);gl->Uniform1i(uniform(effects_program,"alpha_fog"),(scene.control&(1u<<6))!=0);
         gl->Uniform1i(uniform(effects_program,"fog_shift"),(scene.control>>8)&15);gl->Uniform1i(uniform(effects_program,"fog_offset"),scene.fog_offset&0x7fff);
         std::array<GLint,32> densities{};for(unsigned i=0;i<32;++i)densities[i]=scene.fog_density[i]&127;
@@ -519,8 +566,117 @@ struct Display::Impl {
         gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
         gl->ActiveTexture(GL_TEXTURE0);
     }
+    void blit(GLuint image,Box source,Rect destination,bool bottom_up,bool premultiplied=false,int brightness=0) {
+        gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,image);
+        gl->Uniform1i(uniform(flat_program,"image"),0);gl->Uniform1i(uniform(flat_program,"brightness"),brightness);
+        gl->Uniform1i(uniform(flat_program,"premultiplied"),premultiplied);
+        const float x0=2*destination.x/width-1,x1=2*(destination.x+destination.w)/width-1;
+        const float y0=2*destination.y/height-1,y1=2*(destination.y+destination.h)/height-1;
+        const float u0=float(source.x)/256,u1=float(source.x+source.w)/256;
+        float v0=float(source.y+source.h)/192,v1=float(source.y)/192;
+        if(bottom_up){v0=1-v0;v1=1-v1;}
+        const float vertices[]={x0,y0,u0,v0,x1,y0,u1,v0,x0,y1,u0,v1,x0,y1,u0,v1,x1,y0,u1,v0,x1,y1,u1,v1};
+        gl->Disable(GL_DEPTH_TEST);gl->Disable(GL_CULL_FACE);gl->DepthMask(GL_FALSE);gl->Enable(GL_BLEND);
+        gl->BlendFunc(premultiplied?GL_ONE:GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+        gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+        gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
+    }
+    void native_pane(const uint32_t* pixels,Box source,Rect destination,bool lower) {
+        gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,256,192,pixels,GL_BGRA);
+        blit(screen_texture,source,destination,false);
+        touch_regions.push_back({destination,source,lower});
+    }
+    bool dynamic(const Frame& frame) {
+        if(!options.dynamic_widescreen||width<height||!frame.history||!frame.top_origins||!frame.bottom_origins)return false;
+        // Follow the raster actually on the LCD, including CPU/VRAM captures,
+        // rather than a newer submitted scene or POWCNT1 alone.
+        std::map<std::pair<uint64_t,bool>,unsigned> counts;
+        for(bool top:{false,true}) {
+            const auto tags=top?frame.top_origins:frame.bottom_origins;
+            for(unsigned i=0;i<256*192;++i)if(tags[i])++counts[{tags[i]>>16,top}];
+        }
+        const Scene* scene=nullptr;bool on_top=false;unsigned dominant=1024;
+        for(const auto& s:*frame.history)if(s.widescreen&&s.supported&&
+            std::any_of(s.polygons.begin(),s.polygons.end(),[](const auto& p){return world_polygon(p);}))
+            for(bool top:{false,true})if(counts[{s.serial,top}]>dominant){scene=&s;on_top=top;dominant=counts[{s.serial,top}];}
+        if(!scene) {
+            // Complete framed 2D menus keep their 4:3 proportions. Unframed
+            // pictures and movies retain both complete LCDs instead.
+            const bool menu_bottom=layout_detail::full_window(frame.bottom);
+            const bool menu_top=layout_detail::full_window(frame.top);
+            if(!menu_bottom&&!menu_top)return false;
+            layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
+            native_pane(menu_bottom?frame.bottom:frame.top,{0,0,256,192},destination,menu_bottom);
+            const float margin=std::max(8.f,height/64.f),available=destination.x-2*margin;
+            if(available>32){const float w=std::min(available,width*.24f);native_pane(menu_bottom?frame.top:frame.bottom,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},!menu_bottom);}
+            return true;
+        }
+        const auto fg=on_top?frame.top_foreground:frame.bottom_foreground;
+        const auto brightness=on_top?frame.top_brightness:frame.bottom_brightness;
+        const auto tags=on_top?frame.top_origins:frame.bottom_origins;
+        if(!fg||!brightness)return false;
+        // A transformed captured picture or unsupported blending needs its
+        // original mapping. Never silently drop UI in order to widen a scene.
+        unsigned identity=0,opaque=0;
+        for(unsigned i=0;i<256*192;++i){
+            if(!(fg[i]&(1ull<<32))||(fg[i]&(1ull<<33)))return false;
+            opaque+=uint8_t(fg[i]>>24)==255;
+            identity+=tags[i]&&(tags[i]>>16)==scene->serial&&((tags[i]&65535)==i+1);
+        }
+        if(identity<dominant*9/10||!std::all_of(brightness,brightness+192,[&](uint8_t b){return b==brightness[0];}))return false;
+        const float margin=std::max(8.f,height/64.f),ui_scale=height/384.f;
+        const auto primary=on_top?frame.top:frame.bottom;
+        const auto secondary=on_top?frame.bottom:frame.top;
+        if(opaque>256*192*9/10) {
+            layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
+            native_pane(primary,{0,0,256,192},destination,!on_top);
+            const float available=destination.x-2*margin;
+            if(available>32){const float w=std::min(available,width*.24f);native_pane(secondary,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},on_top);}
+            return true;
+        }
+        const float aspect=std::clamp(float(width)/height,4.f/3,4.f);
+        const Rect canvas=fit(float(width),float(height),aspect);
+        const int world_scale=std::max(1,std::min(maximum_scale,int(maximum_texture_size/(192*aspect))));scale=world_scale;
+        auto& world=captured_target(*scene,int(std::ceil(192*world_scale*aspect)),192*world_scale,true,1,aspect);
+        blit(world.result,{0,0,256,192},canvas,true,false,brightness[0]);
+        captured_pixel_count=dominant;
+        const int input_width=int(192*aspect);
+        touch_regions.push_back({canvas,{(256-input_width)/2,0,input_width,192},!on_top});
+        const auto party=on_top?layout_detail::party_band(secondary):Box{};
+        layout_name=party.h?"battle":"field";
+        if(party.h)native_pane(secondary,party,{margin,margin,party.w*ui_scale,party.h*ui_scale},true);
+        else {
+            const float w=std::min(width*.24f,height*.48f);
+            const Rect map{margin,height-margin-w*.75f,w,w*.75f};
+            native_pane(secondary,{0,0,256,192},map,on_top);
+            const auto other_tags=on_top?frame.bottom_origins:frame.top_origins;
+            for(const auto& s:*frame.history)captured(s,other_tags,map);
+        }
+        auto boxes=layout_detail::foreground_boxes(fg);
+        for(const auto& p:scene->polygons)if(!world_polygon(p)&&!background_polygon(*scene,p)){
+            const auto box=polygon_box(*scene,p);if(box.w&&box.h)boxes.push_back(box);
+        }
+        layout_detail::group(boxes);
+        if(!boxes.empty()) {
+            const int ui_resolution=std::min(maximum_scale,std::max(2,int(std::ceil(ui_scale*1.5f))));
+            auto& overlay=captured_target(*scene,256*ui_resolution,192*ui_resolution,true,2);
+            std::array<uint32_t,256*192> foreground{};
+            for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
+            for(const auto b:boxes) {
+                const bool dialogue=b.w>=190&&b.y+b.h>=155;
+                const float w=b.w*ui_scale,h=b.h*ui_scale;
+                const Rect destination{dialogue?(width-w)/2:width-margin-w,
+                    dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
+                blit(overlay.result,b,destination,true,false,brightness[0]);
+                gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,256,192,foreground.data(),GL_BGRA);
+                blit(screen_texture,b,destination,false,true,brightness[0]);
+                touch_regions.push_back({destination,b,!on_top});
+            }
+        }
+        return true;
+    }
     void present(const Frame& frame) {
-        check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;
+        check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;touch_regions.clear();layout_name="dual";
         if(!gl) {
             SDL_Rect top{0,0,256,192},bottom{0,192,256,192};
             check(SDL_UpdateTexture(software_texture,&top,frame.top,256*4)==0,SDL_GetError());
@@ -544,12 +700,19 @@ struct Display::Impl {
         const bool has_3d=frame.scene&&frame.scene->supported&&!frame.scene->order.empty()&&frame.three_d&&
             std::any_of(frame.three_d,frame.three_d+256*192,[](uint8_t x){return x!=0;});
         gl->Viewport(0,0,width,height);gl->DepthMask(GL_TRUE);gl->ClearDepth(1);gl->ClearColor(0,0,0,1);gl->Clear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        if(frame.history)for(auto it=captured_targets.begin();it!=captured_targets.end();) {
+            if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first.first;})) {
+                if(spare_targets.size()<4)spare_targets.push_back(it->second);else delete_target(it->second);
+                it=captured_targets.erase(it);
+            }else ++it;
+        }
+        if(!dynamic(frame)) {
             const auto total=fit(float(width),float(height),256.0F/384);
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
             if(frame.history&&frame.top_origins&&frame.bottom_origins) {
                 for(auto it=captured_targets.begin();it!=captured_targets.end();) {
-                    if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first;})) {
+                    if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first.first;})) {
                         if(spare_targets.size()<2)spare_targets.push_back(it->second);else delete_target(it->second);
                         it=captured_targets.erase(it);
                     }else ++it;
@@ -560,6 +723,7 @@ struct Display::Impl {
                 for(unsigned i=0;i<tags.size();++i)if(frame.three_d[i]&&frame.scene->safe[i])tags[i]=(frame.scene->serial<<16)|(i+1);
                 captured(*frame.scene,tags.data(),frame.on_top?top:bottom,false);
             }
+        }
         check(gl->GetError()==GL_NO_ERROR,"OpenGL presentation failed");
         if(options.readback) {
             last_pixels.resize(size_t(width)*height);
@@ -588,6 +752,16 @@ bool Display::touch(int x,int y,int& ds_x,int& ds_y) const {
     }
     int ww,wh;SDL_GetWindowSize(impl_->window,&ww,&wh);if(ww<=0||wh<=0)return false;
     const float px=float(x)*impl_->width/ww,py=impl_->height-float(y)*impl_->height/wh;
+    if(!impl_->touch_regions.empty()) {
+        for(auto it=impl_->touch_regions.rbegin();it!=impl_->touch_regions.rend();++it) {
+            const auto r=it->destination;
+            if(r.w<=0||r.h<=0||px<r.x||px>=r.x+r.w||py<=r.y||py>r.y+r.h)continue;
+            if(!it->enabled)return false;
+            ds_x=std::clamp(it->source.x+int((px-r.x)*it->source.w/r.w),0,255);
+            ds_y=std::clamp(it->source.y+int((r.y+r.h-py)*it->source.h/r.h),0,191);return true;
+        }
+        return false;
+    }
     const auto r=impl_->touch_rect;
     if(r.w<=0||r.h<=0||px<r.x||px>=r.x+r.w||py<=r.y||py>r.y+r.h)return false;
     ds_x=std::clamp(int((px-r.x)*256/r.w),0,255);ds_y=std::clamp(int((r.y+r.h-py)*192/r.h),0,191);return true;
@@ -600,4 +774,10 @@ const std::string& Display::device() const{return impl_->device_name;}
 uint64_t Display::polygons_drawn() const{return impl_->draws;}
 uint64_t Display::captured_pixels() const{return impl_->captured_pixel_count;}
 int Display::render_scale() const{return impl_->scale;}
+float Display::world_aspect() const {
+    if(!impl_->options.dynamic_widescreen||!impl_->gl)return 0;
+    int w=0,h=0;SDL_GL_GetDrawableSize(impl_->window,&w,&h);
+    return h>0?std::clamp(float(w)/h,4.f/3,4.f):0;
+}
+const std::string& Display::layout() const{return impl_->layout_name;}
 }
