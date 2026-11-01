@@ -88,8 +88,54 @@ static std::uint64_t blend_foreground(''',1),
     const std::uint8_t* screen_top_brightness() const;
     const std::uint8_t* screen_bottom_brightness() const;''',1),
 )
+
+# Preserve the raster identity before master brightness, separately from the
+# legacy final-colour eligibility plane. Enhanced presentation applies the
+# exact LCD brightness after GPU geometry and native UI composition.
+CHANGES += (
+ ('runtime/gpu2d/src/capture_origin.h',
+  '    std::array<std::uint64_t,kScreenWidth> scene_a{},scene_b{};',
+  '''    std::array<std::uint64_t,kScreenWidth> scene_a{},scene_b{};
+    std::array<std::uint64_t,kScreenWidth> scene_origins_a{},scene_origins_b{};
+    std::array<std::uint64_t,kPixelsPerFrame> scene_origins_top{},scene_origins_bottom{};''',1),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '        if(scene_line)std::fill_n(scene_line,kScreenWidth,kForegroundKnown|kForegroundInvalid);',
+  '''        if(scene_line)std::fill_n(scene_line,kScreenWidth,kForegroundKnown|kForegroundInvalid);
+        auto* scene_origin_line=origins?(is_a?origins->scene_origins_a.data():origins->scene_origins_b.data()):nullptr;
+        if(scene_origin_line)std::fill_n(scene_origin_line,kScreenWidth,0);''',1),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '                scene_line[xi]=normal_display?dst_foreground:kForegroundKnown|kForegroundInvalid;',
+  '''                scene_line[xi]=normal_display?dst_foreground:kForegroundKnown|kForegroundInvalid;
+                scene_origin_line[xi]=normal_display?dst_origin:0;''',1),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '                if(scene_line)for(unsigned x=0;x<kScreenWidth;++x){const auto fg=lcdc_foreground(bank,y*512U+x*2U);scene_line[x]=fg?fg:native_foreground(output[x]);}',
+  '''                if(scene_line)for(unsigned x=0;x<kScreenWidth;++x){const auto fg=lcdc_foreground(bank,y*512U+x*2U);scene_line[x]=fg?fg:native_foreground(output[x]);scene_origin_line[x]=lcdc_origin(bank,y*512U+x*2U);}''',2),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '            origins->brightness_bottom[y]=a_on_top?origins->brightness_b:origins->brightness_a;',
+  '''            origins->brightness_bottom[y]=a_on_top?origins->brightness_b:origins->brightness_a;
+            std::copy_n(a_on_top?origins->scene_origins_a.data():origins->scene_origins_b.data(),kScreenWidth,origins->scene_origins_top.data()+row);
+            std::copy_n(a_on_top?origins->scene_origins_b.data():origins->scene_origins_a.data(),kScreenWidth,origins->scene_origins_bottom.data()+row);''',1),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '            origins->scene_a.fill(0);origins->scene_b.fill(0);origins->scene_top.fill(0);origins->scene_bottom.fill(0);',
+  '''            origins->scene_a.fill(0);origins->scene_b.fill(0);origins->scene_top.fill(0);origins->scene_bottom.fill(0);
+            origins->scene_origins_a.fill(0);origins->scene_origins_b.fill(0);origins->scene_origins_top.fill(0);origins->scene_origins_bottom.fill(0);''',1),
+ ('runtime/gpu2d/src/gpu2d.cpp',
+  '    visit(impl_->origins->top); visit(impl_->origins->bottom);',
+  '''    visit(impl_->origins->top); visit(impl_->origins->bottom);
+    visit(impl_->origins->scene_origins_top); visit(impl_->origins->scene_origins_bottom);''',1),
+ ('runtime/include/dsr/gpu2d.h',
+  '    const std::uint64_t* screen_top_scene_foreground() const;',
+  '''    // Raster IDs before master brightness; use with scene foreground and
+    // per-line brightness, never as final-colour replacement eligibility.
+    const std::uint64_t* screen_top_scene_origins() const;
+    const std::uint64_t* screen_bottom_scene_origins() const;
+    const std::uint64_t* screen_top_scene_foreground() const;''',1),
+)
+
 METHODS='''
 namespace dsr {
+const std::uint64_t* Gpu2D::screen_top_scene_origins() const {return impl_->origins?impl_->origins->scene_origins_top.data():nullptr;}
+const std::uint64_t* Gpu2D::screen_bottom_scene_origins() const {return impl_->origins?impl_->origins->scene_origins_bottom.data():nullptr;}
 const std::uint64_t* Gpu2D::screen_top_scene_foreground() const {return impl_->origins?impl_->origins->scene_top.data():nullptr;}
 const std::uint64_t* Gpu2D::screen_bottom_scene_foreground() const {return impl_->origins?impl_->origins->scene_bottom.data():nullptr;}
 const std::uint8_t* Gpu2D::screen_top_brightness() const {return impl_->origins?impl_->origins->brightness_top.data():nullptr;}
