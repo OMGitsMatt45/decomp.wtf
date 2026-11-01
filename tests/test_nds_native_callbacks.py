@@ -36,6 +36,53 @@ def callback_image(tmp_path,module_id=0,increment=1):
         code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
 
 
+def instruction_state_image(tmp_path):
+    base=0x0201c000;raw=bytearray(0xa0)
+    struct.pack_into('<I',raw,0,0xe12fff1e)
+    struct.pack_into('<2I',raw,0x10,base+0x21,base+0x61)
+    # A pointer-shaped data word leads to a Thumb branch into an ARM owner.
+    struct.pack_into('<2H',raw,0x20,0x2007,0xe012)
+    struct.pack_into('<4I',raw,0x40,0xe3a00025,0xe12fff1e,0xe7f000f0,0)
+    # A same-state branch to an existing Thumb instruction remains callable.
+    struct.pack_into('<2H',raw,0x60,0x2005,0xe00f)
+    struct.pack_into('<4H',raw,0x80,0x2063,0x3001,0x3003,0x4770)
+    path=tmp_path/'original-instruction-state.bin';path.write_bytes(raw)
+    return dict(name='state',module_id=7,base=base,image=str(path),
+        functions=[dict(addr=base,size=4,thumb=False,name='entry'),
+                   dict(addr=base+0x40,size=16,thumb=False,name='arm_owner'),
+                   dict(addr=base+0x80,size=8,thumb=True,name='thumb_owner')],
+        labels=[],calls=[],code_ranges=[[base,base+len(raw)]],
+        data_ranges=[[base+4,base+0x40],[base+0x50,base+0x80],[base+0x88,base+len(raw)]])
+
+
+def test_callback_edges_preserve_instruction_state(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk();module=instruction_state_image(tmp_path);base=module['base']
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    added=recover(manifest,emitter,reader)
+    assert (base+0x20,True) not in {(f['addr'],f['thumb']) for f in module['functions']}
+    assert (base+0x60,True) in {(f['addr'],f['thumb']) for f in module['functions']}
+    assert {item['address'] for item in added}=={base+0x60}
+
+
+def test_inferred_entries_preserve_instruction_state(tmp_path,sdk):
+    _,emitter,_=nds_native._sdk();module=instruction_state_image(tmp_path);base=module['base']
+    raw=bytearray(Path(module['image']).read_bytes())
+    struct.pack_into('<2H',raw,0x24,0x2001,0xe00f)
+    struct.pack_into('<I',raw,0x08,0xfa00001d)  # ARM BLX changes to the Thumb owner.
+    Path(module['image']).write_bytes(raw)
+    module['functions'] += [dict(addr=base+o,size=4,thumb=True,name=f'source_{o:x}') for o in (0x20,0x24,0x60)]
+    module['functions'].append(dict(addr=base+8,size=4,thumb=False,name='state_change'))
+    module['calls']=[{'from':base+s,'to':base+t,'modules':[7]} for s,t in ((0x22,0x4a),(0x26,0x48),(0x62,0x84))]
+    module['calls'].append({'from':base+8,'to':base+0x84,'modules':[7]})
+    module['entry_points']=[dict(addr=base+0x44,thumb=False)]
+    entries,_,_,calls=emitter._prepare_entries(dict(cpu='arm9',arch='v5te',modules=[module]),None)
+    keys={(e.address,e.thumb) for e in entries}
+    assert (base+0x4a,False) not in keys
+    assert (base+0x48,False) not in keys
+    assert (base+0x84,True) in keys and (base+0x44,False) in keys
+    assert calls[(7,base+0x22)]==[7]
+
+
 def prepare(tmp_path):
     _,emitter,reader=nds_native._sdk()
     manifest=dict(cpu='arm9',arch='v5te',modules=[callback_image(tmp_path)])
@@ -310,6 +357,8 @@ def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,s
     overlap=overlapping_region_image(tmp_path);manifest['modules'].append(overlap)
     assert recover(manifest,emitter,reader)==[]
     assert len(overlap['dispatch_regions'])==1
+    state=instruction_state_image(tmp_path);manifest['modules'].append(state)
+    assert {r['address'] for r in recover(manifest,emitter,reader)}=={state['base']+0x60}
     generated=tmp_path/'generated';generated.mkdir()
     result=emitter.emit_manifest(manifest,generated,chunk_size=100)
     assert result['undefined_sites']==0
@@ -372,6 +421,16 @@ int main(int argc,char** argv) {
     cpu.r[14]=0x02015000; // A new caller, not the previous nested call's LR.
     dsr::dsr_call(&cpu,0x0201a021);
     if(cpu.r[0]!=78 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 9;
+  }
+  {
+    std::ifstream file(argv[7],std::ios::binary);
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x0201c000+j,bytes[j]);
+    cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;cpu.r[4]=0x12345678;
+    dsr::dsr_call(&cpu,0x0201c061);
+    if(cpu.r[0]!=8 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 10;
+    cpu.r[14]=0x02015000;dsr::dsr_call(&cpu,0x0201c040);
+    if(cpu.r[0]!=37 || cpu.r[13]!=0x023ff000)return 11;
   }
 }
 ''')
