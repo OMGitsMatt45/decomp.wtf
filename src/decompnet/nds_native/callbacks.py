@@ -2,11 +2,13 @@
 
 Same-image pointers and module-qualified direct calls seed the normal ARM/Thumb
 translator's control-flow decoder. Unreferenced prologues and overlay guesses do not.
+Reviewed, exact-image reference bounds can supplement fragmented importer records.
 Only validated instruction bytes are removed from the importer's data ranges.
 """
 from bisect import bisect_right
 from collections import defaultdict,deque
 from pathlib import Path
+import hashlib
 import struct
 
 from capstone.arm_const import ARM_OP_MEM, ARM_REG_PC
@@ -107,11 +109,37 @@ def arm7_executable_ranges(manifest,states):
         module['executable_ranges']=_subtract(allowed,_merge(excluded))
 
 
-def recover(manifest,emitter,reader):
-    """Supplement a decoded manifest with statically validated callbacks/callees."""
+def recover(manifest,emitter,reader,*,reference_entries=()):
+    """Supplement a decoded manifest with statically validated callbacks/callees.
+
+    Optional reviewed reference entries must name their module, instruction
+    mode, full bounded extent and exact decoded-module SHA-256. They supplement
+    the importer without guessing between overlays sharing a virtual address.
+    The normal decoder still validates their complete reachable instruction
+    graph and literals. Existing instruction interiors are not callable roots.
+    """
     cpu=manifest['cpu'];arch=manifest['arch']
     if cpu not in ('arm9','arm7'):return []
     entries,images,module_entries,calls=emitter._prepare_entries(manifest,None)
+    modules={int(module['module_id']):module for module in manifest['modules']}
+    references=defaultdict(dict);hashes={}
+    for record in reference_entries:
+        if not isinstance(record,dict):raise ValueError('reference callback entry must be an object')
+        mid,address,size,thumb=(record.get(key) for key in ('module_id','address','size','thumb'))
+        if any(type(value) is not int for value in (mid,address,size)) or type(thumb) is not bool:
+            raise ValueError('reference callback module, extent or instruction mode is invalid')
+        if mid not in modules:raise ValueError('reference callback module is missing')
+        module=modules[mid];base=int(module['base']);alignment=2 if thumb else 4
+        if address%alignment or size<=0 or size%alignment or not base<=address<address+size<=base+len(images[mid]):
+            raise ValueError('reference callback extent is unaligned or exceeds its initialized module')
+        if mid not in hashes:hashes[mid]=hashlib.sha256(images[mid]).hexdigest()
+        if record.get('module_sha256')!=hashes[mid]:
+            raise ValueError('reference callback decoded-module SHA-256 differs')
+        key=(address,thumb)
+        if key in references[mid]:raise ValueError('duplicate reference callback entry')
+        if any(address<other+length and other<address+size for (other,_),length in references[mid].items()):
+            raise ValueError('overlapping reference callback extents')
+        references[mid][key]=size
     address_entries=defaultdict(list)
     for entry in entries:address_entries[entry.address].append(entry)
     mode_entries={(e.module_id,e.address,e.thumb):e for e in entries}
@@ -157,8 +185,26 @@ def recover(manifest,emitter,reader):
         for _,end in intervals:ends.append(max(end,ends[-1] if ends else end))
         def covered(address):
             index=bisect_right(starts,address)-1
-            return index>=0 and address<ends[index]
+            return ((index>=0 and address<ends[index]) or
+                    any(start<=address<start+size for (start,_),size in reference_roots.items()))
         decoders={thumb:emitter.Decoder(image,base,arch,thumb) for thumb in (False,True)}
+        reference_roots={}
+        for (address,thumb),size in references[int(module['module_id'])].items():
+            if (int(module['module_id']),address,thumb) in mode_entries:continue
+            # A broad imported extent can contain a separate callback after
+            # its return. An actual instruction interior, such as a shared
+            # epilogue requiring its caller's stack frame, is not a new root.
+            for owner in functions:
+                start=int(owner['addr'])
+                if not start<=address<start+int(owner['size']):continue
+                owner_thumb=bool(owner['thumb'])
+                owner_entry=emitter.Entry(module,owner,start,owner_thumb,owner['name'],False,cpu)
+                owner_body=emitter.FunctionEmitter(cpu,arch,module,image,owner_entry,address_entries,
+                    calls,{},module_entries,decoders[owner_thumb],module_mode_entries=mode_entries)
+                owner_body._discover()
+                if any(op.address<=address<op.next_address for op in owner_body.insns.values()):
+                    raise ValueError('reference callback begins inside existing reachable instructions')
+            reference_roots[(address,thumb)]=size
         def classify(op,thumb):
             decoded=next(reader._disassembler(thumb).disasm(
                 image[op.address-base:op.address-base+4],op.address,1),None)
@@ -180,7 +226,7 @@ def recover(manifest,emitter,reader):
             op=decoders[thumb].decode(address)
             return (op is not None and op.condition==14 and
                 classify(op,thumb) is not None)
-        roots={}
+        roots={key:[] for key in reference_roots}
         call_sources={}
         for key,sources in direct_roots[int(module['module_id'])].items():
             address,thumb=key
@@ -215,9 +261,11 @@ def recover(manifest,emitter,reader):
         pending=deque(roots);visited=set();accepted={}
         while pending:
             address,thumb=pending.popleft();key=(address,thumb)
-            if key in visited or covered(address) or not plausible(address,thumb):continue
+            if key in visited or (covered(address) and key not in reference_roots) or not plausible(address,thumb):continue
             visited.add(key)
-            end=boundaries[bisect_right(boundaries,address)]
+            # Reviewed full bounds may span partial importer records. Those
+            # fragments must not truncate the callback's enclosing stack frame.
+            end=address+reference_roots[key] if key in reference_roots else boundaries[bisect_right(boundaries,address)]
             function=dict(addr=address,size=end-address,thumb=thumb,
                 name=reader._function_name(module,address))
             entry=emitter.Entry(module,function,address,thumb,function['name'],False,cpu)
@@ -257,7 +305,7 @@ def recover(manifest,emitter,reader):
                     range(effect.literal[0],effect.literal[0]+effect.literal[1]))
                     for op in body.insns.values() if (effect:=classify(op,thumb)) is not None):
                 continue
-            function['size']=extent-address
+            function['size']=reference_roots.get(key,extent-address)
             accepted[key]=(function,code,body.leaders,body_calls)
             for target in targets:
                 if target not in visited and not covered(target[0]):pending.append(target)
@@ -267,6 +315,8 @@ def recover(manifest,emitter,reader):
                 previous=owners.setdefault(byte,key)
                 if previous[1]!=key[1]:invalid.update((previous,key))
         for key in invalid:accepted.pop(key,None)
+        if reference_roots.keys()-accepted.keys():
+            raise ValueError('reference callback failed complete instruction-graph validation')
         if not accepted:continue
         code=set().union(*(record[1] for record in accepted.values()));runs=_runs(code)
         module['data_ranges']=_subtract(declared,runs)
@@ -290,6 +340,9 @@ def recover(manifest,emitter,reader):
                 size=function['size'],pointer_sources=roots.get((address,thumb),[]),
                 call_sources=[dict(module_id=mid,address=site) for mid,site in sorted({
                     (x['module_id'],x['address']) for x in call_sources.get((address,thumb),[])})]))
+            if (address,thumb) in reference_roots:
+                evidence[-1]['reference_size']=reference_roots[(address,thumb)]
+                evidence[-1]['reference_module_sha256']=hashes[int(module['module_id'])]
         module.setdefault('callback_recovery',[]).extend(evidence);additions.extend(evidence)
         module['labels']=[dict(addr=address,thumb=thumb) for address,thumb in sorted(labels)]
         functions.sort(key=lambda f:(f['addr'],f['thumb']))
