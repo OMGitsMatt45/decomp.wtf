@@ -41,6 +41,17 @@ int main() {
         require(SDL_PushEvent(&focus)==1,"queue focus loss");
         while(SDL_PollEvent(&event))require(keyboard.event(event),"focus event accepted");
         input={};keyboard.apply(input);require(input.buttons==0,"focus loss cannot leave movement held");
+        queue(SDL_KEYDOWN,SDL_SCANCODE_X,SDLK_x);queue(SDL_KEYDOWN,SDL_SCANCODE_RIGHT,SDLK_RIGHT);
+        while(SDL_PollEvent(&event))require(keyboard.event(event),"modal opening keys accepted");
+        input={};keyboard.apply(input);require(input.buttons==(1u|(1u<<4)),"modal opening press sampled");
+        // A project modal drains X-up itself; the host must consume the opening
+        // A bit without discarding an unrelated held direction.
+        queue(SDL_KEYUP,SDL_SCANCODE_X,SDLK_x);while(SDL_PollEvent(&event)){}
+        keyboard.consume(1);input={};keyboard.apply(input);
+        require(input.buttons==(1u<<4),"consumed modal button cannot remain held");
+        keyboard.reset();input={};keyboard.apply(input);require(input.buttons==0,"settings return resets held keys");
+        queue(SDL_KEYDOWN,SDL_SCANCODE_ESCAPE,SDLK_ESCAPE,true);
+        while(SDL_PollEvent(&event))require(keyboard.event(event),"Escape repeat after closing a modal cannot quit gameplay");
         queue(SDL_KEYDOWN,SDL_SCANCODE_ESCAPE,SDLK_ESCAPE);
         queue(SDL_KEYUP,SDL_SCANCODE_ESCAPE,SDLK_ESCAPE);
         bool running=true;while(SDL_PollEvent(&event))running=keyboard.event(event)&&running;

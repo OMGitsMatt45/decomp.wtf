@@ -91,12 +91,11 @@ struct Display {
                     SDL_ClearQueuedAudio(audio);
                     SDL_AudioStreamClear(resampler);
                     if(!ds_host::settings(cheats))return false;
+                    keyboard.reset(); // The modal may have consumed key-up events.
                 } else video->key(event.key);
             }
         }
-        const auto* keys=SDL_GetKeyboardState(nullptr);
         keyboard.apply(input);
-        if(keys[SDL_SCANCODE_ESCAPE])return false;
         int x,y;const auto buttons=SDL_GetMouseState(&x,&y);
         int dx=0,dy=0;
         const bool touching=(buttons&SDL_BUTTON_LMASK) && video->touch(x,y,dx,dy);
@@ -223,7 +222,13 @@ int main(int argc,char** argv) {
             if(!running||(display&&!display->input(input,cheats)))break;
             if(display)session.machine().gpu3d().set_host_widescreen(display->video->world_aspect(),display->expand_visibility);
 #endif
+#ifdef NDS_WITH_SDL
+            const auto desktop_buttons=input.buttons;
+#endif
             if(!features.input(session,input))break;
+#ifdef NDS_WITH_SDL
+            if(display)display->keyboard.consume(uint16_t(desktop_buttons&~input.buttons));
+#endif
 #ifdef NDS_WITH_SDL
             if(display&&display->pending_ready) {
                 auto& history=display->history;const auto serial=display->pending.serial;
