@@ -39,6 +39,60 @@ def make(emitter):
     operand_reg=emitter.operand_reg
     reg_index=emitter.reg_index
     _U32=0xffffffff
+    def writes_register(op,register):
+        # Status-register side effects cannot be mapped to r0-r15.
+        return any(reg_index(op,reg)==register for reg in op.detail.regs_access()[1]
+            if op.detail.reg_name(reg).lower() in _GENERAL_REGISTER_NAMES)
+
+    def live_case_count(self,previous,key_pos,key_reg):
+        if key_pos is None or key_reg is None:return None
+        register,bias=key_reg,0
+        skipped=[]
+        for compare,branch in zip(previous[:key_pos],previous[1:key_pos]):
+            args=compare.operands
+            if (self._branch_name(compare)!='cmp' or compare.condition!=14 or len(args)!=2
+                    or args[0].type!=ARM_OP_REG or args[1].type!=ARM_OP_IMM
+                    or self._branch_name(branch)!='b' or branch.condition not in (3,9,11,13)
+                    or compare.next_address!=branch.address):continue
+            target=self._branch_target(branch)
+            if target is not None and branch.next_address<target<=previous[key_pos].address:
+                skipped.append((branch.next_address,target,operand_reg(compare,args[0])))
+        for pos in range(key_pos-1,-1,-1):
+            op=previous[pos];name=self._branch_name(op).rstrip('s');args=op.operands
+            # A taken valid-range guard can jump over an out-of-range arm.
+            # Definitions in that skipped arm do not define the table key.
+            if any(begin<=op.address<end and reg==register for begin,end,reg in skipped):continue
+            if (name=='cmp' and op.condition==14 and len(args)==2
+                    and args[0].type==ARM_OP_REG and operand_reg(op,args[0])==register
+                    and args[1].type==ARM_OP_IMM):
+                branch=previous[pos+1]
+                if self._branch_name(branch)!='b' or branch.address!=op.next_address:continue
+                target=self._branch_target(branch)
+                if target is None:continue
+                to_pipeline=branch.next_address<=target<=previous[key_pos].address
+                if ((branch.condition in (2,8,10,12) and not to_pipeline)
+                        or (branch.condition in (3,9,11,13) and to_pipeline)):
+                    count=int(args[1].imm)+bias+(branch.condition in (8,9,12,13))
+                    return min(4096,count) if count>0 else None
+                continue
+            # Calls may replace volatile values without explicit register
+            # writes in Capstone's instruction-level access set.
+            if name in ('bl','blx') and register in (0,1,2,3,12,14):return None
+            if not writes_register(op,register):continue
+            if op.condition!=14 or not args or args[0].type!=ARM_OP_REG:return None
+            if name=='mov' and len(args)==2 and args[1].type==ARM_OP_REG:
+                register=operand_reg(op,args[1]);continue
+            if name in ('add','sub') and args[-1].type==ARM_OP_IMM:
+                if len(args)==3 and args[1].type==ARM_OP_REG:
+                    register=operand_reg(op,args[1])
+                elif len(args)!=2:return None
+                bias+=(1 if name=='add' else -1)*int(args[-1].imm)
+                continue
+            # An unrelated earlier comparison says nothing about a newly
+            # loaded or otherwise redefined selector. Infer table geometry.
+            return None
+        return None
+
     def table_info(self, insn):
         ops = insn.operands
         if len(ops) != 2 or ops[0].type != ARM_OP_REG or ops[1].type != ARM_OP_REG:
@@ -150,7 +204,7 @@ def make(emitter):
             return None
 
         branch_pc = insn.address + 4
-        count = self._jump_case_count(insn, key_reg, None) if key_reg is not None else None
+        count = live_case_count(self,previous,key_pos,key_reg)
         requested_count = count
         if count is None:
             # The case code follows the table: stop at the first entry whose
@@ -195,11 +249,6 @@ def make(emitter):
         # Optional proof of a complete, explicitly guarded dispatch. Inferred
         # table length alone must not establish control-flow exhaustiveness.
         guard = None
-        def writes_register(op,register):
-            # Capstone also reports status-register side effects. Those do not
-            # clobber a general register and cannot be mapped to r0-r15.
-            return any(reg_index(op,reg)==register for reg in op.detail.regs_access()[1]
-                if op.detail.reg_name(reg).lower() in _GENERAL_REGISTER_NAMES)
         # Validate the complete key -> doubled address -> halfword -> offset
         # pipeline before allowing in-place updates of the original key.
         pipeline = scale_ok and key_pos is not None and load.condition == 14
