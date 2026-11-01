@@ -307,6 +307,12 @@ struct Display::Impl {
     struct Touch {Rect destination;Box source;bool enabled;};
     std::vector<Touch> touch_regions;
     std::string layout_name="dual";
+    std::string previous_layout="dual";
+    bool startup_picture_top=true;
+    bool cinematic_picture_top=true;
+    int credits_picture=2; // 0 top, 1 bottom, 2 paired.
+    std::array<uint32_t,256*192> classification_top{},classification_bottom{};
+    std::array<uint64_t,256*192> startup_mask{};
     int width=0,height=0,display_index=0;
     int scale=0;
     int maximum_scale=12;
@@ -636,10 +642,13 @@ struct Display::Impl {
             std::any_of(s.polygons.begin(),s.polygons.end(),[](const auto& p){return world_polygon(p);}))
             for(bool top:{false,true})if(counts[{s.serial,top}]>dominant){scene=&s;on_top=top;dominant=counts[{s.serial,top}];}
         if(!scene) {
+            // Bright movie imagery can resemble long menu borders. A live
+            // Start prompt takes precedence over that weaker visual hint.
+            if(startup(frame))return true;
             // Complete framed 2D menus keep their 4:3 proportions. Unframed
             // pictures and movies retain both complete LCDs instead.
-            const bool menu_bottom=layout_detail::full_window(frame.bottom);
-            const bool menu_top=layout_detail::full_window(frame.top);
+            const bool menu_bottom=layout_detail::full_window(layout_detail::classification_pixels(frame.bottom,frame.bottom_foreground,frame.bottom_brightness,classification_bottom));
+            const bool menu_top=layout_detail::full_window(layout_detail::classification_pixels(frame.top,frame.top_foreground,frame.top_brightness,classification_top));
             if(!menu_bottom&&!menu_top)return false;
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(menu_bottom?frame.bottom:frame.top,{0,0,256,192},destination,menu_bottom);
@@ -656,8 +665,9 @@ struct Display::Impl {
         // A single-screen cinematic has no map to inset. Its backdrops and
         // narration were authored against one native frustum; keep the entire
         // composition together, including individual glyphs and 2D captions.
-        const bool blank_other=std::all_of(other,other+256*192,[](uint32_t p){return ((p>>16)&255)<=8&&((p>>8)&255)<=8&&(p&255)<=8;});
+        const bool blank_other=layout_detail::blank_screen(other);
         if(blank_other) {
+            cinematic_picture_top=on_top;
             layout_name="cinematic";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(on_top?frame.top:frame.bottom,{0,0,256,192},destination,!on_top);
             for(const auto& s:*frame.history)captured(s,tags,destination,true,brightness);
@@ -739,17 +749,16 @@ struct Display::Impl {
         }
         return true;
     }
-    bool wide_screens(const Frame& frame) {
+    bool startup(const Frame& frame) {
         if(!options.dynamic_widescreen||width<height)return false;
         // Startup often puts a movie on one LCD and a tiny Start prompt on a
         // black second LCD. Enlarge the picture and place its controls below;
         // preserve every control pixel, including black glyphs inside buttons.
-        std::array<uint64_t,256*192> content{};
         auto sparse=[&](const uint32_t* pixels,Box& box){
             unsigned count=0;
-            for(size_t i=0;i<content.size();++i){const auto p=pixels[i];const bool active=((p>>16)&255)>8||((p>>8)&255)>8||(p&255)>8;
-                content[i]=(1ull<<32)|(active?0xff000000ull:0);count+=active;}
-            const auto boxes=layout_detail::foreground_boxes(content.data());box={};
+            for(size_t i=0;i<startup_mask.size();++i){const auto p=pixels[i];const bool active=((p>>16)&255)>8||((p>>8)&255)>8||(p&255)>8;
+                startup_mask[i]=(1ull<<32)|(active?0xff000000ull:0);count+=active;}
+            const auto boxes=layout_detail::foreground_boxes(startup_mask.data());box={};
             for(const auto b:boxes)box=box.w?layout_detail::unite(box,b):b;
             return count<256*192/8&&box.w*box.h<256*192/4;
         };
@@ -757,8 +766,15 @@ struct Display::Impl {
         const bool bottom_sparse=sparse(frame.bottom,bottom_box),top_sparse=sparse(frame.top,top_box);
         const bool bottom_controls=bottom_sparse&&bottom_box.w&&bottom_box.y>=128&&bottom_box.h<=64;
         const bool top_controls=top_sparse&&top_box.w&&top_box.y>=128&&top_box.h<=64;
-        if(bottom_controls!=top_controls&&(bottom_controls?top_box.w:bottom_box.w)) {
-            const bool picture_top=bottom_controls;
+        const bool continuing_startup=previous_layout=="startup";
+        // The prompt and picture can disappear on different LCD refreshes.
+        // Keep the picture's framing while its opposite LCD is blank, without
+        // retaining old pixels or delaying an actual two-screen movie.
+        const bool missing_controls=continuing_startup&&(startup_picture_top?
+            top_box.w&&layout_detail::blank_screen(frame.bottom):bottom_box.w&&layout_detail::blank_screen(frame.top));
+        if((bottom_controls!=top_controls&&((bottom_controls?top_box.w:bottom_box.w)||continuing_startup))||missing_controls) {
+            const bool picture_top=missing_controls?startup_picture_top:bottom_controls;
+            startup_picture_top=picture_top;
             const auto picture=picture_top?frame.top:frame.bottom;
             const auto controls=picture_top?frame.bottom:frame.top;
             const auto box=picture_top?bottom_box:top_box;
@@ -772,15 +788,31 @@ struct Display::Impl {
             }
             return true;
         }
-        const bool visible_3d=(frame.top_origins&&std::any_of(frame.top_origins,frame.top_origins+256*192,[](uint64_t p){return p!=0;}))||
-            (frame.bottom_origins&&std::any_of(frame.bottom_origins,frame.bottom_origins+256*192,[](uint64_t p){return p!=0;}));
+        return false;
+    }
+    bool wide_screens(const Frame& frame) {
+        if(!options.dynamic_widescreen||width<height)return false;
+        if(startup(frame))return true;
+        const auto top_pixels=layout_detail::classification_pixels(frame.top,frame.top_foreground,frame.top_brightness,classification_top);
+        const auto bottom_pixels=layout_detail::classification_pixels(frame.bottom,frame.bottom_foreground,frame.bottom_brightness,classification_bottom);
+        const bool top_3d=frame.top_origins&&std::any_of(frame.top_origins,frame.top_origins+256*192,[](uint64_t p){return p!=0;});
+        const bool bottom_3d=frame.bottom_origins&&std::any_of(frame.bottom_origins,frame.bottom_origins+256*192,[](uint64_t p){return p!=0;});
+        const bool visible_3d=top_3d||bottom_3d;
         uint32_t top_background=0,bottom_background=0;unsigned top_ink=0,bottom_ink=0;
-        const bool credits=layout_detail::logo_background(frame.top,top_background,top_ink)&&
+        bool credits=layout_detail::logo_background(frame.top,top_background,top_ink)&&
             layout_detail::logo_background(frame.bottom,bottom_background,bottom_ink)&&top_background==bottom_background;
+        if(credits&&(top_ink||bottom_ink))credits_picture=top_ink&&bottom_ink?2:top_ink?0:1;
+        if(!credits&&previous_layout=="credits-wide"&&layout_detail::low_contrast_fade(frame.top)&&layout_detail::low_contrast_fade(frame.bottom)) {
+            // LCD refreshes can split the nearly blank end of a logo fade.
+            // Reuse only its framing, drawing this frame's current pictures.
+            credits=true;top_background=frame.top[0]&0xffffff;
+            top_ink=credits_picture!=1;bottom_ink=credits_picture!=0;
+        }
         // Low-color logo strokes can resemble a neutral menu frame. A shared
         // solid backdrop and sparse logo art take precedence over frame hints.
-        const bool menu_page=!visible_3d&&!credits&&(layout_detail::has_window(frame.top)||layout_detail::has_window(frame.bottom));
-        if(credits) {
+        const bool menu_page=!visible_3d&&(!credits||(!top_ink&&!bottom_ink))&&
+            (layout_detail::has_window(top_pixels)||layout_detail::has_window(bottom_pixels));
+        if(credits&&!menu_page) {
             gl->ClearColor(float((top_background>>16)&255)/255,float((top_background>>8)&255)/255,float(top_background&255)/255,1);
             gl->Clear(GL_COLOR_BUFFER_BIT);
             if(!top_ink||!bottom_ink) {
@@ -790,6 +822,20 @@ struct Display::Impl {
                 if(frame.history)for(const auto& scene:*frame.history)captured(scene,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
                 return true;
             }
+        }
+        const bool top_blank=layout_detail::blank_screen(frame.top),bottom_blank=layout_detail::blank_screen(frame.bottom);
+        const bool different_blanks=top_blank&&bottom_blank&&(frame.top[0]&0xffffff)!=(frame.bottom[0]&0xffffff);
+        if(!credits&&!menu_page&&(top_blank!=bottom_blank||(different_blanks&&(top_3d!=bottom_3d||previous_layout=="cinematic")))&&
+            (visible_3d||previous_layout=="cinematic")) {
+            // A cut can temporarily have no replayable world polygons while
+            // the native LCD still contains the cinematic or its white fade.
+            // Keep that complete picture in its authored single-screen frame.
+            const bool upper=top_blank!=bottom_blank?bottom_blank:top_3d!=bottom_3d?top_3d:cinematic_picture_top;
+            cinematic_picture_top=upper;layout_name="cinematic";
+            const auto destination=fit(float(width),float(height),4.f/3);
+            native_pane(upper?frame.top:frame.bottom,{0,0,256,192},destination,!upper);
+            if(frame.history)for(const auto& scene:*frame.history)captured(scene,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
+            return true;
         }
         if(!visible_3d&&!menu_page&&!credits) {
             // Synchronized movie streams can form one continuous vertical
@@ -807,7 +853,7 @@ struct Display::Impl {
         return true;
     }
     void present(const Frame& frame) {
-        check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;touch_regions.clear();layout_name="dual";
+        check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;touch_regions.clear();previous_layout=layout_name;layout_name="dual";
         if(!gl) {
             SDL_Rect top{0,0,256,192},bottom{0,192,256,192};
             check(SDL_UpdateTexture(software_texture,&top,frame.top,256*4)==0,SDL_GetError());

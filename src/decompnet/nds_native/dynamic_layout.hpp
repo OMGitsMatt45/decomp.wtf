@@ -7,6 +7,32 @@
 #include <cstdlib>
 
 namespace video::layout_detail {
+// Analyze a complete known 2D composition before LCD master brightness. A
+// fade changes its displayed colors, not its borders or screen arrangement.
+// Never substitute a partial/unsupported foreground for the native picture.
+inline const uint32_t* classification_pixels(const uint32_t* pixels,const uint64_t* foreground,
+    const uint8_t* brightness,std::array<uint32_t,256*192>& storage) {
+    if(!foreground||!brightness||std::none_of(brightness,brightness+192,[](uint8_t b){return b!=0;}))return pixels;
+    for(size_t i=0;i<storage.size();++i) {
+        if((foreground[i]&(3ull<<32))!=(1ull<<32)||uint8_t(foreground[i]>>24)!=255)return pixels;
+        storage[i]=uint32_t(foreground[i]);
+    }
+    return storage.data();
+}
+inline bool blank_screen(const uint32_t* pixels) {
+    const auto black=[](uint32_t p){return ((p>>16)&255)<=8&&((p>>8)&255)<=8&&(p&255)<=8;};
+    const auto white=[](uint32_t p){return ((p>>16)&255)>=247&&((p>>8)&255)>=247&&(p&255)>=247;};
+    return black(pixels[0])?std::all_of(pixels,pixels+256*192,black):
+        white(pixels[0])&&std::all_of(pixels,pixels+256*192,white);
+}
+inline bool low_contrast_fade(const uint32_t* pixels) {
+    unsigned low=255,high=0;
+    for(unsigned i=0;i<256*192;++i)for(unsigned shift:{16u,8u,0u}) {
+        const auto value=(pixels[i]>>shift)&255;low=std::min(low,value);high=std::max(high,value);
+        if(high-low>16)return false;
+    }
+    return high<=24||low>=231;
+}
 struct Box {int x=0,y=0,w=0,h=0;}; // Native top-left coordinates.
 inline Box unite(Box a,Box b) {
     const int x=std::min(a.x,b.x),y=std::min(a.y,b.y);

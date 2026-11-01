@@ -142,6 +142,14 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="startup"&&pixels[640+400*1280]==0xff0000ff,"startup picture uses full height before gameplay");
         require(pixels[640+484*1280]==0xffff8000&&display.touch(640,484,x,y)&&x>=124&&x<=126&&y>=157&&y<=159,"startup controls retain source pixels and inverse touch");
+        for(int yy:{16,176})for(int xx=12;xx<244;++xx)top[yy*256+xx]=0xffffffff;
+        require(video::layout_detail::full_window(top.data()),"bright movie fixture resembles menu borders");
+        display.present(frame);require(display.layout()=="startup","Start prompt takes precedence over coincidental movie borders");
+        top.fill(0xff0000ff);
+        bottom.fill(0xff000000);display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="startup"&&pixels[640+400*1280]==0xff0000ff,"one LCD can remove the Start prompt before the movie picture without changing its framing");
+        bottom.fill(0xff00ff00);display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="movie"&&pixels[640+135*1280]==0xff0000ff&&pixels[640+405*1280]==0xff00ff00,"two active movie LCDs replace startup framing on the first frame");
         top.fill(0xff0000ff);bottom.fill(0xff004000);
         for(int y=8;y<=46;++y)for(int x=9;x<=228;++x)
             bottom[y*256+x]=y==8||y==46||x==9||x==228?0xffa4a4a4:0xff202020;
@@ -159,12 +167,52 @@ int main() {
             require(display.layout()=="menu-wide"&&pixels[320+270*1280]==0xff0000ff,"animated cursor occlusion cannot switch menu layout");
             require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"menu touch mapping stays stable throughout cursor animation");
         }
+        // Complete pre-master 2D metadata identifies a menu even when its
+        // visible borders disappear during darken/brighten transitions.
+        bottom.fill(0xff004000);
+        for(int y=8;y<=46;++y)for(int x=9;x<=228;++x)
+            bottom[y*256+x]=y==8||y==46||x==9||x==228?0xffa4a4a4:0xff202020;
+        const auto unfaded=bottom;
+        for(size_t i=0;i<foreground.size();++i)foreground[i]=(1ull<<32)|unfaded[i];
+        frame.bottom_foreground=foreground.data();frame.bottom_brightness=cinematic_brightness.data();
+        for(unsigned mode:{1u,2u})for(unsigned factor=0;factor<=16;++factor) {
+            cinematic_brightness.fill(uint8_t((mode<<5)|factor));
+            for(size_t i=0;i<bottom.size();++i) {
+                uint32_t p=0xff000000;
+                for(unsigned shift:{16u,8u,0u}){const auto c=(unfaded[i]>>shift)&255;
+                    p|=(mode==1?c+(255-c)*factor/16:c*(16-factor)/16)<<shift;}
+                bottom[i]=p;
+            }
+            display.present(frame);pixels=display.read_pixels();
+            require(display.layout()=="menu-wide","every master brightness level retains the menu arrangement");
+            require(pixels[960+270*1280]==bottom[128+96*256],"classification never draws unfaded metadata in place of current pixels");
+            require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"fading menus keep their native inverse touch mapping");
+        }
+        std::array<uint32_t,256*192> classified;
+        foreground[0]|=2ull<<32;
+        require(video::layout_detail::classification_pixels(bottom.data(),foreground.data(),cinematic_brightness.data(),classified)==bottom.data(),"unsupported foreground cannot become a classification picture");
+        foreground[0]=(1ull<<32)|0x7f000000;
+        require(video::layout_detail::classification_pixels(bottom.data(),foreground.data(),cinematic_brightness.data(),classified)==bottom.data(),"partial foreground cannot become a classification picture");
+        frame.bottom_brightness=brightness.data();foreground.fill(1ull<<32);
         bottom.fill(0xff000000);
         for(int y:{8,46})for(int x=9;x<=228;++x)bottom[y*256+x]=0xffa4a4a4;
         for(int y=8;y<=46;++y)bottom[y*256+228]=0xffa4a4a4;
         require(!video::layout_detail::has_window(bottom.data()),"a missing vertical side is not a bounded menu frame");
         bottom.fill(0xff00ff00);display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="movie"&&pixels[640+135*1280]==0xff0000ff&&pixels[640+405*1280]==0xff00ff00,"leaving an animated menu restores the synchronized movie layout immediately");
+        // A scene cut may lose replayable polygons before its last native LCD
+        // picture or white fade disappears. Render that picture at full height.
+        auto cut=frame;cut.scene=nullptr;cut.history=nullptr;
+        top.fill(0xff000000);bottom.fill(0xff00ff00);cut.bottom_origins=tags.data();
+        display.present(cut);pixels=display.read_pixels();
+        require(display.layout()=="cinematic"&&pixels[640+100*1280]==0xff00ff00,"cut without replayable geometry keeps the complete cinematic picture");
+        require(display.touch(640,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"native cinematic fallback retains lower-LCD touch");
+        bottom.fill(0xffffffff);display.present(cut);pixels=display.read_pixels();
+        require(display.layout()=="cinematic"&&pixels[640+100*1280]==0xffffffff,"mixed black and white LCD fades cannot create a second empty pane");
+        bottom.fill(0xff00ff00);cut.bottom_origins=none.data();display.present(cut);pixels=display.read_pixels();
+        require(display.layout()=="cinematic"&&pixels[640+100*1280]==0xff00ff00,"single-screen cinematic framing survives missing origin metadata");
+        top.fill(0xff0000ff);display.present(cut);pixels=display.read_pixels();
+        require(display.layout()=="movie"&&pixels[640+135*1280]==0xff0000ff&&pixels[640+405*1280]==0xff00ff00,"an actual two-screen movie is never delayed by cinematic fallback");
         top.fill(0xffffffff);bottom.fill(0xffffffff);
         // A native logo may retain a captured 3D origin even though its LCD
         // composition is a sparse logo on a solid backdrop.
@@ -172,6 +220,13 @@ int main() {
         for(int y=70;y<110;++y)for(int x=75;x<180;++x)top[y*256+x]=0xffa0a0a0;
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="credits-wide"&&pixels[80+270*1280]==0xffffffff&&pixels[640+270*1280]==0xffa0a0a0,"single logo uses the full-height wide canvas with matching backdrop");
+        top.fill(0xff000000);bottom.fill(0xff000000);
+        for(int yy=0;yy<192;++yy){top[yy*256]=0xff101010;bottom[yy*256]=0xff101010;}
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="credits-wide"&&pixels[640+270*1280]==0xff000000,"asynchronous nearly blank credit fades retain their framing with current pixels");
+        top.fill(0xffffffff);bottom.fill(0xffffffff);
+        for(int yy=70;yy<110;++yy)for(int xx=75;xx<180;++xx)top[yy*256+xx]=0xffa0a0a0;
+        display.present(frame);
         for(int y=60;y<110;++y)for(int x=90;x<170;++x)bottom[y*256+x]=0xffff0000;
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="credits-wide"&&pixels[320+270*1280]==0xffa0a0a0&&pixels[960+270*1280]==0xffff0000,"independent paired logos keep proportions in landscape");
