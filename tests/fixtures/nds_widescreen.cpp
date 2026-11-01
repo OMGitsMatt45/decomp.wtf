@@ -78,15 +78,41 @@ int main() {
         require(pixels[350+450*960]==0xff505050&&pixels[400+450*960]==0xff00ff00,"battle messages clear the party panels");
         auto* window=SDL_GetWindowFromID(1);require(window,"test window");SDL_SetWindowSize(window,1280,540);SDL_PumpEvents();
         display.present(frame);require(display.width()==1280&&display.world_aspect()>2.3f,"live ultrawide resize updates the camera frustum");
+        // One-screen cinematics keep backdrop and narration in one native
+        // frustum. Two separated glyph runs must not be anchored atop each other.
+        auto cinema=history.front();cinema.serial+=100;
+        for(float center:{-.4f,.4f}) {
+            dsr::Gpu3DPolygon p;p.count=4;p.viewport=0xbfff0000;p.attr=0x001f00c0;
+            const float xy[4][2]={{center-.1f,-.85f},{center+.1f,-.85f},{center+.1f,-.75f},{center-.1f,-.75f}};
+            for(unsigned i=0;i<4;++i){p.index[i]=uint16_t(cinema.vertices.size());dsr::Gpu3DVertex v;v.clip={xy[i][0],xy[i][1],-.5f,1};v.color={63,63,63};cinema.vertices.push_back(v);}
+            cinema.order.push_back(uint16_t(cinema.polygons.size()));cinema.polygons.push_back(p);
+        }
+        history.clear();history.push_back(std::move(cinema));frame.scene=&history.front();
+        for(size_t i=0;i<tags.size();++i)tags[i]=(history.front().serial<<16)|(i+1);
+        frame.top_origins=none.data();frame.bottom_origins=tags.data();top.fill(0xff000000);bottom.fill(0xff0000ff);
+        foreground.fill(1ull<<32);
+        for(int y=150;y<158;++y)for(int x=40;x<60;++x){const int i=y*256+x;bottom[i]=0xffffffff;tags[i]=0;foreground[i]=(1ull<<32)|0xffffffff;}
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="cinematic","empty secondary LCD selects cinematic framing");
+        require(pixels[496+486*1280]==0xffffffff&&pixels[784+486*1280]==0xffffffff&&pixels[420+433*1280]==0xffffffff,"3D glyph runs and native 2D captions retain their distinct positions");
+        require(pixels[80+270*1280]==0xff000000,"cinematic backdrop stays within its authored frustum");
+        std::array<uint8_t,192> cinematic_brightness;frame.bottom_brightness=cinematic_brightness.data();
+        cinematic_brightness.fill(0x30);bottom.fill(0xffffffff);display.present(frame);pixels=display.read_pixels();
+        require(pixels[640+270*1280]==0xffffffff,"captured enhanced scene obeys full brighten");
+        cinematic_brightness.fill(0x50);bottom.fill(0xff000000);display.present(frame);pixels=display.read_pixels();
+        require(pixels[640+270*1280]==0xff000000,"captured enhanced scene obeys full darken");
+        frame.bottom_brightness=brightness.data();
         // Framed standalone pages retain 4:3; unframed full-screen movies keep
         // both native screens. This also exercises top-screen-only pages.
         frame.top_origins=frame.bottom_origins=none.data();bottom.fill(0xff202020);top.fill(0xff0000ff);
         panel(bottom,8,184);display.present(frame);require(display.layout()=="menu","standalone 2D page uses 4:3");
         require(display.touch(640,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"standalone page retains touch coordinates");
-        bottom.fill(0xff00ff00);display.present(frame);pixels=display.read_pixels();
-        require(display.layout()=="dual-wide","two active movie pictures keep both complete LCDs in landscape");
+        bottom.fill(0xff00ff00);none[0]=(history.front().serial<<16)|1;display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="dual-wide","two active menu pictures retain both LCDs in landscape");
         require(pixels[320+270*1280]==0xff0000ff&&pixels[960+270*1280]==0xff00ff00,"movie pictures retain their source colors and proportions");
         require(!display.touch(320,270,x,y)&&display.touch(960,270,x,y)&&std::abs(x-128)<=1,"landscape LCD pair maps lower-screen touch only");
+        none[0]=0;display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="movie"&&pixels[640+135*1280]==0xff0000ff&&pixels[640+405*1280]==0xff00ff00,"paired movie streams retain their original vertical relationship");
         bottom.fill(0xff000000);
         for(int y=150;y<166;++y)for(int x=100;x<150;++x)bottom[y*256+x]=0xffff8000;
         display.present(frame);pixels=display.read_pixels();
