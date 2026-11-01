@@ -1,0 +1,7 @@
+# Overlapping inferred dispatch regions
+
+Callback recovery can retain a bounded dispatch region containing mutable literals. A later code-gap scan can infer a larger region around it, or a newly recovered callback can occupy a hole in an earlier region. Keeping both records gives the same module/address/mode entry multiple generated C++ bodies and pointer definitions.
+
+Recovery consolidates overlapping regions within each module and instruction mode. The combined region retains every distinct callable entry and the union of executable bytes. A byte remains excluded data only when every region covering that byte excludes it. This preserves literal masking without treating another callback's validated instructions as a data hole. Adjacent regions and different instruction modes remain separate. Consolidation does not create new callable entries or infer code outside the original regions.
+
+The original regression contains an outer Thumb callback calling a nested callback whose instructions occupy the outer callback's data hole. Their overlapping records emit one set of slots. The compiled fixture checks the nested call's return value, preserved register and guest stack, then changes a literal and calls the nested entry again. The literal update must be observed without invalidating dispatch identity. Unit checks cover repeatability, data/code overlap, adjacent regions, mode separation and scanner growth around an existing callback region.

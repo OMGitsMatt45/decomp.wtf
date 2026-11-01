@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from decompnet import nds_native
-from decompnet.nds_native.callbacks import recover,complete,codec_functions,arm7_executable_ranges
+from decompnet.nds_native.callbacks import recover,complete,codec_functions,arm7_executable_ranges,_coalesce_dispatch_regions
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
@@ -60,6 +60,58 @@ def reference_image(tmp_path,module_id=4):
     refs=[dict(module_id=module_id,address=base+offset,size=size,thumb=True,
                module_sha256=hashlib.sha256(raw).hexdigest()) for offset,size in ((0x20,8),(0x44,4))]
     return module,refs
+
+
+def overlapping_region_image(tmp_path,module_id=6):
+    base=0x0201a000;raw=bytearray(0x60)
+    struct.pack_into('<I',raw,0,0xe12fff1e)
+    # The outer callback calls a nested callback and then returns its result.
+    struct.pack_into('<4H',raw,0x18,0xb500,0xf000,0xf801,0xbd00)
+    # Mutable literal; preserve r4 and the guest stack across both callbacks.
+    struct.pack_into('<5H',raw,0x20,0xb510,0x4c03,0x3401,0x1c20,0xbd10)
+    struct.pack_into('<I',raw,0x30,41)
+    path=tmp_path/f'overlap-{module_id}.bin';path.write_bytes(raw)
+    return dict(name=f'ov{module_id:03}',module_id=module_id,base=base,image=str(path),
+        functions=[dict(addr=base,size=4,thumb=False,name='entry'),
+                   dict(addr=base+0x18,size=0x1c,thumb=True,name='outer'),
+                   dict(addr=base+0x20,size=0x14,thumb=True,name='nested')],
+        labels=[],calls=[],code_ranges=[[base,base+4],[base+0x18,base+0x2a]],data_ranges=[],
+        dispatch_regions=[dict(addr=base+0x18,size=0x1c,thumb=True,
+            entries=[base+0x18],data_ranges=[[base+0x20,base+0x34]]),
+            dict(addr=base+0x20,size=0x14,thumb=True,entries=[base+0x20],
+                 data_ranges=[[base+0x2a,base+0x34]])])
+
+
+def test_overlapping_regions_keep_union_of_code_and_only_common_data():
+    outer=dict(addr=0x1000,size=32,thumb=True,entries=[0x1000],data_ranges=[[0x1004,0x1010]])
+    inner=dict(addr=0x1004,size=20,thumb=True,entries=[0x1004],data_ranges=[[0x1008,0x1010]])
+    arm=dict(addr=0x1000,size=4,thumb=False,entries=[0x1000],data_ranges=[])
+    adjacent=dict(addr=0x1020,size=4,thumb=True,entries=[0x1020],data_ranges=[])
+    before=copy.deepcopy([outer,inner,arm,adjacent])
+    result=_coalesce_dispatch_regions(before)
+    assert before==[outer,inner,arm,adjacent]
+    assert result==[arm,{**outer,'entries':[0x1000,0x1004],'data_ranges':[[0x1008,0x1010]]},adjacent]
+    assert _coalesce_dispatch_regions(result+result)==result
+    with pytest.raises(ValueError,match='outside code bytes'):
+        _coalesce_dispatch_regions([{**inner,'entries':[0x1008]}])
+
+
+def test_complete_coalesces_scanner_growth_around_existing_region(tmp_path,sdk,monkeypatch):
+    _,emitter,reader=nds_native._sdk();module=overlapping_region_image(tmp_path)
+    smaller=copy.deepcopy(module['dispatch_regions'][1]);larger=copy.deepcopy(module['dispatch_regions'][0])
+    module['dispatch_regions']=[smaller]
+    class Growth:
+        def __init__(self,modules,ranges):
+            self.added=[]
+            modules[0]['dispatch_regions']=[copy.deepcopy(larger)]
+    monkeypatch.setattr(reader,'_GapDiscovery',Growth)
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    expected={**larger,'entries':[module['base']+0x18,module['base']+0x20],
+              'data_ranges':smaller['data_ranges']}
+    assert complete(manifest,emitter,reader)==dict(callbacks=[],gaps=[])
+    assert module['dispatch_regions']==[expected]
+    assert complete(manifest,emitter,reader)==dict(callbacks=[],gaps=[])
+    assert module['dispatch_regions']==[expected]
 
 
 def test_reference_bounds_recover_split_and_folded_callbacks_without_overlay_guessing(tmp_path,sdk):
@@ -255,6 +307,9 @@ def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,s
     referenced,refs=reference_image(tmp_path)
     manifest['modules'].append(referenced)
     assert len(recover(manifest,emitter,reader,reference_entries=refs))==2
+    overlap=overlapping_region_image(tmp_path);manifest['modules'].append(overlap)
+    assert recover(manifest,emitter,reader)==[]
+    assert len(overlap['dispatch_regions'])==1
     generated=tmp_path/'generated';generated.mkdir()
     result=emitter.emit_manifest(manifest,generated,chunk_size=100)
     assert result['undefined_sites']==0
@@ -305,6 +360,18 @@ int main(int argc,char** argv) {
     if(cpu.r[0]!=41 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 6;
     dsr::dsr_call(&cpu,0x02018045);
     if(cpu.r[0]!=9 || cpu.r[13]!=0x023ff000)return 7;
+  }
+  {
+    std::ifstream file(argv[6],std::ios::binary);
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x0201a000+j,bytes[j]);
+    cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;cpu.r[4]=0x12345678;
+    dsr::dsr_call(&cpu,0x0201a019);
+    if(cpu.r[0]!=42 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 8;
+    machine.write32(dsr::CpuId::Arm9,0x0201a030,77);
+    cpu.r[14]=0x02015000; // A new caller, not the previous nested call's LR.
+    dsr::dsr_call(&cpu,0x0201a021);
+    if(cpu.r[0]!=78 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 9;
   }
 }
 ''')
