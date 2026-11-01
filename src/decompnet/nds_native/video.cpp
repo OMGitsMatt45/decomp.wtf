@@ -775,7 +775,7 @@ struct Display::Impl {
         const bool visible_3d=(frame.top_origins&&std::any_of(frame.top_origins,frame.top_origins+256*192,[](uint64_t p){return p!=0;}))||
             (frame.bottom_origins&&std::any_of(frame.bottom_origins,frame.bottom_origins+256*192,[](uint64_t p){return p!=0;}));
         uint32_t top_background=0,bottom_background=0;unsigned top_ink=0,bottom_ink=0;
-        const bool credits=!visible_3d&&layout_detail::logo_background(frame.top,top_background,top_ink)&&
+        const bool credits=layout_detail::logo_background(frame.top,top_background,top_ink)&&
             layout_detail::logo_background(frame.bottom,bottom_background,bottom_ink)&&top_background==bottom_background;
         // Low-color logo strokes can resemble a neutral menu frame. A shared
         // solid backdrop and sparse logo art take precedence over frame hints.
@@ -785,7 +785,10 @@ struct Display::Impl {
             gl->Clear(GL_COLOR_BUFFER_BIT);
             if(!top_ink||!bottom_ink) {
                 layout_name="credits-wide";const auto destination=fit(float(width),float(height),4.f/3);
-                native_pane(top_ink?frame.top:frame.bottom,{0,0,256,192},destination,!top_ink);return true;
+                const bool upper=top_ink!=0;
+                native_pane(upper?frame.top:frame.bottom,{0,0,256,192},destination,!upper);
+                if(frame.history)for(const auto& scene:*frame.history)captured(scene,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
+                return true;
             }
         }
         if(!visible_3d&&!menu_page&&!credits) {

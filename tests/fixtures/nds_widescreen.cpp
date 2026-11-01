@@ -150,6 +150,9 @@ int main() {
         require(display.layout()=="menu-wide"&&pixels[320+270*1280]==0xff0000ff,"2D start menu uses a landscape composition instead of movie stacking");
         require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"2D landscape menu preserves lower-screen touch");
         top.fill(0xffffffff);bottom.fill(0xffffffff);
+        // A native logo may retain a captured 3D origin even though its LCD
+        // composition is a sparse logo on a solid backdrop.
+        none[0]=(history.front().serial<<16)|1;
         for(int y=70;y<110;++y)for(int x=75;x<180;++x)top[y*256+x]=0xffa0a0a0;
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="credits-wide"&&pixels[80+270*1280]==0xffffffff&&pixels[640+270*1280]==0xffa0a0a0,"single logo uses the full-height wide canvas with matching backdrop");
