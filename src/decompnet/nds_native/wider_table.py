@@ -31,6 +31,9 @@ bounds and the first case-code boundary still bound inference.
 """
 from capstone.arm_const import ARM_OP_REG,ARM_OP_IMM,ARM_OP_MEM
 
+_GENERAL_REGISTER_NAMES = frozenset([f'r{i}' for i in range(16)] +
+    ['sb','sl','fp','ip','sp','lr','pc'])
+
 
 def make(emitter):
     operand_reg=emitter.operand_reg
@@ -193,7 +196,10 @@ def make(emitter):
         # table length alone must not establish control-flow exhaustiveness.
         guard = None
         def writes_register(op,register):
-            return any(reg_index(op,reg)==register for reg in op.detail.regs_access()[1])
+            # Capstone also reports status-register side effects. Those do not
+            # clobber a general register and cannot be mapped to r0-r15.
+            return any(reg_index(op,reg)==register for reg in op.detail.regs_access()[1]
+                if op.detail.reg_name(reg).lower() in _GENERAL_REGISTER_NAMES)
         # Validate the complete key -> doubled address -> halfword -> offset
         # pipeline before allowing in-place updates of the original key.
         pipeline = scale_ok and key_pos is not None and load.condition == 14
