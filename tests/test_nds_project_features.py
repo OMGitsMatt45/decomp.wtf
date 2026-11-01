@@ -1,4 +1,5 @@
 """Project-owned features run independently of the optional cheat menu."""
+import os
 import subprocess
 
 from .test_nds_native import generate,execute,sdk  # noqa: F401
@@ -32,6 +33,10 @@ struct Features {
     assert report['frames']==baseline['frames']==8
     path=root/'native/project_features.hpp'
     path.write_text(path.read_text().replace('++inputs;return true','++inputs;return inputs<=3'))
+    # Make this rapid edit observably newer than the just-linked image instead
+    # of depending on the build runner's timestamp comparison precision.
+    edited=max(path.stat().st_mtime_ns,exe.stat().st_mtime_ns+2_000_000_000)
+    os.utime(path,ns=(edited,edited))
     done=subprocess.run(['cmake','--build',str(root/'build'),'--config','Release','--parallel','2'],capture_output=True,text=True,timeout=240)
     assert done.returncode==0,done.stdout+done.stderr
     stopped=execute(exe,root,'--save',tmp_path/'stopped.sav')

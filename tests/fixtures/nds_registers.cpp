@@ -1,13 +1,17 @@
 // Original register and DMA conformance checks. RAM payloads are invented.
 #include "dsr/machine.h"
 #include <cstdint>
+#include <iostream>
+#include <source_location>
 #include <stdexcept>
+#include <string>
 
-static void check(bool value) {
-    if (!value) throw std::runtime_error("DS storage-register conformance failed");
+static void check(bool value, const std::source_location where = std::source_location::current()) {
+    if (!value) throw std::runtime_error("DS storage-register conformance failed at line " + std::to_string(where.line()));
 }
 
 int main() {
+    try {
     dsr::MachineConfig config;
     dsr::Machine machine(config);
     using dsr::CpuId;
@@ -42,8 +46,9 @@ int main() {
     machine.write16(CpuId::Arm7, 0x04000304, 3);
     check(machine.read32(CpuId::Arm7, 0x04804000) == 0);
     machine.write32(CpuId::Arm7, 0x04804000, 0x12345678);
+    // Wireless memory ignores STRB; the same rule applies through the mirror.
     machine.write8(CpuId::Arm7, 0x0480c001, 0xab);
-    check(machine.read32(CpuId::Arm7, 0x04804000) == 0x1234ab78);
+    check(machine.read32(CpuId::Arm7, 0x04804000) == 0x12345678);
     machine.write16(CpuId::Arm7, 0x04805ffe, 0xcdef);
     check(machine.read16(CpuId::Arm7, 0x0480dffe) == 0xcdef);
     machine.write16(CpuId::Arm7, 0x04804158, 0xabcd);
@@ -54,8 +59,12 @@ int main() {
     check(machine.read32(CpuId::Arm7, 0x04804000) == 0);
     machine.write32(CpuId::Arm7, 0x04804000, 0);
     machine.write16(CpuId::Arm7, 0x04000304, 3);
-    check(machine.read32(CpuId::Arm7, 0x04804000) == 0x1234ab78);
+    check(machine.read32(CpuId::Arm7, 0x04804000) == 0x12345678);
     check(machine.unimplemented_io_count() == 0);
     machine.write32(CpuId::Arm9, 0x04000ff0, 123);
     check(machine.unimplemented_io_count() == 1);
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }
