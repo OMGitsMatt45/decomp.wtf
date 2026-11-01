@@ -218,13 +218,20 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
         if not image:continue
         data_starts=[low for low,_ in declared]
         functions=module['functions']
-        intervals=sorted((int(f['addr']),int(f['addr'])+int(f['size'])) for f in functions)
-        starts=[low for low,_ in intervals];ends=[]
-        for _,end in intervals:ends.append(max(end,ends[-1] if ends else end))
+        intervals=sorted((int(f['addr']),int(f['addr'])+int(f['size']),bool(f['thumb'])) for f in functions)
+        starts=[low for low,_,_ in intervals];ends=[]
+        for _,end,_ in intervals:ends.append(max(end,ends[-1] if ends else end))
         def covered(address):
             index=bisect_right(starts,address)-1
             return ((index>=0 and address<ends[index]) or
                     any(start<=address<start+size for (start,_),size in reference_roots.items()))
+        def covered_modes(address):
+            index=bisect_right(starts,address)-1;result=set()
+            while index>=0 and ends[index]>address:
+                if address<intervals[index][1]:result.add(intervals[index][2])
+                index-=1
+            result.update(mode for (start,mode),size in reference_roots.items() if start<=address<start+size)
+            return result
         decoders={thumb:emitter.Decoder(image,base,arch,thumb) for thumb in (False,True)}
         reference_roots={}
         for (address,thumb),size in references[int(module['module_id'])].items():
@@ -334,6 +341,9 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
                 if effect.flow in ('branch','call') and effect.target is not None:
                     target=effect.target&~1
                     mode=thumb!=(body._branch_name(op)=='blx')
+                    if base<=target<limit and (target%(2 if mode else 4) or
+                            (covered(target) and mode not in covered_modes(target))):
+                        valid=False;break
                     if base<=target<limit and (effect.flow=='call' or not address<=target<end):
                         targets.append((target,mode))
                         body_calls.append(dict(**{'from':op.address,'to':target},modules=[module['module_id']]))

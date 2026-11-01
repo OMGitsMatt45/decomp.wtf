@@ -5,6 +5,7 @@ must return to the caller whose saved frame they consume. This adapts the
 upstream emitter through its decoded instruction interface; no game addresses,
 bytes or title-specific entry lists are used.
 """
+from bisect import bisect_right
 from capstone.arm_const import ARM_OP_IMM, ARM_OP_MEM, ARM_OP_REG
 
 
@@ -16,6 +17,54 @@ def install(emitter):
     secondary=emitter._secondary_branch_entries
     table_info=cls._jump_table_info
     slot_for=cls._slot_for
+    prepare_source=emitter._prepare_entries
+
+    def prepare_entries(manifest,extra_path=None):
+        entries,images,module_entries,calls=prepare_source(manifest,extra_path)
+        # Call metadata has no destination state. An interior entry must not
+        # inherit its owner's ARM/Thumb state against the decoded transfer.
+        explicit=set(emitter._parse_extra_entries(extra_path))
+        modules={int(m['module_id']):m for m in manifest['modules']}
+        ranges={mid:sorted((int(f['addr']),int(f['addr'])+int(f['size']),bool(f['thumb']))
+                           for f in m['functions']) for mid,m in modules.items()}
+        starts={mid:[low for low,_,_ in items] for mid,items in ranges.items()}
+        ends={}
+        for mid,items in ranges.items():
+            ends[mid]=[]
+            for _,end,_ in items:ends[mid].append(max(end,ends[mid][-1] if ends[mid] else end))
+        wanted={(e.module_id,e.address) for e in entries if e.extra}
+        records={};decoders={}
+        for mid,module in modules.items():
+            explicit.update((mid,int(p['addr']),bool(p['thumb'])) for p in module.get('entry_points',[]))
+            for record in module.get('calls',[]):
+                for target_mid in record.get('modules',[]):
+                    key=int(target_mid),int(record['to'])&~1
+                    if key in wanted:records.setdefault(key,[]).append((mid,int(record['from'])&~1))
+        kept=[]
+        for entry in entries:
+            if not entry.extra or (entry.module_id,entry.address,entry.thumb) in explicit:
+                kept.append(entry);continue
+            modes=set();unknown=False
+            for mid,site in records.get((entry.module_id,entry.address),[]):
+                index=bisect_right(starts[mid],site)-1;source_modes=set()
+                while index>=0 and ends[mid][index]>site:
+                    if site<ranges[mid][index][1]:source_modes.add(ranges[mid][index][2])
+                    index-=1
+                if len(source_modes)!=1:unknown=True;continue
+                thumb=source_modes.pop();key=mid,thumb
+                if key not in decoders:
+                    decoders[key]=emitter.Decoder(images[mid],int(modules[mid]['base']),manifest['arch'],thumb)
+                op=decoders[key].decode(site)
+                if (op is None or cls._branch_name(op) not in ('b','bl','blx') or len(op.operands)!=1
+                        or op.operands[0].type!=ARM_OP_IMM or int(op.operands[0].imm)&~1!=entry.address):
+                    unknown=True;continue
+                modes.add(thumb!=(cls._branch_name(op)=='blx'))
+            if entry.address%(2 if entry.thumb else 4) or (modes and not unknown and entry.thumb not in modes):
+                key=entry.module_id,entry.address
+                if module_entries.get(key) is entry:module_entries.pop(key)
+                continue
+            kept.append(entry)
+        return kept,images,module_entries,calls
 
     def overlay_slot(self,target,source):
         entry=slot_for(self,target,source)
@@ -379,6 +428,7 @@ def install(emitter):
     cls._branch=emit_branch
     cls._discover=discover
     emitter._secondary_branch_entries=secondary_entries
+    emitter._prepare_entries=prepare_entries
     from .wider_table import make
     cls._thumb_halfword_table_info=make(emitter)
     cls._decomp_bounds_fixed=True
