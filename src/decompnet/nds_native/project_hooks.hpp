@@ -16,3 +16,11 @@ struct Features {
 };
 }
 #endif
+
+namespace ds_project {
+// Optional customization without requiring existing project Features to change.
+template<class Feature,class Options>
+void configure_video(Feature& feature,Options& options) {
+    if constexpr(requires { feature.configure_video(options); }) feature.configure_video(options);
+}
+}

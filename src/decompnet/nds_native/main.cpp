@@ -57,7 +57,9 @@ struct Display {
     std::deque<video::Scene> history;
     SDL_AudioDeviceID audio=0;
     SDL_AudioStream* resampler=nullptr;
+    bool expand_visibility=false;
     explicit Display(video::Options options) {
+        expand_visibility=options.expand_visibility;
 #ifdef _WIN32
         SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2");
         SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING,"1");
@@ -102,7 +104,8 @@ struct Display {
     void present(dsr::Session& session) {
         const auto& gpu=session.machine().gpu2d();
         video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
-                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history});
+                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history,
+                        gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()});
         if(SDL_AudioStreamPut(resampler,session.audio_data(),int(session.audio_frames()*4))!=0)
             throw std::runtime_error(SDL_GetError());
         const int available=SDL_AudioStreamAvailable(resampler);
@@ -197,7 +200,9 @@ int main(int argc,char** argv) {
 #ifdef NDS_WITH_SDL
         std::unique_ptr<Display> display;
         if(!headless) {
-            display=std::make_unique<Display>(video::Options{renderer,int(width),int(height),fullscreen,!capture.empty()});
+            video::Options options{renderer,int(width),int(height),fullscreen,!capture.empty()};
+            ds_project::configure_video(features,options);
+            display=std::make_unique<Display>(options);
             if(display->video->renderer()=="opengl") {
                 session.machine().gpu3d().set_capture_opaque_only(true);
                 session.machine().gpu2d().set_capture_origin_tracking(true);
@@ -214,6 +219,7 @@ int main(int argc,char** argv) {
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
             if(!running||(display&&!display->input(input,cheats)))break;
+            if(display)session.machine().gpu3d().set_host_widescreen(display->video->world_aspect(),display->expand_visibility);
 #endif
             if(!features.input(session,input))break;
 #ifdef NDS_WITH_SDL
@@ -360,6 +366,7 @@ int main(int argc,char** argv) {
             std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
                 <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()
                 <<",\"polygons_drawn\":"<<video.polygons_drawn()<<",\"captured_pixels\":"<<video.captured_pixels()
+                <<",\"layout\":\""<<video.layout()<<"\""
                 <<",\"enhanced\":"<<(video.renderer()=="opengl"?"true":"false")<<",\"render_scale\":"<<video.render_scale()<<"}";
             session.machine().gpu3d().on_render_complete=nullptr;
         }

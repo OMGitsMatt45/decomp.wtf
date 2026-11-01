@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -262,6 +262,8 @@ def _runtime(sdk, root):
     patch_geometry_capacity(target)
     from .guest_work_patch import patch as patch_guest_work
     patch_guest_work(target)
+    from .widescreen_patch import patch as patch_widescreen
+    patch_widescreen(target)
     from .audio_patch import patch as patch_audio
     patch_audio(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
@@ -463,6 +465,7 @@ def generate(project,root):
 
                                ('keyboard.hpp','native/keyboard.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
+                               ('dynamic_layout.hpp','native/dynamic_layout.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')
     license=resources.files('decompnet.nds_pc').joinpath('runtime.LICENSE').read_text(encoding='utf-8')

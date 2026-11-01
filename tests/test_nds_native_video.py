@@ -18,6 +18,7 @@ def desktop_project(tmp_path_factory,sdk):
     rom,root,headless=generate(tmp_path_factory.mktemp('desktop-project')/'fixture',video)
     source=Path(__file__).parent/'fixtures/nds_video.cpp'
     shutil.copyfile(source,root/'tests/video_checks.cpp')
+    shutil.copyfile(source.with_name('nds_widescreen.cpp'),root/'tests/widescreen_checks.cpp')
     shutil.copyfile(source.with_name('nds_audio.cpp'),root/'tests/audio_checks.cpp')
     shutil.copyfile(source.with_name('nds_settings.cpp'),root/'tests/settings_checks.cpp')
     shutil.copyfile(source.with_name('nds_input.cpp'),root/'tests/input_checks.cpp')
@@ -33,6 +34,13 @@ if(NDS_WITH_SDL)
   target_include_directories(video_checks PRIVATE native ${DSR_ROOT}/runtime/gpu3d/src)
   target_compile_definitions(video_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(video_checks PRIVATE ds_runtime SDL2::SDL2-static)
+  add_executable(widescreen_checks tests/widescreen_checks.cpp native/video.cpp)
+  target_include_directories(widescreen_checks PRIVATE native ${DSR_ROOT}/runtime/gpu3d/src)
+  target_compile_definitions(widescreen_checks PRIVATE SDL_MAIN_HANDLED)
+  target_link_libraries(widescreen_checks PRIVATE ds_runtime SDL2::SDL2-static)
+  if(MSVC)
+    target_link_options(widescreen_checks PRIVATE /STACK:8388608)
+  endif()
   if(MSVC)
     target_link_options(video_checks PRIVATE /STACK:8388608)
   endif()
@@ -62,6 +70,20 @@ endif()
         done=subprocess.run(cmd,capture_output=True,text=True,timeout=600)
         assert done.returncode==0,done.stdout+done.stderr
     return rom,root,headless,build
+
+
+def test_optional_widescreen_frustum_and_dynamic_layout(tmp_path,desktop_project):
+    if os.environ.get('DECOMP_REQUIRE_DS_GPU')!='1':
+        pytest.skip('GPU execution is a separate explicit qualification')
+    _,_,_,build=desktop_project
+    exe=next(p for p in (build/'widescreen_checks',build/'widescreen_checks.exe',build/'Release/widescreen_checks.exe') if p.is_file())
+    command=[str(exe)]
+    env={**os.environ,'SDL_AUDIODRIVER':'dummy'}
+    if shutil.which('xvfb-run') and os.name!='nt':command=['xvfb-run','-a',*command]
+    elif os.name!='nt':env['SDL_VIDEODRIVER']='offscreen'
+    done=subprocess.run(command,cwd=tmp_path,env=env,capture_output=True,text=True,timeout=60)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert 'Optional frustum, visibility, field UI, party rows, touch and ultrawide resize checks passed' in done.stdout
 
 
 def test_generated_sdl_audio_preserves_queued_sound_without_a_gpu(tmp_path,desktop_project):
