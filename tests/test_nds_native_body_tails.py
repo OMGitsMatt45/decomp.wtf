@@ -34,7 +34,7 @@ def program(tmp_path, mutation=None):
         halves(0xa0,0x2a00,0xd1ee,0x46c0,0x46c0)
     if 'inplace' in mode:
         halves(0x44,0x0040,0x4478,0x88c0,0x0400,0x1400,0x4487)
-    if 'taken' in mode:
+    if 'taken' in mode or 'signed' in mode:
         setup=bytes(raw[0x44:0x50]);raw[0x48:0x54]=setup
         halves(0x42,0xd901);call(0x44,0x66)
         halves(0x54,4,8,12,0x200a);branch(0x5c,0x80)
@@ -42,6 +42,14 @@ def program(tmp_path, mutation=None):
         halves(0x62,0x200c);branch(0x64,0x80)
         halves(0x66,0x200d);branch(0x68,0x80)
     if mode=='taken_inplace_bypass':branch(0x5c,0x4c)
+    if 'signed' in mode:
+        halves(0x42,0xdc10)  # signed key > 2 -> default
+        halves(0x44,0x2800,0xdb0e)  # signed key < 0 -> default
+        if mode=='signed_pair_ge':halves(0x40,0x2803,0xda10)
+        if mode=='signed_no_min':halves(0x44,0x46c0,0x46c0)
+        if mode=='signed_min_clobber':halves(0x44,0x2900)
+        if mode=='signed_lower_bypass':branch(0x5c,0x44)
+    if mode=='guard_branch_bypass':branch(0x58,0x42)
     if 'flags' in mode:
         # A flags-only write between the guard and key scaling is harmless.
         raw[0x4a:0x6c]=bytes(raw[0x48:0x6a])
@@ -57,11 +65,11 @@ def program(tmp_path, mutation=None):
                for offset,size in ((0,0x180),(0x180,0x60),(0x1c0,6),(0x200,6))]
     manifest=dict(cpu='arm9',arch='v5te',modules=[dict(name='arm9main',module_id=-1,
         base=base,image=str(image),functions=functions,labels=[],calls=[],
-        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x56,base+0x5c] if 'flags' in mode else [base+0x54,base+0x5a] if 'taken' in mode else [base+0x50,base+0x56]])])
+        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x56,base+0x5c] if 'flags' in mode else [base+0x54,base+0x5a] if 'taken' in mode or 'signed' in mode else [base+0x50,base+0x56]])])
     return manifest
 
 
-@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release','taken_inplace_bypass','inplace_clobber','taken_flags_clobber'])
+@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release','taken_inplace_bypass','inplace_clobber','taken_flags_clobber','signed_no_min','signed_min_clobber','signed_lower_bypass','guard_branch_bypass'])
 def test_unproven_body_does_not_hide_fallthrough(tmp_path,sdk,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
@@ -75,7 +83,7 @@ def test_long_loop_condition_has_no_returning_fallthrough(tmp_path,sdk):
     assert emitter.emit_manifest(manifest,output)['undefined_sites']==0
 
 
-@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace','taken_flags'])
+@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace','taken_flags','signed_pair','signed_pair_ge'])
 def test_long_body_branch_and_ordinary_call_execute_with_balanced_frames(tmp_path,sdk,hardware_project,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
@@ -100,6 +108,11 @@ int main(int argc,char** argv) {
   cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;cpu.r[4]=0x55aa;
   cpu.r[0]=value;dsr::dsr_call(&cpu,0x02014001);
   if(cpu.r[0]!=14+value || cpu.r[4]!=0x55aa || cpu.r[13]!=0x023ff000)return 1;
+ }
+ for(unsigned value:{0xffffffffu,0x80000000u,0x7fffffffu}) {
+  cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;cpu.r[4]=0x55aa;cpu.r[0]=value;
+  dsr::dsr_call(&cpu,0x02014001);
+  if(cpu.r[0]!=17 || cpu.r[4]!=0x55aa || cpu.r[13]!=0x023ff000)return 3;
  }
  cpu.r[0]=5;cpu.r[14]=0x02015000;dsr::dsr_call(&cpu,0x02014181);
  return cpu.r[0]==10 && cpu.r[4]==0x55aa && cpu.r[13]==0x023ff000 ? 0 : 2;
