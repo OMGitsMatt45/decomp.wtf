@@ -245,7 +245,11 @@ def install(emitter):
                     destination=self._branch_target(op)
                     if destination is None:return None
                     if self._inside(destination&~1):
-                        if released or epilogue(self.module,destination&~1,self.end) is None:return None
+                        # Follow nested long branches through loop conditions
+                        # and bodies. The same graph proof still rejects a
+                        # new frame, LR return or inconsistent release; a
+                        # straight-line epilogue is not required at each BL.
+                        if released:return None
                         follow(address,destination&~1,released)
                     else:follow(address,op.next_address,released)
                     continue
@@ -268,9 +272,9 @@ def install(emitter):
                 follow(address,op.next_address,released)
             for dispatch,guard in tables:
                 # No edge may enter between the range guard and its dispatch.
-                # The table recognizer also proves this straight-line segment
-                # leaves the guarded key unchanged. This excludes bypasses and
-                # loops which could invalidate the range on a later visit.
+                # The table recognizer preserves the bounded key until its
+                # verified address/offset construction. This excludes bypasses
+                # and loops which invalidate the range on a later visit.
                 address=guard['fallthrough'];previous=guard['address'];predecessors={}
                 while address<=dispatch:
                     if address not in self.insns:return None
