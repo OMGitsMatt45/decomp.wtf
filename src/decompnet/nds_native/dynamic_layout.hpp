@@ -70,7 +70,8 @@ inline bool full_window(const uint32_t* pixels) {
             const auto p=pixels[y*256+x];const int r=(p>>16)&255,g=(p>>8)&255,b=p&255;
             if(std::min({r,g,b})>180&&std::max({r,g,b})-std::min({r,g,b})<25)longest=std::max(longest,++run);else run=0;
         }
-        top|=y<32&&longest>=160;bottom|=y>=160&&longest>=160;
+        // Uniform white fades have no bounded window border.
+        top|=y<32&&longest>=160&&longest<252;bottom|=y>=160&&longest>=160&&longest<252;
     }
     return top&&bottom;
 }
