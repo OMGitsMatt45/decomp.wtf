@@ -116,7 +116,7 @@ struct Display {
         }
         const auto& gpu=session.machine().gpu2d();
         video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
-                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history,
+                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_scene_origins(),gpu.screen_bottom_scene_origins(),&history,
                         gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()});
     }
 };

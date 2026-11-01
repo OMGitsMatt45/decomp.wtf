@@ -56,6 +56,15 @@ int main() {
         two.io_write(0x04000020,256,16);two.io_write(0x04000026,256,16);
         for(int y=0;y<192;++y)two.render_line(y);
         require(two.screen_top_origins()[128+96*256]!=0,"actual Machine captures 3D origin");
+        const auto plain_pixel=two.screen_top()[128+96*256];
+        two.io_write(0x0400006c,(2u<<14)|8u,16);
+        for(int y=0;y<192;++y)two.render_line(y);
+        require(two.screen_top_origins()[128+96*256]==0,"legacy final-colour eligibility still rejects master brightness");
+        require(two.screen_top_scene_origins()[128+96*256]!=0,"premaster raster identity survives LCD darkening");
+        require(two.screen_top()[128+96*256]!=plain_pixel,"native master brightness is unchanged");
+        require(two.screen_top_brightness()[96]==(2u<<5|8u),"premaster identity has matching brightness metadata");
+        two.io_write(0x0400006c,0,16);
+        for(int y=0;y<192;++y)two.render_line(y);
         const auto address=0x06000000u+2*(128+96*256);
         dsr::wr16(&machine.cpu(dsr::CpuId::Arm9),address,machine.read16(dsr::CpuId::Arm9,address),0);
         for(int y=0;y<192;++y)two.render_line(y);
