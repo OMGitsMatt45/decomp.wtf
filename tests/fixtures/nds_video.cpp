@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0. Original GPU/presentation qualification.
 #include "video.hpp"
+#include "gpu3d_test.h"
 #include <dsr/gpu2d.h>
 #include <dsr/rt.h>
 #include <dsr/mem.h>
@@ -16,6 +17,36 @@ void send(dsr::Gpu3D& gpu,uint8_t command,std::initializer_list<uint32_t> words=
 void vertex(dsr::Gpu3D& gpu,int16_t x,int16_t y,int16_t z) {
     send(gpu,0x23,{uint32_t(uint16_t(x))|(uint32_t(uint16_t(y))<<16),uint16_t(z)});
 }
+void raster_edge_checks() {
+    for(unsigned control:{0u,16u,32u})for(bool capture:{false,true}) {
+        dsr::Gpu3D gpu;
+        gpu.set_capture_opaque_only(capture);
+        gpu.io_write(0x04000580,0xbfff0000,32);
+        gpu.io_write(0x04000354,0x7fff,32);
+        gpu.io_write(0x04000350,(63u<<24)|(31u<<16),32);
+        gpu.io_write(0x04000060,control,16);
+        for(unsigned i=0;i<8;++i)gpu.io_write(0x04000330+i*2,0x03e0,16);
+        send(gpu,0x10,{0});send(gpu,0x15);send(gpu,0x10,{1});send(gpu,0x15);
+        send(gpu,0x29,{0x001f00c0});send(gpu,0x20,{0x03e0});
+        // Original collinear Q4.12 vertices: the smaller quad meets the long
+        // sloped edge halfway. Projection to 28.4 makes their row endpoints
+        // differ by one pixel. This contains no game geometry or resources.
+        send(gpu,0x40,{1});
+        vertex(gpu,-896,-1065,0);vertex(gpu,2917,-1065,0);
+        vertex(gpu,2991,-2335,0);vertex(gpu,-896,-2335,0);send(gpu,0x41);
+        send(gpu,0x40,{1});
+        vertex(gpu,2917,-1065,0);vertex(gpu,3584,-1065,0);
+        vertex(gpu,3584,-1700,0);vertex(gpu,2954,-1700,0);send(gpu,0x41);
+        send(gpu,0x50);gpu.run(100000);gpu.vblank_start();gpu.render_start();
+        const auto sample=[&](unsigned x){return dsr::gpu3d_detail::Gpu3DTestAccess::framebuffer_pixel(gpu,132*256+x);};
+        require(control?sample(220)[1]<0xffffff:sample(220)[1]==0xffffff,
+            "AA/edge marking covers independently quantized sloped T-junctions");
+        require(((gpu.line(132)[219]>>6)&63)>32&&((gpu.line(132)[221]>>6)&63)>32,
+            "sloped-edge fix retains both neighboring interiors");
+        require(sample(239)[1]<0xffffff&&sample(240)[1]==0xffffff,
+            "vertical right boundary stays half-open");
+    }
+}
 void capture(const char* name,const video::Display& display) {
     const auto pixels=display.read_pixels();std::ofstream file(name,std::ios::binary);
     file<<"P6\n"<<display.width()<<' '<<display.height()<<"\n255\n";
@@ -23,6 +54,7 @@ void capture(const char* name,const video::Display& display) {
 }
 int main() {
     try {
+        raster_edge_checks();
         require(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS)==0,SDL_GetError());
         dsr::MachineConfig config;config.direct_boot=false;dsr::Machine machine(config);
         auto& gpu=machine.gpu3d();gpu.set_capture_opaque_only(true);
