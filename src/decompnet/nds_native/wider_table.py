@@ -80,7 +80,10 @@ def make(emitter):
             return None
 
         key_reg = None
-        for candidate in reversed(previous[:add_pos]):
+        key_pos = None
+        scale_ok = False
+        for pos in range(add_pos-1,-1,-1):
+            candidate = previous[pos]
             candidate_ops = candidate.operands
             if not candidate_ops or candidate_ops[0].type != ARM_OP_REG:
                 continue
@@ -92,12 +95,17 @@ def make(emitter):
                 rhs = operand_reg(candidate, candidate_ops[2])
                 if lhs == rhs:
                     key_reg = lhs
+                    key_pos, scale_ok = pos, candidate.condition == 14
             elif name == "add" and len(candidate_ops) == 2 and candidate_ops[1].type == ARM_OP_REG:
                 lhs = operand_reg(candidate, candidate_ops[1])
                 if lhs == base_reg:
                     key_reg = lhs
+                    key_pos, scale_ok = pos, candidate.condition == 14
             elif name == "lsl" and len(candidate_ops) >= 3 and candidate_ops[1].type == ARM_OP_REG:
                 key_reg = operand_reg(candidate, candidate_ops[1])
+                key_pos = pos
+                scale_ok = (candidate.condition == 14 and len(candidate_ops) == 3
+                    and candidate_ops[2].type == ARM_OP_IMM and int(candidate_ops[2].imm) == 1)
             break
 
         signed = load.mnemonic.split(".")[0] == "ldrsh"
@@ -184,26 +192,49 @@ def make(emitter):
         # Optional proof of a complete, explicitly guarded dispatch. Inferred
         # table length alone must not establish control-flow exhaustiveness.
         guard = None
-        if complete and requested_count == count and key_reg is not None:
+        def writes_register(op,register):
+            return any(reg_index(op,reg)==register for reg in op.detail.regs_access()[1])
+        # Validate the complete key -> doubled address -> halfword -> offset
+        # pipeline before allowing in-place updates of the original key.
+        pipeline = scale_ok and key_pos is not None and load.condition == 14
+        pipeline = pipeline and not any(writes_register(op,base_reg)
+            for op in previous[key_pos+1:add_pos]+previous[add_pos+1:load_pos])
+        sign_stage = 0
+        for op in previous[load_pos+1:]:
+            if not writes_register(op,target_reg):continue
+            args=op.operands;name=self._branch_name(op).rstrip('s')
+            same=(op.condition==14 and len(args)>=2 and args[0].type==ARM_OP_REG
+                and args[1].type==ARM_OP_REG and operand_reg(op,args[0])==target_reg
+                and operand_reg(op,args[1])==target_reg)
+            if same and name=='sxth' and sign_stage==0:sign_stage=2
+            elif (same and len(args)==3 and args[2].type==ARM_OP_IMM and int(args[2].imm)==16
+                    and ((name=='lsl' and sign_stage==0) or (name=='asr' and sign_stage==1))):sign_stage+=1
+            else:pipeline=False
+        pipeline = pipeline and sign_stage != 1
+        if complete and requested_count == count and key_reg is not None and pipeline:
             for pos in range(len(previous)-1):
                 compare, branch = previous[pos:pos+2]
                 args = compare.operands
                 if (self._branch_name(compare) != 'cmp' or compare.condition != 14 or len(args) != 2
                         or args[0].type != ARM_OP_REG or operand_reg(compare,args[0]) != key_reg
                         or args[1].type != ARM_OP_IMM or self._branch_name(branch) != 'b'
-                        or branch.condition not in (2,8) or compare.next_address != branch.address):continue
+                        or branch.condition not in (2,3,8,9) or compare.next_address != branch.address):continue
                 destination = self._branch_target(branch)
-                if (destination is None or destination < insn.next_address
-                        or int(args[1].imm)+(branch.condition==8) != count):continue
-                address = branch.next_address
-                for following in previous[pos+2:]+[insn]:
+                if destination is None or int(args[1].imm)+(branch.condition in (8,9)) != count:continue
+                if branch.condition in (2,8):
+                    if destination < insn.next_address:continue
+                    valid_start=branch.next_address
+                else:
+                    if not branch.next_address<=destination<=previous[key_pos].address:continue
+                    valid_start=destination
+                address = valid_start
+                for following in [op for op in previous[pos+2:] if op.address>=valid_start]+[insn]:
                     if following.address != address:break
                     if following is insn:
-                        guard = dict(address=branch.address,fallthrough=branch.next_address)
+                        guard = dict(address=branch.address,fallthrough=valid_start)
                         break
                     if self._branch_name(following) in ('b','bl','blx','bx'):break
-                    _, writes = following.detail.regs_access()
-                    if any(reg_index(following,reg)==key_reg for reg in writes):break
+                    if following.address<previous[key_pos].address and writes_register(following,key_reg):break
                     address = following.next_address
         return {"kind": "thumb_halfword", "index": target_reg, "base": branch_pc,
                 "cases": cases, "guard": guard}

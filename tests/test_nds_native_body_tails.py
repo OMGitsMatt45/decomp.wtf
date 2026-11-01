@@ -26,6 +26,23 @@ def program(tmp_path, mutation=None):
     # An ordinary internal callee owns a separate frame and must resume BL+4.
     halves(0x180,0xb510,0xb081);call(0x184,0x1c0);halves(0x188,0x3004,0xb001,0xbd10)
     halves(0x1c0,0xb500,0x3001,0xbd00);halves(0x200,0xb500,0x3001,0xbd00)
+    mode=mutation or ''
+    if 'long_loop' in mode:
+        # The compiler can use BL to reach a loop test which branches back
+        # into this same frame. It is not a returning internal subroutine.
+        call(0x86,0xa0);halves(0x8a,0x20ee);branch(0x8c,0xac)
+        halves(0xa0,0x2a00,0xd1ee,0x46c0,0x46c0)
+    if 'inplace' in mode:
+        halves(0x44,0x0040,0x4478,0x88c0,0x0400,0x1400,0x4487)
+    if 'taken' in mode:
+        setup=bytes(raw[0x44:0x50]);raw[0x48:0x54]=setup
+        halves(0x42,0xd901);call(0x44,0x66)
+        halves(0x54,4,8,12,0x200a);branch(0x5c,0x80)
+        halves(0x5e,0x200b);branch(0x60,0x80)
+        halves(0x62,0x200c);branch(0x64,0x80)
+        halves(0x66,0x200d);branch(0x68,0x80)
+    if mode=='taken_inplace_bypass':branch(0x5c,0x4c)
+    if mode=='inplace_clobber':halves(0x4a,0x43c0)
     if mutation=='unguarded':halves(0x40,0x46c0,0x46c0)
     if mutation=='guard_bypass':branch(0x58,0x44)
     if mutation=='wrong_release':halves(0xac,0xb002)
@@ -34,11 +51,11 @@ def program(tmp_path, mutation=None):
                for offset,size in ((0,0x180),(0x180,0x60),(0x1c0,6),(0x200,6))]
     manifest=dict(cpu='arm9',arch='v5te',modules=[dict(name='arm9main',module_id=-1,
         base=base,image=str(image),functions=functions,labels=[],calls=[],
-        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x50,base+0x56]])])
+        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x54,base+0x5a] if 'taken' in mode else [base+0x50,base+0x56]])])
     return manifest
 
 
-@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release'])
+@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release','taken_inplace_bypass','inplace_clobber'])
 def test_unproven_body_does_not_hide_fallthrough(tmp_path,sdk,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
@@ -46,8 +63,15 @@ def test_unproven_body_does_not_hide_fallthrough(tmp_path,sdk,mutation):
     assert emitter.emit_manifest(manifest,output)['undefined_sites']>0
 
 
-def test_long_body_branch_and_ordinary_call_execute_with_balanced_frames(tmp_path,sdk,hardware_project):
-    manifest=program(tmp_path);_,emitter,_=nds_native._sdk()
+def test_long_loop_condition_has_no_returning_fallthrough(tmp_path,sdk):
+    manifest=program(tmp_path,'long_loop');_,emitter,_=nds_native._sdk()
+    output=tmp_path/'generated';output.mkdir()
+    assert emitter.emit_manifest(manifest,output)['undefined_sites']==0
+
+
+@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace'])
+def test_long_body_branch_and_ordinary_call_execute_with_balanced_frames(tmp_path,sdk,hardware_project,mutation):
+    manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
     result=emitter.emit_manifest(manifest,output)
     assert result['undefined_sites']==0
