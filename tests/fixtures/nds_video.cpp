@@ -230,6 +230,21 @@ int main() {
             "two LCDs use their own archived captured raster, without live BG0");
         require(display.captured_pixels()>90000,"captured replay reports active pixels for the current frame");
         require(pixels[305+275*960]==0xffffff00,"captured-3D replay keeps original UI pixels");
+        std::array<uint8_t,192> darkening,brightening;
+        darkening.fill((2u<<5)|8u);brightening.fill((1u<<5)|8u);
+        archived.top_brightness=darkening.data();archived.bottom_brightness=brightening.data();
+        display.present(archived);pixels=display.read_pixels();
+        auto dark=pixels[480+135*960],bright=pixels[480+405*960];
+        require((dark&0xffff00ff)==0xff000000&&((dark>>8)&255)>=127&&((dark>>8)&255)<=128,
+            "captured scene receives native LCD master darkening");
+        require((bright&0xffff0000)==0xffff0000&&(bright&255)>=127&&(bright&255)<=128&&((bright>>8)&255)>=127&&((bright>>8)&255)<=128,
+            "other LCD independently receives native master brightening");
+        require(pixels[305+275*960]==0xffffff00,"native UI already has brightness applied exactly once");
+        std::fill(darkening.begin(),darkening.begin()+96,0);
+        display.present(archived);pixels=display.read_pixels();
+        require(pixels[480+67*960]==0xff00ff00&&((pixels[480+203*960]>>8)&255)<=128,
+            "captured LCD brightness follows destination scanlines");
+        archived.top_brightness=nullptr;archived.bottom_brightness=nullptr;
         // Coordinates must be applied, rather than stretching the latest scene.
         auto& gradient=history.back();
         for(unsigned i=0;i<64;++i){gradient.textures[0].rgba[i*4]=(i%8)<4?255:0;gradient.textures[0].rgba[i*4+1]=(i%8)<4?0:255;}
