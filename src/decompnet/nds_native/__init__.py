@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -453,6 +453,7 @@ def generate(project,root):
                                ('audio_queue.hpp','native/audio_queue.hpp'),
                                ('cheats.hpp','native/cheats.hpp'),('settings.hpp','native/settings.hpp'),
                                ('input.hpp','native/input.hpp'),
+                               ('project_hooks.hpp','native/project_hooks.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')
@@ -468,6 +469,10 @@ endif()
 file(GLOB GAME_SOURCES CONFIGURE_DEPENDS game/arm9/*.cpp game/arm7/*.cpp)
 add_executable(ds_pc ${GAME_SOURCES} native/main.cpp)
 target_include_directories(ds_pc PRIVATE native game/arm9 game/arm7)
+file(GLOB PROJECT_FEATURES CONFIGURE_DEPENDS native/project_features.hpp)
+if(PROJECT_FEATURES)
+  set_property(SOURCE native/main.cpp APPEND PROPERTY COMPILE_DEFINITIONS NDS_PROJECT_FEATURES)
+endif()
 if(MSVC)
   target_compile_options(ds_pc PRIVATE /bigobj /O2)
 else()
