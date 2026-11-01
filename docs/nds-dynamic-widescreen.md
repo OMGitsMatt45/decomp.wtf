@@ -19,8 +19,15 @@ the drawable aspect, up to 4:1. It renders the world at the existing default
 backgrounds fill the canvas; orthographic UI is composed separately. Windows
 move right, full-width dialogue is centered below, the other LCD is inset at
 the upper left, and detected native party frames sit at the lower left. Native
-2D pixels retain nearest filtering. Framed standalone pages stay 4:3. Movies,
-portrait windows and unsupported capture compositions keep both complete LCDs.
+2D pixels retain nearest filtering. Framed standalone pages stay 4:3, including
+enhanced captured 3D previews. Two active menu/movie screens are shown side by
+side in landscape, at 4:3 each. Portrait windows retain the stacked pair.
+
+The initial window opens at 16:9. A startup picture can occupy the full height
+with a sparse second-LCD Start prompt overlaid below. Its original button pixels
+and lower-LCD touch coordinates are retained. Movies keep their source detail
+and aspect rather than being stretched. Battle messages move clear of party
+panels; split far-depth sky gradients remain on the world canvas.
 
 Touch regions use inverse transforms to the original lower-LCD coordinates.
 The upper LCD blocks touch-through. Enlarging the field does not add an input

@@ -263,16 +263,25 @@ Rect fit(float width,float height,float aspect) {
 }
 using layout_detail::Box;
 Box polygon_box(const Scene& scene,const dsr::Gpu3DPolygon& p) {
+    if(p.count<3||p.count>4)return {};
     float left=256,top=192,right=0,bottom=0;
+    const unsigned vx=p.viewport&255,vy=(p.viewport>>8)&255;
+    const float vw=uint8_t((p.viewport>>16)-vx)+1,vh=uint8_t((p.viewport>>24)-vy)+1;
+    const int base_y=vy>191?int(vy)-255:int(vy);
     for(unsigned i=0;i<p.count;++i){if(p.index[i]>=scene.vertices.size())return {};const auto& v=scene.vertices[p.index[i]];
-        if(v.clip[3]<=0)return {};const float x=(v.clip[0]/v.clip[3]+1)*128,y=(1-v.clip[1]/v.clip[3])*96;
+        if(v.clip[3]<=0)return {};const float x=vx+(v.clip[0]/v.clip[3]+1)*vw/2,y=base_y+(1-v.clip[1]/v.clip[3])*vh/2;
         left=std::min(left,x);right=std::max(right,x);top=std::min(top,y);bottom=std::max(bottom,y);}
     const int x=int(std::floor(std::clamp(left,0.f,256.f))),y=int(std::floor(std::clamp(top,0.f,192.f)));
     return {x,y,int(std::ceil(std::clamp(right,float(x),256.f)))-x,int(std::ceil(std::clamp(bottom,float(y),192.f)))-y};
 }
 bool world_polygon(const dsr::Gpu3DPolygon& p){return p.perspective&&p.viewport==0xbfff0000;}
 bool background_polygon(const Scene& scene,const dsr::Gpu3DPolygon& p) {
-    if(p.perspective)return false;const auto b=polygon_box(scene,p);return b.w>=254&&b.h>=190;
+    if(p.perspective||p.count<3||p.count>4||p.viewport!=0xbfff0000)return false;const auto b=polygon_box(scene,p);
+    if(b.w>=254&&b.h>=190)return true;
+    // A sky can be several full-width gradient strips rather than one quad.
+    // Submitted projection and far depth distinguish these from dialogue frames.
+    return b.w>=254&&std::all_of(p.index.begin(),p.index.begin()+p.count,[&](unsigned i){
+        if(i>=scene.vertices.size())return false;const auto& v=scene.vertices[i];return v.clip[3]>0&&v.clip[2]/v.clip[3]>=.99f;});
 }
 }
 
@@ -309,6 +318,10 @@ struct Display::Impl {
             if(SDL_GetDisplayUsableBounds(display_index,&usable)!=0)
                 check(SDL_GetDisplayBounds(display_index,&usable)==0,SDL_GetError());
             options.width=std::max(1,usable.w*4/5);options.height=std::max(1,usable.h*4/5);
+            if(options.dynamic_widescreen) {
+                const int unit=std::max(1,std::min(options.width/16,options.height/9));
+                options.width=unit*16;options.height=unit*9;
+            }
         }
         if(options.renderer!="software") {
             try {create_gl();}
@@ -607,6 +620,8 @@ struct Display::Impl {
             if(!menu_bottom&&!menu_top)return false;
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(menu_bottom?frame.bottom:frame.top,{0,0,256,192},destination,menu_bottom);
+            const auto menu_tags=menu_bottom?frame.bottom_origins:frame.top_origins;
+            for(const auto& s:*frame.history)captured(s,menu_tags,destination);
             const float margin=std::max(8.f,height/64.f),available=destination.x-2*margin;
             if(available>32){const float w=std::min(available,width*.24f);native_pane(menu_bottom?frame.top:frame.bottom,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},!menu_bottom);}
             return true;
@@ -630,6 +645,7 @@ struct Display::Impl {
         if(opaque>256*192*9/10) {
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(primary,{0,0,256,192},destination,!on_top);
+            for(const auto& s:*frame.history)captured(s,tags,destination);
             const float available=destination.x-2*margin;
             if(available>32){const float w=std::min(available,width*.24f);native_pane(secondary,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},on_top);}
             return true;
@@ -665,14 +681,60 @@ struct Display::Impl {
             for(const auto b:boxes) {
                 const bool dialogue=b.w>=190&&b.y+b.h>=155;
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
-                const Rect destination{dialogue?(width-w)/2:width-margin-w,
+                Rect destination{dialogue?(width-w)/2:width-margin-w,
                     dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
+                if(dialogue&&party.h) {
+                    const float party_right=margin+party.w*ui_scale,party_top=margin+party.h*ui_scale;
+                    if(destination.x<party_right+margin&&destination.y<party_top+margin) {
+                        if(party_right+2*margin+w<=width)destination.x=party_right+margin;
+                        else destination.y=party_top+margin;
+                    }
+                }
                 blit(overlay.result,b,destination,true,false,brightness[0]);
                 gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,256,192,foreground.data(),GL_BGRA);
                 blit(screen_texture,b,destination,false,true,brightness[0]);
                 touch_regions.push_back({destination,b,!on_top});
             }
         }
+        return true;
+    }
+    bool wide_screens(const Frame& frame) {
+        if(!options.dynamic_widescreen||width<height)return false;
+        // Startup often puts a movie on one LCD and a tiny Start prompt on a
+        // black second LCD. Enlarge the picture and place its controls below;
+        // preserve every control pixel, including black glyphs inside buttons.
+        std::array<uint64_t,256*192> content{};
+        auto sparse=[&](const uint32_t* pixels,Box& box){
+            unsigned count=0;
+            for(size_t i=0;i<content.size();++i){const auto p=pixels[i];const bool active=((p>>16)&255)>8||((p>>8)&255)>8||(p&255)>8;
+                content[i]=(1ull<<32)|(active?0xff000000ull:0);count+=active;}
+            const auto boxes=layout_detail::foreground_boxes(content.data());box={};
+            for(const auto b:boxes)box=box.w?layout_detail::unite(box,b):b;
+            return count<256*192/8&&box.w*box.h<256*192/4;
+        };
+        Box bottom_box,top_box;
+        const bool bottom_sparse=sparse(frame.bottom,bottom_box),top_sparse=sparse(frame.top,top_box);
+        if(bottom_sparse!=top_sparse) {
+            const bool picture_top=bottom_sparse;
+            const auto picture=picture_top?frame.top:frame.bottom;
+            const auto controls=picture_top?frame.bottom:frame.top;
+            const auto box=picture_top?bottom_box:top_box;
+            const auto destination=fit(float(width),float(height),4.f/3);
+            layout_name="startup";native_pane(picture,{0,0,256,192},destination,true);
+            const auto tags=picture_top?frame.top_origins:frame.bottom_origins;
+            if(frame.history)for(const auto& scene:*frame.history)captured(scene,tags,destination);
+            if(box.w&&box.h) {
+                const float scale=height/384.f,margin=std::max(8.f,height/64.f);
+                native_pane(controls,box,{(width-box.w*scale)/2,margin+(192-box.y-box.h)*scale,box.w*scale,box.h*scale},picture_top);
+            }
+            return true;
+        }
+        // When both pictures matter, show both at their original 4:3 ratio in
+        // a landscape pair. This includes synchronized two-stream movies.
+        layout_name="dual-wide";const auto total=fit(float(width),float(height),8.f/3);
+        const Rect top{total.x,total.y,total.w/2,total.h},bottom{total.x+total.w/2,total.y,total.w/2,total.h};
+        native_pane(frame.top,{0,0,256,192},top,false);native_pane(frame.bottom,{0,0,256,192},bottom,true);
+        if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
         return true;
     }
     void present(const Frame& frame) {
@@ -706,7 +768,7 @@ struct Display::Impl {
                 it=captured_targets.erase(it);
             }else ++it;
         }
-        if(!dynamic(frame)) {
+        if(!dynamic(frame)&&!wide_screens(frame)) {
             const auto total=fit(float(width),float(height),256.0F/384);
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
