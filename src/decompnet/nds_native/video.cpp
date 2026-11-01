@@ -707,16 +707,23 @@ struct Display::Impl {
             const auto box=polygon_box(*scene,p);if(box.w&&box.h)boxes.push_back(box);
         }
         layout_detail::group(boxes);
+        if(party.h)layout_detail::group_battle_messages(boxes);
         if(!boxes.empty()) {
             const int ui_resolution=std::min(maximum_scale,std::max(2,int(std::ceil(ui_scale*1.5f))));
             auto& overlay=captured_target(*scene,256*ui_resolution,192*ui_resolution,true,2);
             std::array<uint32_t,256*192> foreground{};
             for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
             for(const auto b:boxes) {
-                const bool dialogue=b.w>=190&&b.y+b.h>=155;
+                const bool dialogue=(b.w>=190&&b.y+b.h>=155)||(party.h&&b.y>=128);
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
                 Rect destination{dialogue?(width-w)/2:width-margin-w,
                     dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
+                // Small battle markers belong to the projected world (for
+                // example an enemy-target pointer), rather than a HUD corner.
+                if(party.h&&!dialogue&&b.w<=32&&b.h<=32) {
+                    const float world_ui=height/192.f;
+                    destination={width/2.f+(b.x-128)*world_ui,(192-b.y-b.h)*world_ui,b.w*world_ui,b.h*world_ui};
+                }
                 if(dialogue&&party.h) {
                     const float party_right=margin+party.w*ui_scale,party_top=margin+party.h*ui_scale;
                     if(destination.x<party_right+margin&&destination.y<party_top+margin) {
@@ -748,9 +755,10 @@ struct Display::Impl {
         };
         Box bottom_box,top_box;
         const bool bottom_sparse=sparse(frame.bottom,bottom_box),top_sparse=sparse(frame.top,top_box);
-        const auto control_box=bottom_sparse?bottom_box:top_box;
-        if(bottom_sparse!=top_sparse&&control_box.w&&control_box.y>=128&&control_box.h<=64) {
-            const bool picture_top=bottom_sparse;
+        const bool bottom_controls=bottom_sparse&&bottom_box.w&&bottom_box.y>=128&&bottom_box.h<=64;
+        const bool top_controls=top_sparse&&top_box.w&&top_box.y>=128&&top_box.h<=64;
+        if(bottom_controls!=top_controls&&(bottom_controls?top_box.w:bottom_box.w)) {
+            const bool picture_top=bottom_controls;
             const auto picture=picture_top?frame.top:frame.bottom;
             const auto controls=picture_top?frame.bottom:frame.top;
             const auto box=picture_top?bottom_box:top_box;
@@ -766,7 +774,21 @@ struct Display::Impl {
         }
         const bool visible_3d=(frame.top_origins&&std::any_of(frame.top_origins,frame.top_origins+256*192,[](uint64_t p){return p!=0;}))||
             (frame.bottom_origins&&std::any_of(frame.bottom_origins,frame.bottom_origins+256*192,[](uint64_t p){return p!=0;}));
-        if(!visible_3d) {
+        uint32_t top_background=0,bottom_background=0;unsigned top_ink=0,bottom_ink=0;
+        const bool credits=!visible_3d&&layout_detail::logo_background(frame.top,top_background,top_ink)&&
+            layout_detail::logo_background(frame.bottom,bottom_background,bottom_ink)&&top_background==bottom_background;
+        // Low-color logo strokes can resemble a neutral menu frame. A shared
+        // solid backdrop and sparse logo art take precedence over frame hints.
+        const bool menu_page=!visible_3d&&!credits&&(layout_detail::has_window(frame.top)||layout_detail::has_window(frame.bottom));
+        if(credits) {
+            gl->ClearColor(float((top_background>>16)&255)/255,float((top_background>>8)&255)/255,float(top_background&255)/255,1);
+            gl->Clear(GL_COLOR_BUFFER_BIT);
+            if(!top_ink||!bottom_ink) {
+                layout_name="credits-wide";const auto destination=fit(float(width),float(height),4.f/3);
+                native_pane(top_ink?frame.top:frame.bottom,{0,0,256,192},destination,!top_ink);return true;
+            }
+        }
+        if(!visible_3d&&!menu_page&&!credits) {
             // Synchronized movie streams can form one continuous vertical
             // composition. Preserve their original relationship and timing.
             layout_name="movie";const auto total=fit(float(width),float(height),2.f/3);
@@ -775,7 +797,7 @@ struct Display::Impl {
             return true;
         }
         // Two active menu screens retain their original 4:3 ratio in landscape.
-        layout_name="dual-wide";const auto total=fit(float(width),float(height),8.f/3);
+        layout_name=menu_page?"menu-wide":credits?"credits-wide":"dual-wide";const auto total=fit(float(width),float(height),8.f/3);
         const Rect top{total.x,total.y,total.w/2,total.h},bottom{total.x+total.w/2,total.y,total.w/2,total.h};
         native_pane(frame.top,{0,0,256,192},top,false);native_pane(frame.bottom,{0,0,256,192},bottom,true);
         if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,top,true,frame.top_brightness);captured(scene,frame.bottom_origins,bottom,true,frame.bottom_brightness);}

@@ -67,6 +67,12 @@ int main() {
         require(!display.touch(80,60,x,y),"map blocks touch-through to the field");
         require(display.touch(480,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"world touch keeps the centered native coordinate frame");
         // One through four party members, including short white bottom borders.
+        for(int count=1;count<=4;++count)for(int acting=0;acting<count;++acting) {
+            bottom.fill(0xff000000);int end=0;
+            for(int i=0;i<count;++i){const int h=i==acting?70:38;panel(bottom,end,end+h-1);end+=h+2;}
+            const auto band=video::layout_detail::party_band(bottom.data());
+            require(band.y==0&&band.y+band.h>=end-2,"expanded acting member and every command row remain complete");
+        }
         for(int count=1;count<=4;++count){bottom.fill(0xff000000);for(int i=0;i<count;++i)panel(bottom,12+i*43,49+i*43);
             auto band=video::layout_detail::party_band(bottom.data());require(band.h>=(count-1)*43+38,"all party rows remain ordered and complete");}
         foreground.fill(1ull<<32);frame.top_origins=tags.data();frame.bottom_origins=none.data();
@@ -76,6 +82,24 @@ int main() {
         require(!display.touch(800,270,x,y),"battle world cannot masquerade as lower-LCD touch");
         require(display.touch(150,400,x,y)&&x>=0&&x<256&&y>=0&&y<192,"battle panels retain lower-screen touch");
         require(pixels[350+450*960]==0xff505050&&pixels[400+450*960]==0xff00ff00,"battle messages clear the party panels");
+        bottom.fill(0xff000000);panel(bottom,0,69);panel(bottom,72,109);
+        for(int y=112;y<=180;++y)for(int x=148;x<=245;++x)
+            bottom[y*256+x]=y==112||y==180||x==148||x==245?0xffffffff:0xff505050;
+        for(int y=10;y<20;++y)for(int x=80;x<90;++x)bottom[y*256+x]=0xffff0000;
+        for(int y=168;y<178;++y)for(int x=200;x<210;++x)bottom[y*256+x]=0xffff00ff;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[128+296*960]==0xffff0000&&pixels[297+518*960]==0xffff00ff,"expanded commands and lower nested target list render without clipping");
+        require(display.touch(128,296,x,y)&&std::abs(x-85)<=1&&std::abs(y-15)<=1,"expanded command touch remains native");
+        require(display.touch(297,518,x,y)&&std::abs(x-205)<=1&&std::abs(y-173)<=1,"nested target-list touch remains native");
+        foreground.fill(1ull<<32);
+        for(int y=156;y<166;++y){for(int x=20;x<60;++x)foreground[y*256+x]=(1ull<<32)|0xffff0000;
+            for(int x=130;x<190;++x)foreground[y*256+x]=(1ull<<32)|0xffffff00;}
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[405+488*960]==0xffff0000&&pixels[574+488*960]==0xffffff00,"unframed battle words retain their spacing and clear expanded party panels");
+        foreground.fill(1ull<<32);
+        for(int y=80;y<92;++y)for(int x=32;x<52;++x)foreground[y*256+x]=(1ull<<32)|0xffff00ff;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[238+242*960]==0xffff00ff,"enemy target marker stays at its world projection instead of a HUD corner");
         auto* window=SDL_GetWindowFromID(1);require(window,"test window");SDL_SetWindowSize(window,1280,540);SDL_PumpEvents();
         display.present(frame);require(display.width()==1280&&display.world_aspect()>2.3f,"live ultrawide resize updates the camera frustum");
         // One-screen cinematics keep backdrop and narration in one native
@@ -118,6 +142,20 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="startup"&&pixels[640+400*1280]==0xff0000ff,"startup picture uses full height before gameplay");
         require(pixels[640+484*1280]==0xffff8000&&display.touch(640,484,x,y)&&x>=124&&x<=126&&y>=157&&y<=159,"startup controls retain source pixels and inverse touch");
+        top.fill(0xff0000ff);bottom.fill(0xff004000);
+        for(int y=8;y<=46;++y)for(int x=9;x<=228;++x)
+            bottom[y*256+x]=y==8||y==46||x==9||x==228?0xffa4a4a4:0xff202020;
+        require(video::layout_detail::has_window(bottom.data()),"partial-height start-menu frame is recognized");
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="menu-wide"&&pixels[320+270*1280]==0xff0000ff,"2D start menu uses a landscape composition instead of movie stacking");
+        require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"2D landscape menu preserves lower-screen touch");
+        top.fill(0xffffffff);bottom.fill(0xffffffff);
+        for(int y=70;y<110;++y)for(int x=75;x<180;++x)top[y*256+x]=0xffa0a0a0;
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="credits-wide"&&pixels[80+270*1280]==0xffffffff&&pixels[640+270*1280]==0xffa0a0a0,"single logo uses the full-height wide canvas with matching backdrop");
+        for(int y=60;y<110;++y)for(int x=90;x<170;++x)bottom[y*256+x]=0xffff0000;
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="credits-wide"&&pixels[320+270*1280]==0xffa0a0a0&&pixels[960+270*1280]==0xffff0000,"independent paired logos keep proportions in landscape");
         bottom.fill(0xffffffff);require(!video::layout_detail::full_window(bottom.data()),"uniform white fades are not menu frames");
         std::cout<<"Optional frustum, visibility, field UI, party rows, touch and ultrawide resize checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
