@@ -42,6 +42,12 @@ def program(tmp_path, mutation=None):
         halves(0x62,0x200c);branch(0x64,0x80)
         halves(0x66,0x200d);branch(0x68,0x80)
     if mode=='taken_inplace_bypass':branch(0x5c,0x4c)
+    if 'flags' in mode:
+        # A flags-only write between the guard and key scaling is harmless.
+        raw[0x4a:0x6c]=bytes(raw[0x48:0x6a])
+        halves(0x48,0x0020 if 'clobber' in mode else 0x2c00)
+        call(0x44,0x68)
+        for site in (0x5e,0x62,0x66,0x6a):branch(site,0x80)
     if mode=='inplace_clobber':halves(0x4a,0x43c0)
     if mutation=='unguarded':halves(0x40,0x46c0,0x46c0)
     if mutation=='guard_bypass':branch(0x58,0x44)
@@ -51,11 +57,11 @@ def program(tmp_path, mutation=None):
                for offset,size in ((0,0x180),(0x180,0x60),(0x1c0,6),(0x200,6))]
     manifest=dict(cpu='arm9',arch='v5te',modules=[dict(name='arm9main',module_id=-1,
         base=base,image=str(image),functions=functions,labels=[],calls=[],
-        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x54,base+0x5a] if 'taken' in mode else [base+0x50,base+0x56]])])
+        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x56,base+0x5c] if 'flags' in mode else [base+0x54,base+0x5a] if 'taken' in mode else [base+0x50,base+0x56]])])
     return manifest
 
 
-@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release','taken_inplace_bypass','inplace_clobber'])
+@pytest.mark.parametrize('mutation',['unguarded','guard_bypass','wrong_release','taken_inplace_bypass','inplace_clobber','taken_flags_clobber'])
 def test_unproven_body_does_not_hide_fallthrough(tmp_path,sdk,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
@@ -69,7 +75,7 @@ def test_long_loop_condition_has_no_returning_fallthrough(tmp_path,sdk):
     assert emitter.emit_manifest(manifest,output)['undefined_sites']==0
 
 
-@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace'])
+@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace','taken_flags'])
 def test_long_body_branch_and_ordinary_call_execute_with_balanced_frames(tmp_path,sdk,hardware_project,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
