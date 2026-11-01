@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
@@ -35,6 +36,15 @@ int main() {
         auto scene=video::Scene::capture(machine);
         require(scene.vertices.size()==4&&scene.polygons.size()==1,"capture original submitted quad");
         require(scene.vertices[0].clip[0]<-1&&scene.safe[128+96*256],"capture preclip geometry and opaque eligibility");
+        gpu.io_write(0x04000060,0xa0,16);gpu.io_write(0x04000358,0x001f001f,32);
+        gpu.io_write(0x0400035c,1234,32);gpu.io_write(0x04000330,0x03e0001f,32);gpu.io_write(0x04000360,0x7f7f7f7f,32);
+        auto captured_effects=video::Scene::capture(machine);
+        require(captured_effects.supported&&captured_effects.fog_color==0x001f001f&&captured_effects.fog_offset==1234&&
+            captured_effects.edge[0]==31&&captured_effects.edge[1]==0x03e0&&captured_effects.fog_density[0]==127,
+            "capture owns fog/edge state without disabling the enhanced scene");
+        gpu.io_write(0x04000060,0x4000,16);
+        require(!video::Scene::capture(machine).supported,"clear-image sources retain the complete native frame");
+        gpu.io_write(0x04000060,0,16);
         const auto raster_serial=gpu.render_serial();gpu.render_start();
         require(gpu.render_serial()==raster_serial+1&&gpu.geometry_view().generation==scene.generation,
             "completed rasters have distinct identities without geometry swaps");
@@ -110,6 +120,69 @@ int main() {
         auto far_plane=scene;for(auto& v:far_plane.vertices)v.clip[2]=v.clip[3];
         frame.scene=&far_plane;display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xff00ff00,"DS far-plane geometry remains in front of maximum clear depth");
+        // Default enhancement renders effects, rather than dropping an entire
+        // scene back to the DS raster. Each case checks final drawable pixels.
+        {
+            auto fogged=scene;fogged.control=1u<<7;fogged.fog_density.fill(127);
+            fogged.fog_color=(31u<<16)|31;fogged.polygons[0].attr|=1u<<15;
+            frame.scene=&fogged;display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xffff0000,"enabled polygon fog reaches the fog colour");
+            fogged.control|=1u<<6;display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xff00ff00,"alpha-only fog preserves RGB");
+            fogged.control&=~(1u<<6);fogged.polygons[0].attr&=~(1u<<15);display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xff00ff00,"polygons without fog stay unfogged");
+
+            auto layers=scene;layers.control=8;layers.vertices.resize(12);layers.polygons.resize(3);
+            for(unsigned p=0;p<3;++p){layers.polygons[p]=scene.polygons[0];layers.polygons[p].attr=(uint32_t(p==0?31:15)<<16)|0xc0|(uint32_t(p==0?1:2)<<24);
+                for(unsigned v=0;v<4;++v){layers.polygons[p].index[v]=p*4+v;layers.vertices[p*4+v]=scene.vertices[v];
+                    layers.vertices[p*4+v].clip[2]=-float(p)*.25f;
+                    layers.vertices[p*4+v].color=p==0?std::array<float,3>{0,0,63}:p==1?std::array<float,3>{63,0,0}:std::array<float,3>{0,63,0};}}
+            layers.order={0,1,2};frame.scene=&layers;display.present(frame);pixels=display.read_pixels();
+            auto c=pixels[480+405*960];
+            require(((c>>16)&255)>=125&&((c>>16)&255)<=130&&(c&255)>=125&&(c&255)<=130&&((c>>8)&255)==0,
+                "translucent layers blend once per polygon ID and preserve opaque alpha");
+            layers.control|=1u<<7;layers.fog_color=(31u<<16)|31;layers.fog_density.fill(127);layers.polygons[0].attr|=1u<<15;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==c,"unfogged translucent foreground clears destination fog");
+            layers.polygons[1].attr|=1u<<15;display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xffff0000,"fog applies once after translucent composition");
+
+            layers.control=8;layers.order={0,1};layers.polygons[1].attr=(31u<<16)|0xc0|(2u<<24)|(1u<<14);
+            for(unsigned v=4;v<8;++v)layers.vertices[v].clip[2]=0;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xffff0000,"depth-equal overlays pass at the destination depth");
+            for(unsigned v=4;v<8;++v)layers.vertices[v].clip[2]=.1f;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xff0000ff,"depth-equal overlays reject a different depth");
+
+            layers.order={0,1,2};layers.polygons[1].attr=(31u<<16)|0xf0;layers.polygons[2].attr=(15u<<16)|0xf0|(2u<<24);
+            for(unsigned v=4;v<8;++v)layers.vertices[v].clip[2]=.5f;
+            for(unsigned v=8;v<12;++v){layers.vertices[v].clip[2]=-.5f;layers.vertices[v].color={0,0,0};}
+            display.present(frame);pixels=display.read_pixels();c=pixels[480+405*960];
+            require((c&255)>=125&&(c&255)<=130&&(c&0xffff00)==0,"shadow masks darken only marked receiver pixels");
+            layers.polygons[2].attr=(layers.polygons[2].attr&0x00ffffff)|(1u<<24);
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+405*960]==0xff0000ff,"shadow volumes exclude their own opaque polygon ID");
+
+            auto outlined=scene;outlined.control=1u<<5;outlined.clear_color=(31u<<16)|(31u<<10);outlined.edge[1]=31;
+            outlined.polygons[0].attr|=8u<<24;
+            for(auto& v:outlined.vertices){v.clip[0]=std::copysign(.5f,v.clip[0]);v.clip[1]=std::copysign(.5f,v.clip[1]);}
+            frame.scene=&outlined;display.present(frame);pixels=display.read_pixels();
+            const auto red_edges=std::count_if(pixels.begin(),pixels.end(),[](uint32_t p){return ((p>>16)&255)>100&&((p>>8)&255)<20&&(p&255)<155;});
+            require(red_edges>30&&pixels[480+405*960]==0xff00ff00,
+                "high-resolution ID/depth edge marking preserves interior colour");
+            require(display.render_scale()>=2,"enhancement and supersampling are enabled without a switch");
+
+            auto triangle=outlined;triangle.control=0;triangle.serial=19;triangle.polygons[0].count=3;
+            std::deque<video::Scene> antialias_history{triangle};std::array<uint64_t,256*192> tags{};
+            for(unsigned i=0;i<tags.size();++i)tags[i]=(19ull<<16)|(i+1);
+            video::Frame antialiased{nullptr,top.data(),bottom.data(),mask.data(),false,tags.data(),tags.data(),&antialias_history};
+            display.present(antialiased);pixels=display.read_pixels();unsigned intermediate=0;
+            for(auto p:pixels)if(((p>>8)&255)>5&&((p>>8)&255)<250&&(p&255)>5&&(p&255)<250)++intermediate;
+            capture("enhanced.ppm",display);
+            require(intermediate>20,"supersampled geometry produces subpixel edge coverage");
+            std::cout<<"Enhanced fog, outlines, shadow volumes, translucency, depth-equal and antialiasing checks passed\n";
+        }
         // A conservative unsupported effect keeps the complete software frame.
         textured.supported=false;frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xff0000ff,"unsupported effects retain complete native output");

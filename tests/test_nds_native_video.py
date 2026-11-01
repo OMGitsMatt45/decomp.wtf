@@ -34,6 +34,9 @@ if(NDS_WITH_SDL)
   target_compile_definitions(video_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(video_checks PRIVATE ds_runtime SDL2::SDL2-static)
   if(MSVC)
+    target_link_options(video_checks PRIVATE /STACK:8388608)
+  endif()
+  if(MSVC)
     # The original GPU fixture keeps several LCD/tag arrays on its stack.
     target_link_options(video_checks PRIVATE /STACK:8388608)
   endif()
@@ -130,10 +133,11 @@ def test_generated_opengl_renderer_preserves_both_lcds_and_ui(tmp_path,desktop_p
     # Xvfb route also exercises a normal window-system GL context through Mesa.
     env={**os.environ,'SDL_AUDIODRIVER':'dummy'}
     if shutil.which('xvfb-run') and os.name!='nt':command=['xvfb-run','-a',*command]
-    else:env['SDL_VIDEODRIVER']='offscreen'
+    elif os.name!='nt':env['SDL_VIDEODRIVER']='offscreen'
     done=subprocess.run(command,cwd=tmp_path,env=env,capture_output=True,text=True,timeout=60)
     assert done.returncode==0,done.stdout+done.stderr
     assert 'GPU geometry, two LCDs' in done.stdout
+    assert 'Enhanced fog, outlines, shadow volumes, translucency, depth-equal and antialiasing checks passed' in done.stdout
     assert 'Captured VRAM raster history, source mapping, UI and resize checks passed' in done.stdout
     assert 'Software full-window readback checks passed' in done.stdout
     for name in ('dual',):
@@ -158,6 +162,12 @@ def test_generated_opengl_renderer_preserves_both_lcds_and_ui(tmp_path,desktop_p
     result=json.loads(records[0])
     assert result['video']['captured_pixels']>0
     assert result['video']['renderer']=='opengl' and result['video']['polygons_drawn']>0
-    assert result['video']['width']==960 and result['video']['height']==540
+    assert result['video']['enhanced'] and 2<=result['video']['render_scale']<=12
+    width,height=result['video']['width'],result['video']['height']
+    if os.name=='nt':
+        # The generated host opts into Windows per-monitor DPI. Its drawable
+        # can be larger than the requested logical window (e.g. 1440x810).
+        assert width>=960 and height>=540 and abs(width*540-height*960)<=960
+    else:assert (width,height)==(960,540)
     assert all(result[key]==reference[key] for key in ('frames','ticks','top_hash','bottom_hash','cpu_pc','unimplemented_io'))
-    assert (tmp_path/'guest/display.ppm').read_bytes().startswith(b'P6\n960 540\n255\n')
+    assert (tmp_path/'guest/display.ppm').read_bytes().startswith(f'P6\n{width} {height}\n255\n'.encode())

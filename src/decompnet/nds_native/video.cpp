@@ -11,6 +11,15 @@
 #include <map>
 #include <stdexcept>
 
+#ifdef _WIN32
+// Laptop drivers inspect these executable exports before creating a GL
+// context. Request the discrete GPU without changing global driver settings.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement=1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance=1;
+}
+#endif
+
 namespace video {
 Scene Scene::capture(dsr::Machine& machine) {
     Scene scene;
@@ -24,11 +33,14 @@ Scene Scene::capture(dsr::Machine& machine) {
     scene.order.insert(scene.order.end(),order.translucent,order.translucent+order.translucent_count);
     scene.control=raster.disp3d;scene.clear_color=raster.clear_color;
     scene.clear_depth=raster.clear_depth;scene.alpha_ref=raster.alpha_reference;
-    if(raster.opaque_only_mask)std::copy_n(raster.opaque_only_mask,scene.safe.size(),scene.safe.begin());
+    scene.fog_color=raster.fog_color;scene.fog_offset=raster.fog_offset;
     for(unsigned i=0;i<32;++i)scene.toon[i]=raster.toon_table[i*2]|(uint32_t(raster.toon_table[i*2+1])<<8);
-    // These effects need additional GPU passes. Preserve the complete native
-    // frame, including its UI, when they are active instead of dropping them.
-    scene.supported=!(raster.disp3d&((1u<<5)|(1u<<7)|(1u<<14))) && !geometry.vertex_overflow && !geometry.polygon_overflow;
+    for(unsigned i=0;i<8;++i)scene.edge[i]=raster.edge_table[i*2]|(uint32_t(raster.edge_table[i*2+1])<<8);
+    std::copy_n(raster.fog_density,32,scene.fog_density.begin());
+    // Clear-image bitmaps require their own captured source. All geometry
+    // effects (including fog, edge marking and shadows) are rendered below.
+    scene.supported=!(raster.disp3d&(1u<<14)) && !geometry.vertex_overflow && !geometry.polygon_overflow;
+    scene.safe.fill(1);
     dsr::gpu3d_detail::TextureSource source;
     source.context=&machine.gpu2d();
     source.texture_lookup=[](const void* p,int slot){return static_cast<const dsr::Gpu2D*>(p)->texture_slot(slot);};
@@ -38,7 +50,6 @@ Scene Scene::capture(dsr::Machine& machine) {
     std::map<std::pair<uint32_t,uint32_t>,bool> decoded;
     size_t texture_bytes=0;
     for(const auto& polygon:scene.polygons) {
-        if(((polygon.attr>>4)&3)==3 || (polygon.attr&(1u<<14)))scene.supported=false;
         if(!(scene.control&1) || !((polygon.texture>>26)&7))continue;
         if(!decoded.emplace(std::pair{polygon.texture,polygon.palette},true).second)continue;
         texture_bytes+=size_t(8u<<((polygon.texture>>20)&7))*(8u<<((polygon.texture>>23)&7))*4;
@@ -60,10 +71,12 @@ void check(bool ok,const std::string& message){if(!ok)throw std::runtime_error(m
  X(GLenum,CheckFramebufferStatus,(GLenum)) X(void,GenRenderbuffers,(GLsizei,GLuint*)) \
  X(void,BindRenderbuffer,(GLenum,GLuint)) X(void,RenderbufferStorage,(GLenum,GLenum,GLsizei,GLsizei)) \
  X(void,FramebufferRenderbuffer,(GLenum,GLenum,GLenum,GLuint)) X(void,DeleteRenderbuffers,(GLsizei,const GLuint*)) \
- X(const GLubyte*,GetString,(GLenum)) X(GLenum,GetError,()) \
+ X(const GLubyte*,GetString,(GLenum)) X(void,GetIntegerv,(GLenum,GLint*)) X(GLenum,GetError,()) \
  X(void,Viewport,(GLint,GLint,GLsizei,GLsizei)) X(void,ClearColor,(GLfloat,GLfloat,GLfloat,GLfloat)) \
  X(void,ClearDepth,(GLdouble)) X(void,Clear,(GLbitfield)) X(void,Enable,(GLenum)) X(void,Disable,(GLenum)) \
  X(void,DepthFunc,(GLenum)) X(void,DepthMask,(GLboolean)) X(void,BlendFunc,(GLenum,GLenum)) \
+ X(void,DrawBuffers,(GLsizei,const GLenum*)) X(void,ReadBuffer,(GLenum)) X(void,ClearBufferfv,(GLenum,GLint,const GLfloat*)) \
+ X(void,CopyTexSubImage2D,(GLenum,GLint,GLint,GLint,GLint,GLint,GLsizei,GLsizei)) \
  X(void,Scissor,(GLint,GLint,GLsizei,GLsizei)) \
  X(void,CullFace,(GLenum)) X(void,PolygonMode,(GLenum,GLenum)) X(void,PixelStorei,(GLenum,GLint)) \
  X(void,ReadPixels,(GLint,GLint,GLsizei,GLsizei,GLenum,GLenum,void*)) \
@@ -74,6 +87,7 @@ void check(bool ok,const std::string& message){if(!ok)throw std::runtime_error(m
  X(void,GetProgramiv,(GLuint,GLenum,GLint*)) X(void,GetProgramInfoLog,(GLuint,GLsizei,GLsizei*,GLchar*)) \
  X(void,DeleteProgram,(GLuint)) X(void,UseProgram,(GLuint)) X(GLint,GetUniformLocation,(GLuint,const GLchar*)) \
  X(void,Uniform1i,(GLint,GLint)) X(void,Uniform1f,(GLint,GLfloat)) X(void,Uniform2f,(GLint,GLfloat,GLfloat)) \
+ X(void,Uniform1iv,(GLint,GLsizei,const GLint*)) X(void,Uniform4f,(GLint,GLfloat,GLfloat,GLfloat,GLfloat)) \
  X(void,Uniform3fv,(GLint,GLsizei,const GLfloat*)) \
  X(void,GenVertexArrays,(GLsizei,GLuint*)) X(void,BindVertexArray,(GLuint)) X(void,DeleteVertexArrays,(GLsizei,const GLuint*)) \
  X(void,GenBuffers,(GLsizei,GLuint*)) X(void,BindBuffer,(GLenum,GLuint)) \
@@ -81,6 +95,7 @@ void check(bool ok,const std::string& message){if(!ok)throw std::runtime_error(m
  X(void,EnableVertexAttribArray,(GLuint)) X(void,VertexAttribPointer,(GLuint,GLint,GLenum,GLboolean,GLsizei,const void*)) \
  X(void,DrawArrays,(GLenum,GLint,GLsizei)) X(void,ActiveTexture,(GLenum)) \
  X(void,GenTextures,(GLsizei,GLuint*)) X(void,BindTexture,(GLenum,GLuint)) X(void,DeleteTextures,(GLsizei,const GLuint*)) \
+ X(void,GenerateMipmap,(GLenum)) \
  X(void,TexParameteri,(GLenum,GLenum,GLint)) X(void,TexImage2D,(GLenum,GLint,GLint,GLsizei,GLsizei,GLint,GLenum,GLenum,const void*))
 struct GL {
 #define DECLARE(result,name,args) using name##Fn=result(APIENTRY*)args;name##Fn name=nullptr;
@@ -117,15 +132,26 @@ void main(){gl_Position=vec4(clip.xy*scale_xy+clip.w*offset_xy,clip.zw);texcoord
 )GLSL";
 const char* scene_fragment=R"GLSL(#version 330 core
 in vec2 texcoord;in vec3 vertex_color;
-out vec4 pixel;
-uniform sampler2D image,mask_image;
-uniform bool textured,masked,highlight,wbuffer;
-uniform int mode,alpha,alpha_ref;
-uniform vec2 mask_origin,mask_size;
+layout(location=0) out vec4 pixel;
+layout(location=1) out vec2 packed_state;
+uniform sampler2D image,previous_color,previous_state;
+uniform bool textured,highlight,wbuffer,read_previous,depth_equal,blend_enabled,fog_enabled,partial_polygon,depth_write;
+uniform int mode,alpha,alpha_ref,polygon_id;
 uniform vec3 toon[32];
+vec4 decode(vec4 s){int p=int(s.y+0.5);return vec4(s.x,float(p&63),float(((p>>6)&127)-1),float(p>>13));}
+vec2 encode(vec4 s){return vec2(s.x,float(int(s.y+0.5)|((int(s.z)+1)<<6)|(int(s.w+0.5)<<13)));}
 void main(){
- if(masked){vec2 p=(gl_FragCoord.xy-mask_origin)/mask_size;if(any(lessThan(p,vec2(0)))||any(greaterThanEqual(p,vec2(1))))discard;
-   if(texture(mask_image,vec2(p.x,1-p.y)).r<0.5)discard;}
+ // State stores depth, opaque ID, last translucent ID and four raster flags.
+ // Copies cover only this polygon's clipped bounds; no attached image is sampled.
+ float depth=wbuffer?clamp((1/gl_FragCoord.w)/4096,0,1):floor(gl_FragCoord.z*4194303.0)*4/16777215.0;
+ vec4 old=vec4(0),dst=vec4(0);int flags=0;
+ if(read_previous){ivec2 at=ivec2(gl_FragCoord.xy);old=decode(texelFetch(previous_state,at,0));dst=texelFetch(previous_color,at,0);flags=int(old.w+0.5);
+   bool failed=depth_equal?abs(depth-old.x)>255.0/16777215.0:depth>=old.x;
+   if(!depth_equal && depth==old.x && gl_FrontFacing && (flags&4)!=0 && dst.a==1)failed=false;
+   if(mode==3 && polygon_id==0){if(!failed)discard;pixel=dst;old.w=float(flags|8);packed_state=encode(old);gl_FragDepth=old.x;return;}
+   if(failed)discard;
+   if(mode==3){if((flags&8)==0 || int(old.y+0.5)==polygon_id)discard;flags&=~8;}
+ }
  vec3 v=floor(clamp(vertex_color,0,63)+0.5),t=vec3(63);float ta=31;
  if(textured){vec4 sample_color=texture(image,texcoord/vec2(textureSize(image,0)));t=floor(sample_color.rgb*63+0.5);ta=floor(sample_color.a*31+0.5);}
  vec3 shade=v;float a=float(alpha==0?31:alpha);
@@ -134,9 +160,46 @@ void main(){
  else {shade=floor(((t+1)*(shade+1)-1)/64);if(mode==2&&highlight)shade=min(vec3(63),shade+toon[int(v.r)/2]);
    if(textured){float t6=ta==0?0:ta*2+1,a6=a==0?0:a*2+1;a=floor(floor(((t6+1)*(a6+1)-1)/64)/2);}}
  if(a==0 || a<=float(alpha_ref))discard;
- pixel=vec4(floor(shade/2)/31,a/31);
- // DS far Z is 0xfffffe, below the maximum 0xffffff clear depth.
- gl_FragDepth=wbuffer?clamp((1/gl_FragCoord.w)/4096,0,1):gl_FragCoord.z*(16777214.0/16777215.0);
+ bool partial=a<31;
+ if(read_previous && partial && int(old.z+0.5)==polygon_id)discard;
+ vec3 rgb=shade/63;
+ if(read_previous && partial && blend_enabled && dst.a>0)rgb=(rgb*(a+1)+dst.rgb*(31-a))/32;
+ float out_alpha=(read_previous && partial && blend_enabled && dst.a>0)?max(a/31,dst.a):a/31;
+ pixel=vec4(rgb,out_alpha);
+ bool fog=fog_enabled && (!partial || (flags&1)!=0);
+ int updated=(fog?1:0)|(partial_polygon?2:0)|(gl_FrontFacing?0:4)|(flags&8);
+ vec4 state=vec4((!partial||depth_write)?depth:old.x,partial?old.y:float(polygon_id),partial?float(polygon_id):(read_previous?old.z:-1),float(updated));
+ packed_state=encode(state);gl_FragDepth=state.x;
+}
+)GLSL";
+// Edge marking and fog operate on the completed 3D framebuffer. Applying fog
+// separately to every translucent layer makes clouds opaque and over-fogs sky.
+const char* effects_fragment=R"GLSL(#version 330 core
+in vec2 uv;out vec4 pixel;
+uniform sampler2D image,states;
+uniform bool edges,fog,alpha_fog,edge_blend;
+uniform int fog_shift,fog_offset,density[32],edge_step;
+uniform vec4 fog_color;
+uniform vec3 edge[8];
+vec4 decode(vec4 s){int p=int(s.y+0.5);return vec4(s.x,float(p&63),float(((p>>6)&127)-1),float(p>>13));}
+void main(){
+ ivec2 size=textureSize(image,0),at=clamp(ivec2(uv*vec2(size)),ivec2(0),size-1);
+ vec4 c=texelFetch(image,at,0),s=decode(texelFetch(states,at,0));int flags=int(s.w+0.5);
+ if(edges && (flags&2)==0){
+  ivec2 steps[4]=ivec2[4](ivec2(1,0),ivec2(0,-1),ivec2(-1,0),ivec2(0,1));
+  for(int i=0;i<4;i++){ivec2 p=clamp(at+steps[i]*edge_step,ivec2(0),size-1);vec4 n=decode(texelFetch(states,p,0));
+   if(s.y!=n.y && s.x>=n.x){vec3 e=edge[int(n.y+0.5)/8];c.rgb=(edge_blend&&c.a>0)?mix(c.rgb,e,17.0/32.0):e;c.a=max(c.a,edge_blend?16.0/31.0:1);break;}}
+ }
+ if(fog && (flags&1)!=0){
+  int step=1024>>fog_shift,depth=int(s.x*16777215.0+0.5)>>9,relative=max(0,depth-fog_offset),d;
+  if(step==0)d=density[depth<=fog_offset?0:31];
+  else if(relative<=step)d=density[0];
+  else if(relative>=step*32)d=density[31];
+  else {int segment=relative/step,fraction=relative-segment*step;d=(density[segment-1]*(step-fraction)+density[segment]*fraction)/step;}
+  float weight=float(d==127?128:d)/128;
+  if(!alpha_fog)c.rgb=mix(c.rgb,fog_color.rgb,weight);c.a=mix(c.a,fog_color.a,weight);
+ }
+ pixel=c;
 }
 )GLSL";
 const char* flat_vertex=R"GLSL(#version 330 core
@@ -153,6 +216,7 @@ void main(){pixel=texture(image,uv);}
 const char* captured_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;
 uniform sampler2D image,origins;
+uniform bool opaque_output;
 vec4 origin(ivec2 p){return texelFetch(origins,clamp(p,ivec2(0),ivec2(255,191)),0);}
 vec2 derivative(ivec2 p,ivec2 step,vec4 center){
  vec4 a=origin(p-step),b=origin(p+step);vec2 d=vec2(0);float n=0;
@@ -165,7 +229,10 @@ void main(){
  if(center.z<0.5)discard;
  vec2 local=fract(p)-vec2(0.5);
  vec2 source=center.xy+local.x*derivative(at,ivec2(1,0),center)+local.y*derivative(at,ivec2(0,1),center);
- pixel=vec4(texture(image,vec2(source.x,1-source.y)).rgb,1);
+ pixel=texture(image,vec2(source.x,1-source.y));
+ // A native opaque edge can cover a texel that the finer silhouette leaves
+ // transparent. Its underlying 2D layer is unknown; preserve that native texel.
+ if(opaque_output){if(pixel.a<30.5/31.0)discard;pixel.a=1;}
 }
 )GLSL";
 struct Rect {float x=0,y=0,w=0,h=0;}; // Bottom-left drawable coordinates.
@@ -180,13 +247,17 @@ struct Display::Impl {
     SDL_Window* window=nullptr;SDL_GLContext context=nullptr;
     SDL_Renderer* software=nullptr;SDL_Texture* software_texture=nullptr;
     std::unique_ptr<GL> gl;
-    GLuint scene_program=0,flat_program=0,captured_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0,origin_texture=0;
-    struct CapturedTarget {GLuint fbo=0,color=0,depth=0;int w=0,h=0;};
+    GLuint scene_program=0,effects_program=0,flat_program=0,captured_program=0,vao=0,vbo=0,screen_texture=0,mask_texture=0,origin_texture=0;
+    struct CapturedTarget {GLuint fbo=0,color=0,state=0,depth=0,effects_fbo=0,result=0,previous_color=0,previous_state=0;int w=0,h=0;};
     std::map<uint64_t,CapturedTarget> captured_targets;
+    std::vector<CapturedTarget> spare_targets;
     std::map<std::pair<uint32_t,uint32_t>,GLuint> textures;
     std::string renderer_name="software",device_name;
     Rect touch_rect;
     int width=0,height=0,display_index=0;
+    int scale=0;
+    int maximum_scale=12;
+    CapturedTarget* active_target=nullptr;
     uint64_t draws=0,captured_pixel_count=0;
     std::vector<uint32_t> last_pixels;
 
@@ -226,12 +297,13 @@ struct Display::Impl {
         if(gl) {
             clear_textures();
             for(auto& [serial,target]:captured_targets)delete_target(target);captured_targets.clear();
+            for(auto& target:spare_targets)delete_target(target);spare_targets.clear();
             if(captured_program)gl->DeleteProgram(captured_program);if(origin_texture)gl->DeleteTextures(1,&origin_texture);
-            if(scene_program)gl->DeleteProgram(scene_program);if(flat_program)gl->DeleteProgram(flat_program);
+            if(scene_program)gl->DeleteProgram(scene_program);if(effects_program)gl->DeleteProgram(effects_program);if(flat_program)gl->DeleteProgram(flat_program);
             if(vbo)gl->DeleteBuffers(1,&vbo);if(vao)gl->DeleteVertexArrays(1,&vao);
             if(screen_texture)gl->DeleteTextures(1,&screen_texture);if(mask_texture)gl->DeleteTextures(1,&mask_texture);
         }
-        scene_program=flat_program=captured_program=vao=vbo=screen_texture=mask_texture=origin_texture=0;gl.reset();
+        scene_program=effects_program=flat_program=captured_program=vao=vbo=screen_texture=mask_texture=origin_texture=0;gl.reset();
         if(software_texture)SDL_DestroyTexture(software_texture);software_texture=nullptr;
         if(software)SDL_DestroyRenderer(software);software=nullptr;
         if(context)SDL_GL_DeleteContext(context);context=nullptr;
@@ -246,7 +318,9 @@ struct Display::Impl {
         check(window,SDL_GetError());context=SDL_GL_CreateContext(window);check(context,SDL_GetError());
         gl=std::make_unique<GL>();
         device_name=reinterpret_cast<const char*>(gl->GetString(GL_RENDERER));
-        scene_program=gl->program(scene_vertex,scene_fragment);flat_program=gl->program(flat_vertex,flat_fragment);captured_program=gl->program(flat_vertex,captured_fragment);
+        GLint maximum_texture=0;gl->GetIntegerv(GL_MAX_TEXTURE_SIZE,&maximum_texture);maximum_scale=std::clamp(maximum_texture/256,1,12);
+        scene_program=gl->program(scene_vertex,scene_fragment);effects_program=gl->program(flat_vertex,effects_fragment);
+        flat_program=gl->program(flat_vertex,flat_fragment);captured_program=gl->program(flat_vertex,captured_fragment);
         gl->GenVertexArrays(1,&vao);gl->BindVertexArray(vao);gl->GenBuffers(1,&vbo);
         gl->GenTextures(1,&screen_texture);gl->GenTextures(1,&mask_texture);gl->GenTextures(1,&origin_texture);
         SDL_GL_SetSwapInterval(1);renderer_name="opengl";
@@ -272,7 +346,7 @@ struct Display::Impl {
         gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);
         gl->DrawArrays(GL_TRIANGLES,0,6);
     }
-    void geometry(const Scene& scene,Rect original,const uint8_t* mask) {
+    void geometry(const Scene& scene,Rect original) {
         clear_textures();
         gl->ActiveTexture(GL_TEXTURE0);
         for(const auto& texture:scene.textures) {
@@ -283,20 +357,15 @@ struct Display::Impl {
             textures[{texture.param,texture.palette}]=name;
         }
         gl->UseProgram(scene_program);gl->Uniform1i(uniform(scene_program,"image"),0);
-        gl->Uniform1i(uniform(scene_program,"masked"),mask!=nullptr);
-        gl->Uniform2f(uniform(scene_program,"mask_origin"),original.x,original.y);
-        gl->Uniform2f(uniform(scene_program,"mask_size"),original.w,original.h);
-        if(mask){gl->ActiveTexture(GL_TEXTURE1);upload(mask_texture,256,192,mask,GL_RED);gl->Uniform1i(uniform(scene_program,"mask_image"),1);gl->ActiveTexture(GL_TEXTURE0);}
+        gl->Uniform1i(uniform(scene_program,"previous_color"),1);gl->Uniform1i(uniform(scene_program,"previous_state"),2);
         gl->Uniform1i(uniform(scene_program,"highlight"),(scene.control&2)!=0);
         gl->Uniform1i(uniform(scene_program,"wbuffer"),(scene.swap_mode&2)!=0);
         gl->Uniform1i(uniform(scene_program,"alpha_ref"),(scene.control&4)?int(scene.alpha_ref):0);
         std::array<float,96> toon{};
         for(unsigned i=0;i<32;++i)for(unsigned c=0;c<3;++c){const auto value=(scene.toon[i]>>(c*5))&31;toon[i*3+c]=float(value?value*2+1:0);}
         gl->Uniform3fv(uniform(scene_program,"toon"),32,toon.data());
-        gl->DepthMask(GL_TRUE);gl->ClearDepth(double(((scene.clear_depth&0x7fff)<<9)|0x1ff)/0xffffff);
-        gl->Clear(GL_DEPTH_BUFFER_BIT);gl->Enable(GL_DEPTH_TEST);gl->DepthFunc(GL_LESS);
-        if(scene.control&8)gl->Enable(GL_BLEND);else gl->Disable(GL_BLEND);
-        gl->BlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+        gl->DepthMask(GL_TRUE);gl->Enable(GL_DEPTH_TEST);gl->Disable(GL_BLEND);
+        gl->Uniform1i(uniform(scene_program,"blend_enabled"),(scene.control&8)!=0);
         for(const auto index:scene.order) {
             if(index>=scene.polygons.size())continue;
             const auto& polygon=scene.polygons[index];
@@ -308,27 +377,50 @@ struct Display::Impl {
             auto texture=textures.find({polygon.texture,polygon.palette});
             const bool textured=(scene.control&1)&&format&&texture!=textures.end();
             const bool partial=(alpha!=0&&alpha!=31)||(textured&&(format==1||format==6)&&mode!=1&&mode!=3);
-            gl->DepthMask(!partial||(polygon.attr&(1u<<11))?GL_TRUE:GL_FALSE);
+            const bool feedback=partial||mode==3||(polygon.attr&(1u<<14));
+            gl->DepthFunc(feedback?GL_ALWAYS:GL_LESS);
+            gl->Uniform1i(uniform(scene_program,"read_previous"),feedback);
+            gl->Uniform1i(uniform(scene_program,"depth_equal"),(polygon.attr&(1u<<14))!=0);
+            gl->Uniform1i(uniform(scene_program,"depth_write"),(polygon.attr&(1u<<11))!=0);
+            gl->Uniform1i(uniform(scene_program,"partial_polygon"),partial);
+            gl->Uniform1i(uniform(scene_program,"fog_enabled"),(polygon.attr&(1u<<15))!=0);
+            gl->Uniform1i(uniform(scene_program,"polygon_id"),(polygon.attr>>24)&63);
             gl->PolygonMode(GL_FRONT_AND_BACK,alpha?GL_FILL:GL_LINE);
             gl->Uniform1i(uniform(scene_program,"mode"),(polygon.attr>>4)&3);gl->Uniform1i(uniform(scene_program,"alpha"),alpha);
             gl->Uniform1i(uniform(scene_program,"textured"),textured);
-            gl->BindTexture(GL_TEXTURE_2D,texture==textures.end()?0:texture->second);
+            gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,texture==textures.end()?0:texture->second);
             const unsigned x=polygon.viewport&255,y=(polygon.viewport>>8)&255;
             const unsigned w=uint8_t((polygon.viewport>>16)-x)+1,h=uint8_t((polygon.viewport>>24)-y)+1;
             const int base_y=y>191?int(y)-255:int(y);
             const float rw=original.w*w/256,rh=original.h*h/192;
             const float rx=original.x+original.w*x/256,ry=original.y+original.h*(192-base_y-int(h))/192;
-            { // DS viewport clipping also applies to unmasked framebuffer passes.
-                const int left=std::max(0,int(std::ceil(rx))),bottom=std::max(0,int(std::ceil(ry)));
-                const int right=std::min(width,int(std::ceil(rx+rw))),top=std::min(height,int(std::ceil(ry+rh)));
-                gl->Enable(GL_SCISSOR_TEST);gl->Scissor(left,bottom,std::max(0,right-left),std::max(0,top-bottom));
-            }
             gl->Uniform2f(uniform(scene_program,"scale_xy"),rw/width,rh/height);
             gl->Uniform2f(uniform(scene_program,"offset_xy"),(2*rx+rw)/width-1,(2*ry+rh)/height-1);
             std::array<dsr::Gpu3DVertex,6> vertices{};const unsigned indices[]={0,1,2,0,2,3};
             const unsigned count=alpha?(polygon.count==4?6:3):polygon.count;bool valid=true;
             for(unsigned i=0;i<count;++i){const auto v=polygon.index[alpha?indices[i]:i];if(v>=scene.vertices.size()){valid=false;break;}vertices[i]=scene.vertices[v];}
             if(!valid)continue;
+            float min_x=rx,min_y=ry,max_x=rx+rw,max_y=ry+rh;
+            // Feedback copies only cover this polygon. Near-plane crossings
+            // conservatively use the viewport; other quads use projected bounds.
+            if(feedback&&std::all_of(vertices.begin(),vertices.begin()+count,[](const auto& v){return v.clip[3]>0;})) {
+                min_x=max_x=rx+(vertices[0].clip[0]/vertices[0].clip[3]+1)*rw/2;
+                min_y=max_y=ry+(vertices[0].clip[1]/vertices[0].clip[3]+1)*rh/2;
+                for(unsigned i=1;i<count;++i){const auto& v=vertices[i];const float px=rx+(v.clip[0]/v.clip[3]+1)*rw/2,py=ry+(v.clip[1]/v.clip[3]+1)*rh/2;
+                    min_x=std::min(min_x,px);max_x=std::max(max_x,px);min_y=std::min(min_y,py);max_y=std::max(max_y,py);}
+                min_x=std::max(rx,min_x-1);min_y=std::max(ry,min_y-1);max_x=std::min(rx+rw,max_x+1);max_y=std::min(ry+rh,max_y+1);
+            }
+            const int left=std::clamp(int(std::floor(min_x)),0,width),bottom=std::clamp(int(std::floor(min_y)),0,height);
+            const int right=std::clamp(int(std::ceil(max_x)),left,width),top=std::clamp(int(std::ceil(max_y)),bottom,height);
+            if(right==left||top==bottom)continue;
+            gl->Enable(GL_SCISSOR_TEST);gl->Scissor(left,bottom,right-left,top-bottom);
+            if(feedback) {
+                gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,active_target->previous_color);gl->ReadBuffer(GL_COLOR_ATTACHMENT0);
+                gl->CopyTexSubImage2D(GL_TEXTURE_2D,0,left,bottom,left,bottom,right-left,top-bottom);
+                gl->ActiveTexture(GL_TEXTURE2);gl->BindTexture(GL_TEXTURE_2D,active_target->previous_state);gl->ReadBuffer(GL_COLOR_ATTACHMENT1);
+                gl->CopyTexSubImage2D(GL_TEXTURE_2D,0,left,bottom,left,bottom,right-left,top-bottom);
+                gl->ActiveTexture(GL_TEXTURE0);
+            }
             gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,count*sizeof(vertices[0]),vertices.data(),GL_STREAM_DRAW);
             for(unsigned i=0;i<3;++i)gl->EnableVertexAttribArray(i);
             gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,sizeof(vertices[0]),reinterpret_cast<void*>(offsetof(dsr::Gpu3DVertex,clip)));
@@ -339,32 +431,68 @@ struct Display::Impl {
         gl->PolygonMode(GL_FRONT_AND_BACK,GL_FILL);gl->DepthMask(GL_TRUE);gl->Disable(GL_CULL_FACE);gl->Disable(GL_SCISSOR_TEST);
     }
     void delete_target(CapturedTarget& t) {
-        if(t.fbo)gl->DeleteFramebuffers(1,&t.fbo);if(t.color)gl->DeleteTextures(1,&t.color);if(t.depth)gl->DeleteRenderbuffers(1,&t.depth);t={};
+        if(t.fbo)gl->DeleteFramebuffers(1,&t.fbo);if(t.effects_fbo)gl->DeleteFramebuffers(1,&t.effects_fbo);
+        for(auto texture:{t.color,t.state,t.result,t.previous_color,t.previous_state})if(texture)gl->DeleteTextures(1,&texture);
+        if(t.depth)gl->DeleteRenderbuffers(1,&t.depth);t={};
     }
-    CapturedTarget& captured_target(const Scene& scene,int w,int h) {
-        auto& target=captured_targets[scene.serial];
-        if(target.fbo&&target.w==w&&target.h==h)return target;
-        delete_target(target);target.w=w;target.h=h;
-        gl->GenFramebuffers(1,&target.fbo);gl->BindFramebuffer(GL_FRAMEBUFFER,target.fbo);
-        gl->GenTextures(1,&target.color);gl->BindTexture(GL_TEXTURE_2D,target.color);
-        gl->TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
-        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-        gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-        gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target.color,0);
-        gl->GenRenderbuffers(1,&target.depth);gl->BindRenderbuffer(GL_RENDERBUFFER,target.depth);
-        gl->RenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT24,w,h);
-        gl->FramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,target.depth);
-        check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"captured-3D framebuffer unavailable");
+    CapturedTarget& captured_target(const Scene& scene,int w,int h,bool cache=true) {
+        auto [position,inserted]=captured_targets.try_emplace(scene.serial);auto& target=position->second;
+        if(inserted&&!spare_targets.empty()){target=spare_targets.back();spare_targets.pop_back();}
+        if(!inserted&&target.fbo&&target.w==w&&target.h==h&&cache)return target;
+        if(!target.fbo||target.w!=w||target.h!=h) {
+            delete_target(target);target.w=w;target.h=h;
+            auto allocate=[&](GLuint& texture,GLint format){gl->GenTextures(1,&texture);gl->BindTexture(GL_TEXTURE_2D,texture);
+                gl->TexImage2D(GL_TEXTURE_2D,0,format,w,h,0,format==GL_RG32F?GL_RG:GL_RGBA,GL_FLOAT,nullptr);
+                gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+                gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);};
+            gl->ActiveTexture(GL_TEXTURE0);
+            allocate(target.color,GL_RGBA8);allocate(target.state,GL_RG32F);allocate(target.previous_color,GL_RGBA8);allocate(target.previous_state,GL_RG32F);allocate(target.result,GL_RGBA8);
+            gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+            gl->GenFramebuffers(1,&target.fbo);gl->BindFramebuffer(GL_FRAMEBUFFER,target.fbo);
+            gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target.color,0);
+            gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT1,GL_TEXTURE_2D,target.state,0);
+            gl->GenRenderbuffers(1,&target.depth);gl->BindRenderbuffer(GL_RENDERBUFFER,target.depth);
+            gl->RenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT24,w,h);
+            gl->FramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,target.depth);
+            const GLenum buffers[]={GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};gl->DrawBuffers(2,buffers);
+            check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"enhanced-3D framebuffer unavailable");
+            gl->GenFramebuffers(1,&target.effects_fbo);gl->BindFramebuffer(GL_FRAMEBUFFER,target.effects_fbo);
+            gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target.result,0);
+            check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"enhanced effects framebuffer unavailable");
+        }
+        gl->BindFramebuffer(GL_FRAMEBUFFER,target.fbo);active_target=&target;
         const auto c=scene.clear_color;
-        gl->Viewport(0,0,w,h);gl->DepthMask(GL_TRUE);gl->ClearColor(float(c&31)/31,float((c>>5)&31)/31,float((c>>10)&31)/31,float((c>>16)&31)/31);
-        gl->Clear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        const float clear_depth=float(((scene.clear_depth&0x7fff)<<9)|0x1ff)/0xffffff;
+        const float color[]={float(c&31)/31,float((c>>5)&31)/31,float((c>>10)&31)/31,float((c>>16)&31)/31};
+        const float state[]={clear_depth,float(((c>>24)&63)|(((c>>15)&1)<<13)),0,0};
+        gl->Viewport(0,0,w,h);gl->DepthMask(GL_TRUE);gl->Disable(GL_SCISSOR_TEST);gl->ClearDepth(clear_depth);
+        gl->ClearBufferfv(GL_COLOR,0,color);gl->ClearBufferfv(GL_COLOR,1,state);gl->Clear(GL_DEPTH_BUFFER_BIT);
         const int previous_width=width,previous_height=height;width=w;height=h;
-        geometry(scene,{0,0,float(w),float(h)},nullptr);
+        geometry(scene,{0,0,float(w),float(h)});
+        gl->BindFramebuffer(GL_FRAMEBUFFER,target.effects_fbo);gl->UseProgram(effects_program);
+        gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.color);gl->Uniform1i(uniform(effects_program,"image"),0);
+        gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,target.state);gl->Uniform1i(uniform(effects_program,"states"),1);
+        gl->Uniform1i(uniform(effects_program,"edges"),(scene.control&(1u<<5))!=0);gl->Uniform1i(uniform(effects_program,"edge_blend"),(scene.control&(1u<<4))!=0);
+        gl->Uniform1i(uniform(effects_program,"edge_step"),std::max(1,w/512));
+        gl->Uniform1i(uniform(effects_program,"fog"),(scene.control&(1u<<7))!=0);gl->Uniform1i(uniform(effects_program,"alpha_fog"),(scene.control&(1u<<6))!=0);
+        gl->Uniform1i(uniform(effects_program,"fog_shift"),(scene.control>>8)&15);gl->Uniform1i(uniform(effects_program,"fog_offset"),scene.fog_offset&0x7fff);
+        std::array<GLint,32> densities{};for(unsigned i=0;i<32;++i)densities[i]=scene.fog_density[i]&127;
+        gl->Uniform1iv(uniform(effects_program,"density"),32,densities.data());
+        const auto f=scene.fog_color;gl->Uniform4f(uniform(effects_program,"fog_color"),float(f&31)/31,float((f>>5)&31)/31,float((f>>10)&31)/31,float((f>>16)&31)/31);
+        std::array<float,24> edge{};for(unsigned i=0;i<8;++i)for(unsigned j=0;j<3;++j)edge[i*3+j]=float((scene.edge[i]>>(j*5))&31)/31;
+        gl->Uniform3fv(uniform(effects_program,"edge"),8,edge.data());
+        const float vertices[]={-1,-1,0,0,1,-1,1,0,-1,1,0,1,-1,1,0,1,1,-1,1,0,1,1,1,1};
+        gl->Disable(GL_DEPTH_TEST);gl->Disable(GL_BLEND);gl->DepthMask(GL_FALSE);
+        gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+        gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
         width=previous_width;height=previous_height;
-        gl->BindFramebuffer(GL_FRAMEBUFFER,0);gl->Viewport(0,0,width,height);
+        gl->BindFramebuffer(GL_FRAMEBUFFER,0);gl->Viewport(0,0,width,height);gl->ActiveTexture(GL_TEXTURE0);active_target=nullptr;
+        // A mip pyramid averages all covered high-resolution texels when the
+        // 3D surface is reduced to the drawable, instead of point-sampling it.
+        gl->BindTexture(GL_TEXTURE_2D,target.result);gl->GenerateMipmap(GL_TEXTURE_2D);
         return target;
     }
-    void captured(const Scene& scene,const uint64_t* tags,Rect rect) {
+    void captured(const Scene& scene,const uint64_t* tags,Rect rect,bool opaque=true) {
         if(!tags||!scene.supported||scene.order.empty())return;
         std::vector<float> mapping(256*192*4);unsigned eligible=0;
         for(unsigned i=0;i<256*192;++i)if(tags[i]&&(tags[i]>>16)==scene.serial) {
@@ -373,15 +501,20 @@ struct Display::Impl {
             mapping[i*4+2]=scene.safe[pixel]?1.f:0.f;mapping[i*4+3]=1;eligible+=scene.safe[pixel]!=0;
         }
         if(!eligible)return;captured_pixel_count+=eligible;
-        auto& target=captured_target(scene,std::max(1,int(std::ceil(rect.w))),std::max(1,int(std::ceil(rect.h))));
-        gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.color);gl->Uniform1i(uniform(captured_program,"image"),0);
+        // Integer DS multiples avoid uneven raster samples. Supersampling
+        // above drawable size provides antialiasing without buffering frames.
+        scale=maximum_scale;
+        auto& target=captured_target(scene,256*scale,192*scale,opaque);
+        gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.result);gl->Uniform1i(uniform(captured_program,"image"),0);
+        gl->Uniform1i(uniform(captured_program,"opaque_output"),opaque);
         gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,origin_texture);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
         gl->TexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,256,192,0,GL_RGBA,GL_FLOAT,mapping.data());gl->Uniform1i(uniform(captured_program,"origins"),1);
         const float x0=2*rect.x/width-1,x1=2*(rect.x+rect.w)/width-1,y0=2*rect.y/height-1,y1=2*(rect.y+rect.h)/height-1;
         const float vertices[]={x0,y0,0,1,x1,y0,1,1,x0,y1,0,0,x0,y1,0,0,x1,y0,1,1,x1,y1,1,0};
-        gl->Disable(GL_DEPTH_TEST);gl->Disable(GL_CULL_FACE);gl->Disable(GL_BLEND);gl->DepthMask(GL_FALSE);
+        gl->Disable(GL_DEPTH_TEST);gl->Disable(GL_CULL_FACE);gl->DepthMask(GL_FALSE);
+        if(opaque)gl->Disable(GL_BLEND);else {gl->Enable(GL_BLEND);gl->BlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);}
         gl->BindBuffer(GL_ARRAY_BUFFER,vbo);gl->BufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
         gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
         gl->ActiveTexture(GL_TEXTURE0);
@@ -416,13 +549,16 @@ struct Display::Impl {
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
             if(frame.history&&frame.top_origins&&frame.bottom_origins) {
                 for(auto it=captured_targets.begin();it!=captured_targets.end();) {
-                    if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first;})) {delete_target(it->second);it=captured_targets.erase(it);}else ++it;
+                    if(std::none_of(frame.history->begin(),frame.history->end(),[&](const Scene& s){return s.serial==it->first;})) {
+                        if(spare_targets.size()<2)spare_targets.push_back(it->second);else delete_target(it->second);
+                        it=captured_targets.erase(it);
+                    }else ++it;
                 }
                 for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
             } else if(has_3d) {
-                std::array<uint8_t,256*192> mask{};
-                for(unsigned i=0;i<mask.size();++i)mask[i]=frame.three_d[i]&&frame.scene->safe[i]?255:0;
-                geometry(*frame.scene,frame.on_top?top:bottom,mask.data());
+                std::array<uint64_t,256*192> tags{};
+                for(unsigned i=0;i<tags.size();++i)if(frame.three_d[i]&&frame.scene->safe[i])tags[i]=(frame.scene->serial<<16)|(i+1);
+                captured(*frame.scene,tags.data(),frame.on_top?top:bottom,false);
             }
         check(gl->GetError()==GL_NO_ERROR,"OpenGL presentation failed");
         if(options.readback) {
@@ -463,4 +599,5 @@ const std::string& Display::renderer() const{return impl_->renderer_name;}
 const std::string& Display::device() const{return impl_->device_name;}
 uint64_t Display::polygons_drawn() const{return impl_->draws;}
 uint64_t Display::captured_pixels() const{return impl_->captured_pixel_count;}
+int Display::render_scale() const{return impl_->scale;}
 }
