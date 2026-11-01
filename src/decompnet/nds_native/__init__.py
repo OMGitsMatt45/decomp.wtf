@@ -550,8 +550,10 @@ and the manifest. They can be changed without regenerating game code:
 ```
 
 `--renderer auto` tries OpenGL 3.3, reporting a software fallback if unavailable.
-`opengl` requires the driver/context; it draws transformed game geometry at the
-drawable resolution. `software` preserves the DS-resolution picture. OpenGL
+`opengl` requires the driver/context; enhanced geometry rendering is enabled
+by default at up to 12x DS resolution (3072x2304), limited by the driver's maximum
+texture size, then filtered to the drawable size for antialiasing.
+`software` preserves the DS-resolution picture. OpenGL
 loads through SDL. Driver downloads: [NVIDIA](https://www.nvidia.com/Download/index.aspx),
 [AMD](https://www.amd.com/en/support),
 [Intel](https://www.intel.com/content/www/us/en/download-center/home.html), or
@@ -560,8 +562,12 @@ The native DS renderer stays active for display capture, UI and guarded effects.
 
 Both original LCDs remain visible and preserve their aspect ratios. Touch
 coordinates follow the displayed lower LCD. Original text/sprites remain sharply
-scaled. Fog, edge marking, shadow/depth-equal polygons and clear-image mode
-currently use the native path. Game-specific camera, menu and culling
+scaled. GPU passes handle fog, edge marking, shadow masks, depth-equal overlays
+and translucent polygon IDs. Clear-image mode and geometry overflow retain
+complete native output. Original pre-rendered movies retain their source detail.
+Windows executables request the high-performance GPU on NVIDIA/AMD hybrid
+laptops; system preferences can override that request. The JSON report identifies
+the actual GPU and internal render scale. Game-specific camera, menu and culling
 enhancements can be added to this source project later. Mobile sound, party chat
 and other title-specific extras are outside this generic DS output.
 

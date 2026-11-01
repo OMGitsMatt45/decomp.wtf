@@ -24,7 +24,10 @@ struct Scene {
     std::vector<Texture> textures;
     std::array<uint8_t,256*192> safe{};
     std::array<uint32_t,32> toon{};
+    std::array<uint32_t,8> edge{};
+    std::array<uint8_t,32> fog_density{};
     uint32_t control=0,clear_color=0,clear_depth=0,alpha_ref=0,swap_mode=0;
+    uint32_t fog_color=0,fog_offset=0;
     uint64_t generation=0,serial=0;
     bool supported=true;
     static Scene capture(dsr::Machine& machine);
@@ -62,6 +65,7 @@ public:
     uint64_t polygons_drawn() const;
     // Native LCD texels actually replayed from captured 3D in the last frame.
     uint64_t captured_pixels() const;
+    int render_scale() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

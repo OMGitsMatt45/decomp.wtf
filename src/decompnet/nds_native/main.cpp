@@ -359,7 +359,8 @@ int main(int argc,char** argv) {
             auto& video=*display->video;
             std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
                 <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()
-                <<",\"polygons_drawn\":"<<video.polygons_drawn()<<",\"captured_pixels\":"<<video.captured_pixels()<<"}";
+                <<",\"polygons_drawn\":"<<video.polygons_drawn()<<",\"captured_pixels\":"<<video.captured_pixels()
+                <<",\"enhanced\":"<<(video.renderer()=="opengl"?"true":"false")<<",\"render_scale\":"<<video.render_scale()<<"}";
             session.machine().gpu3d().on_render_complete=nullptr;
         }
 #endif

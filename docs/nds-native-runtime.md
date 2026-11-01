@@ -121,10 +121,13 @@ The JSON result records `rtc.mode` (`local` or `fixed-utc`) and `rtc.start_unix`
 (`null` for the local clock). Fixed time is an explicit testing option; normal
 launches retain the local clock for calendar and daily events.
 
-## Adaptive GPU rendering
+## Enhanced GPU rendering
 
-The original OpenGL 3.3 host draws transformed game geometry at the actual
-drawable resolution, including high-DPI scaling. The initial window size comes
+The original OpenGL 3.3 host redraws transformed game geometry at up to 12 times
+the DS resolution (3072x2304 per 3D scene), limited by the driver's maximum
+texture size. Enhancement is enabled by default without a game-menu switch.
+A mip pyramid averages the high-resolution image to the actual drawable size
+for antialiasing, including high-DPI scaling. The initial window size comes
 from the active monitor's usable area. Resizing or moving between monitors
 updates the render size every frame; no output resolution is hardcoded.
 F11 or `--fullscreen` uses the current monitor's native resolution.
@@ -138,26 +141,38 @@ render boundary. The host latches it before the following DS frame, matching
 the 3D engine's one-frame pipeline. GPU pixels replace the eligible 3D part of
 the DS composition. Captured VRAM images retain the serial and source coordinates of the
 completed 3D raster that produced each unmodified pixel. The host retains those
-owned scenes while VRAM or an LCD references them, renders each to a drawable-size
+owned scenes while VRAM or an LCD references them, renders each to a high-resolution
 GPU target, and replays affine source mappings without replacing UI pixels.
 CPU/DMA writes, genuine 2D blends, brightness changes and ambiguous overlapping
 banks invalidate that provenance. Unknown or guarded effects retain native pixels; this path draws geometry rather than only scaling a framebuffer.
 
 The two LCDs retain their native aspect ratios. Touch maps only to the displayed
 lower LCD. Menus, 2D-only games and guarded effects keep their original output.
-Fog, edge marking, shadow/depth-equal polygons and clear-image mode currently
-use the native renderer. Camera/culling/UI enhancements can be made later in
-the exported game repository.
+GPU passes implement fog after composition, polygon-ID/depth edge marking,
+shadow masks, depth-equal overlays and per-ID translucent blending. Pixel state
+is packed losslessly into an RG32F target; feedback copies cover only each
+polygon's clipped bounds and retired framebuffer storage is reused. Clear-image
+mode and geometry overflow retain complete native output. Original fonts,
+2D sprites and pre-rendered video keep their source detail. Camera/culling/UI
+enhancements can be made later in the exported game repository.
+
+Windows executables export NVIDIA Optimus and AMD high-performance GPU requests;
+system graphics preferences can override them. The renderer reports the GPU
+actually selected, rather than inferring it from the installed adapters. The
+12x path needs GPU performance qualification on the target machine.
 
 Original fixtures qualify raw geometry clipped to the LCD, actual GL draw
 calls, texture modulation, UI retention, touch
-mapping, drawable resizing and fallback. Another original ARM9/ARM7 program
+mapping, drawable resizing and fallback, plus final-pixel checks for fog,
+alpha-only fog, fog/translucency ordering, outlines, shadows, self-shadow
+exclusion, depth-equal overlays and supersampled edge coverage.
+Another original ARM9/ARM7 program
 submits 3D geometry through guest I/O and validates the complete generated-host
 path against headless frame/tick/screen results. Linux qualification executes
 OpenGL through Mesa; cloud testing does not measure physical graphics-card
 performance. Windows qualification builds the same host and exercises software
 presentation. `--capture` includes `display.ppm` at the actual drawable size;
-JSON reports the renderer, device, dimensions, both LCDs, draw count and the
+JSON reports the renderer, device, dimensions, enhancement state, internal scale, both LCDs, draw count and the
 number of native LCD texels actually replayed from captured 3D in the last frame.
 
 The original DS game supplies all required assets and audio. Mobile OBB data is
