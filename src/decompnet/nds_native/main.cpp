@@ -23,6 +23,7 @@
 #include "save_lock.hpp"
 #include "cheats.hpp"
 #include "input.hpp"
+#include "project_hooks.hpp"
 #ifdef NDS_WITH_SDL
 #include "settings.hpp"
 #include "keyboard.hpp"
@@ -178,6 +179,7 @@ int main(int argc,char** argv) {
         for(const auto& name:enabled_cheats)cheats.enable(name);
         ds_host::SaveLock save_lock(save);
         dsr::Session session(config);profile::initialize(session.machine());
+        ds_project::Features features;features.start(session,config);
         std::map<uint64_t,dsr::InputState> inputs;
         if(!script.empty()) {
             std::ifstream file(script);if(!file)throw std::runtime_error("could not read input script");
@@ -212,6 +214,9 @@ int main(int argc,char** argv) {
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
             if(!running||(display&&!display->input(input,cheats)))break;
+#endif
+            if(!features.input(session,input))break;
+#ifdef NDS_WITH_SDL
             if(display&&display->pending_ready) {
                 auto& history=display->history;const auto serial=display->pending.serial;
                 if(!history.empty()&&serial<=history.back().serial)history.clear(); // reset
@@ -222,6 +227,7 @@ int main(int argc,char** argv) {
 #endif
             session.step(input);audio_samples+=session.audio_frames();
             cheats.apply(session.machine());
+            features.frame(session,input);
             // Commit dirty cartridge bytes during play as well as on exit.
             // The runtime writes atomically and retains dirty data for retry
             // if the destination is temporarily unwritable.
@@ -357,6 +363,7 @@ int main(int argc,char** argv) {
             session.machine().gpu3d().on_render_complete=nullptr;
         }
 #endif
+        features.report(std::cout);
         std::cout<<"}\n";
     } catch(const std::exception& error) {
         std::cerr<<"DS PC project: "<<error.what()<<'\n';return 1;
