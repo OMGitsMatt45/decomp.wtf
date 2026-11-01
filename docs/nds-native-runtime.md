@@ -177,6 +177,25 @@ number of native LCD texels actually replayed from captured 3D in the last frame
 
 The original DS game supplies all required assets and audio. Mobile OBB data is
 optional enhancement material in some existing ports, and is not used here.
+
+### Optional original-score audio cleanup
+
+`Spu::set_output_quality(Spu::OutputQuality::Clean)` enables 16-bit host mixing
+without the final DS 10-bit DAC quantization, plus causal linear interpolation
+for PCM8/PCM16/ADPCM instruments. A project feature can enable it at startup.
+The runtime's default remains `Hardware`; there is no generic menu toggle.
+The host setting survives machine resets. The sample count/rate and existing
+SDL output buffers are unchanged; interpolation uses one past source sample,
+without fetching future memory or adding an output buffer. PSG/noise waveforms
+keep their native phase and shape. Source sample detail is unchanged.
+
+Guest sound registers, channel completion, ADPCM state and capture/reverb RAM
+continue using the original hardware path. Original checks compare the complete
+ordered sample-read/capture-write bus trace, including feedback capture, between
+both qualities. They also check precision, saturation/bias/silence, reset,
+PSG/noise and spectral-image reduction on a known sampled tone. The pinned
+hardware scalar regression still passes unchanged. This is source-audio cleanup,
+not replacement music or evidence of a perceptual improvement for every track.
 BIOS and firmware are not linked into the runtime or copied into generated projects.
 When an encrypted original needs secure-area decoding, the exported extraction
 metadata contains the owner's decoded prefix. Standalone staging verifies the
