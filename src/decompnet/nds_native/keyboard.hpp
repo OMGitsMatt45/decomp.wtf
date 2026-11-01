@@ -12,13 +12,15 @@ class KeyboardFrame {
         SDL_SCANCODE_W,SDL_SCANCODE_Q,SDL_SCANCODE_S,SDL_SCANCODE_A};
     uint16_t presses=0,held=0;
 public:
+    void reset(){presses=held=0;}
+    void consume(uint16_t mask){presses&=uint16_t(~mask);held&=uint16_t(~mask);}
     bool event(const SDL_Event& event) {
         if(event.type==SDL_WINDOWEVENT&&event.window.event==SDL_WINDOWEVENT_FOCUS_LOST) {
             presses=held=0;
             return true;
         }
         if(event.type!=SDL_KEYDOWN&&event.type!=SDL_KEYUP)return true;
-        if(event.type==SDL_KEYDOWN&&event.key.keysym.sym==SDLK_ESCAPE)return false;
+        if(event.type==SDL_KEYDOWN&&event.key.keysym.sym==SDLK_ESCAPE)return event.key.repeat!=0;
         for(unsigned i=0;i<codes.size();++i)if(event.key.keysym.scancode==codes[i]) {
             const auto bit=uint16_t(1u<<i);
             if(event.type==SDL_KEYUP)held&=uint16_t(~bit);
