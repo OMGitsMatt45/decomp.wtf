@@ -60,12 +60,36 @@ def program(tmp_path, mutation=None):
     if mutation=='unguarded':halves(0x40,0x46c0,0x46c0)
     if mutation=='guard_bypass':branch(0x58,0x44)
     if mutation=='wrong_release':halves(0xac,0xb002)
+    table_range=[base+0x56,base+0x5c] if 'flags' in mode else [base+0x54,base+0x5a] if 'taken' in mode or 'signed' in mode else [base+0x50,base+0x56]
+    if mode.startswith('affine_'):
+        # The address register had an unrelated comparison before it was
+        # defined from the actual bounded selector. This must not truncate it.
+        branch(0xa,0x40);halves(0xc,0x46c0)
+        halves(0x40,*([0x46c0]*32))
+        if mode=='affine_sub':
+            halves(6,0x3001)
+            halves(0x40,0x2900,0x2801,0xd313,0x2803,0xd811,0x1e41,0x0049,0x4479,0x88c9,0x0409,0x1409,0x448f,4,8,12)
+            table_range=[base+0x58,base+0x5e]
+            for site,value in ((0x5e,10),(0x62,11),(0x66,12),(0x6e,13)):
+                halves(site,0x2000|value);branch(site+2,0x80)
+        else:
+            add=mode=='affine_add'
+            halves(0x40,0x2900,0x2802,0xd811 if add else 0xd80f,
+                0x1c41 if add else 0x0001,0x0049,0x4479,0x88c9,0x0409,0x1409,0x448f)
+            if add:
+                halves(0x54,20,6,10,14);table_range=[base+0x54,base+0x5c]
+                sites=(0x5c,0x60,0x64,0x6a)
+            else:
+                halves(0x54,4,8,12);table_range=[base+0x54,base+0x5a]
+                sites=(0x5a,0x5e,0x62,0x66)
+            for site,value in zip(sites,(10,11,12,13)):
+                halves(site,0x2000|value);branch(site+2,0x80)
     image=tmp_path/'original-thumb.bin';image.write_bytes(raw)
     functions=[dict(addr=base+offset,size=size,thumb=True,name=f'original_{offset:x}')
                for offset,size in ((0,0x180),(0x180,0x60),(0x1c0,6),(0x200,6))]
     manifest=dict(cpu='arm9',arch='v5te',modules=[dict(name='arm9main',module_id=-1,
         base=base,image=str(image),functions=functions,labels=[],calls=[],
-        code_ranges=[[base,base+len(raw)]],data_ranges=[[base+0x56,base+0x5c] if 'flags' in mode else [base+0x54,base+0x5a] if 'taken' in mode or 'signed' in mode else [base+0x50,base+0x56]])])
+        code_ranges=[[base,base+len(raw)]],data_ranges=[table_range])])
     return manifest
 
 
@@ -83,7 +107,7 @@ def test_long_loop_condition_has_no_returning_fallthrough(tmp_path,sdk):
     assert emitter.emit_manifest(manifest,output)['undefined_sites']==0
 
 
-@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace','taken_flags','signed_pair','signed_pair_ge'])
+@pytest.mark.parametrize('mutation',[None,'long_loop','inplace','taken_inplace','long_loop_taken_inplace','taken_flags','signed_pair','signed_pair_ge','affine_add','affine_sub','affine_copy'])
 def test_long_body_branch_and_ordinary_call_execute_with_balanced_frames(tmp_path,sdk,hardware_project,mutation):
     manifest=program(tmp_path,mutation);_,emitter,_=nds_native._sdk()
     output=tmp_path/'generated';output.mkdir()
