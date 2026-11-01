@@ -57,6 +57,8 @@ struct Display {
     std::deque<video::Scene> history;
     SDL_AudioDeviceID audio=0;
     SDL_AudioStream* resampler=nullptr;
+    ds_host::KeyboardFrame keyboard;
+    ds_host::AudioQueueStats audio_stats;
     bool expand_visibility=false;
     explicit Display(video::Options options) {
         expand_visibility=options.expand_visibility;
@@ -66,7 +68,7 @@ struct Display {
 #endif
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS)!=0)throw std::runtime_error(SDL_GetError());
         video=std::make_unique<video::Display>(options);
-        SDL_AudioSpec wanted{};wanted.freq=48000;wanted.format=AUDIO_S16SYS;wanted.channels=2;wanted.samples=1024;
+        SDL_AudioSpec wanted{};wanted.freq=48000;wanted.format=AUDIO_S16SYS;wanted.channels=2;wanted.samples=ds_host::audio_device_samples;
         audio=SDL_OpenAudioDevice(nullptr,0,&wanted,nullptr,0);
         if(!audio)throw std::runtime_error(SDL_GetError());
         resampler=SDL_NewAudioStream(AUDIO_S16SYS,2,int(dsr::Session::audio_rate()+0.5),AUDIO_S16SYS,2,wanted.freq);
@@ -80,7 +82,6 @@ struct Display {
         SDL_Quit();
     }
     bool input(dsr::InputState& input,ds_host::Cheats& cheats) {
-        ds_host::KeyboardFrame keyboard;
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
             if(!keyboard.event(event))return false;
@@ -88,6 +89,7 @@ struct Display {
             if(event.type==SDL_KEYDOWN) {
                 if(event.key.keysym.sym==SDLK_F1&&!event.key.repeat) {
                     SDL_ClearQueuedAudio(audio);
+                    SDL_AudioStreamClear(resampler);
                     if(!ds_host::settings(cheats))return false;
                 } else video->key(event.key);
             }
@@ -102,10 +104,6 @@ struct Display {
         return true;
     }
     void present(dsr::Session& session) {
-        const auto& gpu=session.machine().gpu2d();
-        video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
-                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history,
-                        gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()});
         if(SDL_AudioStreamPut(resampler,session.audio_data(),int(session.audio_frames()*4))!=0)
             throw std::runtime_error(SDL_GetError());
         const int available=SDL_AudioStreamAvailable(resampler);
@@ -114,8 +112,12 @@ struct Display {
             std::vector<uint8_t> bytes(size_t(available),uint8_t(0));
             const int got=SDL_AudioStreamGet(resampler,bytes.data(),available);
             if(got<0)throw std::runtime_error(SDL_GetError());
-            ds_host::queue_game_audio(audio,std::span<const uint8_t>(bytes.data(),size_t(got)),48000);
+            ds_host::queue_game_audio(audio,std::span<const uint8_t>(bytes.data(),size_t(got)),48000,&audio_stats);
         }
+        const auto& gpu=session.machine().gpu2d();
+        video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
+                        (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_origins(),gpu.screen_bottom_origins(),&history,
+                        gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()});
     }
 };
 #endif
@@ -363,6 +365,10 @@ int main(int argc,char** argv) {
 #ifdef NDS_WITH_SDL
         if(display) {
             auto& video=*display->video;
+            std::cout<<",\"audio_output\":{\"queue_limit_ms\":"<<ds_host::audio_queue_limit_ms
+                <<",\"maximum_queued_ms\":"<<double(display->audio_stats.maximum_queued_bytes)*1000/(48000*4)
+                <<",\"declined_blocks\":"<<display->audio_stats.declined_blocks
+                <<",\"device_samples\":"<<ds_host::audio_device_samples<<"}";
             std::cout<<",\"video\":{\"renderer\":"<<std::quoted(video.renderer())<<",\"device\":"<<std::quoted(video.device())
                 <<",\"width\":"<<video.width()<<",\"height\":"<<video.height()
                 <<",\"polygons_drawn\":"<<video.polygons_drawn()<<",\"captured_pixels\":"<<video.captured_pixels()
