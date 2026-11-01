@@ -218,6 +218,32 @@ def make(emitter):
             else:pipeline=False
         pipeline = pipeline and sign_stage != 1
         if complete and requested_count == count and key_reg is not None and pipeline:
+            # Signed upper bounds alone permit negative indices. A consecutive
+            # lower-bound check must exclude them before the key is scaled.
+            for pos in range(len(previous)-3):
+                compare,branch,lower,low_branch=previous[pos:pos+4]
+                args,low_args=compare.operands,lower.operands
+                if (self._branch_name(compare)!='cmp' or compare.condition!=14 or len(args)!=2
+                        or args[0].type!=ARM_OP_REG or operand_reg(compare,args[0])!=key_reg
+                        or args[1].type!=ARM_OP_IMM or self._branch_name(branch)!='b'
+                        or branch.condition not in (10,12) or compare.next_address!=branch.address
+                        or int(args[1].imm)+(branch.condition==12)!=count):continue
+                if (branch.next_address!=lower.address or self._branch_name(lower)!='cmp'
+                        or lower.condition!=14 or len(low_args)!=2 or low_args[0].type!=ARM_OP_REG
+                        or operand_reg(lower,low_args[0])!=key_reg or low_args[1].type!=ARM_OP_IMM
+                        or int(low_args[1].imm)!=0 or lower.next_address!=low_branch.address
+                        or self._branch_name(low_branch)!='b' or low_branch.condition!=11):continue
+                destinations=(self._branch_target(branch),self._branch_target(low_branch))
+                if any(target is None or target<insn.next_address for target in destinations):continue
+                address=low_branch.next_address
+                for following in previous[pos+4:]+[insn]:
+                    if following.address!=address:break
+                    if following is insn:
+                        guard=dict(compare=compare.address,address=branch.address,fallthrough=branch.next_address)
+                        break
+                    if self._branch_name(following) in ('b','bl','blx','bx'):break
+                    if following.address<previous[key_pos].address and writes_register(following,key_reg):break
+                    address=following.next_address
             for pos in range(len(previous)-1):
                 compare, branch = previous[pos:pos+2]
                 args = compare.operands
@@ -237,7 +263,7 @@ def make(emitter):
                 for following in [op for op in previous[pos+2:] if op.address>=valid_start]+[insn]:
                     if following.address != address:break
                     if following is insn:
-                        guard = dict(address=branch.address,fallthrough=valid_start)
+                        guard = dict(compare=compare.address,address=branch.address,fallthrough=valid_start)
                         break
                     if self._branch_name(following) in ('b','bl','blx','bx'):break
                     if following.address<previous[key_pos].address and writes_register(following,key_reg):break

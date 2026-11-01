@@ -275,6 +275,10 @@ def install(emitter):
                 # The table recognizer preserves the bounded key until its
                 # verified address/offset construction. This excludes bypasses
                 # and loops which invalidate the range on a later visit.
+                # Entering the conditional branch without executing its CMP
+                # would reuse unrelated flags and bypass the bound as well.
+                if start==guard['address'] or any(destination==guard['address']
+                        and source!=guard['compare'] for source,destination in edges):return None
                 address=guard['fallthrough'];previous=guard['address'];predecessors={}
                 while address<=dispatch:
                     if address not in self.insns:return None
