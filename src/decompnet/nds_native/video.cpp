@@ -238,7 +238,6 @@ const char* captured_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;
 uniform sampler2D image,origins;
 uniform bool opaque_output;
-uniform int brightness[192];
 vec4 origin(ivec2 p){return texelFetch(origins,clamp(p,ivec2(0),ivec2(255,191)),0);}
 vec2 derivative(ivec2 p,ivec2 step,vec4 center){
  vec4 a=origin(p-step),b=origin(p+step);vec2 d=vec2(0);float n=0;
@@ -252,9 +251,6 @@ void main(){
  vec2 local=fract(p)-vec2(0.5);
  vec2 source=center.xy+local.x*derivative(at,ivec2(1,0),center)+local.y*derivative(at,ivec2(0,1),center);
  pixel=texture(image,vec2(source.x,1-source.y));
- int b=brightness[at.y];float f=float(b&31)/16;
- if((b>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(1),f);
- if((b>>5)==2)pixel.rgb*=1-f;
  // A native opaque edge can cover a texel that the finer silhouette leaves
  // transparent. Its underlying 2D layer is unknown; preserve that native texel.
  if(opaque_output){if(pixel.a<30.5/31.0)discard;pixel.a=1;}
@@ -574,8 +570,6 @@ struct Display::Impl {
         auto& target=captured_target(scene,256*scale,192*scale,opaque);
         gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.result);gl->Uniform1i(uniform(captured_program,"image"),0);
         gl->Uniform1i(uniform(captured_program,"opaque_output"),opaque);
-        std::array<GLint,192> rows{};if(brightness)std::copy_n(brightness,192,rows.begin());
-        gl->Uniform1iv(uniform(captured_program,"brightness"),192,rows.data());
         gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,origin_texture);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
