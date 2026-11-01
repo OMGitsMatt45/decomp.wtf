@@ -45,6 +45,41 @@ def _subtract(ranges,removed):
     return result
 
 
+def _coalesce_dispatch_regions(regions):
+    """Give overlapping same-mode regions one body and one slot per entry.
+
+    The gap scanner can grow an inferred region around a recovered callback's
+    smaller region. Keep the union of their executable bytes: a hole in one
+    callback may contain another callback's instructions. Bytes excluded by
+    every covering region remain data and do not enter dispatch identity.
+    """
+    result=[]
+    for thumb in (False,True):
+        current=None
+        for original in sorted((r for r in regions if bool(r['thumb'])==thumb),
+                               key=lambda r:(int(r['addr']),-int(r['size']))):
+            region={**original,'addr':int(original['addr']),'size':int(original['size']),
+                    'thumb':thumb,'entries':sorted(set(map(int,original['entries']))),
+                    'data_ranges':_merge(original.get('data_ranges',[]))}
+            start=region['addr'];end=start+region['size']
+            if region['size']<=0 or any(not start<=low<high<=end for low,high in region['data_ranges']):
+                raise ValueError('invalid dispatch region bounds or data ranges')
+            if any(not start<=entry<end or any(low<=entry<high for low,high in region['data_ranges'])
+                   for entry in region['entries']):
+                raise ValueError('dispatch entry lies outside code bytes')
+            if current is None or start>=current['addr']+current['size']:
+                if current is not None:result.append(current)
+                current=region;continue
+            code=_merge(_subtract([[current['addr'],current['addr']+current['size']]],current['data_ranges'])+
+                        _subtract([[start,end]],region['data_ranges']))
+            data=_subtract(_merge(current['data_ranges']+region['data_ranges']),code)
+            current['size']=max(end,current['addr']+current['size'])-current['addr']
+            current['entries']=sorted(set(current['entries'])|set(region['entries']))
+            current['data_ranges']=data
+        if current is not None:result.append(current)
+    return sorted(result,key=lambda r:(r['addr'],r['thumb']))
+
+
 def codec_functions(manifest,metadata,reader):
     """Use decoded DS Protect function boundaries instead of broad gap guesses.
 
@@ -120,6 +155,9 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
     """
     cpu=manifest['cpu'];arch=manifest['arch']
     if cpu not in ('arm9','arm7'):return []
+    for module in manifest['modules']:
+        if module.get('dispatch_regions'):
+            module['dispatch_regions']=_coalesce_dispatch_regions(module['dispatch_regions'])
     entries,images,module_entries,calls=emitter._prepare_entries(manifest,None)
     modules={int(module['module_id']):module for module in manifest['modules']}
     references=defaultdict(dict);hashes={}
@@ -346,6 +384,7 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
         module.setdefault('callback_recovery',[]).extend(evidence);additions.extend(evidence)
         module['labels']=[dict(addr=address,thumb=thumb) for address,thumb in sorted(labels)]
         functions.sort(key=lambda f:(f['addr'],f['thumb']))
+        module['dispatch_regions']=_coalesce_dispatch_regions(module.get('dispatch_regions',[]))
     manifest['callback_recovery']=additions
     return additions
 
@@ -364,10 +403,8 @@ def complete(manifest,emitter,reader):
         previous={int(m['module_id']):list(m.get('dispatch_regions',[])) for m in manifest['modules']}
         scan=reader._GapDiscovery(manifest['modules'],[m.get('code_ranges',[]) for m in manifest['modules']])
         for module in manifest['modules']:
-            regions={}
-            for region in previous[int(module['module_id'])]+module.get('dispatch_regions',[]):
-                regions[(int(region['addr']),int(region['size']),bool(region['thumb']))]=region
-            module['dispatch_regions']=[regions[key] for key in sorted(regions)]
+            module['dispatch_regions']=_coalesce_dispatch_regions(
+                previous[int(module['module_id'])]+module.get('dispatch_regions',[]))
             records=[record for record in scan.added if int(record['module_id'])==int(module['module_id'])]
             if records:module.setdefault('callback_gap_recovery',[]).extend(records)
         gaps.extend(scan.added)
