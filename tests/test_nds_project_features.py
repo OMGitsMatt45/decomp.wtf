@@ -1,5 +1,4 @@
 """Project-owned features run independently of the optional cheat menu."""
-import os
 import subprocess
 
 from .test_nds_native import generate,execute,sdk  # noqa: F401
@@ -33,11 +32,11 @@ struct Features {
     assert report['frames']==baseline['frames']==8
     path=root/'native/project_features.hpp'
     path.write_text(path.read_text().replace('++inputs;return true','++inputs;return inputs<=3'))
-    # Make this rapid edit observably newer than the just-linked image instead
-    # of depending on the build runner's timestamp comparison precision.
-    edited=max(path.stat().st_mtime_ns,exe.stat().st_mtime_ns+2_000_000_000)
-    os.utime(path,ns=(edited,edited))
-    done=subprocess.run(['cmake','--build',str(root/'build'),'--config','Release','--parallel','2'],capture_output=True,text=True,timeout=240)
+    assert '++inputs;return inputs<=3' in path.read_text()
+    # This fixture checks hook behavior, not incremental dependency tracking.
+    # MSBuild on CI can reuse the previous object after a rapid header edit,
+    # even with an explicitly newer mtime. Build the edited fixture afresh.
+    done=subprocess.run(['cmake','--build',str(root/'build'),'--config','Release','--clean-first','--parallel','2'],capture_output=True,text=True,timeout=240)
     assert done.returncode==0,done.stdout+done.stderr
     stopped=execute(exe,root,'--save',tmp_path/'stopped.sav')
-    assert stopped['frames']==3 and stopped['original_feature']==dict(frames=3,inputs=4)
+    assert stopped['frames']==3 and stopped['original_feature']==dict(frames=3,inputs=4), (stopped,done.stdout,done.stderr)
