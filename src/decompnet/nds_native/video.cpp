@@ -238,6 +238,7 @@ const char* captured_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;
 uniform sampler2D image,origins;
 uniform bool opaque_output;
+uniform int brightness[192];
 vec4 origin(ivec2 p){return texelFetch(origins,clamp(p,ivec2(0),ivec2(255,191)),0);}
 vec2 derivative(ivec2 p,ivec2 step,vec4 center){
  vec4 a=origin(p-step),b=origin(p+step);vec2 d=vec2(0);float n=0;
@@ -251,6 +252,9 @@ void main(){
  vec2 local=fract(p)-vec2(0.5);
  vec2 source=center.xy+local.x*derivative(at,ivec2(1,0),center)+local.y*derivative(at,ivec2(0,1),center);
  pixel=texture(image,vec2(source.x,1-source.y));
+ int b=brightness[at.y];float f=float(b&31)/16;
+ if((b>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(1),f);
+ if((b>>5)==2)pixel.rgb*=1-f;
  // A native opaque edge can cover a texel that the finer silhouette leaves
  // transparent. Its underlying 2D layer is unknown; preserve that native texel.
  if(opaque_output){if(pixel.a<30.5/31.0)discard;pixel.a=1;}
@@ -552,7 +556,7 @@ struct Display::Impl {
         gl->BindTexture(GL_TEXTURE_2D,target.result);gl->GenerateMipmap(GL_TEXTURE_2D);
         return target;
     }
-    void captured(const Scene& scene,const uint64_t* tags,Rect rect,bool opaque=true) {
+    void captured(const Scene& scene,const uint64_t* tags,Rect rect,bool opaque=true,const uint8_t* brightness=nullptr) {
         if(!tags||!scene.supported||scene.order.empty())return;
         std::vector<float> mapping(256*192*4);unsigned eligible=0;
         for(unsigned i=0;i<256*192;++i)if(tags[i]&&(tags[i]>>16)==scene.serial) {
@@ -567,6 +571,8 @@ struct Display::Impl {
         auto& target=captured_target(scene,256*scale,192*scale,opaque);
         gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.result);gl->Uniform1i(uniform(captured_program,"image"),0);
         gl->Uniform1i(uniform(captured_program,"opaque_output"),opaque);
+        std::array<GLint,192> rows{};if(brightness)std::copy_n(brightness,192,rows.begin());
+        gl->Uniform1iv(uniform(captured_program,"brightness"),192,rows.data());
         gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,origin_texture);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
@@ -621,7 +627,7 @@ struct Display::Impl {
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(menu_bottom?frame.bottom:frame.top,{0,0,256,192},destination,menu_bottom);
             const auto menu_tags=menu_bottom?frame.bottom_origins:frame.top_origins;
-            for(const auto& s:*frame.history)captured(s,menu_tags,destination);
+            for(const auto& s:*frame.history)captured(s,menu_tags,destination,true,menu_bottom?frame.bottom_brightness:frame.top_brightness);
             const float margin=std::max(8.f,height/64.f),available=destination.x-2*margin;
             if(available>32){const float w=std::min(available,width*.24f);native_pane(menu_bottom?frame.top:frame.bottom,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},!menu_bottom);}
             return true;
@@ -629,6 +635,17 @@ struct Display::Impl {
         const auto fg=on_top?frame.top_foreground:frame.bottom_foreground;
         const auto brightness=on_top?frame.top_brightness:frame.bottom_brightness;
         const auto tags=on_top?frame.top_origins:frame.bottom_origins;
+        const auto other=on_top?frame.bottom:frame.top;
+        // A single-screen cinematic has no map to inset. Its backdrops and
+        // narration were authored against one native frustum; keep the entire
+        // composition together, including individual glyphs and 2D captions.
+        const bool blank_other=std::all_of(other,other+256*192,[](uint32_t p){return ((p>>16)&255)<=8&&((p>>8)&255)<=8&&(p&255)<=8;});
+        if(blank_other) {
+            layout_name="cinematic";const auto destination=fit(float(width),float(height),4.f/3);
+            native_pane(on_top?frame.top:frame.bottom,{0,0,256,192},destination,!on_top);
+            for(const auto& s:*frame.history)captured(s,tags,destination,true,brightness);
+            return true;
+        }
         if(!fg||!brightness)return false;
         // A transformed captured picture or unsupported blending needs its
         // original mapping. Never silently drop UI in order to widen a scene.
@@ -645,7 +662,7 @@ struct Display::Impl {
         if(opaque>256*192*9/10) {
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(primary,{0,0,256,192},destination,!on_top);
-            for(const auto& s:*frame.history)captured(s,tags,destination);
+            for(const auto& s:*frame.history)captured(s,tags,destination,true,brightness);
             const float available=destination.x-2*margin;
             if(available>32){const float w=std::min(available,width*.24f);native_pane(secondary,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},on_top);}
             return true;
@@ -666,7 +683,7 @@ struct Display::Impl {
             const Rect map{margin,height-margin-w*.75f,w,w*.75f};
             native_pane(secondary,{0,0,256,192},map,on_top);
             const auto other_tags=on_top?frame.bottom_origins:frame.top_origins;
-            for(const auto& s:*frame.history)captured(s,other_tags,map);
+            for(const auto& s:*frame.history)captured(s,other_tags,map,true,on_top?frame.bottom_brightness:frame.top_brightness);
         }
         auto boxes=layout_detail::foreground_boxes(fg);
         for(const auto& p:scene->polygons)if(!world_polygon(p)&&!background_polygon(*scene,p)){
@@ -714,7 +731,8 @@ struct Display::Impl {
         };
         Box bottom_box,top_box;
         const bool bottom_sparse=sparse(frame.bottom,bottom_box),top_sparse=sparse(frame.top,top_box);
-        if(bottom_sparse!=top_sparse) {
+        const auto control_box=bottom_sparse?bottom_box:top_box;
+        if(bottom_sparse!=top_sparse&&control_box.w&&control_box.y>=128&&control_box.h<=64) {
             const bool picture_top=bottom_sparse;
             const auto picture=picture_top?frame.top:frame.bottom;
             const auto controls=picture_top?frame.bottom:frame.top;
@@ -722,19 +740,28 @@ struct Display::Impl {
             const auto destination=fit(float(width),float(height),4.f/3);
             layout_name="startup";native_pane(picture,{0,0,256,192},destination,true);
             const auto tags=picture_top?frame.top_origins:frame.bottom_origins;
-            if(frame.history)for(const auto& scene:*frame.history)captured(scene,tags,destination);
+            if(frame.history)for(const auto& scene:*frame.history)captured(scene,tags,destination,true,picture_top?frame.top_brightness:frame.bottom_brightness);
             if(box.w&&box.h) {
                 const float scale=height/384.f,margin=std::max(8.f,height/64.f);
                 native_pane(controls,box,{(width-box.w*scale)/2,margin+(192-box.y-box.h)*scale,box.w*scale,box.h*scale},picture_top);
             }
             return true;
         }
-        // When both pictures matter, show both at their original 4:3 ratio in
-        // a landscape pair. This includes synchronized two-stream movies.
+        const bool visible_3d=(frame.top_origins&&std::any_of(frame.top_origins,frame.top_origins+256*192,[](uint64_t p){return p!=0;}))||
+            (frame.bottom_origins&&std::any_of(frame.bottom_origins,frame.bottom_origins+256*192,[](uint64_t p){return p!=0;}));
+        if(!visible_3d) {
+            // Synchronized movie streams can form one continuous vertical
+            // composition. Preserve their original relationship and timing.
+            layout_name="movie";const auto total=fit(float(width),float(height),2.f/3);
+            const Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
+            native_pane(frame.top,{0,0,256,192},top,false);native_pane(frame.bottom,{0,0,256,192},bottom,true);
+            return true;
+        }
+        // Two active menu screens retain their original 4:3 ratio in landscape.
         layout_name="dual-wide";const auto total=fit(float(width),float(height),8.f/3);
         const Rect top{total.x,total.y,total.w/2,total.h},bottom{total.x+total.w/2,total.y,total.w/2,total.h};
         native_pane(frame.top,{0,0,256,192},top,false);native_pane(frame.bottom,{0,0,256,192},bottom,true);
-        if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
+        if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,top,true,frame.top_brightness);captured(scene,frame.bottom_origins,bottom,true,frame.bottom_brightness);}
         return true;
     }
     void present(const Frame& frame) {
@@ -779,11 +806,11 @@ struct Display::Impl {
                         it=captured_targets.erase(it);
                     }else ++it;
                 }
-                for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
+                for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top,true,frame.top_brightness);captured(scene,frame.bottom_origins,bottom,true,frame.bottom_brightness);}
             } else if(has_3d) {
                 std::array<uint64_t,256*192> tags{};
                 for(unsigned i=0;i<tags.size();++i)if(frame.three_d[i]&&frame.scene->safe[i])tags[i]=(frame.scene->serial<<16)|(i+1);
-                captured(*frame.scene,tags.data(),frame.on_top?top:bottom,false);
+                captured(*frame.scene,tags.data(),frame.on_top?top:bottom,false,frame.on_top?frame.top_brightness:frame.bottom_brightness);
             }
         }
         check(gl->GetError()==GL_NO_ERROR,"OpenGL presentation failed");
