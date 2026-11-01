@@ -21,6 +21,8 @@ def desktop_project(tmp_path_factory,sdk):
     shutil.copyfile(source.with_name('nds_audio.cpp'),root/'tests/audio_checks.cpp')
     shutil.copyfile(source.with_name('nds_settings.cpp'),root/'tests/settings_checks.cpp')
     shutil.copyfile(source.with_name('nds_input.cpp'),root/'tests/input_checks.cpp')
+
+    shutil.copyfile(source.with_name('nds_keyboard.cpp'),root/'tests/keyboard_checks.cpp')
     with (root/'CMakeLists.txt').open('a') as file:
         file.write('''
 if(NDS_WITH_SDL)
@@ -39,6 +41,10 @@ if(NDS_WITH_SDL)
   target_include_directories(settings_checks PRIVATE native)
   target_compile_definitions(settings_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(settings_checks PRIVATE ds_runtime SDL2::SDL2-static)
+  add_executable(keyboard_checks tests/keyboard_checks.cpp)
+  target_include_directories(keyboard_checks PRIVATE native)
+  target_compile_definitions(keyboard_checks PRIVATE SDL_MAIN_HANDLED)
+  target_link_libraries(keyboard_checks PRIVATE ds_runtime SDL2::SDL2-static)
 endif()
 ''')
     build=root/'build-video'
@@ -66,6 +72,14 @@ def test_scripted_touch_survives_idle_desktop_pointer(desktop_project):
     done=subprocess.run([str(exe)],capture_output=True,text=True,timeout=30)
     assert done.returncode==0,done.stdout+done.stderr
     assert 'Scripted and live touch merge checks passed' in done.stdout
+
+def test_short_keyboard_taps_survive_the_sdl_event_queue(tmp_path,desktop_project):
+    _,_,_,build=desktop_project
+    exe=next(p for p in (build/'keyboard_checks',build/'keyboard_checks.exe',build/'Release/keyboard_checks.exe') if p.is_file())
+    env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}
+    done=subprocess.run([str(exe)],cwd=tmp_path,env=env,capture_output=True,text=True,timeout=30)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert 'SDL keyboard queue checks passed' in done.stdout
 
 
 def test_settings_toggle_cheats_then_resume_the_generated_game(tmp_path,desktop_project):
