@@ -56,7 +56,7 @@ def execute(executable,root,*options,ok=True):
     return run.stderr
 
 
-@pytest.mark.parametrize('dependency',['guest_work_patch.py','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','project_hooks.hpp'])
+@pytest.mark.parametrize('dependency',['guest_work_patch.py','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp'])
 def test_backend_revision_changes_with_emitted_runtime_and_host_dependencies(monkeypatch,dependency):
     from decompnet import nds_native
     source=nds_native._source

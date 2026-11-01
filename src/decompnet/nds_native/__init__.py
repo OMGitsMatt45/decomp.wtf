@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -454,6 +454,8 @@ def generate(project,root):
                                ('cheats.hpp','native/cheats.hpp'),('settings.hpp','native/settings.hpp'),
                                ('input.hpp','native/input.hpp'),
                                ('project_hooks.hpp','native/project_hooks.hpp'),
+
+                               ('keyboard.hpp','native/keyboard.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),
                                ('Runtime.cmake','cmake/Runtime.cmake'),('extract.py','tools/extract_assets.py')):
         (root/destination).write_text(_source(source),encoding='utf-8')

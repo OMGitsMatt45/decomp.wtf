@@ -26,6 +26,7 @@
 #include "project_hooks.hpp"
 #ifdef NDS_WITH_SDL
 #include "settings.hpp"
+#include "keyboard.hpp"
 #endif
 
 namespace {
@@ -77,8 +78,10 @@ struct Display {
         SDL_Quit();
     }
     bool input(dsr::InputState& input,ds_host::Cheats& cheats) {
+        ds_host::KeyboardFrame keyboard;
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
+            if(!keyboard.event(event))return false;
             if(event.type==SDL_QUIT)return false;
             if(event.type==SDL_KEYDOWN) {
                 if(event.key.keysym.sym==SDLK_F1&&!event.key.repeat) {
@@ -88,10 +91,7 @@ struct Display {
             }
         }
         const auto* keys=SDL_GetKeyboardState(nullptr);
-        const SDL_Scancode codes[]={SDL_SCANCODE_X,SDL_SCANCODE_Z,SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_RETURN,
-            SDL_SCANCODE_RIGHT,SDL_SCANCODE_LEFT,SDL_SCANCODE_UP,SDL_SCANCODE_DOWN,
-            SDL_SCANCODE_W,SDL_SCANCODE_Q,SDL_SCANCODE_S,SDL_SCANCODE_A};
-        for(unsigned i=0;i<12;++i)if(keys[codes[i]])input.buttons|=1u<<i;
+        keyboard.apply(input);
         if(keys[SDL_SCANCODE_ESCAPE])return false;
         int x,y;const auto buttons=SDL_GetMouseState(&x,&y);
         int dx=0,dy=0;
