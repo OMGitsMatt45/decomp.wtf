@@ -254,6 +254,9 @@ void main(){
  // A native opaque edge can cover a texel that the finer silhouette leaves
  // transparent. Its underlying 2D layer is unknown; preserve that native texel.
  if(opaque_output){if(pixel.a<30.5/31.0)discard;pixel.a=1;}
+ int brightness=int(center.z+0.5)-1;float factor=float(min(brightness&31,16))/16;
+ if((brightness>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(1),factor);
+ if((brightness>>5)==2)pixel.rgb*=1-factor;
 }
 )GLSL";
 struct Rect {float x=0,y=0,w=0,h=0;}; // Bottom-left drawable coordinates.
@@ -552,13 +555,13 @@ struct Display::Impl {
         gl->BindTexture(GL_TEXTURE_2D,target.result);gl->GenerateMipmap(GL_TEXTURE_2D);
         return target;
     }
-    void captured(const Scene& scene,const uint64_t* tags,Rect rect,bool opaque=true) {
+    void captured(const Scene& scene,const uint64_t* tags,Rect rect,bool opaque=true,const uint8_t* brightness=nullptr) {
         if(!tags||!scene.supported||scene.order.empty())return;
         std::vector<float> mapping(256*192*4);unsigned eligible=0;
         for(unsigned i=0;i<256*192;++i)if(tags[i]&&(tags[i]>>16)==scene.serial) {
             const auto pixel=unsigned(tags[i]&65535)-1;if(pixel>=256*192)continue;
             mapping[i*4]=(float(pixel%256)+.5f)/256;mapping[i*4+1]=(float(pixel/256)+.5f)/192;
-            mapping[i*4+2]=scene.safe[pixel]?1.f:0.f;mapping[i*4+3]=1;eligible+=scene.safe[pixel]!=0;
+            mapping[i*4+2]=scene.safe[pixel]?float(1+(brightness?brightness[i/256]:0)):0.f;mapping[i*4+3]=1;eligible+=scene.safe[pixel]!=0;
         }
         if(!eligible)return;captured_pixel_count+=eligible;
         // Integer DS multiples avoid uneven raster samples. Supersampling
@@ -779,7 +782,7 @@ struct Display::Impl {
                         it=captured_targets.erase(it);
                     }else ++it;
                 }
-                for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top);captured(scene,frame.bottom_origins,bottom);}
+                for(const auto& scene:*frame.history) {captured(scene,frame.top_origins,top,true,frame.top_brightness);captured(scene,frame.bottom_origins,bottom,true,frame.bottom_brightness);}
             } else if(has_3d) {
                 std::array<uint64_t,256*192> tags{};
                 for(unsigned i=0;i<tags.size();++i)if(frame.three_d[i]&&frame.scene->safe[i])tags[i]=(frame.scene->serial<<16)|(i+1);
