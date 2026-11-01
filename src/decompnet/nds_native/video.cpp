@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <map>
+#include <unordered_map>
 #include <stdexcept>
 
 #ifdef _WIN32
@@ -297,7 +298,10 @@ struct Display::Impl {
     struct CapturedTarget {GLuint fbo=0,color=0,state=0,depth=0,effects_fbo=0,result=0,previous_color=0,previous_state=0;int w=0,h=0;};
     std::map<std::pair<uint64_t,unsigned>,CapturedTarget> captured_targets;
     std::vector<CapturedTarget> spare_targets;
-    std::map<std::pair<uint32_t,uint32_t>,GLuint> textures;
+    struct CachedTexture {GLuint name=0;int w=0,h=0;uint64_t used=0;std::vector<uint8_t> rgba;};
+    std::map<std::pair<uint32_t,uint32_t>,CachedTexture> textures;
+    size_t texture_bytes=0;uint64_t texture_clock=0;
+    std::unordered_map<GLuint,std::unordered_map<std::string,GLint>> uniform_locations;
     std::string renderer_name="software",device_name;
     Rect touch_rect;
     struct Touch {Rect destination;Box source;bool enabled;};
@@ -357,7 +361,7 @@ struct Display::Impl {
             if(vbo)gl->DeleteBuffers(1,&vbo);if(vao)gl->DeleteVertexArrays(1,&vao);
             if(screen_texture)gl->DeleteTextures(1,&screen_texture);if(mask_texture)gl->DeleteTextures(1,&mask_texture);
         }
-        scene_program=effects_program=flat_program=captured_program=vao=vbo=screen_texture=mask_texture=origin_texture=0;gl.reset();
+        scene_program=effects_program=flat_program=captured_program=vao=vbo=screen_texture=mask_texture=origin_texture=0;uniform_locations.clear();gl.reset();
         if(software_texture)SDL_DestroyTexture(software_texture);software_texture=nullptr;
         if(software)SDL_DestroyRenderer(software);software=nullptr;
         if(context)SDL_GL_DeleteContext(context);context=nullptr;
@@ -379,7 +383,7 @@ struct Display::Impl {
         gl->GenTextures(1,&screen_texture);gl->GenTextures(1,&mask_texture);gl->GenTextures(1,&origin_texture);
         SDL_GL_SetSwapInterval(1);renderer_name="opengl";
     }
-    void clear_textures(){for(auto [key,value]:textures)gl->DeleteTextures(1,&value);textures.clear();}
+    void clear_textures(){for(auto& [key,value]:textures)gl->DeleteTextures(1,&value.name);textures.clear();texture_bytes=0;}
     void upload(GLuint texture,int w,int h,const void* data,GLenum format=GL_RGBA) {
         gl->BindTexture(GL_TEXTURE_2D,texture);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
@@ -387,7 +391,11 @@ struct Display::Impl {
         gl->PixelStorei(GL_UNPACK_ALIGNMENT,1);
         gl->TexImage2D(GL_TEXTURE_2D,0,format==GL_RED?GL_R8:GL_RGBA8,w,h,0,format,GL_UNSIGNED_BYTE,data);
     }
-    GLint uniform(GLuint program,const char* name){return gl->GetUniformLocation(program,name);}
+    GLint uniform(GLuint program,const char* name){
+        auto& locations=uniform_locations[program];const auto found=locations.find(name);
+        if(found!=locations.end())return found->second;
+        return locations.emplace(name,gl->GetUniformLocation(program,name)).first->second;
+    }
     void flat(const uint32_t* pixels,int w,int h,Rect rect) {
         gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,w,h,pixels,GL_BGRA);
         gl->Uniform1i(uniform(flat_program,"image"),0);
@@ -402,14 +410,25 @@ struct Display::Impl {
         gl->DrawArrays(GL_TRIANGLES,0,6);
     }
     void geometry(const Scene& scene,Rect original,unsigned layer=0,float aspect=4.f/3) {
-        clear_textures();
+        ++texture_clock;
         gl->ActiveTexture(GL_TEXTURE0);
         for(const auto& texture:scene.textures) {
-            GLuint name;gl->GenTextures(1,&name);upload(name,texture.width,texture.height,texture.rgba.data());
+            auto& cached=textures[{texture.param,texture.palette}];cached.used=texture_clock;
+            if(cached.name&&cached.w==texture.width&&cached.h==texture.height&&cached.rgba==texture.rgba)continue;
+            if(!cached.name)gl->GenTextures(1,&cached.name);
+            upload(cached.name,texture.width,texture.height,texture.rgba.data());
             const auto wrap=[&](unsigned axis){return !(texture.param&(1u<<(16+axis)))?GL_CLAMP_TO_EDGE:
                 (texture.param&(1u<<(18+axis)))?GL_MIRRORED_REPEAT:GL_REPEAT;};
             gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,wrap(0));gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,wrap(1));
-            textures[{texture.param,texture.palette}]=name;
+            texture_bytes-=cached.rgba.size();cached.rgba=texture.rgba;texture_bytes+=cached.rgba.size();
+            cached.w=texture.width;cached.h=texture.height;
+        }
+        // Keep immutable uploads across world/UI passes and frames. A cache
+        // entry is usable only when supplied by this scene, and content changes
+        // (including palette animation) are compared byte-for-byte above.
+        for(auto it=textures.begin();it!=textures.end()&&(textures.size()>256||texture_bytes>64*1024*1024);) {
+            if(it->second.used!=texture_clock){texture_bytes-=it->second.rgba.size();gl->DeleteTextures(1,&it->second.name);it=textures.erase(it);}
+            else ++it;
         }
         gl->UseProgram(scene_program);gl->Uniform1i(uniform(scene_program,"image"),0);
         gl->Uniform1i(uniform(scene_program,"previous_color"),1);gl->Uniform1i(uniform(scene_program,"previous_state"),2);
@@ -433,7 +452,8 @@ struct Display::Impl {
             const unsigned alpha=(polygon.attr>>16)&31;
             const unsigned format=(polygon.texture>>26)&7,mode=(polygon.attr>>4)&3;
             auto texture=textures.find({polygon.texture,polygon.palette});
-            const bool textured=(scene.control&1)&&format&&texture!=textures.end();
+            const bool available=texture!=textures.end()&&texture->second.used==texture_clock;
+            const bool textured=(scene.control&1)&&format&&available;
             const bool partial=(alpha!=0&&alpha!=31)||(textured&&(format==1||format==6)&&mode!=1&&mode!=3);
             const bool feedback=partial||mode==3||(polygon.attr&(1u<<14));
             gl->DepthFunc(feedback?GL_ALWAYS:GL_LESS);
@@ -446,7 +466,7 @@ struct Display::Impl {
             gl->PolygonMode(GL_FRONT_AND_BACK,alpha?GL_FILL:GL_LINE);
             gl->Uniform1i(uniform(scene_program,"mode"),(polygon.attr>>4)&3);gl->Uniform1i(uniform(scene_program,"alpha"),alpha);
             gl->Uniform1i(uniform(scene_program,"textured"),textured);
-            gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,texture==textures.end()?0:texture->second);
+            gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,available?texture->second.name:0);
             const unsigned x=polygon.viewport&255,y=(polygon.viewport>>8)&255;
             const unsigned w=uint8_t((polygon.viewport>>16)-x)+1,h=uint8_t((polygon.viewport>>24)-y)+1;
             const int base_y=y>191?int(y)-255:int(y);

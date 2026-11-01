@@ -100,6 +100,15 @@ int main() {
         textured.textures.push_back(texture);for(auto& v:textured.vertices){v.color={63,63,63};v.u=v.v=1;}
         frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
         require(pixels[480+405*960]==0xffff0000,"GPU texture sampling and modulation");
+        auto changed_texture=textured;
+        for(size_t i=0;i<changed_texture.textures[0].rgba.size();i+=4){auto& rgba=changed_texture.textures[0].rgba;rgba[i]=0;rgba[i+1]=255;}
+        frame.scene=&changed_texture;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xff00ff00,"persistent texture storage updates changed pixels at the same address");
+        auto missing_texture=textured;missing_texture.textures.clear();frame.scene=&missing_texture;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffffffff,"a previous scene's upload cannot satisfy a missing current texture");
+        frame.scene=&textured;display.present(frame);pixels=display.read_pixels();
+        require(pixels[480+405*960]==0xffff0000,"original texture pixels can be restored after an update");
         // The uploaded texture remains cached, but display control can turn
         // mapping off while the polygon still carries its texture address.
         auto threshold=textured;threshold.control|=4;threshold.alpha_ref=31;frame.scene=&threshold;
