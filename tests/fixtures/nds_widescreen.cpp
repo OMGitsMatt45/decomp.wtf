@@ -149,6 +149,22 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="menu-wide"&&pixels[320+270*1280]==0xff0000ff,"2D start menu uses a landscape composition instead of movie stacking");
         require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"2D landscape menu preserves lower-screen touch");
+        for(int phase=0;phase<42;++phase) {
+            bottom.fill(0xff004000);
+            for(int y=8;y<=46;++y)for(int x=9;x<=228;++x)
+                bottom[y*256+x]=y==8||y==46||x==9||x==228?0xffa4a4a4:0xff202020;
+            const bool right=phase>=21;const int start=right?224:5,end=right?233:18;
+            for(int y=15;y<15+phase%13;++y)for(int x=start;x<end;++x)bottom[y*256+x]=0xffffb000;
+            display.present(frame);pixels=display.read_pixels();
+            require(display.layout()=="menu-wide"&&pixels[320+270*1280]==0xff0000ff,"animated cursor occlusion cannot switch menu layout");
+            require(display.touch(960,270,x,y)&&std::abs(x-128)<=1&&std::abs(y-96)<=1,"menu touch mapping stays stable throughout cursor animation");
+        }
+        bottom.fill(0xff000000);
+        for(int y:{8,46})for(int x=9;x<=228;++x)bottom[y*256+x]=0xffa4a4a4;
+        for(int y=8;y<=46;++y)bottom[y*256+228]=0xffa4a4a4;
+        require(!video::layout_detail::has_window(bottom.data()),"a missing vertical side is not a bounded menu frame");
+        bottom.fill(0xff00ff00);display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="movie"&&pixels[640+135*1280]==0xff0000ff&&pixels[640+405*1280]==0xff00ff00,"leaving an animated menu restores the synchronized movie layout immediately");
         top.fill(0xffffffff);bottom.fill(0xffffffff);
         // A native logo may retain a captured 3D origin even though its LCD
         // composition is a sparse logo on a solid backdrop.

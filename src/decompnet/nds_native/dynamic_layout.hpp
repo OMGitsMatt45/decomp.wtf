@@ -112,10 +112,14 @@ inline bool has_window(const uint32_t* pixels) {
         }
     }
     for(const auto a:lines)for(const auto b:lines)if(b.y-a.y>=12&&b.y-a.y<=180&&std::abs(a.x-b.x)<=6&&std::abs(a.end-b.end)<=6) {
-        auto side=[&](int edge){for(int x=std::max(0,edge-6);x<=std::min(255,edge+6);++x){int n=0;
+        auto side=[&](int edge){int best=0;for(int x=std::max(0,edge-6);x<=std::min(255,edge+6);++x){int n=0;
             for(int y=a.y+4;y<=b.y-4;++y)n+=border(x,y);
-            if(n*5>=(b.y-a.y-7)*4)return true;}return false;};
-        if(side(std::min(a.x,b.x))&&side(std::max(a.end,b.end)))return true;
+            best=std::max(best,n);}return best;};
+        const int left=side(std::min(a.x,b.x)),right=side(std::max(a.end,b.end)),height=b.y-a.y-7;
+        // A selection cursor can cover part of one vertical edge. Keep two
+        // aligned horizontal borders and one strong side, with at least half
+        // the opposite side still present, throughout the cursor animation.
+        if(std::max(left,right)*5>=height*4&&std::min(left,right)*2>=height)return true;
     }
     return false;
 }
