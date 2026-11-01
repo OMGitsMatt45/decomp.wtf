@@ -1,5 +1,6 @@
 """Original callbacks in data-classified initialized DS module bytes."""
 import copy
+import hashlib
 import json
 import struct
 import subprocess
@@ -39,6 +40,66 @@ def prepare(tmp_path):
     _,emitter,reader=nds_native._sdk()
     manifest=dict(cpu='arm9',arch='v5te',modules=[callback_image(tmp_path)])
     return manifest,emitter,reader
+
+
+def reference_image(tmp_path,module_id=4):
+    base=0x02018000;raw=bytearray(0x80)
+    struct.pack_into('<I',raw,0,0xe12fff1e)
+    struct.pack_into('<2I',raw,0x10,base+0x21,base+0x45)
+    # A genuine callback's epilogue was imported as a separate fragment.
+    struct.pack_into('<4H',raw,0x20,0xb510,0x2429,0x1c20,0xbd10)
+    # A second callback follows the return inside an overly broad extent.
+    struct.pack_into('<4H',raw,0x40,0xb500,0xbd00,0x2009,0x4770)
+    path=tmp_path/f'reference-{module_id}.bin';path.write_bytes(raw)
+    module=dict(name=f'ov{module_id:03}',module_id=module_id,base=base,image=str(path),
+        functions=[dict(addr=base,size=4,thumb=False,name='entry'),
+                   dict(addr=base+0x26,size=2,thumb=True,name='partial_epilogue'),
+                   dict(addr=base+0x40,size=8,thumb=True,name='broad_extent')],
+        labels=[],calls=[],code_ranges=[[base,base+4],[base+0x26,base+0x28],[base+0x40,base+0x48]],
+        data_ranges=[[base+4,base+0x26],[base+0x28,base+0x40]])
+    refs=[dict(module_id=module_id,address=base+offset,size=size,thumb=True,
+               module_sha256=hashlib.sha256(raw).hexdigest()) for offset,size in ((0x20,8),(0x44,4))]
+    return module,refs
+
+
+def test_reference_bounds_recover_split_and_folded_callbacks_without_overlay_guessing(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk()
+    module,refs=reference_image(tmp_path)
+    other,_=reference_image(tmp_path,5)
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module,other])
+    assert recover(copy.deepcopy(manifest),emitter,reader)==[]
+    added=recover(manifest,emitter,reader,reference_entries=refs)
+    assert {(row['module_id'],row['address']) for row in added}=={(4,0x02018020),(4,0x02018044)}
+    assert all(row['reference_module_sha256']==refs[0]['module_sha256'] for row in added)
+    assert {row['reference_size'] for row in added}=={4,8}
+    assert recover(manifest,emitter,reader,reference_entries=refs)==[]
+
+
+@pytest.mark.parametrize('change,match',[
+    ({'module_sha256':'0'*64},'SHA-256 differs'),
+    ({'module_id':99},'module is missing'),
+    ({'address':0x02018021},'unaligned'),
+    ({'size':0x100},'exceeds'),
+    ({'thumb':1},'instruction mode'),
+    ({'address':0x02018042,'size':2},'existing reachable instructions'),
+])
+def test_reference_callback_hints_require_exact_valid_input(tmp_path,sdk,change,match):
+    _,emitter,reader=nds_native._sdk();module,refs=reference_image(tmp_path)
+    with pytest.raises(ValueError,match=match):
+        recover(dict(cpu='arm9',arch='v5te',modules=[module]),emitter,reader,
+                reference_entries=[{**refs[0],**change}])
+
+
+def test_reference_callbacks_still_reject_unsupported_graphs_and_overlapping_hints(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk();module,refs=reference_image(tmp_path)
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    with pytest.raises(ValueError,match='overlapping reference'):
+        recover(copy.deepcopy(manifest),emitter,reader,reference_entries=[refs[0],{**refs[0],'address':0x02018022}])
+    raw=bytearray(Path(module['image']).read_bytes());struct.pack_into('<H',raw,0x20,0xde00)
+    Path(module['image']).write_bytes(raw)
+    refs[0]['module_sha256']=hashlib.sha256(raw).hexdigest()
+    with pytest.raises(ValueError,match='instruction-graph validation'):
+        recover(manifest,emitter,reader,reference_entries=refs[:1])
 
 
 def test_arm7_recovery_excludes_autoload_source_payload(tmp_path,sdk):
@@ -191,6 +252,9 @@ def test_callbacks_execute_statically_and_keep_overlay_image_identity(tmp_path,s
     ]))) for i in (2,3)}
     assert len(codec_functions(manifest,metadata,reader))==2
     assert len(recover(manifest,emitter,reader))==10
+    referenced,refs=reference_image(tmp_path)
+    manifest['modules'].append(referenced)
+    assert len(recover(manifest,emitter,reader,reference_entries=refs))==2
     generated=tmp_path/'generated';generated.mkdir()
     result=emitter.emit_manifest(manifest,generated,chunk_size=100)
     assert result['undefined_sites']==0
@@ -224,13 +288,23 @@ int main(int argc,char** argv) {
       if(cpu.r[0]!=10+value)return 4;
     }
   }
-  for(int i=3;i<argc;++i) {
+  for(int i=3;i<=4;++i) {
     std::ifstream file(argv[i],std::ios::binary);
     std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
     for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x02016000+j,bytes[j]);
     cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;
     dsr::dsr_call(&cpu,0x02016020);dsr::dsr_call(&cpu,0x02016020);
     if(cpu.r[0]!=41+2*unsigned(i-2))return 5;
+  }
+  {
+    std::ifstream file(argv[5],std::ios::binary);
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    for(unsigned j=0;j<bytes.size();++j)machine.write8(dsr::CpuId::Arm9,0x02018000+j,bytes[j]);
+    cpu.budget=100000;cpu.r[13]=0x023ff000;cpu.r[14]=0x02015000;cpu.r[4]=0x12345678;
+    dsr::dsr_call(&cpu,0x02018021);
+    if(cpu.r[0]!=41 || cpu.r[13]!=0x023ff000 || cpu.r[4]!=0x12345678)return 6;
+    dsr::dsr_call(&cpu,0x02018045);
+    if(cpu.r[0]!=9 || cpu.r[13]!=0x023ff000)return 7;
   }
 }
 ''')
