@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -266,6 +266,8 @@ def _runtime(sdk, root):
     patch_widescreen(target)
     from .audio_patch import patch as patch_audio
     patch_audio(target)
+    from .raster_edge_patch import patch as patch_raster_edges
+    patch_raster_edges(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -390,6 +392,9 @@ Guarded halfword dispatches require complete table entries, an unsigned range
 check, an unchanged key, and no incoming edges bypassing that check. Every exit
 must release the caller's allocation and restore its saved register frame.
 Unproven bodies retain ordinary call/fallthrough handling and diagnostics.
+When AA or edge marking is enabled, sloped right raster boundaries retain
+their endpoint. Vertical boundaries and existing interior interpolation stay
+unchanged, preventing clear-pixel cracks at independently quantized T-junctions.
 ''',encoding='utf-8')
 
 
