@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include <cstdint>
+#include <cstdlib>
 
 namespace video::layout_detail {
 struct Box {int x=0,y=0,w=0,h=0;}; // Native top-left coordinates.
@@ -56,10 +57,32 @@ inline Box party_band(const uint32_t* pixels) {
     int top=192,bottom=0;
     for(size_t i=0;i+1<lines.size();) {
         const int distance=lines[i+1]-lines[i];
-        if(distance>=16&&distance<=60){top=std::min(top,lines[i]-2);bottom=std::max(bottom,lines[i+1]+3);i+=2;}
+        // The acting member expands to a taller stats/command container.
+        // Rejecting it leaves only the other members and crops every command.
+        if(distance>=16&&distance<=96){top=std::min(top,lines[i]-2);bottom=std::max(bottom,lines[i+1]+3);i+=2;}
         else ++i;
     }
+    if(bottom>top)for(int y=0;y<192;++y) {
+        int run=0,longest=0;
+        for(int x=0;x<256;++x) {
+            const auto p=pixels[y*256+x];const int r=(p>>16)&255,g=(p>>8)&255,b=p&255;
+            if(std::min({r,g,b})>180&&std::max({r,g,b})-std::min({r,g,b})<25)longest=std::max(longest,++run);else run=0;
+        }
+        // Nested command/target lists can extend beyond the party rows.
+        // Keep their full borders, contents and source touch coordinates too.
+        if(longest>=24&&longest<252){top=std::min(top,y-2);bottom=std::max(bottom,y+3);}
+    }
     return bottom>top?Box{0,std::max(0,top),256,std::min(192,bottom)-std::max(0,top)}:Box{};
+}
+inline void group_battle_messages(std::vector<Box>& boxes) {
+    Box message{};
+    for(size_t i=0;i<boxes.size();) {
+        const auto b=boxes[i];
+        if(b.y>=128||(b.w>=190&&b.y+b.h>=155)) {
+            message=message.w?unite(message,b):b;boxes.erase(boxes.begin()+i);
+        } else ++i;
+    }
+    if(message.w)boxes.push_back(message);
 }
 inline bool full_window(const uint32_t* pixels) {
     if(!pixels)return false;
@@ -74,5 +97,36 @@ inline bool full_window(const uint32_t* pixels) {
         top|=y<32&&longest>=160&&longest<252;bottom|=y>=160&&longest>=160&&longest<252;
     }
     return top&&bottom;
+}
+// A bounded, neutral frame with two long horizontal edges and two vertical
+// sides distinguishes static menu pages from synchronized movie pictures.
+inline bool has_window(const uint32_t* pixels) {
+    struct Line {int y,x,end;};std::vector<Line> lines;
+    auto border=[&](int x,int y){const auto p=pixels[y*256+x];const int r=(p>>16)&255,g=(p>>8)&255,b=p&255;
+        return std::min({r,g,b})>150&&std::max({r,g,b})-std::min({r,g,b})<25;};
+    for(int y=0;y<192;++y) {
+        int start=0;
+        for(int x=0;x<=256;++x)if(x==256||!border(x,y)) {
+            if(x-start>=80&&start>1&&x<254)lines.push_back({y,start,x-1});
+            start=x+1;
+        }
+    }
+    for(const auto a:lines)for(const auto b:lines)if(b.y-a.y>=12&&b.y-a.y<=180&&std::abs(a.x-b.x)<=6&&std::abs(a.end-b.end)<=6) {
+        auto side=[&](int edge){for(int x=std::max(0,edge-6);x<=std::min(255,edge+6);++x){int n=0;
+            for(int y=a.y+4;y<=b.y-4;++y)n+=border(x,y);
+            if(n*5>=(b.y-a.y-7)*4)return true;}return false;};
+        if(side(std::min(a.x,b.x))&&side(std::max(a.end,b.end)))return true;
+    }
+    return false;
+}
+inline bool logo_background(const uint32_t* pixels,uint32_t& color,unsigned& ink) {
+    color=pixels[0]&0xffffff;ink=0;std::vector<uint32_t> colors;colors.reserve(65);
+    for(int y=0;y<192;++y)for(int x=0;x<256;++x) {
+        const auto p=pixels[y*256+x]&0xffffff;
+        if((x==0||x==255||y==0||y==191)&&p!=color)return false;
+        ink+=p!=color;
+        if(std::find(colors.begin(),colors.end(),p)==colors.end()){colors.push_back(p);if(colors.size()>64)return false;}
+    }
+    return ink<256*192/4;
 }
 }
