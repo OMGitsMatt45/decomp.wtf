@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -262,6 +262,8 @@ def _runtime(sdk, root):
     patch_geometry_capacity(target)
     from .guest_work_patch import patch as patch_guest_work
     patch_guest_work(target)
+    from .audio_patch import patch as patch_audio
+    patch_audio(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -342,6 +344,10 @@ produce unsupported-I/O diagnostics; external serial link behavior is separate.
 The ARM7 wireless RAM window has independent 8 KiB storage and its address
 mirror, respecting the existing power gate. Wireless MAC/network services remain
 unsupported and retain their diagnostics.
+Optional host audio cleanup retains 16-bit mixer precision and reconstructs
+PCM/ADPCM instruments with causal linear interpolation. Hardware output remains
+the default. Guest-visible channel events, sample reads and sound-capture/reverb
+writes are unchanged; PSG/noise retain their hardware phase and waveform.
 The direct boot copy uses each destination processor's bus. In the base source,
 ARM7 private WRAM receives no initialized bytes when copied through ARM9.
 Our original dual-CPU fixture covers this layout and its live literal loads.
@@ -559,6 +565,12 @@ loads through SDL. Driver downloads: [NVIDIA](https://www.nvidia.com/Download/in
 [Intel](https://www.intel.com/content/www/us/en/download-center/home.html), or
 your Linux distribution's graphics packages.
 The native DS renderer stays active for display capture, UI and guarded effects.
+
+The runtime preserves DS audio by default. A project can enable host-only cleanup
+with `session.machine().spu().set_output_quality(dsr::Spu::OutputQuality::Clean)`
+after including `<dsr/spu.h>`. This retains 16-bit precision and interpolates
+sampled instruments without changing guest sound capture, channel timing or
+the output sample count. It uses the original music and sound-effect assets.
 
 Both original LCDs remain visible and preserve their aspect ratios. Touch
 coordinates follow the displayed lower LCD. Original text/sprites remain sharply
