@@ -12,7 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
-from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,irx_fixture,vector_fixture,cheats
+from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -136,7 +136,7 @@ def generate(project,root):
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor)
-    graphics_patch.patch(vendor);mpeg_patch.install(vendor)
+    graphics_patch.patch(vendor);gs_worker.patch(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
     runtime_patch.patch_invocation_stacks(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
@@ -257,7 +257,8 @@ def _native_execution_tests(root,sdk):
     for source,target in (('iop_engine.cpp','native/iop/engine.cpp'),('iop_catalog.hpp','native/iop/decomp_iop_catalog.hpp'),
         ('iop_execution.hpp','native/iop/decomp_iop_execution.hpp'),('iop_execution.hpp','native/decomp_iop_execution.hpp'),
         ('vu_execution.hpp','native/decomp_vu_execution.hpp'),('native_iop_probe.cpp','tests/native_iop_probe.cpp'),
-        ('native_vu_probe.cpp','tests/native_vu_probe.cpp'),('native_scheduler_probe.cpp','tests/native_scheduler_probe.cpp')):
+        ('native_vu_probe.cpp','tests/native_vu_probe.cpp'),('native_scheduler_probe.cpp','tests/native_scheduler_probe.cpp'),
+        ('native_gs_worker_probe.cpp','tests/native_gs_worker_probe.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     original=irx_fixture.original_irx()
     iop_native.generate([('ORIGINAL.IRX',original)],sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'tests/iop')
