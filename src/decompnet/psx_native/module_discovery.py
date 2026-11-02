@@ -15,6 +15,7 @@ from ..rom.errors import RomError
 
 MAX_MODULES = 4096
 MAX_IMAGE_BYTES = 128 << 20
+HBD_MEMORY_TYPES = (31, 32)
 
 
 def _word(data, offset):
@@ -187,7 +188,10 @@ def discover(stream, boot_image):
         for block in inventory['blocks']:
             for member in block['members']:
                 load = member['unknown']
-                if (member['type'] != 31 or member['codec'] not in ('raw', 'hbd-lzss') or
+                # Type 32 effect records also carry native callbacks at their
+                # declared RAM destination. Apply the same address, codec and
+                # code-root checks as ordinary type 31 memory images.
+                if (member['type'] not in HBD_MEMORY_TYPES or member['codec'] not in ('raw', 'hbd-lzss') or
                         load >> 28 not in (8, 10) or load & 3 or
                         (load & 0x1fffffff)+member['size'] > 0x200000):
                     continue
@@ -197,7 +201,7 @@ def discover(stream, boot_image):
                     continue
                 seen_memory.add(key)
                 source = dict(format='hbd-memory', path=record['path'], sector=block['sector'],
-                              member=member['index'], allocation=member['size'])
+                              member=member['index'], type=member['type'], allocation=member['size'])
                 module = memory_image(data, load, source)
                 if module is not None:
                     append(module)
