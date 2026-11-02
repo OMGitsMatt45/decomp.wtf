@@ -204,3 +204,15 @@ def test_identical_programs_on_distinct_discs_share_native_code(tmp_path):
     assert len(manifest['inputs'])==2 and len(manifest['code_generation'])==1
     assert [item['disc'] for item in manifest['code_generation'][0]['origins']]==[1,2]
     assert manifest['fallback']==dict(interpreter=False,runtime_compilation=False)
+    root=tmp_path/'source'
+    manifest_bytes=(root/'pc-project.json').read_bytes()
+    subprocess.run(['git','init','-q',str(root)],check=True,capture_output=True)
+    subprocess.run(['git','-c','core.longpaths=true','-c','core.autocrlf=true','add','.'],cwd=root,check=True,capture_output=True)
+    # Verify a complete index checkout: nested vendor rules must neither hide
+    # required files nor override the output's exact-byte attributes.
+    checkout=tmp_path/'checkout';checkout.mkdir()
+    subprocess.run(['git','-c','core.longpaths=true','-c','core.autocrlf=true','checkout-index',
+        '-a','-f','--prefix='+checkout.as_posix()+'/'],cwd=root,check=True,capture_output=True)
+    assert (checkout/'pc-project.json').read_bytes()==manifest_bytes
+    from decompnet import pc
+    assert pc.verify(checkout)['integrity_verified']

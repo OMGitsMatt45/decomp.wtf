@@ -84,6 +84,11 @@ owner-supplied DuckStation GameShark catalog. Supported data/condition/slide cod
 and guarded native instruction choices are described in [PS1 cheats](ps1-native-cheats.md).
 Identical code images shared by multiple discs use one byte-guarded native module;
 the manifest retains each disc's source provenance.
+
+Generated source hashes survive Git line-ending settings. Vendor development
+ignore/attribute files are omitted so required sources remain tracked. On Windows,
+use `git -c core.longpaths=true clone ...` for long destination paths, or set
+`git config core.longpaths true` in an initialized output repository.
 An export made with `--renderer opengl` also requires OpenGL by default at launch;
 headless checks can explicitly override it with `--renderer software`.
 

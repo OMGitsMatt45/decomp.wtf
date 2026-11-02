@@ -88,6 +88,9 @@ def generate(project,root):
     _log('Copying the pinned PS1 hardware runtime and license sources...')
     vendor=root/'runtime/psxrecomp';vendor.mkdir()
     for path in _payload(sdk):
+        # A standalone output owns its tracking and exact-byte policy; vendor
+        # development rules can otherwise hide headers or normalize sources.
+        if path.name in ('.gitignore','.gitattributes'):continue
         output=vendor/path.relative_to(sdk);output.parent.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(path,output)
     runtime_patch.patch(vendor)
@@ -161,6 +164,8 @@ def generate(project,root):
           'internal_resolution = "display"','supersample = 1.0','dynamic_resolution = false']
     (root/'game.toml').write_text('\n'.join(toml)+'\n',encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.psx-assets-*/\n',encoding='utf-8')
+    # Integrity hashes describe exact source bytes on every checkout platform.
+    (root/'.gitattributes').write_text('* -text\n',encoding='utf-8')
     (root/'README.md').write_text(_readme(project),encoding='utf-8')
     manifest=dict(schema=pc.SCHEMA,platform='psx',backend=dict(id=BACKEND_ID,revision=revision()),
         runtime=dict(id='psxrecomp',revision=SDK_COMMIT,upstream_source_sha256=SDK_SHA256,
