@@ -11,8 +11,10 @@ per-player input suppression clear pending pulses. This option can merge taps
 that arrive closer together than the selected duration.
 
 `--input-script PATH` instead replays `FRAME ACTIVE_LOW_PAD_MASK` rows. Each mask
-persists until the next row, including a released `0xffff` row; remove the script
-when returning to live control. For example, Cross is `0xbfff`.
+persists until the next row, including a released `0xffff` row. A `FRAME LIVE`
+row releases the scripted mask and returns to live device sampling in the same
+process, so a recorded prefix can hand control back without a snapshot reload.
+For example, Cross is `0xbfff`.
 
 Set `DECOMP_PSX_TRACE=1` to log keyboard scancodes and changes to the actual P1
 SIO buttons, connection state, analog state, and device kind. Diagnostics go to

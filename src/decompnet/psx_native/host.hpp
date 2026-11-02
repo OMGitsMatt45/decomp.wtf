@@ -24,7 +24,7 @@ static bool decomp_fullscreen=false, decomp_require_gpu=decomp_default_require_g
 static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
 static uint32_t decomp_coverage_pc=0;
-static std::map<uint64_t,uint16_t> decomp_inputs;
+static std::map<uint64_t,int> decomp_inputs;
 static int decomp_exit_status=0;
 #ifdef DECOMP_PSX_NATIVE_ONLY
 static constexpr const char *decomp_execution_model="static-recompiled";
@@ -100,8 +100,14 @@ static void decomp_parse(int &argc,char **argv) {
                 if(line.empty()||line[0]=='#')continue;
                 std::istringstream row(line);std::string frame,mask,extra;
                 if(!(row>>frame>>mask)||(row>>extra)){std::fputs("input script requires FRAME ACTIVE_LOW_PAD_MASK\n",stderr);std::exit(2);}
-                const auto at=decomp_number(frame.c_str()),value=decomp_number(mask.c_str());
-                if(value>0xffffu||decomp_inputs.size()>=100000u||!decomp_inputs.emplace(at,(uint16_t)value).second)std::exit(2);
+                const auto at=decomp_number(frame.c_str());
+                int value=-1;
+                if(mask!="LIVE") {
+                    const auto parsed=decomp_number(mask.c_str());
+                    if(parsed>0xffffu)std::exit(2);
+                    value=(int)parsed;
+                }
+                if(decomp_inputs.size()>=100000u||!decomp_inputs.emplace(at,value).second)std::exit(2);
             }
         }
         else if(arg=="--key-tap-frames") {
@@ -248,8 +254,11 @@ static int decomp_script_input() {
     extern uint64_t s_frame_count;
     if(decomp_inputs.empty()||psx_netplay_active())return -1;
     const auto cursor=decomp_inputs.upper_bound(s_frame_count);
-    sio_set_pad_connected(0,1);
-    return cursor==decomp_inputs.begin()?0xffff:std::prev(cursor)->second;
+    const int value=cursor==decomp_inputs.begin()?0xffff:std::prev(cursor)->second;
+    static bool driven=false;
+    if(value>=0){sio_set_pad_connected(0,1);driven=true;}
+    else if(driven){sio_set_pad_state_slot(0,0xffff);driven=false;}
+    return value;
 }
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;

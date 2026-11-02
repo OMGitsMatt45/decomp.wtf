@@ -257,6 +257,11 @@ def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     assert report['scripted_input'] and report['pad0_connected']==1
     assert report['pad0_buttons']==0xbfff
     assert report['interpreted_instructions']==0 and report['coverage_misses']==0
+    script.write_text('0 0xbfff\n300 LIVE\n')
+    report,_=run(native_project,'scripted-handoff','--headless','--renderer','software',
+        '--input-script',script,frames=360)
+    assert report['pad0_buttons']==0xffff
+    assert report['interpreted_instructions']==0 and report['coverage_misses']==0
 
 
 def test_automatic_fallback_and_required_gpu_failure(native_project):
