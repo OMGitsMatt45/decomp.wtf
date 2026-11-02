@@ -73,6 +73,7 @@ def add_parser(sub):
     native.add_argument('--arm7-bios', type=Path, help='optional private decoding input for encrypted originals')
     native.add_argument('--save-type', default='auto', help='cartridge chip for a new game, e.g. eeprom64k; auto infers from an existing raw save')
     native.add_argument('--renderer', choices=('auto','opengl','software'),default='auto',help='default native renderer; OpenGL draws 3D geometry at the window resolution')
+    native.add_argument('--instruction-choices',type=Path,help='reviewed ROM-bound alternatives to compile into native C++')
     native.add_argument('--experimental', action='store_true', required=True)
     psx = actions.add_parser('psx-native', help='PS1 C/C++ repository for one game and its ordered disc set')
     psx.add_argument('inputs',nargs='+',type=Path,help='disc images/CUE sheets in order, or an M3U playlist')
@@ -117,7 +118,7 @@ def run(args):
         elif args.pc_action == 'nds-native':
             from .nds_native import export
             result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,
-                            arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer)
+                            arm7_bios=args.arm7_bios,save_type=args.save_type,renderer=args.renderer,instruction_choices=args.instruction_choices)
         elif args.pc_action == 'nds-generate':
             from .nds_pc import export
             result = export(args.rom,args.profile,args.output)
