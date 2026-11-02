@@ -78,7 +78,7 @@ inline bool open(SDL_Window *game,const std::filesystem::path &script={},const s
             SDL_RenderDebugText(renderer,x/2,y/2,value.c_str());SDL_SetRenderScale(renderer,1,1);
         };
         text(24,24,cheats?"Settings / Cheats":"Game settings");
-        text(24,58,"Arrows: select   Enter: toggle   PgUp/PgDn: scroll   Esc: back",false);
+        text(24,58,"Arrows: select  Enter: toggle  PgUp/Dn: scroll  Esc: back",false);
         if(cheats){text(24,88,"Category: "+categories[category]+"  (Left/Right)",false);text(24,114,"Search: "+search+"_",false);}
         const size_t count=cheats?visible.size():3;const size_t first=selected>10?selected-10:0;
         for(size_t row=0;row<11&&first+row<count;++row){
