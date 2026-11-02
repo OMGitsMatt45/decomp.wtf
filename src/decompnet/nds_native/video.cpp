@@ -628,6 +628,31 @@ struct Display::Impl {
         blit(screen_texture,source,destination,false);
         touch_regions.push_back({destination,source,lower});
     }
+    void party_pane(const uint32_t* pixels,Box source,Rect destination,bool lower) {
+        if(source.x>=16&&source.x+source.w<=240&&source.w<224) {
+            const auto trimmed=layout_detail::panel_pixels(pixels,source);native_pane(trimmed.data(),source,destination,lower);
+        } else native_pane(pixels,source,destination,lower);
+    }
+    bool contextual(const Frame& frame) {
+        if(!options.dynamic_widescreen||width<height)return false;
+        if(frame.mode==Frame::Mode::MovieSingle) {
+            layout_name="cinematic";const auto destination=fit(float(width),float(height),4.f/3);
+            native_pane(frame.on_top?frame.top:frame.bottom,{0,0,256,192},destination,!frame.on_top);return true;
+        }
+        if(frame.mode==Frame::Mode::MovieVertical) {
+            layout_name="movie";const auto total=fit(float(width),float(height),2.f/3);
+            native_pane(frame.top,{0,0,256,192},{total.x,total.y+total.h/2,total.w,total.h/2},false);
+            native_pane(frame.bottom,{0,0,256,192},{total.x,total.y,total.w,total.h/2},true);return true;
+        }
+        if(frame.mode==Frame::Mode::MenuLandscape) {
+            layout_name="menu-wide";const auto total=fit(float(width),float(height),8.f/3);
+            const Rect upper{total.x,total.y,total.w/2,total.h},lower{total.x+total.w/2,total.y,total.w/2,total.h};
+            native_pane(frame.top,{0,0,256,192},upper,false);native_pane(frame.bottom,{0,0,256,192},lower,true);
+            if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,upper,true,frame.top_brightness);captured(scene,frame.bottom_origins,lower,true,frame.bottom_brightness);}
+            return true;
+        }
+        return false;
+    }
     bool dynamic(const Frame& frame) {
         if(!options.dynamic_widescreen||width<height||!frame.history||!frame.top_origins||!frame.bottom_origins)return false;
         // Follow the raster actually on the LCD, including CPU/VRAM captures,
@@ -642,6 +667,36 @@ struct Display::Impl {
             std::any_of(s.polygons.begin(),s.polygons.end(),[](const auto& p){return world_polygon(p);}))
             for(bool top:{false,true})if(counts[{s.serial,top}]>dominant){scene=&s;on_top=top;dominant=counts[{s.serial,top}];}
         if(!scene) {
+            if(frame.mode==Frame::Mode::Gameplay) {
+                // A loading/fade frame can lack replayable world geometry.
+                // Keep the known world LCD and auxiliary role; a populated
+                // map must never be promoted to the main picture here.
+                const bool upper=frame.on_top;const auto primary=upper?frame.top:frame.bottom;
+                const auto secondary=upper?frame.bottom:frame.top;
+                const auto color=primary[0];
+                gl->ClearColor(float((color>>16)&255)/255,float((color>>8)&255)/255,float(color&255)/255,1);gl->Clear(GL_COLOR_BUFFER_BIT);
+                const float margin=std::max(8.f,height/64.f),ui_scale=height/384.f;
+                const auto foreground=upper?frame.top_foreground:frame.bottom_foreground;
+                const bool known=foreground&&std::all_of(foreground,foreground+256*192,[](uint64_t p){return (p&(3ull<<32))==(1ull<<32);});
+                const bool page=known&&std::count_if(foreground,foreground+256*192,[](uint64_t p){return uint8_t(p>>24)==255;})>256*192*9/10;
+                // The first frame of an opaque 2D menu may hide every world
+                // origin. It must use the same HUD scale as its later frames.
+                const auto destination=page?Rect{width-margin-256*ui_scale,height-margin-192*ui_scale,256*ui_scale,192*ui_scale}:
+                    fit(float(width),float(height),4.f/3);
+                native_pane(primary,{0,0,256,192},destination,!upper);
+                for(const auto& s:*frame.history)captured(s,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
+                const bool battle=frame.auxiliary==Frame::Auxiliary::Battle;
+                layout_name=battle?"battle":"field";
+                if(battle) {
+                    const auto party=layout_detail::party_band(secondary);
+                    if(party.h)party_pane(secondary,party,{margin+party.x*ui_scale,margin,party.w*ui_scale,party.h*ui_scale},upper);
+                } else if(frame.auxiliary==Frame::Auxiliary::Map&&!layout_detail::blank_screen(primary)) {
+                    const float w=std::min(width*.24f,height*.48f);const Rect map{margin,height-margin-w*.75f,w,w*.75f};
+                    native_pane(secondary,{0,0,256,192},map,upper);
+                    for(const auto& s:*frame.history)captured(s,upper?frame.bottom_origins:frame.top_origins,map,true,upper?frame.bottom_brightness:frame.top_brightness);
+                }
+                return true;
+            }
             // Bright movie imagery can resemble long menu borders. A live
             // Start prompt takes precedence over that weaker visual hint.
             if(startup(frame))return true;
@@ -666,7 +721,7 @@ struct Display::Impl {
         // narration were authored against one native frustum; keep the entire
         // composition together, including individual glyphs and 2D captions.
         const bool blank_other=layout_detail::blank_screen(other);
-        if(blank_other) {
+        if(blank_other&&frame.mode!=Frame::Mode::Gameplay) {
             cinematic_picture_top=on_top;
             layout_name="cinematic";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(on_top?frame.top:frame.bottom,{0,0,256,192},destination,!on_top);
@@ -686,7 +741,7 @@ struct Display::Impl {
         const float margin=std::max(8.f,height/64.f),ui_scale=height/384.f;
         const auto primary=on_top?frame.top:frame.bottom;
         const auto secondary=on_top?frame.bottom:frame.top;
-        if(opaque>256*192*9/10) {
+        if(opaque>256*192*9/10&&frame.mode!=Frame::Mode::Gameplay) {
             layout_name="menu";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(primary,{0,0,256,192},destination,!on_top);
             for(const auto& s:*frame.history)captured(s,tags,destination,true,brightness);
@@ -702,10 +757,13 @@ struct Display::Impl {
         captured_pixel_count=dominant;
         const int input_width=int(192*aspect);
         touch_regions.push_back({canvas,{(256-input_width)/2,0,input_width,192},!on_top});
-        const auto party=on_top?layout_detail::party_band(secondary):Box{};
-        layout_name=party.h?"battle":"field";
-        if(party.h)native_pane(secondary,party,{margin,margin,party.w*ui_scale,party.h*ui_scale},true);
-        else {
+        const bool explicit_battle=frame.auxiliary==Frame::Auxiliary::Battle;
+        const auto secondary_pixels=layout_detail::classification_pixels(secondary,on_top?frame.bottom_foreground:frame.top_foreground,on_top?frame.bottom_brightness:frame.top_brightness,on_top?classification_bottom:classification_top);
+        const auto party=(explicit_battle||(on_top&&frame.auxiliary==Frame::Auxiliary::Auto))?layout_detail::party_band(secondary_pixels):Box{};
+        const bool battle=explicit_battle||party.h;
+        layout_name=battle?"battle":"field";
+        if(party.h)party_pane(secondary,party,{margin+party.x*ui_scale,margin,party.w*ui_scale,party.h*ui_scale},on_top);
+        else if(!battle&&frame.auxiliary!=Frame::Auxiliary::Hidden&&frame.auxiliary!=Frame::Auxiliary::Battle) {
             const float w=std::min(width*.24f,height*.48f);
             const Rect map{margin,height-margin-w*.75f,w,w*.75f};
             native_pane(secondary,{0,0,256,192},map,on_top);
@@ -717,25 +775,31 @@ struct Display::Impl {
             const auto box=polygon_box(*scene,p);if(box.w&&box.h)boxes.push_back(box);
         }
         layout_detail::group(boxes);
-        if(party.h)layout_detail::group_battle_messages(boxes);
+        layout_detail::group_battle_messages(boxes);
         if(!boxes.empty()) {
+            const auto frames=layout_detail::window_frames(primary);
             const int ui_resolution=std::min(maximum_scale,std::max(2,int(std::ceil(ui_scale*1.5f))));
             auto& overlay=captured_target(*scene,256*ui_resolution,192*ui_resolution,true,2);
             std::array<uint32_t,256*192> foreground{};
             for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
             for(const auto b:boxes) {
-                const bool dialogue=(b.w>=190&&b.y+b.h>=155)||(party.h&&b.y>=128);
+                const bool caption=b.y>=140&&b.h<=32&&b.w>=80;
+                const bool opaque_menu=opaque>256*192*9/10;
+                const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
+                    b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
+                const bool panel=opaque_menu||fixed_hud||layout_detail::framed_box(frames,b);
+                const bool dialogue=(!opaque_menu&&panel&&b.w>=190&&b.y+b.h>=155)||caption;
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
                 Rect destination{dialogue?(width-w)/2:width-margin-w,
                     dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
-                // Small battle markers belong to the projected world (for
-                // example an enemy-target pointer), rather than a HUD corner.
-                if(party.h&&!dialogue&&b.w<=32&&b.h<=32) {
+                // Unframed sprites remain attached to their native world
+                // projection: damage, touch arrows, NPC and item indicators.
+                if(!panel&&!dialogue) {
                     const float world_ui=height/192.f;
                     destination={width/2.f+(b.x-128)*world_ui,(192-b.y-b.h)*world_ui,b.w*world_ui,b.h*world_ui};
                 }
                 if(dialogue&&party.h) {
-                    const float party_right=margin+party.w*ui_scale,party_top=margin+party.h*ui_scale;
+                    const float party_right=margin+(party.x+party.w)*ui_scale,party_top=margin+party.h*ui_scale;
                     if(destination.x<party_right+margin&&destination.y<party_top+margin) {
                         if(party_right+2*margin+w<=width)destination.x=party_right+margin;
                         else destination.y=party_top+margin;
@@ -883,7 +947,7 @@ struct Display::Impl {
                 it=captured_targets.erase(it);
             }else ++it;
         }
-        if(!dynamic(frame)&&!wide_screens(frame)) {
+        if(!contextual(frame)&&!dynamic(frame)&&!wide_screens(frame)) {
             const auto total=fit(float(width),float(height),256.0F/384);
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;

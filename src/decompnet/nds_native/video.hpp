@@ -6,6 +6,7 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,13 @@ struct Frame {
     const uint64_t* bottom_foreground=nullptr;
     const uint8_t* top_brightness=nullptr;
     const uint8_t* bottom_brightness=nullptr;
+    // Optional read-only game context. Auto keeps generic visual detection.
+    enum class Mode {Auto,Gameplay,MovieVertical,MenuLandscape,MovieSingle};
+    enum class Auxiliary {Auto,Hidden,Map,Battle};
+    Mode mode=Mode::Auto;
+    Auxiliary auxiliary=Auxiliary::Auto;
+    struct HudRegion {int x,y,w,h;bool on_top;};
+    std::span<const HudRegion> hud_regions;
 };
 struct Options {
     std::string renderer="auto";

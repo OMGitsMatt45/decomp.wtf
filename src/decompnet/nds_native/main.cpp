@@ -105,7 +105,7 @@ struct Display {
         ds_host::merge_live_touch(input,touching,dx,dy);
         return true;
     }
-    void present(dsr::Session& session) {
+    template<class Feature> void present(dsr::Session& session,Feature& features) {
         if(SDL_AudioStreamPut(resampler,session.audio_data(),int(session.audio_frames()*4))!=0)
             throw std::runtime_error(SDL_GetError());
         const int available=SDL_AudioStreamAvailable(resampler);
@@ -117,9 +117,10 @@ struct Display {
             ds_host::queue_game_audio(audio,std::span<const uint8_t>(bytes.data(),size_t(got)),48000,&audio_stats);
         }
         const auto& gpu=session.machine().gpu2d();
-        video->present({&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
+        video::Frame frame{&latched,session.screen_top(),session.screen_bottom(),gpu.three_d_mask(),
                         (gpu.frame_view().powcnt1&(1u<<15))!=0,gpu.screen_top_scene_origins(),gpu.screen_bottom_scene_origins(),&history,
-                        gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()});
+                        gpu.screen_top_scene_foreground(),gpu.screen_bottom_scene_foreground(),gpu.screen_top_brightness(),gpu.screen_bottom_brightness()};
+        ds_project::configure_frame(features,session,frame);video->present(frame);
     }
 };
 #endif
@@ -254,7 +255,7 @@ int main(int argc,char** argv) {
             }
 #ifdef NDS_WITH_SDL
             if(display) {
-                display->present(session);
+                display->present(session,features);
                 deadline+=uint64_t(double(SDL_GetPerformanceFrequency())/59.8261);
                 const auto now=SDL_GetPerformanceCounter();
                 if(deadline>now)SDL_Delay(uint32_t((deadline-now)*1000/SDL_GetPerformanceFrequency()));
