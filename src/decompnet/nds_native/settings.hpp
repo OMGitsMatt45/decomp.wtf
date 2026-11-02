@@ -18,7 +18,8 @@ inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const
         std::ifstream file(script);if(!file)throw std::runtime_error("could not read settings input script");
         unsigned frame;std::string key;
         while(file>>frame>>key) {
-            SDL_Keycode code=key=="up"?SDLK_UP:key=="down"?SDLK_DOWN:key=="enter"?SDLK_RETURN:key=="back"?SDLK_ESCAPE:0;
+            SDL_Keycode code=key=="up"?SDLK_UP:key=="down"?SDLK_DOWN:key=="enter"?SDLK_RETURN:key=="back"?SDLK_ESCAPE:
+                key=="pageup"?SDLK_PAGEUP:key=="pagedown"?SDLK_PAGEDOWN:key=="home"?SDLK_HOME:key=="end"?SDLK_END:0;
             if(!code||frame>10000)throw std::runtime_error("invalid settings input script");
             inputs[frame]=code;
         }
@@ -37,11 +38,15 @@ inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const
         const size_t count=page?cheats.entries.size()+1:2;
         if(code==SDLK_UP)selected=(selected+count-1)%count;
         else if(code==SDLK_DOWN)selected=(selected+1)%count;
+        else if(code==SDLK_PAGEUP)selected=selected>9?selected-9:0;
+        else if(code==SDLK_PAGEDOWN)selected=std::min(selected+9,count-1);
+        else if(code==SDLK_HOME)selected=0;
+        else if(code==SDLK_END)selected=count-1;
         else if(code==SDLK_ESCAPE||code==SDLK_F1){if(page){page=false;selected=0;}else done=true;}
         else if(code==SDLK_RETURN||code==SDLK_SPACE) {
             if(!page){if(selected==0){page=true;selected=0;}else done=true;}
             else if(selected==cheats.entries.size()){page=false;selected=0;}
-            else cheats.entries[selected].enabled=!cheats.entries[selected].enabled;
+            else cheats.toggle(selected);
         }
     };
     ++cheats.menu_openings;
@@ -64,7 +69,8 @@ inline bool settings(Cheats& cheats,const std::filesystem::path& script={},const
         if(const auto found=inputs.find(frame);found!=inputs.end())key(found->second);
         canvas.clear({19,25,39,255});
         canvas.text(24,22,page?"Settings / Cheats":"Game settings",{241,245,255,255},3);
-        canvas.text(24,68,"Up/Down: select   Enter: change   Esc: back",{175,190,215,255},2);
+        if(page)canvas.text(600,32,std::to_string(selected+1)+"/"+std::to_string(cheats.entries.size()+1),{175,190,215,255},2);
+        canvas.text(24,68,"Arrows/PgUp/PgDn: select   Enter: change   Esc: back",{175,190,215,255},2);
         const size_t count=page?cheats.entries.size()+1:2;
         const size_t first=page&&selected>8?selected-8:0;
         for(size_t row=0;row<9&&first+row<count;++row) {

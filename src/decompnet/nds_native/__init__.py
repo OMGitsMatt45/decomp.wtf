@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py','code_copies.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','ar_program.hpp','ar_memory.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','instruction_choices.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py','code_copies.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
     digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
@@ -63,6 +63,8 @@ def _sdk():
     emitter=importlib.import_module(name+'.emitter')
     from .emitter_patch import install
     install(emitter)
+    from .instruction_choices import install as install_choices
+    install_choices(emitter)
     return root, emitter, importlib.import_module(name+'.dsd_manifest')
 
 
@@ -435,7 +437,7 @@ unchanged, preventing clear-pixel cracks at independently quantized T-junctions.
 ''',encoding='utf-8')
 
 
-def _profile(root, digest, reviewed, save_type, renderer):
+def _profile(root, digest, reviewed, save_type, renderer, choices=None):
     observations=reviewed.get('observe_words',[])
     lines=['#pragma once','#include "hash.hpp"','#include <dsr/machine.h>','namespace profile {',
            'inline constexpr const char* asset_sha256='+json.dumps(digest)+';',
@@ -446,6 +448,9 @@ def _profile(root, digest, reviewed, save_type, renderer):
            'inline void verify_input(const std::filesystem::path& path) {',
            'if(input_sha256(path)!='+json.dumps(digest)+')throw std::runtime_error("DS assets SHA-256 differs from translated input");','}',
            'inline void configure(dsr::MachineConfig& config) {']
+    if choices and choices['sites']:
+        lines.insert(1,'#include "instruction_choices.hpp"')
+        lines.append('nds_native_choices::configure(config);')
     for cpu in ('arm9','arm7'):
         if cpu not in reviewed.get('abi',{}):continue
         lines.append('{ dsr::ThreadAbi value;')
@@ -465,6 +470,8 @@ def generate(project,root):
     rom=Path(project['rom']);data=rom.read_bytes();digest=hashlib.sha256(data).hexdigest()
     for directory in ('game','native','tools','cmake','tests'):(root/directory).mkdir()
     _runtime(sdk,root)
+    from . import instruction_choices
+    instruction_choices.patch_runtime(root/'native/dsr')
     stats=[]
     with tempfile.TemporaryDirectory(prefix='.ds-analysis-',dir=root) as temporary:
         work=Path(temporary)
@@ -476,13 +483,19 @@ def generate(project,root):
         for manifest in manifests:
             copies=recover_code_copies(manifest,work/('code-copies-'+manifest['cpu']))
             if copies:_log(f'Recovered {len(copies)} bounded {manifest["cpu"]} runtime code copies')
-        for manifest in manifests:
-            output=root/'game'/manifest['cpu']
-            result=emitter.emit_manifest(manifest,output,chunk_size=100)
-            if result['undefined_sites']:
-                raise pc.PCError(f'{manifest["cpu"]} has {result["undefined_sites"]} unsupported instruction sites: '+
-                    json.dumps(result['unsupported_sites'][:3]))
-            stats.append(dict(cpu=manifest['cpu'],functions=result['functions'],blocks=result['blocks'],undefined_sites=result['undefined_sites']))
+        try:choices=instruction_choices.prepare(project.get('instruction_choices'),manifests,digest,emitter)
+        except ValueError as error:raise pc.PCError(str(error)) from error
+        with instruction_choices.activate(choices) as selection:
+            for manifest in manifests:
+                output=root/'game'/manifest['cpu']
+                try:result=emitter.emit_manifest(manifest,output,chunk_size=100)
+                except ValueError as error:raise pc.PCError(str(error)) from error
+                if result['undefined_sites']:
+                    raise pc.PCError(f'{manifest["cpu"]} has {result["undefined_sites"]} unsupported instruction sites: '+
+                        json.dumps(result['unsupported_sites'][:3]))
+                stats.append(dict(cpu=manifest['cpu'],functions=result['functions'],blocks=result['blocks'],undefined_sites=result['undefined_sites']))
+            unused=[s['address'] for s in choices['sites'] if s['values'] and s['index'] not in selection['used']]
+            if unused:raise pc.PCError('Instruction choices have no decoded execution or literal read: '+','.join(hex(x) for x in unused))
         facts=[]
         for manifest in manifests:
             for module in manifest['modules']:
@@ -499,7 +512,8 @@ def generate(project,root):
             if not 0<=start<start+len(value)<=len(data):raise pc.PCError('decoded asset patch exceeds the original ROM')
             normalized[start:start+len(value)]=value
         asset_digest=hashlib.sha256(normalized).hexdigest()
-    _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'])
+    instruction_choices.write_header(root,choices)
+    _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'],choices)
     (root/'game/input.json').write_text(json.dumps(dict(sha256=digest,size=len(data),
         asset_sha256=asset_digest,asset_patches=patches,execution_mode='ntr',
         dsi_enhanced=bool(project.get('dsi_enhanced'))),indent=2)+'\n',encoding='utf-8')
@@ -507,6 +521,7 @@ def generate(project,root):
                                ('save_lock.hpp','native/save_lock.hpp'),
                                ('audio_queue.hpp','native/audio_queue.hpp'),
                                ('cheats.hpp','native/cheats.hpp'),('settings.hpp','native/settings.hpp'),
+                               ('ar_program.hpp','native/ar_program.hpp'),('ar_memory.hpp','native/ar_memory.hpp'),
                                ('input.hpp','native/input.hpp'),
                                ('project_hooks.hpp','native/project_hooks.hpp'),
 
@@ -668,12 +683,15 @@ build and successful boot are separate from field/battle/save compatibility.
         fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
         code_generation=stats,save_type=project['save_type'],asset_sha256=asset_digest,
         presentation=pc.presentation(project['renderer'],screens=2,screen_mode=project['screen_mode']),files={})
+    if choices['sites']:
+        manifest['instruction_choices']=dict(sha256=choices['sha256'],sites=len(choices['sites']),
+            alternatives=sum(len(s['values']) for s in choices['sites']),guest_code_modified=False)
     for path in sorted(root.rglob('*')):
         if path.is_file():manifest['files'][path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
 
 
-def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual'):
+def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual',instruction_choices=None):
     rom=Path(rom).resolve()
     if not rom.is_file() or not 0x200<=rom.stat().st_size<=512*1024*1024:
         raise pc.PCError('DS input must be an existing ROM no larger than 512 MiB')
@@ -694,15 +712,26 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
         path=Path(profile)
         if path.stat().st_size>1024*1024:raise pc.PCError('reviewed profile is too large')
         reviewed=json.loads(path.read_text(encoding='utf-8'))
+    choices=None
+    if instruction_choices is not None:
+        if isinstance(instruction_choices,dict):choices=instruction_choices
+        else:
+            path=Path(instruction_choices)
+            if path.stat().st_size>2*1024*1024:raise pc.PCError('Instruction-choice policy is too large')
+            choices=json.loads(path.read_text(encoding='utf-8'))
+        from .instruction_choices import SCHEMA
+        if not isinstance(choices,dict) or choices.get('schema')!=SCHEMA or choices.get('input_sha256')!=hashlib.sha256(rom.read_bytes()).hexdigest():
+            raise pc.PCError('Instruction-choice schema or ROM identity differs')
     return dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
-        input_format=input_format,bios=bios,save_type=save_type,renderer=renderer,screen_mode=screen_mode,
+        input_format=input_format,bios=bios,save_type=save_type,renderer=renderer,screen_mode=screen_mode,instruction_choices=choices,
         execution_mode='ntr',dsi_enhanced=image.dsi_enhanced)
 
 
 def _generate_project(project,root):
     prepared=_prepare(project['rom'],input_format=project.get('input_format','auto'),
                       arm7_bios=project.get('bios'),save_type=project.get('save_type','auto'),
-                      renderer=project.get('renderer','auto'),screen_mode=project.get('screen_mode','dual'))
+                      renderer=project.get('renderer','auto'),screen_mode=project.get('screen_mode','dual'),
+                      instruction_choices=project.get('instruction_choices'))
     generate(prepared,root)
 
 
@@ -710,9 +739,9 @@ def backend():
     return pc.Backend(BACKEND_ID,'nds',revision(),_generate_project,experimental=True)
 
 
-def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual',log=None):
+def export(rom,output,*,profile=None,input_format='auto',arm7_bios=None,save_type='auto',renderer='auto',screen_mode='dual',instruction_choices=None,log=None):
     project=_prepare(rom,profile=profile,input_format=input_format,arm7_bios=arm7_bios,save_type=save_type,
-                     renderer=renderer,screen_mode=screen_mode)
+                     renderer=renderer,screen_mode=screen_mode,instruction_choices=instruction_choices)
     token=_progress.set(log)
     try:
         return pc.export_backend(project,Path(output),pc.Backend(BACKEND_ID,'nds',revision(),generate,True))

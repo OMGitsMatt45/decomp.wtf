@@ -70,6 +70,8 @@ public:
     Display(const Display&)=delete;
     Display& operator=(const Display&)=delete;
     void present(const Frame& frame);
+    // Presentation only; does not change captured pixels or guest registers.
+    void set_brightness(float gain);
     void key(const SDL_KeyboardEvent& event);
     bool touch(int window_x,int window_y,int& ds_x,int& ds_y) const;
     // Last presented output, top-to-bottom, including UI and letterboxing.

@@ -314,6 +314,14 @@ int main() {
             require(pixels[350+135*960]==0xff0000ff&&pixels[480+135*960]==0xff00ff00,
                 "offscreen geometry clips to its viewport and retains the clear border");
         }
+        top.fill(0xffff0000);bottom.fill(0xff00ff00);mask.fill(0);
+        video::Frame bright_frame{nullptr,top.data(),bottom.data(),mask.data(),false};
+        display.present(bright_frame);const auto full_brightness=display.read_pixels();
+        display.set_brightness(.5f);display.present(bright_frame);pixels=display.read_pixels();
+        require(std::abs(int((pixels[480+135*960]>>16)&255)-127)<=1,"OpenGL display brightness changes the final output");
+        require(top[128+96*256]==0xffff0000,"display brightness changed the native LCD pixels");
+        display.set_brightness(1.f);display.present(bright_frame);
+        require(display.read_pixels()==full_brightness,"disabling display brightness did not restore exact pixels");
         // Software capture must read the entire window, not the letterboxed
         // viewport packed against its left edge. Touch must keep its mapping.
         {
@@ -325,6 +333,10 @@ int main() {
             require(pixels[10+10*960]==0xff000000&&pixels[950+10*960]==0xff000000,"software captures both letterboxes");
             require(pixels[480+135*960]==0xffff0000&&pixels[480+405*960]==0xff00ff00,"software captures LCDs at actual window positions");
             require(software.touch(480,405,x,y)&&x==128&&y==96,"software capture restores logical touch mapping");
+            software.set_brightness(.5f);software.present(screens);pixels=software.read_pixels();
+            require(std::abs(int((pixels[480+135*960]>>16)&255)-127)<=1,"software display brightness changes the final output");
+            software.set_brightness(1.f);software.present(screens);pixels=software.read_pixels();
+            require(pixels[480+135*960]==0xffff0000,"software brightness restores exact native colors");
             auto* second=SDL_GetWindowFromID(2);require(second,"software SDL window exists");
             SDL_SetWindowSize(second,320,720);SDL_PumpEvents();software.present(screens);pixels=software.read_pixels();
             require(pixels.size()==320*720&&pixels[160+60*320]==0xff000000,"software captures portrait letterboxing");

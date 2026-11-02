@@ -242,6 +242,7 @@ int main(int argc,char** argv) {
                 display->latched=display->pending;history.push_back(std::move(display->pending));display->pending_ready=false;
             }
 #endif
+            cheats.prepare(session.machine(),frame==0);
             session.step(input);audio_samples+=session.audio_frames();
             cheats.apply(session.machine());
             features.frame(session,input);
@@ -255,6 +256,7 @@ int main(int argc,char** argv) {
             }
 #ifdef NDS_WITH_SDL
             if(display) {
+                display->video->set_brightness(cheats.brightness());
                 display->present(session,features);
                 deadline+=uint64_t(double(SDL_GetPerformanceFrequency())/59.8261);
                 const auto now=SDL_GetPerformanceCounter();
@@ -363,6 +365,7 @@ int main(int argc,char** argv) {
                  <<",\"audio_frames\":"<<audio_samples
                  <<",\"cheats\":{\"available\":"<<cheats.entries.size()<<",\"enabled\":"<<cheats.enabled_count()
                  <<",\"applications\":"<<cheats.applications<<",\"menu_openings\":"<<cheats.menu_openings<<",\"menu_frames\":"<<cheats.menu_frames<<"}"
+                 <<",\"cheat_programs\":{\"rejections\":"<<cheats.program_rejections<<",\"last_error\":"<<std::quoted(cheats.last_program_error)<<"}"
                  <<",\"rtc\":{\"mode\":"<<std::quoted(rtc_fixed?"fixed-utc":"local")<<",\"start_unix\":";
         if(rtc_fixed)std::cout<<rtc_start;else std::cout<<"null";
         std::cout<<"},\"observed\":[";

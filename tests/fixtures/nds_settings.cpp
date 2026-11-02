@@ -15,6 +15,12 @@ int main(int argc,char** argv) {
             if(!ds_host::capture_settings(renderer,std::filesystem::path(argv[1])/name))throw std::runtime_error("capture failed");
             SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);
         }
+        ds_host::Cheats cheats;
+        for(unsigned i=0;i<180;++i)cheats.entries.push_back({"Entry "+std::to_string(i),{},{},false});
+        const auto script=std::filesystem::path(argv[1])/"large-menu.txt";
+        {std::ofstream file(script);file<<"0 enter\n1 pagedown\n2 end\n3 up\n4 enter\n5 home\n6 enter\n7 back\n8 back\n";}
+        if(!ds_host::settings(cheats,script)||cheats.enabled_count()!=2||!cheats.entries.front().enabled||!cheats.entries.back().enabled)
+            throw std::runtime_error("large catalog paging did not reach both ends");
         SDL_Quit();std::cout<<"Settings capture uses drawable dimensions\n";
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}
 }
