@@ -181,28 +181,36 @@ def registry(modules,path,*,copied=False):
     for address,indices in sorted(candidates.items()):
         rows.append(f'{{0x{address:08x}u,{len(owners)}u,{len(indices)}u}},')
         owners.extend(indices)
-    lines.extend(['typedef struct {uint32_t pc,first,count;} DecompEntry;',
-                  'static const DecompEntry entries[]={',*rows,'};',
+    lines.extend(['typedef struct {uint32_t pc,first,count,hint;} DecompEntry;',
+                  'static DecompEntry entries[]={',*rows,'};',
                   'static const uint32_t owners[]={'+','.join(map(str,owners))+'};',
-                  '''static const DecompEntry *lookup(uint32_t address){
+                  'static uint32_t page_hints[512];',
+                  '''static DecompEntry *lookup(uint32_t address){
     uint32_t low=0,high=(uint32_t)(sizeof(entries)/sizeof(entries[0]));
     while(low<high){uint32_t mid=low+(high-low)/2;
         if(entries[mid].pc<address)low=mid+1;else high=mid;}
     return low<sizeof(entries)/sizeof(entries[0])&&entries[low].pc==address?entries+low:NULL;
-}
-int psx_dispatch_game_compiled(CPUState *cpu,uint32_t address){
-    const DecompEntry *entry=lookup(address);if(!entry)return COPY_DISPATCH;
-    for(uint32_t i=0;i<entry->count;i++)
-        if(modules[owners[entry->first+i]].dispatch(cpu,address))return 1;
-    return COPY_DISPATCH;
-}'''.replace('COPY_DISPATCH',copy_dispatch)])
-    for name,member in (('psx_game_text_native_ok','valid'),('psx_game_text_native_ok_full','full'),
-                        ('psx_game_is_function_entry','valid')):
-        # An indexed candidate still checks its whole immutable footprint.
-        lines.append(f'int {name}(uint32_t address){{\n'
-            f'const DecompEntry *entry=lookup(address);if(!entry)return {copy_valid};\n'
-            'for(uint32_t i=0;i<entry->count;i++)\n'
-            f'if(modules[owners[entry->first+i]].{member}(address))return 1;\nreturn {copy_valid};}}')
+}'''])
+    for name,member in (('psx_dispatch_game_compiled','dispatch'),('psx_game_text_native_ok','valid'),
+                        ('psx_game_text_native_ok_full','full'),('psx_game_is_function_entry','valid')):
+        dispatch=member=='dispatch';arguments='CPUState *cpu,uint32_t address' if dispatch else 'uint32_t address'
+        fallback=copy_dispatch if dispatch else copy_valid
+        call=lambda owner:f'modules[{owner}].{member}('+('cpu,' if dispatch else '')+'address)'
+        # Hints change lookup order only. Every hit still calls the original
+        # immutable-footprint guard; overwritten code immediately misses.
+        lines.append(f'''int {name}({arguments}){{
+    DecompEntry *entry=lookup(address);if(!entry)return {fallback};
+    uint32_t page=(address&0x1fffffffu)>>12,cached=entry->hint;
+    if({call('cached')}){{if(page<512u)page_hints[page]=cached;return 1;}}
+    uint32_t nearby=page<512u?page_hints[page]:cached;
+    if(nearby!=cached&&{call('nearby')}){{entry->hint=nearby;return 1;}}
+    for(uint32_t i=0;i<entry->count;i++){{
+        uint32_t owner=owners[entry->first+i];
+        if(owner==cached||owner==nearby)continue;
+        if({call('owner')}){{entry->hint=owner;if(page<512u)page_hints[page]=owner;return 1;}}
+    }}
+    return {fallback};
+}}''')
     merged=[]
     for low,high in sorted(ranges):
         if merged and low<=merged[-1][1]:merged[-1]=(merged[-1][0],max(high,merged[-1][1]))
