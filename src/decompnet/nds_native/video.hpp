@@ -52,7 +52,8 @@ struct Frame {
     enum class Auxiliary {Auto,Hidden,Map,Battle};
     Mode mode=Mode::Auto;
     Auxiliary auxiliary=Auxiliary::Auto;
-    struct HudRegion {int x,y,w,h;bool on_top;};
+    // Captions retain their authored native x coordinate while text reveals.
+    struct HudRegion {int x,y,w,h;bool on_top;bool caption=false;};
     std::span<const HudRegion> hud_regions;
 };
 struct Options {
