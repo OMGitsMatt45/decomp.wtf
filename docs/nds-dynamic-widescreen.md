@@ -85,7 +85,9 @@ and source LCD; these stay at HUD scale while other unframed sprites follow
 the world. Projects must identify their buttons rather than treating every
 small sprite as a fixed HUD element. A gameplay frame without replayable geometry uses its current native
 primary LCD and background color rather than promoting its map to the main
-picture. It cannot synthesize geometry missing from that frame.
+picture. An opaque known 2D page keeps its HUD scale even when it hides every
+world origin on its first frame. Native fallback cannot synthesize geometry
+missing from that frame.
 
 DQIX Enhanced's public README/STATE documentation informed the behavioral
 target. No GPL implementation code or game assets were copied into this MIT

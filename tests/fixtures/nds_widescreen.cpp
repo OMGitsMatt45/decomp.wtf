@@ -292,6 +292,10 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="field"&&pixels[640+270*1280]==0xff0000ff&&pixels[80+270*1280]==0xff0000ff,"missing world geometry retains the known primary LCD and fills its fade color");
         require(pixels[80+80*1280]==0xffff0000,"an auxiliary map stays inset during a geometry-free transition");
+        for(size_t i=0;i<foreground.size();++i)foreground[i]=(1ull<<32)|bottom[i];
+        frame.bottom_foreground=foreground.data();display.present(frame);pixels=display.read_pixels();
+        require(pixels[1100+100*1280]==0xff0000ff&&pixels[640+270*1280]==0xff0000ff,"opaque menu fallback retains its page colors");
+        require(display.touch(1100,100,x,y)&&x>100&&y<100,"an opaque menu with no world origins keeps its smaller HUD inverse touch mapping");
         std::cout<<"Optional frustum, visibility, field UI, party rows, touch and ultrawide resize checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     return 0;

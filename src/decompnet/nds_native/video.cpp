@@ -675,10 +675,16 @@ struct Display::Impl {
                 const auto secondary=upper?frame.bottom:frame.top;
                 const auto color=primary[0];
                 gl->ClearColor(float((color>>16)&255)/255,float((color>>8)&255)/255,float(color&255)/255,1);gl->Clear(GL_COLOR_BUFFER_BIT);
-                const auto destination=fit(float(width),float(height),4.f/3);
+                const float margin=std::max(8.f,height/64.f),ui_scale=height/384.f;
+                const auto foreground=upper?frame.top_foreground:frame.bottom_foreground;
+                const bool known=foreground&&std::all_of(foreground,foreground+256*192,[](uint64_t p){return (p&(3ull<<32))==(1ull<<32);});
+                const bool page=known&&std::count_if(foreground,foreground+256*192,[](uint64_t p){return uint8_t(p>>24)==255;})>256*192*9/10;
+                // The first frame of an opaque 2D menu may hide every world
+                // origin. It must use the same HUD scale as its later frames.
+                const auto destination=page?Rect{width-margin-256*ui_scale,height-margin-192*ui_scale,256*ui_scale,192*ui_scale}:
+                    fit(float(width),float(height),4.f/3);
                 native_pane(primary,{0,0,256,192},destination,!upper);
                 for(const auto& s:*frame.history)captured(s,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
-                const float margin=std::max(8.f,height/64.f),ui_scale=height/384.f;
                 const bool battle=frame.auxiliary==Frame::Auxiliary::Battle;
                 layout_name=battle?"battle":"field";
                 if(battle) {
