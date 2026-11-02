@@ -311,3 +311,61 @@ def test_automatic_native_platform_detection_keeps_unnamed_ds_uploads(tmp_path):
     path=tmp_path/'game.bin';path.write_bytes(hardware()[0])
     assert pc.input_platform(path)=='nds'
     path.write_bytes(disc());assert pc.input_platform(path)=='psx'
+
+
+def test_short_keyboard_pulses_reach_one_pad_sample_and_respect_suppression(native_project,tmp_path):
+    from decompnet.psx_native import _sdk,_run,runtime_patch
+    sdk=_sdk()
+    source=sdk/'runtime/src/psx_keybinds.c';header=sdk/'runtime/include/psx_keybinds.h'
+    body,api=runtime_patch.keyboard_sampling(source.read_text(),header.read_text())
+    (tmp_path/'psx_keybinds.c').write_text(body);(tmp_path/'psx_keybinds.h').write_text(api)
+    (tmp_path/'runner.c').write_text(r'''
+#include "psx_keybinds.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"failed line %d\n",__LINE__);return 1;}}while(0)
+int main(void){
+    uint8_t keys[SDL_NUM_SCANCODES]={0},sticks[4]={128,128,128,128};
+    CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    /* KEYDOWN followed by KEYUP before a guest frame still arrives. */
+    decomp_keybinds_note_keydown(SDL_SCANCODE_X);decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    keys[SDL_SCANCODE_X]=1;decomp_keybinds_note_keydown(SDL_SCANCODE_X);
+    decomp_keybinds_begin_sample();decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    keys[SDL_SCANCODE_X]=0;decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_UP);decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_dpad_active(keys,1));psx_keybinds_sticks(keys,1,sticks);
+    CHECK(sticks[1]==0);decomp_keybinds_begin_sample();
+    CHECK(!psx_keybinds_dpad_active(keys,1));
+    /* Consuming P1's source must not resurrect it after KEYUP, or clear P2. */
+    decomp_keybinds_note_keydown(SDL_SCANCODE_X);
+    psx_keybinds_suppress_control(1,SDL_SCANCODE_X);
+    psx_keybinds_release_control(1,SDL_SCANCODE_X);decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_pad_word(keys,1)==0xffff&&psx_keybinds_pad_word(keys,2)==0xbfff);
+    decomp_keybinds_clear_pulses();CHECK(psx_keybinds_pad_word(keys,2)==0xffff);
+    psx_keybinds_set_button(1,PSX_KB_CROSS,SDL_SCANCODE_C);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_C);decomp_keybinds_begin_sample();
+    CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    decomp_keybinds_clear_pulses();
+    decomp_keybinds_note_keydown(SDL_SCANCODE_UNKNOWN);
+    decomp_keybinds_note_keydown((SDL_Scancode)-1);
+    decomp_keybinds_note_keydown((SDL_Scancode)SDL_NUM_SCANCODES);
+    decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    return 0;
+}''')
+    q=lambda value:json.dumps(value.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\nproject(KeyboardPulse LANGUAGES C)\n'
+        'set(CMAKE_C_STANDARD 11)\nfind_package(SDL3 REQUIRED CONFIG PATHS '+
+        q(native_project[1]/'build/_deps/sdl3-build')+' NO_DEFAULT_PATH)\n'
+        'add_executable(checks runner.c psx_keybinds.c)\n'
+        'target_include_directories(checks PRIVATE . '+q(sdk/'runtime/include')+')\n'
+        'target_compile_definitions(checks PRIVATE PSX_SDL3)\n'
+        'target_link_libraries(checks PRIVATE SDL3::SDL3)\n')
+    _run(['cmake','-S',tmp_path,'-B',tmp_path/'build'],'Configure real keyboard sampler regression')
+    _run(['cmake','--build',tmp_path/'build','--config','Release','--parallel','2'],'Build real keyboard sampler regression')
+    binary=next(p for p in (tmp_path/'build/checks',tmp_path/'build/Release/checks.exe') if p.is_file())
+    _run([binary],'Check quick keyboard taps through actual pad folding')

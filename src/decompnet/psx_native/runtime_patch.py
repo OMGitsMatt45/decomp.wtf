@@ -9,7 +9,44 @@ def replace(text,old,new):
     return text.replace(old,new)
 
 
+def keyboard_sampling(text,header):
+    """Keep quick SDL keyboard presses until one coherent guest-pad sample."""
+    marker='static uint8_t s_suppressed[PSXKB_MAX_PLAYERS][PSXKB_MOUSE_SC_BASE + 6];'
+    text=replace(text,marker,marker+r'''
+static uint8_t decomp_pulse_next[PSXKB_MAX_PLAYERS][SDL_NUM_SCANCODES];
+static uint8_t decomp_pulse_current[PSXKB_MAX_PLAYERS][SDL_NUM_SCANCODES];
+void decomp_keybinds_note_keydown(SDL_Scancode sc) {
+    if((int)sc<=0||(int)sc>=SDL_NUM_SCANCODES)return;
+    for(int slot=0;slot<PSXKB_MAX_PLAYERS;slot++)
+        if(!s_suppressed[slot][sc])decomp_pulse_next[slot][sc]=1;
+}
+void decomp_keybinds_begin_sample(void) {
+    memcpy(decomp_pulse_current,decomp_pulse_next,sizeof(decomp_pulse_current));
+    memset(decomp_pulse_next,0,sizeof(decomp_pulse_next));
+}
+void decomp_keybinds_clear_pulses(void) {
+    memset(decomp_pulse_current,0,sizeof(decomp_pulse_current));
+    memset(decomp_pulse_next,0,sizeof(decomp_pulse_next));
+}
+''')
+    text=replace(text,'        s_suppressed[player - 1][(int)sc] = 1;',
+        '''        {s_suppressed[player - 1][(int)sc] = 1;
+         if((int)sc<SDL_NUM_SCANCODES){
+             decomp_pulse_current[player-1][sc]=0;decomp_pulse_next[player-1][sc]=0;}}
+''')
+    text=replace(text,'(int)sc < SDL_NUM_SCANCODES && keys[sc];',
+        '(int)sc < SDL_NUM_SCANCODES && (keys[sc] || decomp_pulse_current[slot][sc]);')
+    header=replace(header,'#ifdef __cplusplus\n}\n#endif',
+        'void decomp_keybinds_note_keydown(SDL_Scancode sc);\n'
+        'void decomp_keybinds_begin_sample(void);\nvoid decomp_keybinds_clear_pulses(void);\n'
+        '#ifdef __cplusplus\n}\n#endif')
+    return text,header
+
+
 def patch(root):
+    keys=root/'runtime/src/psx_keybinds.c';key_header=root/'runtime/include/psx_keybinds.h'
+    body,header=keyboard_sampling(keys.read_text(encoding='utf-8-sig'),key_header.read_text(encoding='utf-8-sig'))
+    keys.write_text(body,encoding='utf-8');key_header.write_text(header,encoding='utf-8')
     config=root/'recompiler/src/config_loader.h'
     text=config.read_text(encoding='utf-8-sig')
     text=replace(text,'int                   video_depth24_trailing_margin = 8;',
@@ -52,7 +89,7 @@ def patch(root):
     text=replace(text,'    CPUState cpu;\n    std::memset(&cpu, 0, sizeof(cpu));',
         '    CPUState cpu;\n    decomp_cpu=&cpu;\n    std::memset(&cpu, 0, sizeof(cpu));')
     text=replace(text,'        frame_report_tick(s_frame_count);',
-        '        frame_report_tick(s_frame_count);\n        decomp_frame_end();\n'
+        '        frame_report_tick(s_frame_count);\n        decomp_keybinds_begin_sample();\n        decomp_frame_end();\n'
         '        const int scripted_input=decomp_script_input();\n'
         '        if(scripted_input>=0)override=scripted_input;')
     text=replace(text,'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {',
