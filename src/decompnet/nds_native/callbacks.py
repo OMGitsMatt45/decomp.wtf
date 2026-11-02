@@ -137,6 +137,15 @@ def arm7_executable_ranges(manifest,states):
              'autoload block BSS zeroed by crt0'}
     for module in manifest['modules']:
         state=by_id[int(module['module_id'])]
+        if hasattr(state,'function_evidence'):
+            strong={key for key,evidence in state.function_evidence.items()
+                    if any('prologue scan'not in item for item in evidence)}
+            roots={(int(state.functions[key]['addr']),bool(state.functions[key]['thumb']))for key in strong}
+            discarded=[f for f in module['functions']if (int(f['addr']),bool(f['thumb']))not in roots]
+            module['functions']=[f for f in module['functions']if (int(f['addr']),bool(f['thumb']))in roots]
+            code=set().union(*(state.function_code.get(key,set())for key in strong)) if strong else set()
+            module['calls']=[r for r in module.get('calls',[])if int(r['from'])in code]
+            module['discarded_prologue_only_roots']=[dict(address=f['addr'],thumb=f['thumb'])for f in discarded]
         allowed=[[state.base+low,state.base+min(high,state.loaded_size)]
                  for low,high in state.executable_ranges]
         excluded=[[state.base+low,state.base+high]

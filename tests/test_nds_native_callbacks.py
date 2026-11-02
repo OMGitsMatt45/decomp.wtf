@@ -61,6 +61,30 @@ def test_hashed_reference_reclaims_a_thumb_root_after_an_arm_veneer_literal(tmp_
     assert bad['modules'][0]['functions'][1]['addr']==base+0x24
 
 
+def test_arm7_prologue_scans_need_reference_evidence_before_becoming_entries(tmp_path,sdk):
+    from types import SimpleNamespace
+    _,emitter,reader=nds_native._sdk()
+    base=0x03800000;raw=bytearray(0x80)
+    struct.pack_into('<I',raw,0,0xE12FFF1E)
+    struct.pack_into('<I',raw,0x10,base+0x40)
+    struct.pack_into('<3I',raw,0x40,0xE92D4000,0xE3A00017,0xE8BD8000)
+    image=tmp_path/'original-scan-evidence.bin';image.write_bytes(raw)
+    functions=[dict(addr=base,size=4,thumb=False,name='root'),dict(addr=base+0x40,size=12,thumb=False,name='scan')]
+    state=SimpleNamespace(module_id=-5,base=base,loaded_size=len(raw),executable_ranges=[(0,len(raw))],data_ranges=[],
+        functions={(0,base,False):functions[0],(0,base+0x40,False):functions[1]},
+        function_evidence={(0,base,False):{'caller-supplied entry'},(0,base+0x40,False):{'validated ARM prologue scan'}},
+        function_code={(0,base,False):set(range(base,base+4)),(0,base+0x40,False):set(range(base+0x40,base+0x4c))})
+    module=dict(name='original',module_id=-5,base=base,image=str(image),functions=copy.deepcopy(functions),
+        labels=[],calls=[{'from':base+0x44,'to':base,'modules':[-5]}],code_ranges=[[base,base+0x80]],data_ranges=[[base+4,base+0x80]])
+    manifest=dict(cpu='arm7',arch='v4t',modules=[module])
+    arm7_executable_ranges(manifest,[state])
+    assert [f['addr']for f in module['functions']]==[base]
+    assert module['calls']==[]
+    assert module['discarded_prologue_only_roots']==[dict(address=base+0x40,thumb=False)]
+    assert [r['address']for r in recover(manifest,emitter,reader)]==[base+0x40]
+    assert image.read_bytes()==raw
+
+
 def instruction_state_image(tmp_path):
     base=0x0201c000;raw=bytearray(0xa0)
     struct.pack_into('<I',raw,0,0xe12fff1e)

@@ -31,3 +31,10 @@ Original regression inputs cover header routing, layout validation, restoration,
 arbitrary-region preservation, startup roots, generated native hardware
 execution and persistent cartridge saves. Retail compatibility still requires
 per-input callback review and actual gameplay qualification.
+
+ARM7 functions inferred only from unreferenced prologue patterns remain unknown
+bytes until a real entry, call or pointer supplies evidence. This avoids
+promoting constant data or unused foreign-mode payloads into callable code.
+Guarded ARM halfword-offset switches keep their tables as data and dispatch
+using the actual loaded offset. Flag-preserving setup between the comparison
+and its unsigned guard is accepted only while the compared key stays intact.

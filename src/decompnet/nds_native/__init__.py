@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 

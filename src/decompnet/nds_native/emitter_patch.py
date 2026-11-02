@@ -18,6 +18,8 @@ def install(emitter):
     table_info=cls._jump_table_info
     slot_for=cls._slot_for
     prepare_source=emitter._prepare_entries
+    from .arm_halfword_table import make as make_arm_halfword
+    arm_halfword=make_arm_halfword(emitter)
 
     def prepare_entries(manifest,extra_path=None):
         entries,images,module_entries,calls=prepare_source(manifest,extra_path)
@@ -96,6 +98,8 @@ def install(emitter):
         return None
 
     def bounded_arm_table(self,insn):
+        result=arm_halfword(self,insn)
+        if result is not None:return result
         result=table_info(self,insn)
         if insn.thumb or cls._branch_name(insn)!='add' or insn.condition not in (3,9):return result
         ops=insn.operands
