@@ -200,6 +200,7 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     # The original helper bytes are identical on both discs and may safely
     # reuse the first module. Disc-specific code must produce disc 2's marker.
     assert second['depth24']
+    assert second['depth24_trailing_margin']==0
     header=second_pixels.read_bytes().split(b'\n',3)
     assert header[:3]==[b'P6',b'320 240',b'255']
     assert header[3][(120*320+319)*3:(120*320+320)*3]==b'\xff\0\0'

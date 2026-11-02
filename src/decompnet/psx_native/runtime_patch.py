@@ -10,6 +10,11 @@ def replace(text,old,new):
 
 
 def patch(root):
+    config=root/'recompiler/src/config_loader.h'
+    text=config.read_text(encoding='utf-8-sig')
+    text=replace(text,'int                   video_depth24_trailing_margin = 8;',
+        'int                   video_depth24_trailing_margin = 0;')
+    config.write_text(text,encoding='utf-8')
     execution=root/'runtime/src/dirty_ram_interp.c'
     execution.write_text(execution_policy.patch(execution.read_text(encoding='utf-8-sig')),encoding='utf-8')
     bios=root/'generated/OpenBIOS_dispatch.c'
