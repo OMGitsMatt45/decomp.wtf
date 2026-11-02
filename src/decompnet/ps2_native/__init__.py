@@ -137,6 +137,7 @@ def generate(project,root):
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
+    runtime_patch.patch_invocation_stacks(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
     _log('Translate input-bound IOP modules...')
     iop_generation=iop_native.generate([(name,_read(path,inspection,name)) for name in inspection.get('iop_modules',[])],
@@ -252,7 +253,7 @@ def _native_execution_tests(root,sdk):
     for source,target in (('iop_engine.cpp','native/iop/engine.cpp'),('iop_catalog.hpp','native/iop/decomp_iop_catalog.hpp'),
         ('iop_execution.hpp','native/iop/decomp_iop_execution.hpp'),('iop_execution.hpp','native/decomp_iop_execution.hpp'),
         ('vu_execution.hpp','native/decomp_vu_execution.hpp'),('native_iop_probe.cpp','tests/native_iop_probe.cpp'),
-        ('native_vu_probe.cpp','tests/native_vu_probe.cpp')):
+        ('native_vu_probe.cpp','tests/native_vu_probe.cpp'),('native_scheduler_probe.cpp','tests/native_scheduler_probe.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     original=irx_fixture.original_irx()
     iop_native.generate([('ORIGINAL.IRX',original)],sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'tests/iop')

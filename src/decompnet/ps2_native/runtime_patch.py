@@ -61,6 +61,46 @@ def patch_irx_loader(root):
             for (uint32_t entry = 0; entry + 8u <= size; entry += 8u)''')
 
 
+def patch_invocation_stacks(root):
+    source=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp'
+    replace(source,'''                GuestInvocation completed = std::move(running->invocations.back());
+                running->invocations.pop_back();''',
+        '''                const int completedThreadId = running->id;
+                GuestInvocation completed = std::move(running->invocations.back());
+                running->invocations.pop_back();''')
+    replace(source,'''                    }
+                }
+                continue;
+            }
+            makeDormant(*running);''',
+        '''                    }
+                }
+                // A live thread can finish thousands of callbacks without
+                // exiting. Return retired depth slots now, after completion
+                // handlers have had a chance to schedule a new invocation.
+                // Never reclaim a parent or a newly scheduled same-depth call.
+                const GuestThread *owner = thread(completedThreadId);
+                const size_t activeDepth = owner ? owner->invocations.size() : 0u;
+                const uint64_t prefix = static_cast<uint64_t>(static_cast<uint32_t>(completedThreadId)) << 32u;
+                for (auto it = m_invocationStackTops.begin(); it != m_invocationStackTops.end();)
+                {
+                    if ((it->first & 0xFFFFFFFF00000000ull) == prefix &&
+                        static_cast<uint32_t>(it->first) >= activeDepth)
+                    {
+                        m_freeInvocationStacks.push_back(it->second);
+                        it = m_invocationStackTops.erase(it);
+                    }
+                    else ++it;
+                }
+                continue;
+            }
+            makeDormant(*running);''')
+    replace(source,'''    item.invocations.clear();
+}''','''    item.invocations.clear();
+    releaseInvocationStacks(item.id);
+}''')
+
+
 def patch_emitter(root):
     root = Path(root)
     translator = root / 'thirdparty/PS2Recomp/ps2xRecomp/src/lib/vu_translator.cpp'
