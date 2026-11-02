@@ -144,6 +144,41 @@ def arm7_executable_ranges(manifest,states):
         module['executable_ranges']=_subtract(allowed,_merge(excluded))
 
 
+def _reference_literal_prefixes(manifest,references,images,reader):
+    """Repair a reviewed Thumb root swallowed by an ARM veneer's literal word.
+
+    Require a decoded, unconditional ARM `ldr pc,[pc,#-4]` entry immediately
+    before that word, an exact hashed reference ending at the imported end,
+    and a four-byte prefix. This is data ownership proof, not prologue scanning.
+    """
+    changed=False
+    for module in manifest['modules']:
+        mid=int(module['module_id']);base=int(module['base']);image=images[mid]
+        for (address,thumb),size in references[mid].items():
+            if not thumb:continue
+            for owner in module['functions']:
+                start=int(owner['addr'])
+                if (not owner['thumb'] or address!=start+4 or address+size!=start+int(owner['size'])
+                        or start-4<base or int.from_bytes(image[start-base-4:start-base],'little')!=0xE51FF004
+                        or not any(not f['thumb'] and int(f['addr'])==start-4 and int(f['size'])==4
+                                   for f in module['functions'])):continue
+                owner.update(addr=address,size=size,name=reader._function_name(module,address))
+                module['data_ranges']=_merge(module.get('data_ranges',[])+[[start,address]])
+                module['code_ranges']=_subtract(module.get('code_ranges',[]),[[start,address]])
+                module['labels']=[r for r in module.get('labels',[]) if not start<=int(r['addr'])<address]
+                module['calls']=[r for r in module.get('calls',[]) if not start<=int(r['from'])<address]
+                for region in module.get('dispatch_regions',[]):
+                    if int(region['addr'])==start and int(region['size'])==size+4 and region['thumb']:
+                        region.update(addr=address,size=size,
+                            entries=sorted({address,*(int(e)for e in region['entries'] if int(e)>=address)}),
+                            data_ranges=_subtract(region.get('data_ranges',[]),[[start,address]]))
+                module.setdefault('reference_literal_repairs',[]).append(dict(
+                    address=address,size=size,literal=start,veneer=start-4,
+                    module_sha256=hashlib.sha256(image).hexdigest()))
+                changed=True
+    return changed
+
+
 def recover(manifest,emitter,reader,*,reference_entries=()):
     """Supplement a decoded manifest with statically validated callbacks/callees.
 
@@ -178,6 +213,8 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
         if any(address<other+length and other<address+size for (other,_),length in references[mid].items()):
             raise ValueError('overlapping reference callback extents')
         references[mid][key]=size
+    if _reference_literal_prefixes(manifest,references,images,reader):
+        entries,images,module_entries,calls=emitter._prepare_entries(manifest,None)
     address_entries=defaultdict(list)
     for entry in entries:address_entries[entry.address].append(entry)
     mode_entries={(e.module_id,e.address,e.thumb):e for e in entries}

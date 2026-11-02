@@ -36,6 +36,31 @@ def callback_image(tmp_path,module_id=0,increment=1):
         code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
 
 
+def test_hashed_reference_reclaims_a_thumb_root_after_an_arm_veneer_literal(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk()
+    base=0x0201D000;raw=bytearray(0x80)
+    struct.pack_into('<2I',raw,0x20,0xE51FF004,0x02700100)
+    struct.pack_into('<2H',raw,0x28,0x2007,0x4770)
+    image=tmp_path/'original-veneer-literal.bin';image.write_bytes(raw)
+    module=dict(name='original',module_id=5,base=base,image=str(image),
+        functions=[dict(addr=base+0x20,size=4,thumb=False,name='veneer'),
+                   dict(addr=base+0x24,size=8,thumb=True,name='bad_importer_prefix')],
+        labels=[],calls=[],code_ranges=[[base+0x20,base+0x2c]],data_ranges=[])
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    reference=dict(module_id=5,address=base+0x28,size=4,thumb=True,module_sha256=hashlib.sha256(raw).hexdigest())
+    assert recover(manifest,emitter,reader,reference_entries=[reference])==[]
+    assert module['functions'][1]['addr']==base+0x28
+    assert module['functions'][1]['size']==4
+    assert module['data_ranges']==[[base+0x24,base+0x28]]
+    assert Path(module['image']).read_bytes()==raw
+    assert emitter.emit_manifest(manifest,tmp_path/'generated')['undefined_sites']==0
+    bad=copy.deepcopy(manifest);bad['modules'][0]['functions'][1].update(addr=base+0x24,size=8)
+    wrong={**reference,'module_sha256':'0'*64}
+    with pytest.raises(ValueError,match='SHA-256 differs'):
+        recover(bad,emitter,reader,reference_entries=[wrong])
+    assert bad['modules'][0]['functions'][1]['addr']==base+0x24
+
+
 def instruction_state_image(tmp_path):
     base=0x0201c000;raw=bytearray(0xa0)
     struct.pack_into('<I',raw,0,0xe12fff1e)
