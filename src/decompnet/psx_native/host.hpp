@@ -82,6 +82,11 @@ static void decomp_size(const char *value,int &w,int &h) {
 }
 static void decomp_parse(int &argc,char **argv) {
 #ifdef DECOMP_PSX_NATIVE_ONLY
+    const char *snapshot=std::getenv("PSX_LOAD_SLOT");
+    if(snapshot&&*snapshot){
+        std::fputs("Snapshots are unavailable in this native build. Use the game's own save menu.\n",stderr);
+        std::exit(2);
+    }
     const char *force=std::getenv("PSX_FORCE_INTERP");
     if(force&&*force&&*force!='0'){
         std::fputs("PSX_FORCE_INTERP requires the optional ps1_probe reference target.\n",stderr);std::exit(2);
@@ -179,6 +184,12 @@ static bool decomp_event(const SDL_Event &event) {
     if(std::getenv("DECOMP_PSX_TRACE"))std::fprintf(stderr,
         "decomp.wtf: keydown frame=%llu key=%u scan=%u menu=%d\n",
         (unsigned long long)s_frame_count,(unsigned)key,(unsigned)scan,(int)menu);
+#ifdef DECOMP_PSX_NATIVE_ONLY
+    if(key==SDLK_F7) {
+        host_osd_push("Snapshots unavailable. Use the game's own save menu.",5000);
+        return true;
+    }
+#endif
     if(key==SDLK_F1) {
         decomp_keybinds_clear_pulses();
         if(!savestate_menu_open&&!psx_rewind_is_open())psx_runtime_menu_open();
@@ -262,6 +273,9 @@ static int decomp_script_input() {
 }
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;
+#ifdef DECOMP_PSX_NATIVE_ONLY
+    savestate_set_title_blocked(1);
+#endif
     ps1_host::cheat_tick();
     if(s_frame_count%60==0&&std::getenv("DECOMP_PSX_TRACE")) {
         std::fprintf(stderr,"decomp.wtf: frame=%llu pc=%08x ra=%08x native=%llu interpreted=%llu observed=",

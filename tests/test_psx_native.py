@@ -249,6 +249,13 @@ def test_standalone_executable_envelope_boots_through_real_bios(native_project):
     assert report['observed'][0]==1 and report['native_dispatches']>0
 
 
+def test_native_snapshot_load_is_explicitly_unavailable(native_project,monkeypatch):
+    monkeypatch.setenv('PSX_LOAD_SLOT','0')
+    output=run(native_project,'native-snapshot-unavailable','--headless','--renderer','software',ok=False,frames=1)
+    assert "Snapshots are unavailable in this native build" in output
+    assert "Use the game's own save menu" in output
+
+
 def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     script=native_project[0]/'original-input.txt'
     script.write_text('# held masks\n0 0xffff\n100 0xbfff\n400 0xffef\n500 0xffff\n')
