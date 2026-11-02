@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 
@@ -222,6 +223,8 @@ def test_native_player_rejects_uncompiled_bytes_and_records_the_gap(native_proje
     report=json.loads((work/'uncompiled-entry.json').read_text())
     assert report['coverage_misses']==1 and report['coverage_pc']==0x80010000
     assert report['interpreted_instructions']==0
+    assert len(report['coverage_words'])==64
+    assert report['coverage_words'][:4]==list(struct.unpack('<4I',image[2048:2064]))
     probe=exe.with_name('ps1_probe'+exe.suffix)
     native_contract=json.loads(exe.with_name(exe.stem+'.execution.json').read_text())
     reference_contract=json.loads(probe.with_name(probe.stem+'.execution.json').read_text())

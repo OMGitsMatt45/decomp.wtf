@@ -25,18 +25,18 @@ def payload(increment=7):
     return bytes(data)
 
 
-def original_disc():
+def original_disc(kind=31):
     import pycdlib
     first, second = payload(), payload(27)
-    records = [(first, len(first)+128, BASE, 0, 31),
-               (psx_lzss.encode(second), len(second), BASE, 0x500, 31),
-               (first, len(first), BASE, 0, 31),  # duplicate bytes/address
-               (first, len(first), BASE+0x10000, 0, 31),
-               (b'original resource data'*8, 176, BASE, 0, 31),
-               (first, len(first), 0, 0, 31),
+    records = [(first, len(first)+128, BASE, 0, kind),
+               (psx_lzss.encode(second), len(second), BASE, 0x500, kind),
+               (first, len(first), BASE, 0, kind),  # duplicate bytes/address
+               (first, len(first), BASE+0x10000, 0, kind),
+               (b'original resource data'*8, 176, BASE, 0, kind),
+               (first, len(first), 0, 0, kind),
                (first, len(first), BASE, 0, 14),
-               (first, len(first), BASE, 0x46, 31),
-               (first, len(first), 0x801ffff0, 0, 31)]
+               (first, len(first), BASE, 0x46, kind),
+               (first, len(first), 0x801ffff0, 0, kind)]
     table = b''.join(struct.pack('<IIIHH', len(data), size, load, flags, kind)
                      for data, size, load, flags, kind in records)
     body = b''.join(item[0] for item in records)
@@ -59,8 +59,9 @@ def original_disc():
 
 
 @pytest.mark.parametrize('raw', [False, True])
-def test_disc_programs_and_compressed_memory_modules_keep_independent_images(tmp_path, raw):
-    image = original_disc()
+@pytest.mark.parametrize('kind', [31, 32])
+def test_disc_programs_and_compressed_memory_modules_keep_independent_images(tmp_path, raw, kind):
+    image = original_disc(kind)
     if raw:
         from .test_psx_modify import valid_raw
         image = valid_raw(image, 2352, 24)
@@ -70,6 +71,7 @@ def test_disc_programs_and_compressed_memory_modules_keep_independent_images(tmp
     assert len(modules) == 4
     embedded = [item for item in modules if item['source']['format'] == 'hbd-memory']
     assert len(embedded) == 3
+    assert all(item['source']['type']==kind for item in embedded)
     assert [item['image'][2048:] for item in embedded] == [payload(), payload(27), payload()]
     assert [item['info']['load'] for item in embedded] == [BASE, BASE, BASE+0x10000]
     for item in embedded:
@@ -125,12 +127,13 @@ def test_direct_export_records_automatically_discovered_sources(tmp_path):
     assert path.read_bytes() == original
 
 
-def test_discovered_overlay_execution_matches_original_and_rejects_changed_bytes(tmp_path):
+@pytest.mark.parametrize('kind', [31, 32])
+def test_discovered_overlay_execution_matches_original_and_rejects_changed_bytes(tmp_path, kind):
     if not os.environ.get('DECOMP_REQUIRE_PSX_NATIVE'):
         pytest.skip('pinned emitter execution runs in the dedicated PS1 workflow')
     from decompnet.psx_native import _sdk, _recompiler, _run
     sdk = _sdk();recompiler = _recompiler(sdk)
-    path = tmp_path/'original.iso';path.write_bytes(original_disc())
+    path = tmp_path/'original.iso';path.write_bytes(original_disc(kind))
     modules = [item for item in media.prepare([path])[0]['modules']
                if item['source']['format'] == 'hbd-memory']
     generated = []

@@ -345,6 +345,17 @@ static void decomp_frame_end() {
        <<",\"audio_nonzero_frames\":"<<audio.nonzero_frames<<",\"observed\":[";
     if(gl)rt_release();
     for(size_t i=0;i<decomp_observe.size();i++)out<<(i?",":"")<<psx_read_word(decomp_observe[i]);
+    out<<"],\"coverage_words\":[";
+    const uint32_t coverage_physical=decomp_coverage_pc&0x1fffffffu;
+    const uint32_t coverage_segment=decomp_coverage_pc&0xe0000000u;
+    if(decomp_exit_status&&g_psx_ram&&!(decomp_coverage_pc&3u)&&coverage_physical<0x200000u&&
+       (coverage_segment==0u||coverage_segment==0x80000000u||coverage_segment==0xa0000000u)) {
+        const uint32_t count=std::min(64u,(0x200000u-coverage_physical)/4u);
+        for(uint32_t i=0;i<count;i++) {
+            uint32_t word;std::memcpy(&word,g_psx_ram+coverage_physical+i*4u,4);
+            out<<(i?",":"")<<word;
+        }
+    }
     out<<"],\"module_dispatches\":[";
     for(unsigned i=0;i<decomp_module_count;i++)out<<(i?",":"")<<decomp_module_dispatches[i];
     out<<"],\"registers\":[";
