@@ -242,9 +242,6 @@ whose names share a backslash group are mutually exclusive.
 
 --input-script PATH replays FRAME ACTIVE_LOW_PAD_MASK rows at VBlank boundaries
 for offline regression checks; the chosen mask persists until the next row.
---key-tap-frames N optionally holds quick keyboard taps for 1..30 guest frames
-(default 1). Automation that sends instantaneous taps can use 6; ordinary held
-keys and menu/focus suppression retain their normal behavior.
 
 For development, configure with -DPS1_BUILD_REFERENCE=ON and build the separate
 ps1_probe target. PSX_FORCE_INTERP=1 selects original-byte reference execution in
