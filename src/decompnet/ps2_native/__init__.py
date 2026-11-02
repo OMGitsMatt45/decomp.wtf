@@ -219,7 +219,7 @@ def generate(project,root):
         ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
         ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake')):
         (root/target).write_text(_source(source),encoding='utf-8')
-    (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
+    _git_policy(root)
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')
     manifest=dict(schema=pc.SCHEMA,platform='ps2',backend=dict(id=BACKEND_ID,revision=revision()),
         runtime=dict(id='ps2recomp-sdlgpu',revision=runtime_pins['archives'][0]['commit'],source_sha256=runtime_pins['source_sha256'],license='GPL-3.0'),
@@ -232,6 +232,13 @@ def generate(project,root):
         qualification=dict(experimental=True,retail=False,playthrough=False),presentation=pc.presentation(project['renderer'],gpu='vulkan'),files={})
     for file in provider.payload(root):manifest['files'][file.relative_to(root).as_posix()]=hashlib.sha256(file.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+
+
+def _git_policy(root):
+    # The manifest hashes bytes, including the mixed line endings in pinned
+    # sources. Git must preserve those bytes across platforms and user configs.
+    (root/'.gitattributes').write_text('# Preserve checksum-bound export bytes.\n* -text\n',encoding='utf-8')
+    (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
 
 
 def _native_execution_tests(root,sdk):
