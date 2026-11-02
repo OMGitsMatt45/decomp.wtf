@@ -46,6 +46,7 @@ def revision():
     digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
     digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
     digest.update(b'shared_calls.py\0'+_source('shared_calls.py').encode())
+    digest.update(b'dsprot.py\0'+_source('dsprot.py').encode())
     return digest.hexdigest()
 
 
@@ -122,6 +123,13 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     if enhanced is not None:
         from .enhanced import prepare_extracted
         prepare_extracted(extracted,enhanced)
+    from .dsprot import prepare as prepare_dsprot
+    try:
+        external_dsprot = prepare_dsprot(extracted)
+    except (ValueError, KeyError, TypeError) as error:
+        raise pc.PCError('DS Protect native metadata: '+str(error)) from error
+    if external_dsprot:
+        _log(f'Validated {len(external_dsprot)} resident-target DS Protect linker records; original pool words retained')
     config_dir=work/'config';build=work/'build'
     init=[dsd,'init','--rom-config',extracted/'config.yaml','--output-path',config_dir,'--build-path',build]
     try:
@@ -202,7 +210,8 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     patches=[]
     if offset>=0x4000 and prefix!=stored:
         patches.append(dict(offset=offset,hex=prefix.hex()))
-    return [arm9,arm7],dict(abi=abi,asset_patches=patches,execution_mode='ntr',dsi_enhanced=enhanced is not None)
+    return [arm9,arm7],dict(abi=abi,asset_patches=patches,execution_mode='ntr',dsi_enhanced=enhanced is not None,
+                          external_dsprot_relocations=external_dsprot)
 
 
 def _reviewed(data, profile, work):
