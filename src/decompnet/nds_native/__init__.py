@@ -116,7 +116,7 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     _run(command,work,'DS module extraction')
     if enhanced is not None:
         from .enhanced import prepare_extracted
-        prepare_extracted(extracted)
+        prepare_extracted(extracted,enhanced)
     config_dir=work/'config';build=work/'build'
     init=[dsd,'init','--rom-config',extracted/'config.yaml','--output-path',config_dir,'--build-path',build]
     try:

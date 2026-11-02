@@ -140,29 +140,31 @@ def dtcm_base(image, base):
     return found.pop()
 
 
-def prepare_extracted(extracted):
-    """Identify relocated DTCM by its declared CP15 base, preserving all blocks."""
+def prepare_extracted(extracted, facts):
+    """Satisfy required decoder TCM fields without relabelling native regions."""
     arm9 = extracted / 'arm9'
-    if not (arm9 / 'itcm.bin').exists():
-        raise ValueError('enhanced NTR analysis needs a recognized ITCM block')
-    if (arm9 / 'dtcm.bin').exists():
-        return
     config_path = extracted / 'config.yaml'
     config = yaml.safe_load(config_path.read_text())
-    main = yaml.safe_load((arm9 / 'arm9.yaml').read_text())
-    base = dtcm_base((arm9 / 'arm9.bin').read_bytes(), int(main['base_address']))
-    matches = []
-    for item in config.get('unknown_autoloads', []):
+    facts['synthetic_tcms'] = []
+    for name, base, kind in [('itcm', 0x01FF8000, 'Itcm'), ('dtcm', 0x027E0000, 'Dtcm')]:
+        if not (arm9 / (name + '.bin')).exists():
+            (arm9 / (name + '.bin')).write_bytes(bytes(32))
+            (arm9 / (name + '.yaml')).write_text(yaml.safe_dump(dict(
+                base_address=base, code_size=32, bss_size=0, kind=kind)), encoding='utf-8')
+            facts['synthetic_tcms'].append(name)
+    # The dependency sorts ITCM, DTCM, then arbitrary autoloads on reload;
+    # their analysis indexes must describe that order, including placeholders.
+    facts['analysis_autoloads'] = []
+    native = {item['address']: item for item in facts['autoloads']}
+    for index, item in enumerate(config.get('unknown_autoloads', []), 2):
         metadata = yaml.safe_load((extracted / item['config']).read_text())
-        if int(metadata['base_address']) == base:
-            matches.append((item, metadata))
-    if len(matches) != 1:
-        raise ValueError('declared enhanced DTCM does not match one extracted autoload')
-    item, metadata = matches[0]
-    shutil.copyfile(extracted / item['bin'], arm9 / 'dtcm.bin')
-    metadata['kind'] = 'Dtcm'
-    (arm9 / 'dtcm.yaml').write_text(yaml.safe_dump(metadata), encoding='utf-8')
-    config['unknown_autoloads'].remove(item)
+        original = native.get(int(metadata['base_address']))
+        if original is None or original['size'] != metadata['code_size']:
+            raise ValueError('enhanced extracted autoload differs from validated native layout')
+        item['index'] = index
+        metadata['kind'] = {'Unknown': index}
+        (extracted / item['config']).write_text(yaml.safe_dump(metadata), encoding='utf-8')
+        facts['analysis_autoloads'].append({**item, 'native_index': original['index']})
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
 
 
@@ -176,6 +178,10 @@ def restore_images(extracted, images, facts):
         at = facts['params']
         data[at:at + 24] = bytes.fromhex(facts['parameter_hex'])
         path.write_bytes(data)
+    for item in facts.get('analysis_autoloads', []):
+        name = 'autoload_' + str(item['index'])
+        shutil.copyfile(extracted / item['bin'], images / (name + '.bin'))
+        shutil.copyfile(extracted / item['config'], images / (name + '.yaml'))
 
 
 def restore_manifest(manifest, config, images, facts, reader):
@@ -190,14 +196,16 @@ def restore_manifest(manifest, config, images, facts, reader):
     for name in ('code_ranges', 'data_ranges'):
         main[name] = [[lo, min(hi, limit)] for lo, hi in main.get(name, []) if lo < limit]
     main['dispatch_regions'] = [r for r in main.get('dispatch_regions', []) if int(r['addr']) + int(r['size']) <= limit]
+    manifest['modules'] = [m for m in manifest['modules'] if m['name'] not in facts.get('synthetic_tcms', [])]
+    indexes = {item['index']: item['native_index'] for item in facts.get('analysis_autoloads', [])}
     for item in config.get('autoloads', []):
         kind = item.get('kind')
         if not isinstance(kind, dict) or 'Unknown' not in kind:
             continue
         index = int(kind['Unknown'])
         name = str(item.get('name', f'unk_autoload_{index}'))
-        metadata = yaml.safe_load((images / f'unk_autoload_{index}.yaml').read_text())
-        module = reader._module(Path(config['_directory']), item, -16 - index, name, int(metadata['base_address']))
+        metadata = yaml.safe_load((images / f'autoload_{index}.yaml').read_text())
+        module = reader._module(Path(config['_directory']), item, -16 - indexes[index], name, int(metadata['base_address']))
         manifest['modules'].append(module)
 
 
