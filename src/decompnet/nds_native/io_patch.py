@@ -18,6 +18,16 @@ MAC_LATCH_MASKS = {
 def patch(root):
     path=Path(root)/'runtime/core/src/io.cpp'
     text=path.read_text(encoding='utf-8')
+    # This runtime models NTR hardware. Absent TWL configuration registers read
+    # zero and ignore writes; all-ones incorrectly advertises SCFG_EXT7 bit31.
+    # GBATEK SCFG register map; independently checked against NDS hardware-mode
+    # IO behavior in melonDS NDS::ARM7IORead8/16/32 (no source copied).
+    read='''    if (off >= 0x1000) {
+        static const bool log_wifi'''
+    if text.count(read)!=2:raise ValueError('pinned NTR extended-IO guards differ')
+    first=text.index(read);second=text.index(read,first+len(read))
+    text=text[:second]+'    if (addr >= 0x04004000u && addr < 0x04005000u) return;\n'+text[second:]
+    text=text[:first]+'    if (addr >= 0x04004000u && addr < 0x04005000u) return 0;\n'+text[first:]
     permissions = re.search(r'(constexpr std::array<bool, 0x69> kBasebandWritable = \{)(.*?)(\n\};)', text, re.S)
     if not permissions:
         raise ValueError('pinned DS baseband permission table differs')

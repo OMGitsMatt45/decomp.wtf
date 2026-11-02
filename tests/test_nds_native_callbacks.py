@@ -36,6 +36,171 @@ def callback_image(tmp_path,module_id=0,increment=1):
         code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
 
 
+def interworking_image(tmp_path,cpu='arm9',variant='valid',broad=False,external=False):
+    base=0x0201e000;raw=bytearray(0xa0)
+    # Original Thumb caller, aligned BX-PC veneer, ARM literal-load tail and
+    # Thumb leaf. No retail or vendor SDK payloads are used.
+    # The caller owns a 256-byte frame, including its saved registers.
+    struct.pack_into('<8H',raw,0,0xb510,0xb0be,0x245a,0xf000,0xf80b,0x3001,0xb03e,0xbd10)
+    struct.pack_into('<2H',raw,0x20,0x4778,0x46c0)
+    struct.pack_into('<3I',raw,0x24,0xe59fc000,0xe12fff1c,base+0x41)
+    struct.pack_into('<2H',raw,0x40,0x2029,0x4770)
+    functions=[dict(addr=base,size=16,thumb=True,name='caller'),
+               dict(addr=base+0x20,size=2,thumb=True,name='veneer'),
+               dict(addr=base+0x40,size=4,thumb=True,name='leaf')]
+    if variant=='unreferenced':
+        functions.pop(1);struct.pack_into('<2H',raw,6,0x46c0,0x46c0)
+    if variant=='non_pc':struct.pack_into('<H',raw,0x20,0x4700)
+    if variant=='invalid_arm':struct.pack_into('<I',raw,0x24,0xe7f000f0)
+    path=tmp_path/'original-interworking.bin';path.write_bytes(raw)
+    module=dict(name='original',module_id=3,base=base,image=str(path),functions=functions,
+        labels=[],calls=[],code_ranges=[[base,base+16],[base+0x20,base+0x22],[base+0x40,base+0x44]],
+        data_ranges=[[base+16,base+0x20],[base+0x22,base+0x40],[base+0x44,base+len(raw)]])
+    if broad:
+        functions[0]['size']=0x44
+        module['dispatch_regions']=[dict(addr=base,size=0x44,thumb=True,
+            data_ranges=[[base+16,base+0x20],[base+0x22,base+0x40]],entries=[base,base+0x20,base+0x40])]
+    if external:
+        assert broad
+        struct.pack_into('<I',raw,0x2c,base+0x81)
+        struct.pack_into('<2H',raw,0x80,0x2029,0x4770)
+        functions[-1]['addr']=base+0x80
+        module['dispatch_regions'][0]['entries'].remove(base+0x40)
+        module['dispatch_regions'][0]['data_ranges'][-1][1]=base+0x44
+        module['code_ranges'][-1]=[base+0x80,base+0x84]
+        module['data_ranges']=[[base+16,base+0x20],[base+0x22,base+0x80],[base+0x84,base+len(raw)]]
+        path.write_bytes(raw)
+    return dict(cpu=cpu,arch='v5te'if cpu=='arm9'else 'v4t',modules=[module]),path
+
+
+@pytest.mark.parametrize('variant',['unreferenced','non_pc','invalid_arm'])
+def test_mode_bridge_needs_an_existing_bx_pc_entry_and_a_valid_arm_graph(tmp_path,sdk,variant):
+    manifest,image=interworking_image(tmp_path,variant=variant);before=image.read_bytes()
+    _,emitter,reader=nds_native._sdk()
+    assert recover(manifest,emitter,reader)==[]
+    assert image.read_bytes()==before
+
+
+def test_mode_bridge_does_not_seed_another_overlay_with_the_same_virtual_address(tmp_path,sdk):
+    manifest,_=interworking_image(tmp_path);other=copy.deepcopy(manifest['modules'][0]);other['module_id']=4
+    other['functions']=[f for f in other['functions']if f['name']!='veneer']
+    manifest['modules'].append(other)
+    _,emitter,reader=nds_native._sdk();added=recover(manifest,emitter,reader)
+    assert [(r['module_id'],r['address'],r['thumb'])for r in added]==[(3,0x0201e024,False)]
+
+
+def test_mode_bridge_preserves_existing_reachable_thumb_instructions(tmp_path,sdk):
+    manifest,image=interworking_image(tmp_path);raw=bytearray(image.read_bytes())
+    struct.pack_into('<I',raw,0x24,0xe1a00000);image.write_bytes(raw)
+    # The first halfword is an existing Thumb LSLS instruction as well as
+    # part of a possible ARM MOV. A state-changing root must not replace it.
+    manifest['modules'][0]['functions'].append(dict(addr=0x0201e024,size=2,thumb=True,name='existing_thumb'))
+    _,emitter,reader=nds_native._sdk()
+    assert recover(manifest,emitter,reader)==[]
+
+
+@pytest.mark.parametrize('cpu',['arm9','arm7'])
+@pytest.mark.parametrize('broad,external',[(False,False),(True,False),(True,True)])
+def test_thumb_bx_pc_continuation_executes_arm_literal_tail_and_returns_to_thumb(tmp_path,sdk,hardware_project,cpu,broad,external):
+    manifest,image=interworking_image(tmp_path,cpu,broad=broad,external=external);before=image.read_bytes();base=manifest['modules'][0]['base']
+    _,emitter,reader=nds_native._sdk();added=recover(manifest,emitter,reader)
+    assert len(added)==1 and added[0]['address']==base+0x24 and not added[0]['thumb']
+    assert added[0]['call_sources']==[dict(module_id=3,address=base+0x20)]
+    assert recover(manifest,emitter,reader)==[]
+    module=manifest['modules'][0]
+    assert any(low<=base+0x2c<high for low,high in module['data_ranges'])
+    assert all(not low<=base+0x24<high for low,high in module['data_ranges'])
+    assert emitter.emit_manifest(manifest,tmp_path/'generated')['undefined_sites']==0
+    _,project,_=hardware_project;runtime=project/'native/dsr/runtime'
+    libraries=list((project/'build').rglob('libds_runtime.a'))+list((project/'build').rglob('ds_runtime.lib'))
+    assert len(libraries)==1
+    (tmp_path/'checks.cpp').write_text(r'''
+#include <dsr/machine.h>
+#include <dsr/rt.h>
+#include "decls.h"
+#include <fstream>
+#include <vector>
+int main(int argc,char** argv) {
+ dsr::MachineConfig config;config.direct_boot=false;config.CPU_table=dsr::gen_table_CPU();
+ dsr::Machine machine(config);auto& c=machine.cpu(dsr::CpuId::ID);
+ std::ifstream file(argv[1],std::ios::binary);
+ std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+ for(unsigned i=0;i<bytes.size();++i)machine.write8(dsr::CpuId::ID,0x0201e000+i,bytes[i]);
+ c.budget=10000;c.r[0]=0;for(unsigned i=4;i<12;++i)c.r[i]=0xcafe0000+i;c.r[13]=0x02030000;c.r[14]=0x02001001;
+ dsr::dsr_call(&c,0x0201e001);
+ if(c.r[0]!=42||c.r[13]!=0x02030000||!(dsr::dsr_mrs_cpsr(&c)&0x20))return 1;
+ for(unsigned i=4;i<12;++i)if(c.r[i]!=0xcafe0000+i)return 3;
+ for(unsigned i=0;i<bytes.size();++i)if(machine.read8(dsr::CpuId::ID,0x0201e000+i)!=bytes[i])return 2;
+ return 0;
+}
+'''.replace('CPU',cpu).replace('ID','Arm9'if cpu=='arm9'else 'Arm7'))
+    quote=lambda p:json.dumps(p.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
+        'project(ModeBridgeChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nfind_package(Threads REQUIRED)\n'
+        'file(GLOB GENERATED generated/*.cpp)\nadd_executable(mode_checks checks.cpp ${GENERATED})\n'
+        f'target_include_directories(mode_checks PRIVATE generated {quote(runtime/"include")} {quote(runtime/"core/include")})\n'
+        f'target_link_libraries(mode_checks PRIVATE {quote(libraries[0])} Threads::Threads)\n'
+        'if(WIN32)\n target_link_libraries(mode_checks PRIVATE bcrypt)\nendif()\n')
+    build=tmp_path/'build'
+    for command in (['cmake','-S',str(tmp_path),'-B',str(build)],['cmake','--build',str(build),'--config','Release','--parallel','2']):
+        done=subprocess.run(command,capture_output=True,text=True,timeout=120)
+        assert done.returncode==0,done.stdout+done.stderr
+    executable=next(p for p in (build/'mode_checks',build/'Release/mode_checks.exe')if p.exists())
+    done=subprocess.run([str(executable),str(image)],capture_output=True,text=True,timeout=15)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert image.read_bytes()==before
+
+
+def test_hashed_reference_reclaims_a_thumb_root_after_an_arm_veneer_literal(tmp_path,sdk):
+    _,emitter,reader=nds_native._sdk()
+    base=0x0201D000;raw=bytearray(0x80)
+    struct.pack_into('<2I',raw,0x20,0xE51FF004,0x02700100)
+    struct.pack_into('<2H',raw,0x28,0x2007,0x4770)
+    image=tmp_path/'original-veneer-literal.bin';image.write_bytes(raw)
+    module=dict(name='original',module_id=5,base=base,image=str(image),
+        functions=[dict(addr=base+0x20,size=4,thumb=False,name='veneer'),
+                   dict(addr=base+0x24,size=8,thumb=True,name='bad_importer_prefix')],
+        labels=[],calls=[],code_ranges=[[base+0x20,base+0x2c]],data_ranges=[])
+    manifest=dict(cpu='arm9',arch='v5te',modules=[module])
+    reference=dict(module_id=5,address=base+0x28,size=4,thumb=True,module_sha256=hashlib.sha256(raw).hexdigest())
+    assert recover(manifest,emitter,reader,reference_entries=[reference])==[]
+    assert module['functions'][1]['addr']==base+0x28
+    assert module['functions'][1]['size']==4
+    assert module['data_ranges']==[[base+0x24,base+0x28]]
+    assert Path(module['image']).read_bytes()==raw
+    assert emitter.emit_manifest(manifest,tmp_path/'generated')['undefined_sites']==0
+    bad=copy.deepcopy(manifest);bad['modules'][0]['functions'][1].update(addr=base+0x24,size=8)
+    wrong={**reference,'module_sha256':'0'*64}
+    with pytest.raises(ValueError,match='SHA-256 differs'):
+        recover(bad,emitter,reader,reference_entries=[wrong])
+    assert bad['modules'][0]['functions'][1]['addr']==base+0x24
+
+
+def test_arm7_prologue_scans_need_reference_evidence_before_becoming_entries(tmp_path,sdk):
+    from types import SimpleNamespace
+    _,emitter,reader=nds_native._sdk()
+    base=0x03800000;raw=bytearray(0x80)
+    struct.pack_into('<I',raw,0,0xE12FFF1E)
+    struct.pack_into('<I',raw,0x10,base+0x40)
+    struct.pack_into('<3I',raw,0x40,0xE92D4000,0xE3A00017,0xE8BD8000)
+    image=tmp_path/'original-scan-evidence.bin';image.write_bytes(raw)
+    functions=[dict(addr=base,size=4,thumb=False,name='root'),dict(addr=base+0x40,size=12,thumb=False,name='scan')]
+    state=SimpleNamespace(module_id=-5,base=base,loaded_size=len(raw),executable_ranges=[(0,len(raw))],data_ranges=[],
+        functions={(0,base,False):functions[0],(0,base+0x40,False):functions[1]},
+        function_evidence={(0,base,False):{'caller-supplied entry'},(0,base+0x40,False):{'validated ARM prologue scan'}},
+        function_code={(0,base,False):set(range(base,base+4)),(0,base+0x40,False):set(range(base+0x40,base+0x4c))})
+    module=dict(name='original',module_id=-5,base=base,image=str(image),functions=copy.deepcopy(functions),
+        labels=[],calls=[{'from':base+0x44,'to':base,'modules':[-5]}],code_ranges=[[base,base+0x80]],data_ranges=[[base+4,base+0x80]])
+    manifest=dict(cpu='arm7',arch='v4t',modules=[module])
+    arm7_executable_ranges(manifest,[state])
+    assert [f['addr']for f in module['functions']]==[base]
+    assert module['calls']==[]
+    assert module['discarded_prologue_only_roots']==[dict(address=base+0x40,size=12,thumb=False,
+        module_sha256=hashlib.sha256(Path(module['image']).read_bytes()).hexdigest())]
+    assert [r['address']for r in recover(manifest,emitter,reader)]==[base+0x40]
+    assert image.read_bytes()==raw
+
+
 def instruction_state_image(tmp_path):
     base=0x0201c000;raw=bytearray(0xa0)
     struct.pack_into('<I',raw,0,0xe12fff1e)

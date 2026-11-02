@@ -2,13 +2,120 @@
 import json
 import struct
 import subprocess
+import pytest
 
 from decompnet import nds_native
 from decompnet.nds_native.callbacks import recover
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
-def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_project):
+@pytest.mark.parametrize('ambiguous',[False,True])
+def test_arm7_cross_autoload_edge_qualifies_only_one_initialized_owner(tmp_path,sdk,ambiguous):
+    base,target=0x03800000,0x02fd8000
+    source=tmp_path/'caller.bin';callee=tmp_path/'callee.bin'
+    branch=0xeb000000|(((target-(base+4)-8)//4)&0xffffff)
+    source.write_bytes(struct.pack('<3I',0xe92d4000,branch,0xe8bd8000))
+    callee.write_bytes(struct.pack('<2I',0xe3a00029,0xe12fff1e))
+    m=dict(cpu='arm7',arch='v4t',modules=[
+        dict(name='caller',module_id=-5,base=base,image=str(source),functions=[dict(addr=base,size=12,thumb=False,name='caller')],labels=[],calls=[],code_ranges=[[base,base+12]],data_ranges=[]),
+        dict(name='callee',module_id=-6,base=target,image=str(callee),functions=[],labels=[],calls=[],code_ranges=[],data_ranges=[]),
+    ])
+    if ambiguous:m['modules'].append(dict(m['modules'][1],name='ambiguous',module_id=-7))
+    _,e,r=nds_native._sdk();added=recover(m,e,r)
+    assert len(added)==(0 if ambiguous else 1)
+    if not ambiguous:
+        assert added[0]['address']==target and added[0]['call_sources']==[dict(module_id=-5,address=base+4)]
+
+
+@pytest.mark.parametrize('referenced,matching',[(True,False),(False,True)])
+def test_deferred_frame_extent_needs_real_reference_and_matching_image(tmp_path,sdk,referenced,matching):
+    import hashlib
+    base=0x03800000;raw=bytearray(0x50)
+    struct.pack_into('<3I',raw,0,0xe92d4000,0xeb000009 if referenced else 0xe1a00000,0xe8bd8000)
+    struct.pack_into('<6I',raw,0x30,0xe92d4010,0xe3a04049,0xe3a00029,0xe1a00000,0xe8bd4010,0xe12fff1e)
+    image=tmp_path/'original.bin';image.write_bytes(raw)
+    m=dict(cpu='arm7',arch='v4t',modules=[dict(name='original',module_id=-5,base=base,image=str(image),
+        functions=[dict(addr=base,size=12,thumb=False,name='entry'),dict(addr=base+0x40,size=8,thumb=False,name='fragment')],
+        labels=[],calls=[],data_ranges=[],discarded_prologue_only_roots=[dict(address=base+0x30,size=24,thumb=False,
+        module_sha256=hashlib.sha256(raw).hexdigest()if matching else '0'*64)])])
+    _,e,r=nds_native._sdk()
+    assert recover(m,e,r)==[]
+
+
+def arm_halfword_image(tmp_path,gap=False):
+    base=0x03800000;raw=bytearray(0x78)
+    struct.pack_into('<7I',raw,0,0xE92D40F0,0xE3A0405A,0xE3500002,0x8A000017,
+                     0xE08F0080,0xE1D000B4,0xE08FF000)
+    struct.pack_into('<3H',raw,0x1c,0x20,0x30,0x40)
+    raw[0x24:0x40]=struct.pack('<I',0xE7F000F0)*7
+    for offset,value in [(0x40,11),(0x50,22),(0x60,33),(0x70,99)]:
+        struct.pack_into('<2I',raw,offset,0xE3A00000|value,0xE8BD80F0)
+    if gap:
+        raw[0xc:0xc]=struct.pack('<3I',0xE3A05001,0xE3A06002,0xE3A07003)
+    image=tmp_path/'original-arm-halfword.bin';image.write_bytes(raw)
+    return dict(cpu='arm7',arch='v4t',modules=[dict(name='original',module_id=-5,base=base,image=str(image),
+        functions=[dict(addr=base,size=len(raw),thumb=False,name='entry')],labels=[],calls=[],
+        code_ranges=[[base,base+len(raw)]],data_ranges=[])]),image
+
+
+@pytest.mark.parametrize('gap',[False,True])
+def test_arm7_guarded_halfword_table_does_not_decode_offset_words_as_code(tmp_path,sdk,gap):
+    manifest,_=arm_halfword_image(tmp_path,gap)
+    _,emitter,_=nds_native._sdk()
+    result=emitter.emit_manifest(manifest,tmp_path/'generated')
+    assert result['undefined_sites']==0
+    assert result['jump_tables']>0
+
+
+@pytest.mark.parametrize('gap',[False,True])
+def test_arm7_halfword_dispatch_executes_cases_and_default_with_saved_frame(tmp_path,sdk,hardware_project,gap):
+    manifest,image=arm_halfword_image(tmp_path,gap)
+    _,emitter,_=nds_native._sdk()
+    assert emitter.emit_manifest(manifest,tmp_path/'generated')['undefined_sites']==0
+    _,project,_=hardware_project
+    runtime=project/'native/dsr/runtime'
+    libraries=list((project/'build').rglob('libds_runtime.a'))+list((project/'build').rglob('ds_runtime.lib'))
+    assert len(libraries)==1
+    (tmp_path/'checks.cpp').write_text(r'''
+#include <dsr/machine.h>
+#include <dsr/rt.h>
+#include "decls.h"
+#include <fstream>
+#include <vector>
+int main(int argc,char** argv) {
+ dsr::MachineConfig config;config.direct_boot=false;config.arm7_table=dsr::gen_table_arm7();
+ dsr::Machine machine(config);auto& cpu=machine.cpu(dsr::CpuId::Arm7);
+ std::ifstream file(argv[1],std::ios::binary);
+ std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+ for(unsigned i=0;i<bytes.size();++i)machine.write8(dsr::CpuId::Arm7,0x03800000+i,bytes[i]);
+ unsigned keys[]={0,1,2,3,0xffffffffu},expected[]={11,22,33,99,99};
+ for(unsigned i=0;i<5;++i) {
+  cpu.budget=10000;cpu.r[0]=keys[i];cpu.r[4]=0xcafe;cpu.r[13]=0x0380ff00;cpu.r[14]=0x02000000;
+  dsr::dsr_call(&cpu,0x03800000);
+  if(cpu.r[0]!=expected[i]||cpu.r[4]!=0xcafe||cpu.r[13]!=0x0380ff00)return 1;
+ }
+ for(unsigned i=0;i<bytes.size();++i)if(machine.read8(dsr::CpuId::Arm7,0x03800000+i)!=bytes[i])return 2;
+ return 0;
+}
+''')
+    quote=lambda p:json.dumps(p.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\n'
+        'project(ArmHalfwordChecks LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nfind_package(Threads REQUIRED)\n'
+        'file(GLOB GENERATED generated/*.cpp)\nadd_executable(arm_table_checks checks.cpp ${GENERATED})\n'
+        f'target_include_directories(arm_table_checks PRIVATE generated {quote(runtime/"include")} {quote(runtime/"core/include")})\n'
+        f'target_link_libraries(arm_table_checks PRIVATE {quote(libraries[0])} Threads::Threads)\n'
+        'if(WIN32)\n target_link_libraries(arm_table_checks PRIVATE bcrypt)\nendif()\n')
+    build=tmp_path/'build'
+    for command in (['cmake','-S',str(tmp_path),'-B',str(build)],['cmake','--build',str(build),'--config','Release','--parallel','2']):
+        done=subprocess.run(command,capture_output=True,text=True,timeout=120)
+        assert done.returncode==0,done.stdout+done.stderr
+    executable=next(p for p in (build/'arm_table_checks',build/'Release/arm_table_checks.exe')if p.exists())
+    done=subprocess.run([str(executable),str(image)],capture_output=True,text=True,timeout=15)
+    assert done.returncode==0,done.stdout+done.stderr
+
+
+@pytest.mark.parametrize('shared_frame',[False,True])
+def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_project,shared_frame):
     base = 0x03800000
     raw = bytearray(0x40)
     struct.pack_into('<3I', raw, 0, 0xe92d4000, 0xeb000009, 0xe8bd8000)
@@ -20,6 +127,14 @@ def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_pro
         functions=[dict(addr=base, size=12, thumb=False, name='entry')],
         labels=[], calls=[], code_ranges=[[base, base+12]],
         data_ranges=[[base+0x38, base+0x3c]])])
+    if shared_frame:
+        import hashlib
+        raw.extend(bytes(0x10))
+        struct.pack_into('<6I',raw,0x30,0xe92d4010,0xe3a04049,0xe3a00029,0xe1a00000,0xe8bd4010,0xe12fff1e)
+        image.write_bytes(raw);module=manifest['modules'][0]
+        module['functions'].append(dict(addr=base+0x40,size=8,thumb=False,name='shared_epilogue'))
+        module['data_ranges']=[]
+        module['discarded_prologue_only_roots']=[dict(address=base+0x30,size=24,thumb=False,module_sha256=hashlib.sha256(raw).hexdigest())]
     _, emitter, reader = nds_native._sdk()
     added = recover(manifest, emitter, reader)
     assert len(added) == 1
@@ -46,9 +161,9 @@ int main(int argc,char** argv) {
  std::ifstream file(argv[1],std::ios::binary);
  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
  for(unsigned i=0;i<bytes.size();++i)machine.write8(dsr::CpuId::Arm7,0x03800000+i,bytes[i]);
- cpu.budget=10000;cpu.r[13]=0x0380ff00;cpu.r[14]=0x02000000;
+ cpu.budget=10000;cpu.r[4]=0xcafe;cpu.r[13]=0x0380ff00;cpu.r[14]=0x02000000;
  dsr::dsr_call(&cpu,0x03800000);
- return cpu.r[0]==41 && cpu.r[13]==0x0380ff00 ? 0 : 1;
+ return cpu.r[0]==41 && cpu.r[4]==0xcafe && cpu.r[13]==0x0380ff00 ? 0 : 1;
 }
 ''')
     quote = lambda p: json.dumps(p.as_posix())

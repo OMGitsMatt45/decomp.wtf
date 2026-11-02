@@ -18,6 +18,8 @@ def install(emitter):
     table_info=cls._jump_table_info
     slot_for=cls._slot_for
     prepare_source=emitter._prepare_entries
+    from .arm_halfword_table import make as make_arm_halfword
+    arm_halfword=make_arm_halfword(emitter)
 
     def prepare_entries(manifest,extra_path=None):
         entries,images,module_entries,calls=prepare_source(manifest,extra_path)
@@ -96,6 +98,8 @@ def install(emitter):
         return None
 
     def bounded_arm_table(self,insn):
+        result=arm_halfword(self,insn)
+        if result is not None:return result
         result=table_info(self,insn)
         if insn.thumb or cls._branch_name(insn)!='add' or insn.condition not in (3,9):return result
         ops=insn.operands
@@ -374,6 +378,10 @@ def install(emitter):
         finally:self._branch_name=name;self._manual_link=manual
 
     def emit_branch(self,insn):
+        from .saved_lr import returns_incoming_lr
+        if returns_incoming_lr(self,insn,emitter):
+            register=emitter.operand_reg(insn,insn.operands[0])
+            return self._cond(insn,f'DSR_RET(c, c->r[{register}]);\nreturn;')
         if insn.address in getattr(self,"_decomp_tail_exits",set()):
             target=self._branch_target(insn)
             if self.dispatch_entries is None or not self._inside(target&~1):
@@ -431,4 +439,6 @@ def install(emitter):
     emitter._prepare_entries=prepare_entries
     from .wider_table import make
     cls._thumb_halfword_table_info=make(emitter)
+    from .shared_calls import install as install_shared_calls
+    install_shared_calls(emitter)
     cls._decomp_bounds_fixed=True
