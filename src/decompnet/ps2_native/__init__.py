@@ -216,6 +216,7 @@ def generate(project,root):
     loaded_end=max(s['physical']+s['memory_size'] for s in inspection['program']['loads'] if s['region']=='ee-ram')
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
+        ('send_pad_command.py','tools/send_pad_command.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
         ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
         ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake'),

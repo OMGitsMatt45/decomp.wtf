@@ -54,9 +54,13 @@ public:
         const auto now=std::chrono::steady_clock::now();
         if(now>=next_){
             next_=now+std::chrono::milliseconds(50);
-            std::ifstream input(path,std::ios::binary);
-            if(input){char buffer[129];input.read(buffer,sizeof(buffer));
-                accept(std::string(buffer,static_cast<size_t>(input.gcount())),tick);}
+            std::string command;
+            {
+                std::ifstream input(path,std::ios::binary);
+                if(input){char buffer[129];input.read(buffer,sizeof(buffer));
+                    command.assign(buffer,static_cast<size_t>(input.gcount()));}
+            }
+            accept(command,tick);
         }
         merge(tick,held,pressed);
     }
