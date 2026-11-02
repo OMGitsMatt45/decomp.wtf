@@ -214,29 +214,34 @@ int {prefix}dirty_ram_text_native_ok_ranges(const uint32_t *ranges,uint32_t coun
 
 
 def close_resident_calls(recompiler,originals,modules,run,sdk,log=lambda value:None,*,additional_calls=()):
-    """Compile resident routines referenced by actual emitted overlay calls."""
-    calls={address&0x1fffffff for item in modules for address in item['external_calls']}
-    calls.update(address&0x1fffffff for address in additional_calls)
-    report=[]
-    for position,(item,folder) in enumerate(originals):
-        if not item.get('resident_boot'):continue
-        info=item['info'];low=info['load']&0x1fffffff;size=len(item['image'])-2048
-        compiled=modules[item['module_index']-1]
-        candidates={info['load']+address-low for address in calls if low<=address<low+size}
-        missing=candidates-set(compiled['entries'])
-        if not missing:continue
-        updated={**item,'info':{**info,'native_entries':sorted(set(info.get('native_entries',[]))|missing)}}
-        log(f'Compiling {len(missing)} external resident call entries for disc {item["index"]}')
-        # The exporter owns this newly generated tree. Keep nested overlay
-        # directories; replace only this resident program's flat output files.
-        for path in folder.iterdir():
-            if path.is_file():path.unlink()
-        regenerated=module(recompiler,updated,folder,run,sdk)
-        compiled.update(regenerated)
-        originals[position]=(updated,folder)
-        report.append(dict(module_index=item['module_index'],seeded_calls=sorted(missing),
-            uncompiled_calls=sorted(missing-set(regenerated['entries']))))
-    return report
+    """Close emitted cross-image calls over boot code and loaded libraries."""
+    attempted={}
+    for _ in range(16):
+        calls={address&0x1fffffff for item in modules for address in item['external_calls']}
+        calls.update(address&0x1fffffff for address in additional_calls)
+        changed=False
+        for position,(item,folder) in enumerate(originals):
+            info=item['info'];low=info['load']&0x1fffffff;size=len(item['image'])-2048
+            ordinal=item['module_index'];compiled=modules[ordinal-1]
+            tried=attempted.setdefault(ordinal,set())
+            candidates={info['load']+address-low for address in calls if low<=address<low+size}
+            missing=candidates-set(compiled['entries'])-tried
+            if not missing:continue
+            tried.update(missing);changed=True
+            updated={**item,'info':{**info,'native_entries':sorted(set(info.get('native_entries',[]))|missing)}}
+            log(f'Compiling {len(missing)} external call entries for image {ordinal}, disc {item["index"]}')
+            # The exporter owns this newly generated tree. Keep nested overlay
+            # directories; replace only this image's flat output files.
+            for path in folder.iterdir():
+                if path.is_file():path.unlink()
+            regenerated=module(recompiler,updated,folder,run,sdk)
+            compiled.update(regenerated)
+            originals[position]=(updated,folder)
+        if not changed:
+            return [dict(module_index=ordinal,seeded_calls=sorted(entries),
+                uncompiled_calls=sorted(entries-set(modules[ordinal-1]['entries'])))
+                for ordinal,entries in sorted(attempted.items()) if entries]
+    raise ValueError('native cross-image call discovery did not converge')
 
 
 def registry(modules,path,*,copied=False):

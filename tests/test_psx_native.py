@@ -264,10 +264,11 @@ def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     assert report['interpreted_instructions']==0 and report['coverage_misses']==0
 
 
-def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,tmp_path):
+@pytest.mark.parametrize('library_load,resident',[(0x80010000,True),(0x80100000,False)])
+def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,tmp_path,library_load,resident):
     import struct
     from decompnet.psx_native import _sdk,_recompiler,_run,codegen
-    sdk=_sdk();emitter=_recompiler(sdk);target=0x80010200
+    sdk=_sdk();emitter=_recompiler(sdk);target=library_load+0x200
     def image(load,words,leaf=False):
         payload=bytearray(2048);struct.pack_into('<'+'I'*len(words),payload,0,*words)
         if leaf:
@@ -278,8 +279,8 @@ def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,t
         header=bytearray(2048);header[:8]=b'PS-X EXE'
         struct.pack_into('<4I',header,0x10,load,0,load,len(payload))
         return bytes(header+payload)
-    boot=dict(index=1,module_index=1,boot='BOOT.EXE',resident_boot=True,
-        image=image(0x80010000,[0x1000ffff,0],True),info=dict(load=0x80010000,entrypoint=0x80010000))
+    boot=dict(index=1,module_index=1,boot='LIBRARY.EXE',resident_boot=resident,
+        image=image(library_load,[0x1000ffff,0],True),info=dict(load=library_load,entrypoint=library_load))
     overlay=dict(index=1,module_index=2,boot='OVERLAY.EXE',
         image=image(0x80130000,[0x0c000000|((target>>2)&0x03ffffff),0,0x1000ffff,0]),
         info=dict(load=0x80130000,entrypoint=0x80130000))
