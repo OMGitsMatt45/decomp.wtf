@@ -50,7 +50,7 @@ NATIVE_BODY=r'''
 
 
 def _shared_pipeline(folder):
-    """Retain pinned pipeline ordering without duplicating it per operation."""
+    """Retain pinned ordering and specialize fixed pair metadata at compile time."""
     text=(folder/'ps2_vu1_exec.inl').read_text()
     signature='PS2_VU_FORCE_INLINE bool VU1Interpreter::runDecodedPair('
     if text.count(signature)!=1:raise PCError('pinned VU pipeline conductor differs')
@@ -78,6 +78,11 @@ bool ps2_vu_program::Access::decompRunPair(VU1Interpreter &vu,
     const VU1Interpreter::DecodedInstructionPair &decoded,DecompOperation upperOperation,
     DecompOperation lowerOperation,uint64_t budgetEnd,uint32_t codeSize) {
 '''+body+'\n}\n')
+    specialized=body.replace('upperOperation(vu);','decompUpper<uint32_t(Word>>32u)>(vu);')
+    specialized=specialized.replace('lowerOperation(vu);','decompLower<Word>(vu);')
+    (folder/'decomp_vu_pair_pipeline.inl').write_text(
+        '// SPDX-License-Identifier: GPL-3.0-only\n'
+        '// Same pinned conductor; decoded pair metadata and operation calls are compile-time constants.\n'+specialized+'\n')
 
 
 def patch(root):
