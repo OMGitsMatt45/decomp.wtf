@@ -4,6 +4,8 @@ The pinned emitter inlines same-region calls into one C++ dispatcher. An
 outgoing tail therefore may still owe an internal return. Conversely, a
 reentrant invocation must return to its host caller when the guest returns to
 the invocation's incoming LR, even if that address belongs to this region.
+An indirect PC restore can instead hold a computed tail target outside the
+region (including the other instruction state); dispatch it before returning.
 """
 import re
 
@@ -27,10 +29,10 @@ def rewrite(code,begin,end,thumb):
         '        return;')
     header=header.replace(outgoing,resume)
     # Restrict this guard to actual return paths, not ordinary internal calls.
-    pattern=(r'(if \()(?=\(dispatch_target & 1u\) == [01]u && '
+    pattern=(r'if \(\(dispatch_target & 1u\) == [01]u && '
         r'\(dispatch_target & ~1u\) >= 0x[0-9a-f]+u && '
-        r'\(dispatch_target & ~1u\) < 0x[0-9a-f]+u\) goto L_region_dispatch;\n\s*DSR_RET)')
-    body=re.sub(pattern,r'\1dispatch_target != dispatch_entry_lr && ',body)
+        r'\(dispatch_target & ~1u\) < 0x[0-9a-f]+u\) goto L_region_dispatch;(?=\n\s*DSR_RET)')
+    body=re.sub(pattern,'if (dispatch_target != dispatch_entry_lr) goto L_region_dispatch;',body)
     return header+body
 
 
