@@ -19,5 +19,9 @@ void ps2_vu_program::Access::decompLower(VU1Interpreter &vu) {
 template <VU1Interpreter::Unit unit,uint64_t Word>
 bool ps2_vu_program::Access::decompNativePair(VU1Interpreter &vu,uint64_t budgetEnd,uint32_t codeSize) {
     static constexpr auto decoded=VU1Interpreter::decodeInstructionWords(uint32_t(Word),uint32_t(Word>>32u),unit);
+#ifdef DECOMP_PS2_VU_SHARED_PIPELINE
     return decompRunPair(vu,decoded,decompUpper<uint32_t(Word>>32u)>,decompLower<Word>,budgetEnd,codeSize);
+#else
+#include "decomp_vu_pair_pipeline.inl"
+#endif
 }

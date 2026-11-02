@@ -5,15 +5,19 @@
 #include "runtime/gs/gs_frontend.h"
 #include "decomp_vu_execution.hpp"
 #include <cstring>
+#include <chrono>
+#include <cstdio>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <vector>
 
 int main(int argc,char **argv) {
-    if(argc!=7)return 2;
+    if(argc!=7&&argc!=8)return 2;
     const unsigned unit=unsigned(std::stoul(argv[1])),seed=unsigned(std::stoul(argv[2]));
     const unsigned budget=unsigned(std::stoul(argv[3]));
+    const unsigned iterations=argc==8?unsigned(std::stoul(argv[7])):1u;
+    if(!iterations||iterations>1000000u)return 2;
     std::ifstream input(argv[4],std::ios::binary);
     std::vector<uint8_t> original((std::istreambuf_iterator<char>(input)),{});
     if(original.empty()||original.size()>4096||original.size()%8||!budget)return 3;
@@ -38,14 +42,20 @@ int main(int argc,char **argv) {
     for(unsigned at=0;at<dataSize;at+=4){
         const uint32_t value=values[(at/4+seed)%8];std::memcpy(data+at,&value,4);
     }
-    vu.execute(code,codeSize,data,dataSize,gs,&memory,0,0,0,budget);
-    unsigned resumes=0;
-    while(!negative&&vu.state().pc<original.size()&&resumes++<256) {
-        const uint32_t previousPc=vu.state().pc;const uint64_t previousCycles=vu.state().cycles;
-        vu.resume(code,codeSize,data,dataSize,gs,&memory,0,0,budget);
-        if(vu.state().pc==previousPc&&vu.state().cycles==previousCycles)break;
+    const auto started=std::chrono::steady_clock::now();
+    for(unsigned iteration=0;iteration<iterations;++iteration){
+        vu.execute(code,codeSize,data,dataSize,gs,&memory,0,0,0,budget);
+        unsigned resumes=0;
+        while(!negative&&vu.state().pc<original.size()&&resumes++<256) {
+            const uint32_t previousPc=vu.state().pc;const uint64_t previousCycles=vu.state().cycles;
+            vu.resume(code,codeSize,data,dataSize,gs,&memory,0,0,budget);
+            if(vu.state().pc==previousPc&&vu.state().cycles==previousCycles)break;
+        }
+        if(resumes>=256)return 5;
     }
-    if(resumes>=256)return 5;
+    if(iterations>1)std::fprintf(stderr,"{\"iterations\":%u,\"elapsed_ns\":%llu,\"native_pairs\":%llu}\n",iterations,
+        static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-started).count()),
+        static_cast<unsigned long long>(decomp_ps2::execution::vu_native_pairs.load()));
 #ifdef DECOMP_PS2_NATIVE_VU
     if(vu.interpretedPairsExecuted()||decomp_ps2::execution::vu_interpreted_pairs.load())return 6;
     if(negative){
