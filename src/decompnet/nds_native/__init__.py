@@ -45,6 +45,7 @@ def revision():
         digest.update(name.encode()+b'\0'+_source(name).encode())
     digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
     digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
+    digest.update(b'card_bus.py\0'+_source('card_bus.py').encode())
     digest.update(b'shared_calls.py\0'+_source('shared_calls.py').encode())
     digest.update(b'dsprot.py\0'+_source('dsprot.py').encode())
     return digest.hexdigest()
@@ -315,6 +316,8 @@ def _runtime(sdk, root):
     patch_code_copies(target)
     from .flash_ir import patch as patch_flash_ir
     patch_flash_ir(target)
+    from .card_bus import patch as patch_card_bus
+    patch_card_bus(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
