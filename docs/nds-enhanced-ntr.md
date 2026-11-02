@@ -69,6 +69,10 @@ callees, indirect calls, conditional saves and stack frames reject that proof.
 
 IR cartridge codes beginning with I accept the documented 00h savedata prefix
 before their flash commands. Native flash status, write-enable, erase and raw
-save persistence remain in the existing chip implementation. Infrared packet
-transport is not implemented. [GBATEK IR SPI](https://problemkaputt.de/gbatek.htm#dscartinfraredcartridgespicommands)
-documents the framing and code marker.
+save persistence remain in the existing chip implementation. The runtime models
+the newer IR firmware's `08h,ver` identification query with version `AAh`.
+Identification ends at chip-select release, preserves flash write-enable, and
+does not reinterpret commands inside the `00h` savedata framing. Plain cartridges
+retain their existing command behavior. Infrared packet transport is not
+implemented. [GBATEK IR SPI](https://problemkaputt.de/gbatek.htm#dscartinfraredcartridgespicommands)
+documents both firmware versions, the framing and code marker.
