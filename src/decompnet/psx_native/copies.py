@@ -168,16 +168,18 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
     folder.mkdir(parents=True)
     data = item['data'];prefix = f'decomp_copy{ordinal}_'
     with tempfile.TemporaryDirectory(prefix='.copy-proof-', dir=folder) as temporary:
-        stages = []
+        stages = [];uncompiled=[]
         for index, base in enumerate(BASES):
             stage = Path(temporary)/str(index);stage.mkdir()
             header = bytearray(2048);header[:8] = b'PS-X EXE'
             struct.pack_into('<4I',header,0x10,base,0,base,len(data))
             image = stage/'COPY.EXE';image.write_bytes(header+data)
             seed = stage/'seeds.txt';seed.write_text(hex(base)+'\n',encoding='utf-8')
-            codegen.emit_native(recompiler,image,seed,stage,run,sdk,'PS1 copied-routine C generation')
+            _,missing=codegen.emit_native(recompiler,image,seed,stage,run,sdk,'PS1 copied-routine C generation')
+            uncompiled.append([pc-base for pc in missing])
             stages.append(stage)
         first, second = stages
+        if uncompiled[0]!=uncompiled[1]:raise ValueError('copied trap continuation differs by placement')
         sources = sorted(first.glob('*_full_*.c'))+[first/'COPY.EXE_decls.h']
         for path in sources:
             paired = second/path.name
@@ -200,7 +202,8 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
                 raise ValueError('copied PS1 entry escapes its original bytes')
             entries.append(dict(offset=offset,resume=continuation-BASES[0] if continuation else None,
                                 function=prefix+function))
-    return dict(sha256=item['sha256'],size=len(data),source=item['source'],entries=entries)
+    return dict(sha256=item['sha256'],size=len(data),source=item['source'],entries=entries,
+                uncompiled_trap_offsets=uncompiled[0])
 
 
 def registry(items, path):

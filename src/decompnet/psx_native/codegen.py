@@ -83,7 +83,7 @@ def native_traps(text):
 
 
 def emit_native(recompiler,exe,seed,folder,run,sdk,label):
-    """Emit native trap calls and all post-exception resume entries."""
+    """Emit native trap calls and supported post-exception resume entries."""
     image=exe.read_bytes();load=struct.unpack_from('<I',image,0x18)[0]
     roots={int(line,0) for line in seed.read_text().splitlines() if line.strip()}
     for _ in range(16):
@@ -93,15 +93,16 @@ def emit_native(recompiler,exe,seed,folder,run,sdk,label):
         for path in sources:
             text,targets=native_traps(path.read_text(encoding='utf-8'))
             rewritten.append((path,text));continuations.update(targets)
-        if any(not load<=target<load+len(image)-2048 or target&3 for target in continuations):
-            raise ValueError('native SYSCALL continuation escapes the original image')
         emitted=set(dispatch_entries((folder/(exe.name+'_dispatch.c')).read_text(encoding='utf-8')))
         missing=continuations-emitted
-        if not missing:
+        pending={target for target in missing-roots if load<=target<load+len(image)-2048 and not target&3}
+        if not pending:
             for path,text in rewritten:path.write_text(text,encoding='utf-8')
-            return sorted(roots)
-        if missing<=roots:raise ValueError('pinned emitter omitted requested SYSCALL continuations')
-        roots.update(missing)
+            # Data-like CFG paths can end in an unsupported instruction. Keep
+            # those addresses out of native dispatch and report the candidates;
+            # executing one still produces a strict runtime coverage failure.
+            return sorted(roots),sorted(missing)
+        roots.update(pending)
         seed.write_text(''.join(f'{entry:#x}\n' for entry in sorted(roots)),encoding='utf-8')
     raise ValueError('native SYSCALL continuation discovery did not converge')
 
@@ -145,7 +146,7 @@ def module(recompiler,disc,folder,run,sdk):
     exe=folder/(Path(disc.get('boot','PSX.EXE')).name or 'PSX.EXE');exe.write_bytes(image)
     entries=seeds(image,info)
     (folder/'seeds.txt').write_text(''.join(f'{entry:#x}\n' for entry in entries),encoding='utf-8')
-    entries=emit_native(recompiler,exe,folder/'seeds.txt',folder,run,sdk,
+    entries,uncompiled=emit_native(recompiler,exe,folder/'seeds.txt',folder,run,sdk,
          'PS1 static C generation for disc '+str(disc['index']))
     dispatch=folder/(exe.name+'_dispatch.c')
     original=dispatch.read_text(encoding='utf-8')
@@ -194,6 +195,7 @@ int {prefix}dirty_ram_text_native_ok_ranges(const uint32_t *ranges,uint32_t coun
 '''
     with dispatch.open('a',encoding='utf-8') as stream:stream.write(guard)
     return dict(index=ordinal,disc=disc['index'],prefix=prefix,seeds=len(entries),
+                uncompiled_trap_continuations=uncompiled,
                 entries=emitted_entries,load_address=low,image_size=len(payload),
                 image_sha256=hashlib.sha256(image).hexdigest(),
                 dispatch_sha256=hashlib.sha256(dispatch.read_bytes()).hexdigest(),
