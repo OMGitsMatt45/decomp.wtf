@@ -1,13 +1,57 @@
 """Static modules with independent byte identities, including shared disc addresses."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import struct
+import tempfile
 
 EXPORTS=('psx_game_address_in_text','psx_game_text_native_ok','psx_game_text_native_ok_full',
          'psx_game_is_function_entry','psx_dispatch_game_compiled',
          'psx_cps_mark_game','psx_cps_mark_game_ctor')
+
+
+def emit(recompiler,exe,seed,folder,run,sdk,label):
+    """Cache immutable raw emitter results before integration-specific renaming.
+
+    Key the exact image/name/seed list and verified emitter revision. Validate
+    every cached byte before reuse; publish a complete entry atomically.
+    """
+    key=hashlib.sha256(b'psx-raw-c-v1:115b1739\0'+exe.name.encode()+b'\0'+
+        exe.read_bytes()+b'\0'+seed.read_bytes()).hexdigest()
+    base=Path(os.environ.get('DECOMP_PSX_GENERATION_CACHE',sdk.parent/'.psx-native-cache')).resolve()
+    cache=base/key[:2]/key
+    try:
+        metadata=json.loads((cache/'files.json').read_text(encoding='utf-8'))
+        if not isinstance(metadata,dict) or not metadata:raise ValueError('empty cache')
+        payload=[]
+        for name,digest in metadata.items():
+            path=Path(name)
+            if path.name!=name or path.suffix not in ('.c','.h'):raise ValueError('external cache file')
+            data=(cache/name).read_bytes()
+            if hashlib.sha256(data).hexdigest()!=digest:raise ValueError('changed cache file')
+            payload.append((name,data))
+        for name,data in payload:(folder/name).write_bytes(data)
+        return
+    except (OSError,ValueError,TypeError):
+        pass
+    run([recompiler,exe,'--seeds',seed,'--out-dir',folder,'--strict','--project-root',sdk],label)
+    files=sorted(p for p in folder.iterdir() if p.suffix in ('.c','.h'))
+    if not files:raise ValueError('PS1 emitter produced no source files')
+    cache.parent.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.emission-',dir=cache.parent) as temporary:
+        stage=Path(temporary)/'entry';stage.mkdir()
+        metadata={}
+        for path in files:
+            data=path.read_bytes();(stage/path.name).write_bytes(data)
+            metadata[path.name]=hashlib.sha256(data).hexdigest()
+        (stage/'files.json').write_text(json.dumps(metadata,sort_keys=True)+'\n',encoding='utf-8')
+        try:stage.rename(cache)
+        except OSError:
+            if not cache.is_dir():raise
+            # Another export may have published it. Leave an invalid existing
+            # entry unused rather than replacing concurrently accessed data.
 
 
 def seeds(image,info):
@@ -49,8 +93,8 @@ def module(recompiler,disc,folder,run,sdk):
     exe=folder/(Path(disc.get('boot','PSX.EXE')).name or 'PSX.EXE');exe.write_bytes(image)
     entries=seeds(image,info)
     (folder/'seeds.txt').write_text(''.join(f'{entry:#x}\n' for entry in entries),encoding='utf-8')
-    run([recompiler,exe,'--seeds',folder/'seeds.txt','--out-dir',folder,'--strict','--project-root',sdk],
-        'PS1 static C generation for disc '+str(disc['index']))
+    emit(recompiler,exe,folder/'seeds.txt',folder,run,sdk,
+         'PS1 static C generation for disc '+str(disc['index']))
     dispatch=folder/(exe.name+'_dispatch.c')
     original=dispatch.read_text(encoding='utf-8')
     emitted_entries=dispatch_entries(original)

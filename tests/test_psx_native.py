@@ -228,10 +228,14 @@ def test_native_player_rejects_uncompiled_bytes_and_records_the_gap(native_proje
 
 
 def test_live_tray_change_preserves_resident_native_module(native_project):
-    report,_=run(native_project,'tray-switch','--headless','--renderer','software','--switch-disc','450:2')
+    report,_=run(native_project,'tray-switch','--headless','--renderer','software',
+        '--disc',native_project[1]/'assets/disc1/Original disc 1.iso','--switch-disc','450:2')
     assert report['disc_index']==2 and report['disc_sectors']==30
     assert report['observed'][:4]==[1,0xd0000001,2048,0xa004]
     assert report['module_dispatches'][0]>0 and report['module_dispatches'][1]==0
+    restarted,_=run(native_project,'tray-restarted','--headless','--renderer','software',frames=360)
+    assert restarted['disc_index']==2 and restarted['observed'][0]==2
+    assert restarted['module_dispatches'][1]>0 and restarted['interpreted_instructions']==0
 
 
 def test_standalone_executable_envelope_boots_through_real_bios(native_project):
@@ -239,6 +243,16 @@ def test_standalone_executable_envelope_boots_through_real_bios(native_project):
     path=native_project[0]/'standalone.iso';path.write_bytes(iso(executable()))
     report,_=run(native_project,'standalone-executable','--headless','--renderer','software','--disc',path)
     assert report['observed'][0]==1 and report['native_dispatches']>0
+
+
+def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
+    script=native_project[0]/'original-input.txt'
+    script.write_text('# held masks\n0 0xffff\n100 0xbfff\n400 0xffef\n500 0xffff\n')
+    report,_=run(native_project,'scripted-cross','--headless','--renderer','software',
+        '--input-script',script,frames=360)
+    assert report['scripted_input'] and report['pad0_connected']==1
+    assert report['pad0_buttons']==0xbfff
+    assert report['interpreted_instructions']==0 and report['coverage_misses']==0
 
 
 def test_automatic_fallback_and_required_gpu_failure(native_project):
@@ -253,7 +267,10 @@ def test_bounded_window_logs_disc_warning_and_finishes(native_project):
     assert 'SLUS-31415' in original
     try:
         config.write_text(original.replace('SLUS-31415','SLUS-99999'))
-        report,_=run(native_project,'bounded-warning','--game',config,'--renderer','software',frames=2)
+        # Earlier tray changes deliberately persist the selected disc. This
+        # warning concerns disc 1's edited ID, so select that media explicitly.
+        report,_=run(native_project,'bounded-warning','--game',config,'--renderer','software',
+            '--disc',native_project[1]/'assets/disc1/Original disc 1.iso',frames=2)
     finally:
         config.write_text(original)
     assert report['frames']==2

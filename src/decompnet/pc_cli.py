@@ -76,6 +76,7 @@ def add_parser(sub):
     native.add_argument('--instruction-choices',type=Path,help='reviewed ROM-bound alternatives to compile into native C++')
     native.add_argument('--experimental', action='store_true', required=True)
     psx = actions.add_parser('psx-native', help='PS1 C/C++ repository for one game and its ordered disc set')
+    psx.add_argument('--cheats', type=Path, help='owner GameShark CHT catalog; compile code-changing choices ahead of time')
     psx.add_argument('inputs',nargs='+',type=Path,help='disc images/CUE sheets in order, or an M3U playlist')
     psx.add_argument('output',type=Path)
     psx.add_argument('--title',default='')
@@ -114,7 +115,7 @@ def run(args):
             result = export(args.input,args.output,profile=args.profile,title=args.title,renderer=args.renderer)
         elif args.pc_action == 'psx-native':
             from .psx_native import export
-            result = export(args.inputs,args.output,title=args.title,renderer=args.renderer)
+            result = export(args.inputs,args.output,title=args.title,renderer=args.renderer,cheat_file=args.cheats)
         elif args.pc_action == 'nds-native':
             from .nds_native import export
             result = export(args.rom,args.output,profile=args.profile,input_format=args.input_format,

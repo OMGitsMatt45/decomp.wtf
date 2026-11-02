@@ -175,8 +175,7 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
             struct.pack_into('<4I',header,0x10,base,0,base,len(data))
             image = stage/'COPY.EXE';image.write_bytes(header+data)
             seed = stage/'seeds.txt';seed.write_text(hex(base)+'\n',encoding='utf-8')
-            run([recompiler,image,'--seeds',seed,'--out-dir',stage,'--strict','--project-root',sdk],
-                'PS1 copied-routine C generation')
+            codegen.emit(recompiler,image,seed,stage,run,sdk,'PS1 copied-routine C generation')
             stages.append(stage)
         first, second = stages
         sources = sorted(first.glob('*_full_*.c'))+[first/'COPY.EXE_decls.h']

@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <limits>
 #include "defaults.hpp"
+#include "cheats.hpp"
+#include <map>
 #ifdef PSX_SDL3
 #include <SDL3/SDL_opengl.h>
 #else
@@ -22,6 +24,7 @@ static bool decomp_fullscreen=false, decomp_require_gpu=decomp_default_require_g
 static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
 static uint32_t decomp_coverage_pc=0;
+static std::map<uint64_t,uint16_t> decomp_inputs;
 static int decomp_exit_status=0;
 #ifdef DECOMP_PSX_NATIVE_ONLY
 static constexpr const char *decomp_execution_model="static-recompiled";
@@ -89,6 +92,23 @@ static void decomp_parse(int &argc,char **argv) {
         const std::string arg=argv[i];
         const auto next=[&](){if(i+1>=argc){std::fprintf(stderr,"missing value for %s\n",argv[i]);std::exit(2);}return argv[++i];};
         if(arg=="--frames") {decomp_limit=decomp_number(next());if(!decomp_limit)std::exit(2);}
+        else if(arg=="--input-script") {
+            std::ifstream file(std::filesystem::u8path(next()));
+            if(!file){std::fputs("cannot open input script\n",stderr);std::exit(2);}
+            std::string line;
+            while(std::getline(file,line)) {
+                if(line.empty()||line[0]=='#')continue;
+                std::istringstream row(line);std::string frame,mask,extra;
+                if(!(row>>frame>>mask)||(row>>extra)){std::fputs("input script requires FRAME ACTIVE_LOW_PAD_MASK\n",stderr);std::exit(2);}
+                const auto at=decomp_number(frame.c_str()),value=decomp_number(mask.c_str());
+                if(value>0xffffu||decomp_inputs.size()>=100000u||!decomp_inputs.emplace(at,(uint16_t)value).second)std::exit(2);
+            }
+        }
+        else if(arg=="--cheat") {
+            const auto index=decomp_number(next());
+            if(index>=ps1_host::cheats.size()){std::fputs("cheat index outside catalog\n",stderr);std::exit(2);}
+            ps1_host::cheat_set((size_t)index,true);
+        }
         else if(arg=="--report")decomp_report_path=next();
         else if(arg=="--capture")decomp_capture_path=next();
         else if(arg=="--resolution")decomp_size(next(),decomp_width,decomp_height);
@@ -136,6 +156,10 @@ static bool decomp_event(const SDL_Event &event) {
 #else
     const auto key=event.key.keysym.sym;
 #endif
+    if(key==SDLK_F1) {
+        if(!savestate_menu_open&&!psx_rewind_is_open())psx_runtime_menu_open();
+        return true;
+    }
     if(key==SDLK_F11) {
         psx_window_fullscreen_set(sdl_window,&s_window_fullscreen,s_window_fullscreen.mode?0:1);
         return true;
@@ -143,7 +167,7 @@ static bool decomp_event(const SDL_Event &event) {
     if((key==SDLK_F9||key==SDLK_F10)&&cdrom_disc_roster_count()>1) {
         const int count=cdrom_disc_roster_count(),direction=key==SDLK_F10?1:-1;
         const int index=(cdrom_disc_selected()-1+direction+count)%count+1;
-        if(!cdrom_disc_select(index))std::fprintf(stderr,"could not mount disc %d\n",index);
+        if(psx_disc_tray_cycle(index,PSX_DISC_TRAY_ORIGIN_MENU)!=PSX_DISC_TRAY_OK)std::fprintf(stderr,"could not mount disc %d\n",index);
         else std::fprintf(stdout,"decomp.wtf: inserted disc %d of %d\n",index,count);
         return true;
     }
@@ -185,8 +209,16 @@ static bool decomp_capture(int dw,int dh) {
     }
     return file.good();
 }
+static int decomp_script_input() {
+    extern uint64_t s_frame_count;
+    if(decomp_inputs.empty()||psx_netplay_active())return -1;
+    const auto cursor=decomp_inputs.upper_bound(s_frame_count);
+    sio_set_pad_connected(0,1);
+    return cursor==decomp_inputs.begin()?0xffff:std::prev(cursor)->second;
+}
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;
+    ps1_host::cheat_tick();
     if(s_frame_count%60==0&&std::getenv("DECOMP_PSX_TRACE")) {
         std::fprintf(stderr,"decomp.wtf: frame=%llu pc=%08x ra=%08x native=%llu interpreted=%llu observed=",
             (unsigned long long)s_frame_count,decomp_cpu?decomp_cpu->pc:0,decomp_cpu?decomp_cpu->gpr[31]:0,
@@ -199,7 +231,7 @@ static void decomp_frame_end() {
     }
     if(decomp_switch_frame&&s_frame_count>=decomp_switch_frame) {
         decomp_switch_frame=0;
-        if(!cdrom_disc_select(decomp_switch_index)){std::fprintf(stderr,"disc switch failed\n");std::exit(1);}
+        if(psx_disc_tray_cycle(decomp_switch_index,PSX_DISC_TRAY_ORIGIN_MENU)!=PSX_DISC_TRAY_OK){std::fprintf(stderr,"disc switch failed\n");std::exit(1);}
     }
     if(decomp_resize_frame&&s_frame_count>=decomp_resize_frame&&sdl_window) {
         decomp_resize_frame=0;SDL_SetWindowSize(sdl_window,decomp_resize_w,decomp_resize_h);
@@ -247,6 +279,9 @@ static void decomp_frame_end() {
        <<",\"pc\":"<<(decomp_cpu?decomp_cpu->pc:0)<<",\"ra\":"<<(decomp_cpu?decomp_cpu->gpr[31]:0)
        <<",\"last_store_pc\":"<<g_debug_last_store_pc
        <<",\"disc_index\":"<<cdrom_disc_selected()<<",\"disc_count\":"<<cdrom_disc_roster_count()
+       <<",\"settings_openings\":"<<ps1_host::cheat_menu_openings<<",\"cheat_toggles\":"<<ps1_host::cheat_toggles
+       <<",\"scripted_input\":"<<(!decomp_inputs.empty()?"true":"false")
+       <<",\"pad0_buttons\":"<<sio_get_pad_buttons_slot(0)<<",\"pad0_connected\":"<<sio_get_pad_connected(0)
        <<",\"disc_sectors\":"<<cdrom_mounted_sector_count()<<",\"audio_frames\":"<<audio.render_frames
        <<",\"audio_nonzero_frames\":"<<audio.nonzero_frames<<",\"observed\":[";
     if(gl)rt_release();
@@ -255,6 +290,13 @@ static void decomp_frame_end() {
     for(unsigned i=0;i<decomp_module_count;i++)out<<(i?",":"")<<decomp_module_dispatches[i];
     out<<"],\"registers\":[";
     for(int i=0;i<32;i++)out<<(i?",":"")<<(decomp_cpu?decomp_cpu->gpr[i]:0);
+    out<<"],\"cheats\":[";
+    for(size_t i=0;i<ps1_host::cheats.size();++i) {
+        const auto &entry=ps1_host::cheats[i];
+        out<<(i?",":"")<<"{\"name\":"<<decomp_json(entry.name.c_str())
+           <<",\"enabled\":"<<(entry.enabled?"true":"false")
+           <<",\"applications\":"<<entry.applications<<",\"changes\":"<<entry.changes<<"}";
+    }
     out<<"]}\n";
     if(!decomp_report_path.empty()) {
         std::ofstream file(std::filesystem::u8path(decomp_report_path));file<<out.str();
