@@ -111,3 +111,10 @@ The separate ps2_probe player retains IOP/VU interpretation and reports it.
 The pinned reference suites include original MPEG-2 pixels, RAW8 macroblock
 output, buffer guards and IOP/VU/IRQ/media behavior. Both players retain translated
 EE code. The normal player does not switch to reference execution during play.
+
+Vulkan rendering uses an ordered GS worker with a bounded 4 MiB command queue.
+Queued uploads own their bytes, observations drain earlier commands, and window
+presentation remains on the window thread. `DECOMP_PS2_GS_WORKER=0` selects the
+direct path for comparison. The run report records `gs_worker`. The native
+`ps2_gs_worker_probe released` check exercises prompt frame-reference release
+while later queue work is blocked.

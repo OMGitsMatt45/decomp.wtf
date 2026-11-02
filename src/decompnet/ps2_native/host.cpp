@@ -3,6 +3,7 @@
 #include "runtime/ee_scheduler.h"
 #include "runtime/ps2_native_iop.h"
 #include "runtime/ps2_pad_host.h"
+#include "runtime/gs/gs_threaded_backend.h"
 #include "gfx/backends/sdlgpu/sdlgpu_backend.h"
 #include "gfx/backends/sdlgpu/sdlgpu_input.h"
 #include "game_config.hpp"
@@ -17,6 +18,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -52,6 +55,7 @@ uint64_t positive(const std::string &text) {
     return n;
 }
 struct Host {
+    bool gs_worker=false;
     PS2Runtime *runtime=nullptr;
     dq8::gfx::SdlGpuBackend *gpu=nullptr;
     SDL_Window *window=nullptr;
@@ -226,7 +230,15 @@ int main(int argc,char **argv) {
         runtime=std::make_unique<PS2Runtime>();host.runtime=runtime.get();
         runtime->setExternalPresenter(Host::callback,&host);
         if(!runtime->initialize(decomp_ps2_game::title))throw std::runtime_error("PS2 runtime initialization failed");
-        if(gpu)runtime->gs().setRasterBackend(std::move(gpu));
+        if(gpu){
+            std::unique_ptr<GSRasterBackend> backend=std::move(gpu);
+            const char *setting=std::getenv("DECOMP_PS2_GS_WORKER");
+            host.gs_worker=!setting||std::strcmp(setting,"0")!=0;
+            try{
+                if(host.gs_worker)backend=std::make_unique<GSThreadedBackend>(std::move(backend),4u*1024u*1024u);
+            }catch(...){host.gpu=nullptr;host.window=nullptr;throw;}
+            runtime->gs().setRasterBackend(std::move(backend));
+        }
         runtime->setMissingFunctionPolicy(PS2Runtime::MissingFunctionPolicy::Stop);
         if(!runtime->loadELF((root/"assets/cd"/decomp_ps2_game::boot).string()))throw std::runtime_error("owner boot ELF failed to load");
         const uint32_t top=runtime->guestHeapHardLimit();
@@ -263,6 +275,7 @@ int main(int argc,char **argv) {
         out<<"{\n  \"schema\":\"decomp.wtf.ps2-run/v1\",\n  \"success\":"<<(result?"false":"true")
            <<",\n  \"error\":"<<quoted(error)<<",\n  \"renderer\":"<<quoted(host.gpu?"vulkan":"software")
            <<",\n  \"software_fallback\":"<<quoted(fallback)<<",\n  \"drawable\":["<<host.drawable_width<<','<<host.drawable_height<<']'
+           <<",\n  \"gs_worker\":"<<(host.gs_worker?"true":"false")
            <<",\n  \"gpu_device\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_NAME_STRING,""):"")
            <<",\n  \"gpu_driver\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING,""):"")
            <<",\n  \"gpu_driver_version\":"<<quoted(device?SDL_GetStringProperty(device,SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING,""):"")
