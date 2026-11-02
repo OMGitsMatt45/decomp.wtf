@@ -2,6 +2,8 @@
 #pragma once
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -38,6 +40,10 @@ public:
         }
         if(sequence<=sequence_)return;
         sequence_=sequence;until_=tick+hold;mask_=mask;edge_=mask;
+        if(std::getenv("DQ8_PAD_SCRIPT_VERBOSE"))
+            std::fprintf(stderr,"[pad-command] tick=%llu sequence=%llu buttons=%s hold=%llu\n",
+                static_cast<unsigned long long>(tick),static_cast<unsigned long long>(sequence),buttons.c_str(),
+                static_cast<unsigned long long>(hold));
     }
     void merge(uint64_t tick,uint32_t &held,uint32_t &pressed){
         if(tick<until_){held|=mask_;pressed|=edge_;}
