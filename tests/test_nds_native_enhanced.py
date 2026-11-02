@@ -125,3 +125,14 @@ def test_enhanced_helper_changes_backend_revision(monkeypatch):
     before = nds_native.revision()
     monkeypatch.setattr(nds_native, '_source', lambda name: original(name) + ('\n# change\n' if name == 'enhanced.py' else ''))
     assert nds_native.revision() != before
+
+
+def test_dtcm_base_requires_the_declared_literal_register_and_cp15_field():
+    from decompnet.nds_native.enhanced import dtcm_base
+    raw = bytearray(0x40)
+    struct.pack_into('<4I', raw, 0, 0xE59F2018, 0xE382200A, 0xEE092F11, 0xE12FFF1E)
+    struct.pack_into('<I', raw, 0x20, 0x02E00000)
+    assert dtcm_base(raw, 0x02000000) == 0x02E00000
+    struct.pack_into('<I', raw, 8, 0xEE093F11)
+    with pytest.raises(ValueError, match='uniquely declared'):
+        dtcm_base(raw, 0x02000000)

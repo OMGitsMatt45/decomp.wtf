@@ -8,6 +8,7 @@ No DSi-exclusive program, key, network service or enhanced hardware is enabled.
 from dataclasses import dataclass
 from pathlib import Path
 import struct
+import shutil
 
 import yaml
 
@@ -120,14 +121,49 @@ def stage(source, target, *, input_format):
                            for i, (a, s, n, b, _) in enumerate(info.blocks)])
 
 
+def dtcm_base(image, base):
+    """Read a declared DTCM base from an adjacent literal/ORR/CP15 sequence."""
+    found = set()
+    for at in range(8, min(len(image) - 3, 0x4000), 4):
+        load, size, control = struct.unpack_from('<3I', image, at - 8)
+        if control & 0xFFFF0FFF != 0xEE090F11:
+            continue
+        register = (control >> 12) & 15
+        if (size & 0xFFFFF000 != 0xE3800000 | register << 16 | register << 12
+                or size & 0xFFF != 0xA or load & 0xFF7FF000 != 0xE51F0000 | register << 12):
+            continue
+        literal = at - 8 + 8 + ((load & 0xFFF) if load & 0x800000 else -(load & 0xFFF))
+        if 0 <= literal <= len(image) - 4:
+            found.add(struct.unpack_from('<I', image, literal)[0] & 0xFFFFF000)
+    if len(found) != 1:
+        raise ValueError('enhanced DTCM base is not uniquely declared by startup CP15 code')
+    return found.pop()
+
+
 def prepare_extracted(extracted):
-    """Supply empty TCM metadata for the decoder's required-but-absent fields."""
-    for name, base, kind in [('itcm', 0x01FF8000, 'Itcm'), ('dtcm', 0x027C0000, 'Dtcm')]:
-        path = extracted / 'arm9' / (name + '.bin')
-        if not path.exists():
-            path.write_bytes(b'')
-            path.with_suffix('.yaml').write_text(yaml.safe_dump(dict(
-                base_address=base, code_size=0, bss_size=0, kind=kind)), encoding='utf-8')
+    """Identify relocated DTCM by its declared CP15 base, preserving all blocks."""
+    arm9 = extracted / 'arm9'
+    if not (arm9 / 'itcm.bin').exists():
+        raise ValueError('enhanced NTR analysis needs a recognized ITCM block')
+    if (arm9 / 'dtcm.bin').exists():
+        return
+    config_path = extracted / 'config.yaml'
+    config = yaml.safe_load(config_path.read_text())
+    main = yaml.safe_load((arm9 / 'arm9.yaml').read_text())
+    base = dtcm_base((arm9 / 'arm9.bin').read_bytes(), int(main['base_address']))
+    matches = []
+    for item in config.get('unknown_autoloads', []):
+        metadata = yaml.safe_load((extracted / item['config']).read_text())
+        if int(metadata['base_address']) == base:
+            matches.append((item, metadata))
+    if len(matches) != 1:
+        raise ValueError('declared enhanced DTCM does not match one extracted autoload')
+    item, metadata = matches[0]
+    shutil.copyfile(extracted / item['bin'], arm9 / 'dtcm.bin')
+    metadata['kind'] = 'Dtcm'
+    (arm9 / 'dtcm.yaml').write_text(yaml.safe_dump(metadata), encoding='utf-8')
+    config['unknown_autoloads'].remove(item)
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
 
 
 def restore_images(extracted, images, facts):
