@@ -78,6 +78,12 @@ Optional developer checks build with -DDECOMP_PS2_BUILD_SERVICE_TESTS=ON and
 test catalogs, including rejection of changed code. Their source and inputs are
 under tests/. They are excluded from the normal player.
 
+For hands-on integration checks, --pad-commands PATH reads one command from a
+local file: SEQUENCE BUTTON[+BUTTON] HOLD_TICKS. Increase SEQUENCE for each new
+command; holds last 1..3600 guest-vsync ticks. Buttons use PS2 names such as UP,
+CROSS and TRIANGLE; NONE releases the test input. Commands merge with normal
+controller input. The file is limited to 128 bytes and is unused unless selected.
+
 For an instruction reference, configure a separate directory:
 
 ```sh

@@ -217,7 +217,8 @@ def generate(project,root):
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
         ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
-        ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake')):
+        ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake'),
+        ('command_pad.hpp','native/command_pad.hpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     _git_policy(root)
     (root/'README.md').write_text(_source('README.project.md'),encoding='utf-8')

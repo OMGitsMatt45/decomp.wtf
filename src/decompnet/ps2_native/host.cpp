@@ -10,6 +10,7 @@
 #include "decomp_iop_execution.hpp"
 #include "decomp_vu_execution.hpp"
 #include "settings.hpp"
+#include "command_pad.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>
@@ -60,6 +61,8 @@ struct Host {
     std::atomic<bool> toggle{false};
     std::atomic<bool> settings_requested{false};
     std::filesystem::path settings_script,settings_capture;
+    std::filesystem::path pad_commands;
+    decomp_ps2::CommandPad command_pad;
     uint64_t frames=0,fields=0,last_field=UINT64_MAX,limit=0,seconds=0,pumps=0,resize_frame=0;
     uint32_t source_width=0,source_height=0;
     int drawable_width=0,drawable_height=0,resize_width=0,resize_height=0;
@@ -97,6 +100,7 @@ struct Host {
         if(gpu) {
             if(!gpu->pumpEvents())return false;
             uint32_t held=0,pressed=0,sticks=0;gpu->hostPadState(held,pressed,sticks);
+            command_pad.sample(pad_commands,fields,held,pressed);
             ps2PadPublishHostState(held,pressed,sticks);
             frames=gpu->stats().presents;
         } else {
@@ -107,6 +111,7 @@ struct Host {
             }
             pad.poll(SDL_GetKeyboardState(nullptr),(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0);
             uint32_t held=0,pressed=0,sticks=0;pad.read(held,pressed,sticks);
+            command_pad.sample(pad_commands,fields,held,pressed);
             ps2PadPublishHostState(held,pressed,sticks);
             std::vector<uint8_t> rgba;uint32_t w=0,h=0;
             if(runtime->gs().copyLatchedHostPresentationFrame(rgba,w,h)&&w&&h) {
@@ -178,6 +183,7 @@ int main(int argc,char **argv) {
             else if(key=="--capture")host.capture=value();
             else if(key=="--settings-script"){host.settings_script=fs::u8path(value());host.settings_requested=true;}
             else if(key=="--settings-capture")host.settings_capture=fs::u8path(value());
+            else if(key=="--pad-commands")host.pad_commands=fs::u8path(value());
             else if(key=="--resolution")dimensions(value(),width,height);
             else if(key=="--resize"){
                 const auto text=value();const auto colon=text.find(':');
