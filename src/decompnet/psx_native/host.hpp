@@ -104,6 +104,11 @@ static void decomp_parse(int &argc,char **argv) {
                 if(value>0xffffu||decomp_inputs.size()>=100000u||!decomp_inputs.emplace(at,(uint16_t)value).second)std::exit(2);
             }
         }
+        else if(arg=="--key-tap-frames") {
+            const auto frames=decomp_number(next());
+            if(frames<1||frames>30){std::fputs("key tap duration must be 1..30 frames\n",stderr);std::exit(2);}
+            decomp_keybinds_set_tap_frames((unsigned)frames);
+        }
         else if(arg=="--cheat") {
             const auto index=decomp_number(next());
             if(index>=ps1_host::cheats.size()){std::fputs("cheat index outside catalog\n",stderr);std::exit(2);}
@@ -165,7 +170,7 @@ static bool decomp_event(const SDL_Event &event) {
     const auto key=event.key.keysym.sym;
     const auto scan=event.key.keysym.scancode;
 #endif
-    if(std::getenv("DECOMP_PSX_TRACE"))std::fprintf(stdout,
+    if(std::getenv("DECOMP_PSX_TRACE"))std::fprintf(stderr,
         "decomp.wtf: keydown frame=%llu key=%u scan=%u menu=%d\n",
         (unsigned long long)s_frame_count,(unsigned)key,(unsigned)scan,(int)menu);
     if(key==SDLK_F1) {
@@ -199,7 +204,7 @@ static void decomp_input_trace(int override) {
     const int buttons=sio_get_pad_buttons_slot(0),connected=sio_get_pad_connected(0);
     const int analog=sio_get_pad_analog(0),kind=g_players[0].kind;
     if(buttons==last_buttons&&connected==last_connected&&analog==last_analog&&kind==last_kind)return;
-    std::fprintf(stdout,"decomp.wtf: input frame=%llu buttons=%04x connected=%d analog=%d kind=%d override=%d\n",
+    std::fprintf(stderr,"decomp.wtf: input frame=%llu buttons=%04x connected=%d analog=%d kind=%d override=%d\n",
         (unsigned long long)s_frame_count,buttons,connected,analog,kind,override);
     last_buttons=buttons;last_connected=connected;last_analog=analog;last_kind=kind;
 }

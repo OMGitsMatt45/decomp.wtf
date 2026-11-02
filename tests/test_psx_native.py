@@ -355,6 +355,20 @@ int main(void){
     decomp_keybinds_note_keydown((SDL_Scancode)-1);
     decomp_keybinds_note_keydown((SDL_Scancode)SDL_NUM_SCANCODES);
     decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    /* Optional automation pulses span slow guest polling loops exactly. */
+    decomp_keybinds_set_tap_frames(6);
+    decomp_keybinds_set_tap_frames(0);decomp_keybinds_set_tap_frames(31);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_C);
+    for(int frame=0;frame<6;frame++) {
+        decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+        CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    }
+    decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_C);decomp_keybinds_note_keydown(SDL_SCANCODE_X);
+    decomp_keybinds_begin_sample();
+    psx_keybinds_suppress_control(1,SDL_SCANCODE_C);
+    CHECK(psx_keybinds_pad_word(keys,1)==0xffff&&psx_keybinds_pad_word(keys,2)==0xbfff);
+    decomp_keybinds_clear_pulses();
     return 0;
 }''')
     q=lambda value:json.dumps(value.as_posix())
