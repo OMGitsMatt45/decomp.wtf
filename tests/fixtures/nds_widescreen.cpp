@@ -133,6 +133,35 @@ int main() {
             require(pixels[160+450*960]!=0xffff00ff,"short caption is never projected as a floating world sprite");
         }
         using Anchor=video::Frame::HudRegion::Anchor;
+        {
+            const auto saved_frame=frame;
+            auto native_scene=history.front();native_scene.serial+=500;
+            dsr::Gpu3DPolygon marker;marker.count=4;marker.viewport=0xbfff0000;marker.attr=0x001f00c0;
+            const float positions[4][2]={{207,69},{255,69},{255,118},{207,118}};
+            for(unsigned i=0;i<4;++i) {
+                marker.index[i]=uint16_t(native_scene.vertices.size());dsr::Gpu3DVertex v;
+                v.clip={positions[i][0]/128-1,1-positions[i][1]/96,.2f,1};v.color={63,0,63};native_scene.vertices.push_back(v);
+            }
+            native_scene.order.push_back(uint16_t(native_scene.polygons.size()));native_scene.polygons.push_back(marker);
+            std::deque<video::Scene> native_history{native_scene};std::array<uint64_t,256*192> native_tags;
+            for(size_t i=0;i<native_tags.size();++i)native_tags[i]=(native_scene.serial<<16)|(i+1);
+            frame.scene=&native_history.front();frame.history=&native_history;frame.top_origins=none.data();frame.bottom_origins=native_tags.data();
+            std::array<video::Frame::HudRegion,1> native_regions{{{0,48,256,144,false,false,Anchor::Canvas,true}}};frame.hud_regions=native_regions;
+            for(int glyph_width:{16,32,16}) {
+                foreground.fill(1ull<<32);
+                for(int yy=83;yy<90;++yy)for(int xx=206;xx<206+glyph_width;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff0000;
+                display.present(frame);pixels=display.read_pixels();
+                require(pixels[595+382*960]==0xffff0000,"a partial native choice glyph keeps its HUD canvas anchor");
+                require(pixels[725+243*960]==0xffff00ff,"overlapping native UI cannot relocate or duplicate a 3D world indicator");
+                require(display.touch(595,382,x,y)&&x>=206&&x<222&&y>=83&&y<90,"separated native choices retain inverse touch mapping");
+            }
+            const auto saved_top=top;top.fill(0xff000000);frame.mode=video::Frame::Mode::Auto;
+            display.present(frame);pixels=display.read_pixels();
+            require(display.layout()=="cinematic"&&pixels[595+382*960]==0xffff0000,"hiding the map retains native cinematic framing and the smaller explicit HUD scale");
+            require(pixels[725+243*960]==0xffff00ff,"cinematic HUD separation preserves the world indicator");
+            top=saved_top;
+            frame=saved_frame;
+        }
         caption_region[0].anchor=Anchor::Center;
         for(int length:{4,30,62,79,82,180}) {
             foreground.fill(1ull<<32);

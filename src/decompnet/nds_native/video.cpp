@@ -762,7 +762,9 @@ struct Display::Impl {
         // narration were authored against one native frustum; keep the entire
         // composition together, including individual glyphs and 2D captions.
         const bool blank_other=layout_detail::blank_screen(other);
-        if(blank_other&&frame.mode!=Frame::Mode::Gameplay) {
+        const bool cinematic=blank_other&&frame.mode!=Frame::Mode::Gameplay;
+        const bool anchored_foreground=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& r){return r.foreground_only&&r.on_top==on_top;});
+        if(cinematic&&!anchored_foreground) {
             cinematic_picture_top=on_top;
             layout_name="cinematic";const auto destination=fit(float(width),float(height),4.f/3);
             native_pane(on_top?frame.top:frame.bottom,{0,0,256,192},destination,!on_top);
@@ -790,7 +792,7 @@ struct Display::Impl {
             if(available>32){const float w=std::min(available,width*.24f);native_pane(secondary,{0,0,256,192},{margin,height-margin-w*.75f,w,w*.75f},on_top);}
             return true;
         }
-        const float aspect=std::clamp(float(width)/height,4.f/3,4.f);
+        const float aspect=cinematic?4.f/3:std::clamp(float(width)/height,4.f/3,4.f);
         const Rect canvas=fit(float(width),float(height),aspect);
         const int world_scale=std::max(1,std::min(maximum_scale,int(maximum_texture_size/(192*aspect))));scale=world_scale;
         auto& world=captured_target(*scene,int(std::ceil(192*world_scale*aspect)),192*world_scale,true,1,aspect);
@@ -802,7 +804,7 @@ struct Display::Impl {
         const auto secondary_pixels=layout_detail::classification_pixels(secondary,on_top?frame.bottom_foreground:frame.top_foreground,on_top?frame.bottom_brightness:frame.top_brightness,on_top?classification_bottom:classification_top);
         const auto party=(explicit_battle||(on_top&&frame.auxiliary==Frame::Auxiliary::Auto))?layout_detail::party_band(secondary_pixels):Box{};
         const bool battle=explicit_battle||party.h;
-        layout_name=battle?"battle":"field";
+        layout_name=cinematic?"cinematic":battle?"battle":"field";
         if(party.h)party_pane(secondary,party,{margin+party.x*ui_scale,margin,party.w*ui_scale,party.h*ui_scale},on_top);
         else if(!battle&&frame.auxiliary!=Frame::Auxiliary::Hidden&&frame.auxiliary!=Frame::Auxiliary::Battle) {
             const float w=std::min(width*.24f,height*.48f);
@@ -812,11 +814,25 @@ struct Display::Impl {
             for(const auto& s:*frame.history)captured(s,other_tags,map,true,on_top?frame.bottom_brightness:frame.top_brightness);
         }
         auto boxes=layout_detail::foreground_boxes(fg);
+        auto contains=[](const auto& region,Box b){return b.x>=region.x&&b.y>=region.y&&
+            b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;};
+        std::vector<Box> native_hud;
+        for(size_t i=0;i<boxes.size();) {
+            if(std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& r){return r.foreground_only&&r.on_top==on_top&&contains(r,boxes[i]);}))
+                {native_hud.push_back(boxes[i]);boxes.erase(boxes.begin()+i);}
+            else ++i;
+        }
+        std::vector<uint32_t> remaining_foreground;
+        if(!native_hud.empty()) {
+            remaining_foreground.resize(256*192);
+            for(size_t i=0;i<remaining_foreground.size();++i)remaining_foreground[i]=uint32_t(fg[i]);
+            for(const auto b:native_hud)for(int y=b.y;y<b.y+b.h;++y)for(int x=b.x;x<b.x+b.w;++x)remaining_foreground[y*256+x]=0;
+        }
         for(const auto& p:scene->polygons)if(!world_polygon(p)&&!background_polygon(*scene,p)){
             const auto box=polygon_box(*scene,p);if(box.w&&box.h)boxes.push_back(box);
         }
         layout_detail::group(boxes);
-        for(const auto& region:frame.hud_regions)if(region.caption&&region.on_top==on_top) {
+        for(const auto& region:frame.hud_regions)if(region.caption&&!region.foreground_only&&region.on_top==on_top) {
             Box text{};
             for(size_t i=0;i<boxes.size();) {
                 const auto b=boxes[i];
@@ -832,15 +848,15 @@ struct Display::Impl {
             const int ui_resolution=std::min(maximum_scale,std::max(2,int(std::ceil(ui_scale*1.5f))));
             auto& overlay=captured_target(*scene,256*ui_resolution,192*ui_resolution,true,2);
             std::array<uint32_t,256*192> foreground{};
-            for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
+            for(size_t i=0;i<foreground.size();++i)foreground[i]=remaining_foreground.empty()?uint32_t(fg[i]):remaining_foreground[i];
             for(const auto b:boxes) {
-                const bool authored_caption=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.caption&&region.on_top==on_top&&
+                const bool authored_caption=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.caption&&!region.foreground_only&&region.on_top==on_top&&
                     b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
                 const bool caption=authored_caption||(b.y>=140&&b.h<=32&&b.w>=80);
                 const bool opaque_menu=opaque>256*192*9/10;
-                const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
+                const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return !region.foreground_only&&region.on_top==on_top&&
                     b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
-                const auto hint=std::find_if(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
+                const auto hint=std::find_if(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return !region.foreground_only&&region.on_top==on_top&&
                     b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
                 const bool panel=opaque_menu||fixed_hud||layout_detail::framed_box(frames,b);
                 const bool dialogue=(!opaque_menu&&panel&&b.w>=190&&b.y+b.h>=155)||caption;
@@ -866,6 +882,20 @@ struct Display::Impl {
                 }
                 blit(overlay.result,b,destination,true,false,brightness[0]);
                 gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,256,192,foreground.data(),GL_BGRA);
+                blit(screen_texture,b,destination,false,true,brightness[0]);
+                touch_regions.push_back({destination,b,!on_top});
+            }
+        }
+        if(!native_hud.empty()) {
+            std::vector<uint32_t> foreground(256*192);
+            for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
+            upload(screen_texture,256,192,foreground.data(),GL_BGRA);
+            for(const auto b:native_hud) {
+                const auto hint=std::find_if(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& r){return r.on_top==on_top&&contains(r,b);});
+                const bool dialogue=hint->caption||(b.w>=190&&b.y+b.h>=155);
+                Rect destination{dialogue?(width-b.w*ui_scale)/2:width-margin-b.w*ui_scale,
+                    dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,b.w*ui_scale,b.h*ui_scale};
+                destination=anchored(*hint,b,ui_scale,margin,destination);
                 blit(screen_texture,b,destination,false,true,brightness[0]);
                 touch_regions.push_back({destination,b,!on_top});
             }

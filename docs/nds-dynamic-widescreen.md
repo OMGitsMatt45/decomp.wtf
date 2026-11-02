@@ -96,6 +96,14 @@ to the declared region rather than the changing visible animation bounds.
 flat geometry-free fade keeps its anchor without drawing a second copy in the
 native picture; nonuniform fallback artwork is retained intact.
 
+`foreground_only` regions anchor the native 2D foreground independently of
+3D overlay geometry. Partial glyphs and windows are extracted before overlay
+groups are combined, removed from the remaining foreground, and composited
+once at their HUD anchor. A 3D world indicator at the same native coordinates
+therefore keeps its world position while the 2D choice or text uses HUD scale.
+An empty auxiliary LCD can still select cinematic world framing; explicit
+native foreground regions retain their HUD scale independently of that change.
+
 `video::world_source(frame)` exposes the same displayed scene and source LCD
 used by the renderer, plus the source origin count. Projects should identify
 UI from this captured scene rather than a newer submitted scene that may not
