@@ -2,6 +2,8 @@
 
 The normal keyboard map uses arrows for movement, X/S for Cross/Circle, and
 Enter/Right Shift for Start/Select. Held keys follow SDL's physical state.
+F9 retains the runtime's fast-forward toggle; F10 cycles to the next disc.
+The F1 settings menu accepts both arrow keys and keypad 8/2/4/6 for navigation.
 
 Instantaneous desktop automation taps can be shorter than a game's polling
 interval. `--key-tap-frames N` preserves each keyboard pulse for 1–30 guest pad

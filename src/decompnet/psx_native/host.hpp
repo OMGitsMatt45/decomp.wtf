@@ -188,9 +188,9 @@ static bool decomp_event(const SDL_Event &event) {
         psx_window_fullscreen_set(sdl_window,&s_window_fullscreen,s_window_fullscreen.mode?0:1);
         return true;
     }
-    if((key==SDLK_F9||key==SDLK_F10)&&cdrom_disc_roster_count()>1) {
-        const int count=cdrom_disc_roster_count(),direction=key==SDLK_F10?1:-1;
-        const int index=(cdrom_disc_selected()-1+direction+count)%count+1;
+    if(key==SDLK_F10&&cdrom_disc_roster_count()>1) {
+        const int count=cdrom_disc_roster_count();
+        const int index=cdrom_disc_selected()%count+1;
         if(psx_disc_tray_cycle(index,PSX_DISC_TRAY_ORIGIN_MENU)!=PSX_DISC_TRAY_OK)std::fprintf(stderr,"could not mount disc %d\n",index);
         else std::fprintf(stdout,"decomp.wtf: inserted disc %d of %d\n",index,count);
         return true;

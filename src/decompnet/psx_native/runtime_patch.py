@@ -112,6 +112,9 @@ def patch(root):
         "    decomp_keybinds_begin_sample();\n    /* Sample each player's device and feed the matching SIO pad slot.")
     text=replace(text,'if (!repeat && host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod))',
         'if (!repeat && (key == SDLK_F1 || host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod)))')
+    for key,keypad,action in (('UP','8','UP'),('DOWN','2','DOWN'),('LEFT','4','LEFT'),('RIGHT','6','RIGHT')):
+        text=replace(text,f'else if (key == SDLK_{key}) psx_runtime_menu_input(PSX_MENU_{action}, repeat);',
+            f'else if (key == SDLK_{key} || key == SDLK_KP_{keypad}) psx_runtime_menu_input(PSX_MENU_{action}, repeat);')
     text=replace(text,'    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;',
         '    if(decomp_fullscreen)g_fullscreen=1;\n    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;')
     text=replace(text,'    sdl_window = SDL_CreateWindow(\n        window_title.c_str(),',
