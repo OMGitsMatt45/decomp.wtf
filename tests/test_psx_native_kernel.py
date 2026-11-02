@@ -26,7 +26,7 @@ def kernel_host(tmp_path_factory):
 static uint32_t words[4];
 typedef struct {uint32_t lo,hi;} PsxKernelPatchRange;
 void psx_check_interrupts_at(CPUState *cpu,uint32_t pc){(void)cpu;(void)pc;}
-static uint32_t read_word(uint32_t address){return words[(address-0x9000u)/4u];}
+static uint32_t read_word(uint32_t address){return words[(address&15u)/4u];}
 #include "bridge.inc"
 int main(int argc,char **argv){
     if(argc!=6)return 2;
@@ -91,3 +91,24 @@ def test_unlisted_slots_changed_instructions_and_unaligned_targets_are_unhandled
         actual=run(kernel_host,address,candidate)
         assert actual==dict(handled=0,pc=address,dispatches=0,
                             registers=[0]+[i*0x01010101 for i in range(1,32)])
+
+
+def test_pinned_openbios_exception_vector_matches_original_bytes(kernel_host):
+    import unicorn
+    from unicorn import mips_const as mips
+    body=words(26,0x27ac,False)
+    for address in (0x80,0x80000080,0xa0000080):
+        actual=run(kernel_host,address,body)
+        cpu=unicorn.Uc(unicorn.UC_ARCH_MIPS,unicorn.UC_MODE_MIPS32|unicorn.UC_MODE_LITTLE_ENDIAN)
+        cpu.mem_map(0,0x200000);cpu.mem_write(0x80,struct.pack('<4I',*body))
+        for i in range(1,32):cpu.reg_write(mips.UC_MIPS_REG_0+i,i*0x01010101)
+        cpu.emu_start(address,0x27ac,count=4)
+        assert actual['handled']==1 and actual['dispatches']==1 and actual['pc']==0x27ac
+        assert actual['registers']==[cpu.reg_read(mips.UC_MIPS_REG_0+i)&0xffffffff for i in range(32)]
+    cases=[(0x90,body),(0x80,words(26,0x27b0,False)),(0x80,words(26,0x27ac,True)),
+           (0x80,words(2,0x27ac,False))]
+    for index in range(4):
+        changed=list(body);changed[index]^=1;cases.append((0x80,changed))
+    for address,candidate in cases:
+        actual=run(kernel_host,address,candidate)
+        assert actual['handled']==0 and actual['pc']==address and actual['dispatches']==0
