@@ -77,7 +77,8 @@ class NdsImage:
         if len(data) < 0x200:
             raise ValueError("truncated DS header")
         self.dsi_enhanced = data[0x12] == 2
-        if (data[0x12] != 0 and not (allow_dsi_enhanced and self.dsi_enhanced)) or data[0x1C] & 3:
+        enhanced_ntr = allow_dsi_enhanced and self.dsi_enhanced
+        if (data[0x12] != 0 or data[0x1C] & 3) and not enhanced_ntr:
             raise ValueError("TWL containers need the separate DSi inspector")
         if crc16(data[:0x15E]) != struct.unpack_from("<H", data, 0x15E)[0]:
             raise ValueError("invalid DS header CRC")

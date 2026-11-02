@@ -8,11 +8,13 @@ import pytest
 from decompnet import nds_native
 from decompnet.forks.scratch_dsd import crc16
 from .test_ds_modules import fixture
+from .test_nds_native import sdk  # noqa: F401
 
 
 def enhanced(unit=2):
     raw = fixture()
     raw[0x12] = unit
+    raw[0x1C] = 3
     struct.pack_into('<H', raw, 0x15E, crc16(raw[:0x15E]))
     return bytes(raw)
 
@@ -57,6 +59,7 @@ def original_cartridge():
     raw[:12] = b'ORIGINALTEST'
     raw[12:16] = b'ADQE'
     raw[0x12] = 2
+    raw[0x1C] = 3
     image = original_layout()
     struct.pack_into('<4I', raw, 0x20, 0x4000, 0x02000800, 0x02000000, len(image))
     struct.pack_into('<4I', raw, 0x30, 0x10000, 0x02380000, 0x02380000, 0x100)
@@ -104,9 +107,8 @@ def test_four_word_layout_rejects_unproven_metadata(mutation):
         layout(image, 0x02000000)
 
 
-def test_arm7_sdk5_descriptors_keep_constructor_word_separate_from_bss(tmp_path):
+def test_arm7_sdk5_descriptors_keep_constructor_word_separate_from_bss(tmp_path, sdk):
     from decompnet.nds_native.enhanced import install_arm7
-    from .test_nds_native import sdk  # noqa: F401
     sdk_root, emitter, reader = nds_native._sdk()
     analyzer = nds_native._tool(sdk_root, 'arm7_analyze')
     image = original_layout(0x02380000, blocks=2)

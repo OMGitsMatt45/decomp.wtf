@@ -108,6 +108,7 @@ def stage(source, target, *, input_format):
     staged.extend(canonical)
     staged.extend(struct.pack('<3I', 0xDEC00621, info.params, 0))
     staged[0x12] = 0
+    staged[0x1C] &= ~3
     struct.pack_into('<4I', staged, 0x20, offset, wrapper, main.address, len(canonical))
     struct.pack_into('<I', staged, 0x80, len(staged))
     struct.pack_into('<H', staged, 0x15E, crc16(staged[:0x15E]))
