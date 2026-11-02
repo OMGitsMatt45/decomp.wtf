@@ -11,6 +11,8 @@ import struct
 import shutil
 
 import yaml
+from capstone import Cs, CS_ARCH_ARM, CS_MODE_ARM
+from capstone.arm_const import ARM_OP_MEM, ARM_REG_PC
 
 from ..forks.scratch_dsd import crc16
 from ..rom.nds_modules import MAX_MODULE_SIZE, NdsImage, decompress_blz
@@ -77,6 +79,33 @@ def _arm9_image(raw, module):
     return image
 
 
+def startup_tail(image, base, entry, limit):
+    """Retain the real startup's declared literal tail target for DSD's main root."""
+    decoder = Cs(CS_ARCH_ARM, CS_MODE_ARM); decoder.detail = True
+    instructions = []
+    for instruction in decoder.disasm(image[entry-base:min(len(image),entry-base+0x800)],entry):
+        if instruction.mnemonic == 'bx':
+            register = instruction.operands[0].reg
+            for previous in reversed(instructions):
+                if register not in previous.regs_access()[1]:
+                    continue
+                if previous.mnemonic != 'ldr' or previous.operands[0].reg != register:
+                    break
+                memory = previous.operands[1]
+                if memory.type != ARM_OP_MEM or memory.mem.base != ARM_REG_PC or memory.mem.index:
+                    break
+                literal = previous.address + 8 + memory.mem.disp - base
+                if not 0 <= literal <= len(image)-4:
+                    break
+                target = struct.unpack_from('<I',image,literal)[0]
+                if base <= (target & ~1) < limit:
+                    return target
+                break
+            break
+        instructions.append(instruction)
+    return entry
+
+
 def stage(source, target, *, input_format):
     """Build an analysis-only decoder container; return exact restoration facts."""
     raw = Path(source).read_bytes()
@@ -92,17 +121,20 @@ def stage(source, target, *, input_format):
     split = info.source - main.address
     if split % 32 or entry % 4 or not main.address <= entry < info.source:
         raise ValueError('enhanced NTR analysis needs an aligned ARM startup and static/autoload split')
-    canonical = bytearray(original[:split] + bytes(32) + original[split:])
+    padding = 64
+    native_main = startup_tail(original,main.address,entry,info.source)
+    canonical = bytearray(original[:split] + bytes(padding) + original[split:])
     for index, (address, size, init, bss, position) in enumerate(info.blocks):
-        struct.pack_into('<3I', canonical, info.list_start - main.address + 32 + 12 * index, address, size, bss)
-    struct.pack_into('<4I', canonical, info.params, info.list_start + 32,
-                     info.list_start + 32 + 12 * len(info.blocks), info.source + 32, info.source + 32)
+        struct.pack_into('<3I', canonical, info.list_start - main.address + padding + 12 * index, address, size, bss)
+    struct.pack_into('<4I', canonical, info.params, info.list_start + padding,
+                     info.list_start + padding + 12 * len(info.blocks), info.source + padding, info.source + padding)
     struct.pack_into('<I', canonical, info.params + 20, 0)
     # A decoder-only NTR entry has a conventional empty ctor runner and a
     # literal tail target naming the original startup. No game code is patched.
     wrapper = info.source
-    struct.pack_into('<8I', canonical, split, 0xEB000002, 0xE59F3000, 0xE12FFF13, entry,
-                     0xE59F0000, 0xE12FFF1E, wrapper + 28, 0)
+    original_call = 0xEB000000 | (((entry - wrapper - 8) // 4) & 0xFFFFFF)
+    struct.pack_into('<5I', canonical, split, original_call, 0xEB000005, 0xE59F3000, 0xE12FFF13,native_main)
+    struct.pack_into('<4I', canonical, split + 32, 0xE59F0000, 0xE12FFF1E, wrapper + 44, 0)
     staged = bytearray(raw)
     offset = len(staged) + (-len(staged) % 512)
     staged.extend(bytes(offset - len(staged)))
@@ -114,7 +146,8 @@ def stage(source, target, *, input_format):
     struct.pack_into('<I', staged, 0x80, len(staged))
     struct.pack_into('<H', staged, 0x15E, crc16(staged[:0x15E]))
     Path(target).write_bytes(staged)
-    return dict(main_size=split, base=main.address, entry=entry, params=info.params,
+    return dict(main_size=split, analysis_padding=padding, base=main.address, entry=entry,
+                native_main=native_main, params=info.params,
                 parameter_hex=original[info.params:info.params + 24].hex(),
                 original_prefix_hex=original[:0x800].hex(),
                 autoloads=[dict(index=i, address=a, size=s, init=n, bss=b)
@@ -172,7 +205,7 @@ def restore_images(extracted, images, facts):
     """Remove the synthetic entry and restore original mutable parameter words."""
     for path in {extracted / 'arm9/arm9.bin', images / 'arm9.bin'}:
         data = bytearray(path.read_bytes())
-        if len(data) != facts['main_size'] + 32:
+        if len(data) != facts['main_size'] + facts['analysis_padding']:
             raise ValueError('enhanced decoder changed the expected static analysis extent')
         data = data[:facts['main_size']]
         at = facts['params']

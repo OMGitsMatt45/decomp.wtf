@@ -9,6 +9,8 @@ from decompnet import nds_native
 from decompnet.forks.scratch_dsd import crc16
 from .test_ds_modules import fixture
 from .test_nds_native import sdk  # noqa: F401
+from .test_nds_native import generate, execute
+from .fixtures.nds_native import hardware
 
 
 def enhanced(unit=2):
@@ -83,7 +85,7 @@ def test_staging_rewrites_only_private_analysis_and_restores_exact_static_image(
     assert staged[offset + 0x800:offset + 0x804] == raw[0x4800:0x4804]
     extracted, images = tmp_path/'extracted', tmp_path/'images'
     (extracted/'arm9').mkdir(parents=True); images.mkdir()
-    analysis = staged[offset:offset + facts['main_size'] + 32]
+    analysis = staged[offset:offset + facts['main_size'] + facts['analysis_padding']]
     (extracted/'arm9/arm9.bin').write_bytes(analysis)
     (images/'arm9.bin').write_bytes(analysis)
     restore_images(extracted, images, facts)
@@ -136,3 +138,58 @@ def test_dtcm_base_requires_the_declared_literal_register_and_cp15_field():
     struct.pack_into('<I', raw, 8, 0xEE093F11)
     with pytest.raises(ValueError, match='uniquely declared'):
         dtcm_base(raw, 0x02000000)
+
+
+def test_analysis_tcm_placeholder_preserves_and_renumbers_native_unknowns(tmp_path):
+    import yaml
+    from decompnet.nds_native.enhanced import prepare_extracted
+    arm9 = tmp_path/'arm9';arm9.mkdir()
+    (arm9/'itcm.bin').write_bytes(bytes(32))
+    native = []
+    paths = []
+    for index, address in [(1, 0x02FA0000), (2, 0x06890000)]:
+        binary, metadata = f'arm9/unknown{index}.bin',f'arm9/unknown{index}.yaml'
+        (tmp_path/binary).write_bytes(bytes([index])*32)
+        (tmp_path/metadata).write_text(yaml.safe_dump(dict(base_address=address,code_size=32,bss_size=16,kind={'Unknown':index})))
+        paths.append(dict(index=index,bin=binary,config=metadata))
+        native.append(dict(index=index,address=address,size=32))
+    (tmp_path/'config.yaml').write_text(yaml.safe_dump({'unknown_autoloads':paths}))
+    facts = {'autoloads':native}
+    prepare_extracted(tmp_path,facts)
+    assert facts['synthetic_tcms'] == ['dtcm']
+    assert [(r['index'],r['native_index']) for r in facts['analysis_autoloads']] == [(2,1),(3,2)]
+    assert (arm9/'unknown1.bin').read_bytes() == bytes([1])*32
+    assert (arm9/'unknown2.bin').read_bytes() == bytes([2])*32
+    assert (arm9/'dtcm.bin').read_bytes() == bytes(32)
+
+
+def test_native_main_tail_comes_from_the_last_write_to_the_bx_register():
+    from decompnet.nds_native.enhanced import startup_tail
+    raw = bytearray(0x80)
+    struct.pack_into('<5I',raw,0,0xE59F1010,0xE59FE010,0xE12FFF11,0,0)
+    struct.pack_into('<I',raw,0x18,0x02000041)
+    assert startup_tail(raw,0x02000000,0x02000000,0x02000080) == 0x02000041
+    struct.pack_into('<I',raw,4,0xE3A01000)
+    assert startup_tail(raw,0x02000000,0x02000000,0x02000080) == 0x02000000
+
+
+def test_enhanced_original_program_executes_native_hardware_and_save_roundtrip(tmp_path, sdk):
+    def make():
+        raw, profile = hardware()
+        raw = bytearray(raw);raw[0x12] = 2;raw[0x1C] = 3
+        struct.pack_into('<H',raw,0x15E,crc16(raw[:0x15E]))
+        profile['input_sha256'] = hashlib.sha256(raw).hexdigest()
+        return bytes(raw),profile
+    rom, project, exe = generate(tmp_path/'p',make)
+    import json
+    manifest = json.loads((project/'pc-project.json').read_text())
+    assert manifest['execution_mode'] == 'ntr' and manifest['dsi_enhanced']
+    assert (project/'assets/game.nds').read_bytes() == rom.read_bytes()
+    save = tmp_path/'independent.sav'
+    result = execute(exe,project,'--save',save)
+    assert result['observed'][2:5] == [0x12345678,255,0]
+    assert result['observed'][6] == 0xA55A1234
+    assert result['observed'][17:] == [42,90,0,0,7,4]
+    assert result['unimplemented_io'] == 0
+    again = execute(exe,project,'--save',save)
+    assert again['observed'][3:5] == [0,1]
