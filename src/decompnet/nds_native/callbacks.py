@@ -11,7 +11,7 @@ from pathlib import Path
 import hashlib
 import struct
 
-from capstone.arm_const import ARM_OP_MEM, ARM_REG_PC
+from capstone.arm_const import ARM_OP_MEM, ARM_OP_REG, ARM_REG_PC
 
 
 def _runs(values):
@@ -254,6 +254,18 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
             mode=thumb!=decoded.mnemonic.startswith('blx')
             direct_roots[int(targets[0])][(target,mode)].append(
                 dict(module_id=int(source['module_id']),address=site))
+    # SDK interworking veneers can be imported as a two-byte Thumb function
+    # followed by data. A proven, aligned entry containing BX PC establishes
+    # an ARM continuation at PC+4 in that same initialized image. Do not scan
+    # unreferenced signatures or borrow a destination from another overlay.
+    for entry in entries:
+        if not entry.thumb or entry.address%4:continue
+        source=entry.module;image=images[entry.module_id];offset=entry.address-int(source['base'])
+        op=next(reader._disassembler(True).disasm(image[offset:offset+2],entry.address,1),None)
+        if (op is None or op.mnemonic!='bx' or len(op.operands)!=1
+                or op.operands[0].type!=ARM_OP_REG or op.operands[0].reg!=ARM_REG_PC):continue
+        direct_roots[entry.module_id][(entry.address+4,False)].append(
+            dict(module_id=entry.module_id,address=entry.address))
     if cpu=='arm7':
         # The importer can omit a cross-autoload edge along with a weak root.
         # Decode real source bodies and qualify a destination only when exactly
