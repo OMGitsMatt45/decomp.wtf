@@ -38,7 +38,7 @@ def validate_native_services(folder: Path, bindings: list[dict]) -> None:
 
 def guard_generated(folder: Path, original: bytes, *, expected_functions: int,
                     function_ranges: dict[int, int] | None = None,
-                    code_ranges: list[dict] | None = None) -> dict:
+                    code_ranges: list[dict] | None = None, cheat_poll: bool = False) -> dict:
     folder = Path(folder)
     info = elf_info(original)
     sections = info['executable_sections']
@@ -78,17 +78,18 @@ def guard_generated(folder: Path, original: bytes, *, expected_functions: int,
             definitions[name] = path
         if matches:
             def checked(match):
-                if function_ranges is None:return match[0] + f'\n    {namespace}::check(rdram);'
+                hook='\n    decomp_ps2_cheats::poll(rdram);' if cheat_poll else ''
+                if function_ranges is None:return match[0] + hook + f'\n    {namespace}::check(rdram);'
                 suffix = re.search(r'_0x([0-9a-fA-F]+)$', match[1])
                 address = int(suffix[1],16) if suffix else None
                 size = function_ranges.get(address,0)
                 if not size or address & 3 or size & 3 or not any(s['address'] <= address and
                     address + size <= s['address'] + s['size'] for s in sections):
                     raise PCError('PS2 function guard has no exact typed code range: '+match[1])
-                return match[0] + f'\n    {namespace}::check_range(rdram, {address}u, {size}u);'
+                return match[0] + hook + f'\n    {namespace}::check_range(rdram, {address}u, {size}u);'
             text = re.sub(DECLARATION + r' \{',
                 checked, text)
-            sources[path] = f'#include "{header.name}"\n' + text
+            sources[path] = ('#include "decomp_cheats.hpp"\n' if cheat_poll else '') + f'#include "{header.name}"\n' + text
     if set(definitions) != set(declarations):
         raise PCError('pinned PS2 emitter definitions differ from declarations')
     lines = ['#pragma once', '#include "ps2_code_guard.hpp"', f'namespace {namespace} {{']

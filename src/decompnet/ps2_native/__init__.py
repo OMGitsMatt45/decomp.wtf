@@ -12,7 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
-from . import iop_native,vu_native,vu_discovery,irx_fixture,vector_fixture
+from . import iop_native,vu_native,vu_discovery,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -131,6 +131,7 @@ def generate(project,root):
         prepared.append((original,profile.module(original,row if reviewed else None)))
     if inspection['program']['entry'] not in {f['address'] for f in prepared[0][1]['functions']}:
         raise pc.PCError('PS2 profile must cover the ELF entry without a title-specific entry override')
+    cheat_policy=cheats.prepare(reviewed or {},prepared)
     sdk,runtime_pins=_sdk();emitter=_emitter(sdk)
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
@@ -178,10 +179,13 @@ def generate(project,root):
             codegen.validate_native_services(folder,mapping['native_services'])
             runtime_patch.install_vu_header(folder)
             guards=codegen.guard_generated(folder,original,expected_functions=counts['processed'],
-                function_ranges={f['address']:f['size'] for f in mapping['functions']},code_ranges=mapping['code_ranges'])
+                function_ranges={f['address']:f['size'] for f in mapping['functions']},code_ranges=mapping['code_ranges'],
+                cheat_poll=bool(cheat_policy['entries']))
             records.append(registry.isolate(folder,guards))
             emissions.append(dict(module=rows[index]['path'],**counts,analysis_elf_sha256=hashlib.sha256(analysis).hexdigest(),
                 native_services=mapping['native_services'],guards=guards))
+    cheats.header(root,cheat_policy)
+    alternatives=cheats.install(root,cheat_policy,prepared,records,emitter,_run)
     dispatch=registry.registry(records,root/'native/modules.cpp',project_root=root)
     # Recheck the complete identity before publishing source derived from it.
     if media.inspect(path)['input']!=inspection['input']:raise pc.PCError('PS2 owner input changed during export')
@@ -199,6 +203,7 @@ def generate(project,root):
     retained=dict(schema=profile.SCHEMA,input_sha256=inspection['input']['sha256'],
         modules=[dict(path=row['path'],**mapping) for row,(_,mapping) in zip(rows,prepared)],
         iop_native_modules=(reviewed or {}).get('iop_native_modules',[]),provenance=(reviewed or {}).get('provenance',{}),
+        cheats=(reviewed or {}).get('cheats',[]),
         runtime_arena_bytes=(reviewed or {}).get('runtime_arena_bytes',65536),disc_medium=medium)
     (root/'game/profile.json').write_text(json.dumps(retained,indent=2)+'\n',encoding='utf-8')
     iop=(reviewed or {}).get('iop_native_modules',[])
@@ -221,6 +226,8 @@ def generate(project,root):
         execution_model='static-recompiled',fallback=dict(interpreter=False,runtime_compilation=False),
         interpreter=dict(ee=False,iop=False,vu=False),build=dict(system='cmake',target='ps2_pc',reference_target='ps2_probe'),
         iop_generation=iop_generation,vu_generation=vu_generation,
+        cheats=dict(entries=len(cheat_policy['entries']),function_groups=len(cheat_policy['groups']),
+                    alternatives=alternatives,policy_sha256=cheat_policy['sha256'],guest_code_modified=False),
         inputs=[inspection['input']],code_generation=emissions,dispatch=dispatch,
         qualification=dict(experimental=True,retail=False,playthrough=False),presentation=pc.presentation(project['renderer'],gpu='vulkan'),files={})
     for file in provider.payload(root):manifest['files'][file.relative_to(root).as_posix()]=hashlib.sha256(file.read_bytes()).hexdigest()

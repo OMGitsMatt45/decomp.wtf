@@ -39,7 +39,8 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/native/NativeExecution.cmake")
 if(NOT TARGET dq8_gfx_sdlgpu)
   message(FATAL_ERROR "The native output requires its SDL3 GPU renderer")
 endif()
-file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/modules/*.cpp")
+file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/modules/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/game/alternatives/*.cpp")
+list(APPEND GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/native/cheats.cpp")
 add_library(game_code STATIC ${GAME_SOURCES})
 option(DECOMP_PS2_UNITY_BUILD "Batch generated functions to reduce compilation time" ON)
 set(DECOMP_PS2_UNITY_BATCH_SIZE 8 CACHE STRING "Generated functions per compiler batch")
@@ -49,6 +50,7 @@ endif()
 set_target_properties(game_code PROPERTIES UNITY_BUILD ${DECOMP_PS2_UNITY_BUILD}
   UNITY_BUILD_BATCH_SIZE ${DECOMP_PS2_UNITY_BATCH_SIZE})
 target_include_directories(game_code PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/native"
   "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/include"
   "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/include/runtime"
   "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu"
@@ -56,7 +58,11 @@ target_include_directories(game_code PRIVATE
   "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xIOP/include")
 target_precompile_headers(game_code PRIVATE <ps2_runtime.h> <ps2_runtime_macros.h> <ps2_syscalls.h> <ps2_stubs.h>)
 if(MSVC)
-  target_compile_options(game_code PRIVATE /O1 /bigobj /fp:strict)
+  set(DECOMP_PS2_COMPILE_JOBS 4 CACHE STRING "Parallel generated-code compiler processes")
+  if(NOT DECOMP_PS2_COMPILE_JOBS MATCHES "^[1-9][0-9]*$" OR DECOMP_PS2_COMPILE_JOBS GREATER 32)
+    message(FATAL_ERROR "DECOMP_PS2_COMPILE_JOBS must be 1..32")
+  endif()
+  target_compile_options(game_code PRIVATE /O1 /bigobj /fp:strict /MP${DECOMP_PS2_COMPILE_JOBS})
 else()
   target_compile_options(game_code PRIVATE -O1 -g0 -ffp-contract=off)
 endif()
