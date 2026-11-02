@@ -38,3 +38,33 @@ promoting constant data or unused foreign-mode payloads into callable code.
 Guarded ARM halfword-offset switches keep their tables as data and dispatch
 using the actual loaded offset. Flag-preserving setup between the comparison
 and its unsigned guard is accepted only while the compared key stays intact.
+
+Bounded original ARM word-copy loops and two-word stack trampolines can produce
+additional static modules at their runtime destinations. Literal source bytes,
+copy bounds, following branch, position-independent control flow and constant
+stack bases are checked; original startup performs every copy unchanged.
+Reserved module IDs at or below -1024 identify these mutable code variants.
+The existing live-memory hash resolver selects successive bodies and also
+checks a copy with only one candidate, rejecting unknown modifications.
+
+The NTR runtime exposes absent TWL configuration IO at 04004000h..04004FFFh as
+zero with ignored writes. Returning all ones falsely sets SCFG_EXT7 bit31 and
+routes enhanced startup into unavailable hardware. See [GBATEK SCFG](https://problemkaputt.de/gbatek.htm#dsicontrolregistersscfg)
+and the independent [NDS-mode IO reference](https://github.com/melonDS-emu/melonDS/blob/master/src/NDS.cpp).
+
+Direct NTR boot copies only the documented 170h-byte header into shared boot
+RAM. Copying the extended header through 1FFh overwrites SDK lock words with
+enhanced-cartridge metadata, leaving one CPU waiting for the other. The full
+original header remains available from the cartridge. [GBATEK boot RAM](https://problemkaputt.de/gbatek.htm#biosramusage)
+documents the header and following zero-filled memory separately.
+
+Frameless functions that preserve their incoming LR in another register retain
+normal return semantics. The return register must be copied unconditionally at
+entry and remain untouched, including by every directly called leaf. Unknown
+callees, indirect calls, conditional saves and stack frames reject that proof.
+
+IR cartridge codes beginning with I accept the documented 00h savedata prefix
+before their flash commands. Native flash status, write-enable, erase and raw
+save persistence remain in the existing chip implementation. Infrared packet
+transport is not implemented. [GBATEK IR SPI](https://problemkaputt.de/gbatek.htm#dscartinfraredcartridgespicommands)
+documents the framing and code marker.

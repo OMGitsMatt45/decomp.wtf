@@ -252,6 +252,25 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
             mode=thumb!=decoded.mnemonic.startswith('blx')
             direct_roots[int(targets[0])][(target,mode)].append(
                 dict(module_id=int(source['module_id']),address=site))
+    if cpu=='arm7':
+        # The importer can omit a cross-autoload edge along with a weak root.
+        # Decode real source bodies and qualify a destination only when exactly
+        # one initialized resident image owns its address. No overlay guessing.
+        for entry in entries:
+            source=entry.module;image=images[entry.module_id]
+            decoder=emitter.Decoder(image,int(source['base']),arch,entry.thumb)
+            body=emitter.FunctionEmitter(cpu,arch,source,image,entry,address_entries,
+                calls,{},module_entries,decoder,module_mode_entries=mode_entries)
+            body._discover()
+            for op in body.insns.values():
+                if body._branch_name(op)not in ('bl','blx'):continue
+                effect=reader._effect(op.detail,entry.thumb)
+                if effect is None or effect.flow!='call' or effect.target is None:continue
+                target=effect.target&~1
+                owners=[mid for mid,m in modules.items()if int(m['base'])<=target<int(m['base'])+len(images[mid])]
+                if len(owners)!=1:continue
+                mode=entry.thumb!=(body._branch_name(op)=='blx')
+                direct_roots[owners[0]][(target,mode)].append(dict(module_id=entry.module_id,address=op.address))
     additions=[]
     for module in manifest['modules']:
         image=images[int(module['module_id'])];base=int(module['base']);limit=base+len(image)

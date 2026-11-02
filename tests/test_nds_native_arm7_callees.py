@@ -9,6 +9,24 @@ from decompnet.nds_native.callbacks import recover
 from .test_nds_native import sdk, hardware_project  # noqa: F401
 
 
+@pytest.mark.parametrize('ambiguous',[False,True])
+def test_arm7_cross_autoload_edge_qualifies_only_one_initialized_owner(tmp_path,sdk,ambiguous):
+    base,target=0x03800000,0x02fd8000
+    source=tmp_path/'caller.bin';callee=tmp_path/'callee.bin'
+    branch=0xeb000000|(((target-(base+4)-8)//4)&0xffffff)
+    source.write_bytes(struct.pack('<3I',0xe92d4000,branch,0xe8bd8000))
+    callee.write_bytes(struct.pack('<2I',0xe3a00029,0xe12fff1e))
+    m=dict(cpu='arm7',arch='v4t',modules=[
+        dict(name='caller',module_id=-5,base=base,image=str(source),functions=[dict(addr=base,size=12,thumb=False,name='caller')],labels=[],calls=[],code_ranges=[[base,base+12]],data_ranges=[]),
+        dict(name='callee',module_id=-6,base=target,image=str(callee),functions=[],labels=[],calls=[],code_ranges=[],data_ranges=[]),
+    ])
+    if ambiguous:m['modules'].append(dict(m['modules'][1],name='ambiguous',module_id=-7))
+    _,e,r=nds_native._sdk();added=recover(m,e,r)
+    assert len(added)==(0 if ambiguous else 1)
+    if not ambiguous:
+        assert added[0]['address']==target and added[0]['call_sources']==[dict(module_id=-5,address=base+4)]
+
+
 def arm_halfword_image(tmp_path,gap=False):
     base=0x03800000;raw=bytearray(0x78)
     struct.pack_into('<7I',raw,0,0xE92D40F0,0xE3A0405A,0xE3500002,0x8A000017,

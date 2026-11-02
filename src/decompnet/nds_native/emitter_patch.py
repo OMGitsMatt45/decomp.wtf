@@ -378,6 +378,10 @@ def install(emitter):
         finally:self._branch_name=name;self._manual_link=manual
 
     def emit_branch(self,insn):
+        from .saved_lr import returns_incoming_lr
+        if returns_incoming_lr(self,insn,emitter):
+            register=emitter.operand_reg(insn,insn.operands[0])
+            return self._cond(insn,f'DSR_RET(c, c->r[{register}]);\nreturn;')
         if insn.address in getattr(self,"_decomp_tail_exits",set()):
             target=self._branch_target(insn)
             if self.dispatch_entries is None or not self._inside(target&~1):

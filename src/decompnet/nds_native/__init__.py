@@ -41,8 +41,10 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py','code_copies.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
+    digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
+    digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
     return digest.hexdigest()
 
 
@@ -168,6 +170,10 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     arm7=json.loads(arm7_path.read_text(encoding='utf-8'))
     arm7_executable_ranges(arm7,result.modules)
     callbacks=recover(arm7,_sdk()[1],reader)
+    while callbacks:
+        extra=recover(arm7,_sdk()[1],reader)
+        if not extra:break
+        callbacks+=extra
     if callbacks:_log(f'Recovered {len(callbacks)} referenced ARM7 callbacks and callees')
     derive=_tool(sdk,'derive_abi_config')
     from .abi_patch import install
@@ -293,6 +299,10 @@ def _runtime(sdk, root):
     patch_audio(target)
     from .raster_edge_patch import patch as patch_raster_edges
     patch_raster_edges(target)
+    from .code_copies import patch_runtime as patch_code_copies
+    patch_code_copies(target)
+    from .flash_ir import patch as patch_flash_ir
+    patch_flash_ir(target)
     # Upstream copies both header programs through the ARM9 bus. ARM7 IWRAM
     # is private, so booting a program there otherwise leaves its literals zero.
     path=target/'runtime/core/src/machine.cpp'
@@ -303,6 +313,8 @@ def _runtime(sdk, root):
         'write(CpuId::Arm9, destination + i, buffer[i], 8);':'write(cpu, destination + i, buffer[i], 8);',
         'copy_rom(arm9_offset, arm9_dest, arm9_size);':'copy_rom(CpuId::Arm9, arm9_offset, arm9_dest, arm9_size);',
         'copy_rom(arm7_offset, arm7_dest, arm7_size);':'copy_rom(CpuId::Arm7, arm7_offset, arm7_dest, arm7_size);',
+        'for (std::uint32_t i = 0; i < rom_header.size(); ++i)':
+        'for (std::uint32_t i = 0; i < 0x170u; ++i)',
     }
     for before,after in changes.items():
         if text.count(before)!=1:raise pc.PCError('pinned DS runtime boot patch no longer matches source')
@@ -460,6 +472,10 @@ def generate(project,root):
             manifests,reviewed=_reviewed(data,project['profile'],work)
         else:
             manifests,reviewed=_analyze(rom,work,sdk,reader,project['input_format'],project.get('bios'))
+        from .code_copies import recover as recover_code_copies
+        for manifest in manifests:
+            copies=recover_code_copies(manifest,work/('code-copies-'+manifest['cpu']))
+            if copies:_log(f'Recovered {len(copies)} bounded {manifest["cpu"]} runtime code copies')
         for manifest in manifests:
             output=root/'game'/manifest['cpu']
             result=emitter.emit_manifest(manifest,output,chunk_size=100)
