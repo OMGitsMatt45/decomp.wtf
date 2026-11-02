@@ -287,7 +287,10 @@ def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,t
         struct.pack_into('<4I',header,0x10,load,0,load,len(payload))
         return bytes(header+payload)
     boot=dict(index=1,module_index=1,boot='LIBRARY.EXE',resident_boot=resident,
-        image=image(library_load,[0x1000ffff,0],True),info=dict(load=library_load,entrypoint=library_load))
+        # A direct self-jump has no speculative not-taken CFG edge into the
+        # deliberately unreachable callback. A constant BEQ still emits one.
+        image=image(library_load,[0x08000000|((library_load>>2)&0x03ffffff),0],True),
+        info=dict(load=library_load,entrypoint=library_load))
     overlay=dict(index=1,module_index=2,boot='OVERLAY.EXE',
         image=image(0x80130000,[0x0c000000|((target>>2)&0x03ffffff),0,0x1000ffff,0]),
         info=dict(load=0x80130000,entrypoint=0x80130000))
