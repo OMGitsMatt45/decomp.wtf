@@ -34,6 +34,18 @@ endif()
 set(PORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/runtime/ps2")
 add_subdirectory("${PORT_ROOT}/thirdparty/PS2Recomp" ps2-runtime EXCLUDE_FROM_ALL)
 set_property(TARGET ps2_runtime PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF)
+if(MSVC)
+  # The guest ISA requires precise arithmetic. The upstream graphics-oriented
+  # release preset also adds MSVC-only switches to clang-cl and explicit /GL
+  # despite the disabled IPO property above.
+  get_target_property(_decomp_runtime_options ps2_runtime COMPILE_OPTIONS)
+  string(REPLACE "/fp:fast" "/fp:strict" _decomp_runtime_options "${_decomp_runtime_options}")
+  string(REPLACE "/GL" "" _decomp_runtime_options "${_decomp_runtime_options}")
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    string(REPLACE "/Qspectre-" "" _decomp_runtime_options "${_decomp_runtime_options}")
+  endif()
+  set_property(TARGET ps2_runtime PROPERTY COMPILE_OPTIONS "${_decomp_runtime_options}")
+endif()
 add_subdirectory("${PORT_ROOT}/src/gfx" ps2-gs EXCLUDE_FROM_ALL)
 include("${CMAKE_CURRENT_SOURCE_DIR}/native/NativeExecution.cmake")
 if(NOT TARGET dq8_gfx_sdlgpu)
