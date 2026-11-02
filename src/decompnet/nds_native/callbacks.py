@@ -145,7 +145,9 @@ def arm7_executable_ranges(manifest,states):
             module['functions']=[f for f in module['functions']if (int(f['addr']),bool(f['thumb']))in roots]
             code=set().union(*(state.function_code.get(key,set())for key in strong)) if strong else set()
             module['calls']=[r for r in module.get('calls',[])if int(r['from'])in code]
-            module['discarded_prologue_only_roots']=[dict(address=f['addr'],thumb=f['thumb'])for f in discarded]
+            image_hash=hashlib.sha256(Path(module['image']).read_bytes()).hexdigest()
+            module['discarded_prologue_only_roots']=[dict(address=f['addr'],size=f['size'],thumb=f['thumb'],
+                module_sha256=image_hash)for f in discarded]
         allowed=[[state.base+low,state.base+min(high,state.loaded_size)]
                  for low,high in state.executable_ranges]
         excluded=[[state.base+low,state.base+high]
@@ -369,13 +371,25 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
         boundaries=sorted({*starts,*(address for address,_ in roots),
                            *(edge for interval in executable for edge in interval),limit})
         pending=deque(roots);visited=set();accepted={}
+        deferred={}
+        if cpu=='arm7':
+            digest=hashlib.sha256(image).hexdigest()
+            for record in module.get('discarded_prologue_only_roots',[]):
+                address=record['address'];size=record.get('size',0);thumb=record['thumb']
+                if (record.get('module_sha256')==digest and type(size)is int and size>0
+                        and address%(2 if thumb else 4)==0 and size%(2 if thumb else 4)==0
+                        and base<=address<address+size<=limit):deferred[address,thumb]=size
         while pending:
             address,thumb=pending.popleft();key=(address,thumb)
             if key in visited or (covered(address) and key not in reference_roots) or not plausible(address,thumb):continue
             visited.add(key)
             # Reviewed full bounds may span partial importer records. Those
             # fragments must not truncate the callback's enclosing stack frame.
-            end=address+reference_roots[key] if key in reference_roots else boundaries[bisect_right(boundaries,address)]
+            # A real call/pointer can qualify a previously deferred prologue.
+            # Retain its importer extent across same-state fragments so a live
+            # prefix is not cut off before its enclosing frame's epilogue.
+            extent_hint=reference_roots.get(key,deferred.get(key))
+            end=address+extent_hint if extent_hint is not None else boundaries[bisect_right(boundaries,address)]
             function=dict(addr=address,size=end-address,thumb=thumb,
                 name=reader._function_name(module,address))
             entry=emitter.Entry(module,function,address,thumb,function['name'],False,cpu)

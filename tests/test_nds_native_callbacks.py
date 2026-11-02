@@ -80,7 +80,8 @@ def test_arm7_prologue_scans_need_reference_evidence_before_becoming_entries(tmp
     arm7_executable_ranges(manifest,[state])
     assert [f['addr']for f in module['functions']]==[base]
     assert module['calls']==[]
-    assert module['discarded_prologue_only_roots']==[dict(address=base+0x40,thumb=False)]
+    assert module['discarded_prologue_only_roots']==[dict(address=base+0x40,size=12,thumb=False,
+        module_sha256=hashlib.sha256(Path(module['image']).read_bytes()).hexdigest())]
     assert [r['address']for r in recover(manifest,emitter,reader)]==[base+0x40]
     assert image.read_bytes()==raw
 

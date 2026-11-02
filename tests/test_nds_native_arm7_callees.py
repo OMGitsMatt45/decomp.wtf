@@ -27,6 +27,21 @@ def test_arm7_cross_autoload_edge_qualifies_only_one_initialized_owner(tmp_path,
         assert added[0]['address']==target and added[0]['call_sources']==[dict(module_id=-5,address=base+4)]
 
 
+@pytest.mark.parametrize('referenced,matching',[(True,False),(False,True)])
+def test_deferred_frame_extent_needs_real_reference_and_matching_image(tmp_path,sdk,referenced,matching):
+    import hashlib
+    base=0x03800000;raw=bytearray(0x50)
+    struct.pack_into('<3I',raw,0,0xe92d4000,0xeb000009 if referenced else 0xe1a00000,0xe8bd8000)
+    struct.pack_into('<6I',raw,0x30,0xe92d4010,0xe3a04049,0xe3a00029,0xe1a00000,0xe8bd4010,0xe12fff1e)
+    image=tmp_path/'original.bin';image.write_bytes(raw)
+    m=dict(cpu='arm7',arch='v4t',modules=[dict(name='original',module_id=-5,base=base,image=str(image),
+        functions=[dict(addr=base,size=12,thumb=False,name='entry'),dict(addr=base+0x40,size=8,thumb=False,name='fragment')],
+        labels=[],calls=[],data_ranges=[],discarded_prologue_only_roots=[dict(address=base+0x30,size=24,thumb=False,
+        module_sha256=hashlib.sha256(raw).hexdigest()if matching else '0'*64)])])
+    _,e,r=nds_native._sdk()
+    assert recover(m,e,r)==[]
+
+
 def arm_halfword_image(tmp_path,gap=False):
     base=0x03800000;raw=bytearray(0x78)
     struct.pack_into('<7I',raw,0,0xE92D40F0,0xE3A0405A,0xE3500002,0x8A000017,
@@ -99,7 +114,8 @@ int main(int argc,char** argv) {
     assert done.returncode==0,done.stdout+done.stderr
 
 
-def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_project):
+@pytest.mark.parametrize('shared_frame',[False,True])
+def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_project,shared_frame):
     base = 0x03800000
     raw = bytearray(0x40)
     struct.pack_into('<3I', raw, 0, 0xe92d4000, 0xeb000009, 0xe8bd8000)
@@ -111,6 +127,14 @@ def test_arm7_direct_call_recovers_unclassified_leaf(tmp_path, sdk, hardware_pro
         functions=[dict(addr=base, size=12, thumb=False, name='entry')],
         labels=[], calls=[], code_ranges=[[base, base+12]],
         data_ranges=[[base+0x38, base+0x3c]])])
+    if shared_frame:
+        import hashlib
+        raw.extend(bytes(0x10))
+        struct.pack_into('<6I',raw,0x30,0xe92d4010,0xe3a04049,0xe3a00029,0xe1a00000,0xe8bd4010,0xe12fff1e)
+        image.write_bytes(raw);module=manifest['modules'][0]
+        module['functions'].append(dict(addr=base+0x40,size=8,thumb=False,name='shared_epilogue'))
+        module['data_ranges']=[]
+        module['discarded_prologue_only_roots']=[dict(address=base+0x30,size=24,thumb=False,module_sha256=hashlib.sha256(raw).hexdigest())]
     _, emitter, reader = nds_native._sdk()
     added = recover(manifest, emitter, reader)
     assert len(added) == 1
@@ -137,9 +161,9 @@ int main(int argc,char** argv) {
  std::ifstream file(argv[1],std::ios::binary);
  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
  for(unsigned i=0;i<bytes.size();++i)machine.write8(dsr::CpuId::Arm7,0x03800000+i,bytes[i]);
- cpu.budget=10000;cpu.r[13]=0x0380ff00;cpu.r[14]=0x02000000;
+ cpu.budget=10000;cpu.r[4]=0xcafe;cpu.r[13]=0x0380ff00;cpu.r[14]=0x02000000;
  dsr::dsr_call(&cpu,0x03800000);
- return cpu.r[0]==41 && cpu.r[13]==0x0380ff00 ? 0 : 1;
+ return cpu.r[0]==41 && cpu.r[4]==0xcafe && cpu.r[13]==0x0380ff00 ? 0 : 1;
 }
 ''')
     quote = lambda p: json.dumps(p.as_posix())
