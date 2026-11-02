@@ -78,6 +78,22 @@ Optional developer checks build with -DDECOMP_PS2_BUILD_SERVICE_TESTS=ON and
 test catalogs, including rejection of changed code. Their source and inputs are
 under tests/. They are excluded from the normal player.
 
+For whole-program VU1 optimization, run a local developer session with
+`PS2_VU_PROGRAM_PROFILE` pointing to an empty profile directory. Exit the player,
+then run `python tools/import_vu_programs.py /path/to/profile` and rebuild.
+The importer uses the pinned offline compiler, accepts only bounded code images
+and aligned entries, and checks every compiled pair against this export's input
+catalog. It updates the source checksums in pc-project.json. Keep raw profiles
+private; the importer copies neither state snapshots nor data memory.
+
+Compiled programs check their complete instruction footprints before execution.
+Budget boundaries, pipeline state and unavailable programs continue through the
+existing fixed native pair path. Unknown pairs still fail coverage checks.
+`DECOMP_PS2_VU_PROGRAMS=0` disables the optimization for comparison. Native reports
+include `vu_native_programs` and `vu_native_program_pairs`; these count compiled
+program calls and pairs, not a different execution model. The player never runs
+the profile compiler or generates machine code.
+
 For hands-on integration checks, --pad-commands PATH reads one command from a
 local file: SEQUENCE BUTTON[+BUTTON] HOLD_TICKS. Increase SEQUENCE for each new
 command; holds last 1..3600 guest-vsync ticks. Buttons use PS2 names such as UP,

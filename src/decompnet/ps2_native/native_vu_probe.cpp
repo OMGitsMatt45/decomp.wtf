@@ -29,6 +29,7 @@ int main(int argc,char **argv) {
     const uint32_t dataSize=unit?PS2_VU1_DATA_SIZE:PS2_VU0_DATA_SIZE;
     std::memcpy(code,original.data(),original.size());
     const bool negative=std::string(argv[6])=="changed";
+    const bool single=std::string(argv[6])=="single";
     if(negative){const uint64_t unknown=~uint64_t(0);std::memcpy(code,&unknown,8);}
     VU1Interpreter vu(unit?VU1Interpreter::Unit::VU1:VU1Interpreter::Unit::VU0);
     constexpr uint32_t values[]={0x3f800000,0xc0000000,0x00800001,0x80000000,
@@ -46,16 +47,18 @@ int main(int argc,char **argv) {
     for(unsigned iteration=0;iteration<iterations;++iteration){
         vu.execute(code,codeSize,data,dataSize,gs,&memory,0,0,0,budget);
         unsigned resumes=0;
-        while(!negative&&vu.state().pc<original.size()&&resumes++<256) {
+        while(!negative&&!single&&vu.state().pc<original.size()&&resumes++<256) {
             const uint32_t previousPc=vu.state().pc;const uint64_t previousCycles=vu.state().cycles;
             vu.resume(code,codeSize,data,dataSize,gs,&memory,0,0,budget);
             if(vu.state().pc==previousPc&&vu.state().cycles==previousCycles)break;
         }
         if(resumes>=256)return 5;
     }
-    if(iterations>1)std::fprintf(stderr,"{\"iterations\":%u,\"elapsed_ns\":%llu,\"native_pairs\":%llu}\n",iterations,
+    if(iterations>1)std::fprintf(stderr,"{\"iterations\":%u,\"elapsed_ns\":%llu,\"native_pairs\":%llu,\"native_programs\":%llu,\"native_program_pairs\":%llu}\n",iterations,
         static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-started).count()),
-        static_cast<unsigned long long>(decomp_ps2::execution::vu_native_pairs.load()));
+        static_cast<unsigned long long>(decomp_ps2::execution::vu_native_pairs.load()),
+        static_cast<unsigned long long>(decomp_ps2::execution::vu_native_programs.load()),
+        static_cast<unsigned long long>(decomp_ps2::execution::vu_native_program_pairs.load()));
 #ifdef DECOMP_PS2_NATIVE_VU
     if(vu.interpretedPairsExecuted()||decomp_ps2::execution::vu_interpreted_pairs.load())return 6;
     if(negative){

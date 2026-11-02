@@ -4,6 +4,7 @@
 #include <cstdint>
 
 namespace decomp_ps2::execution {
+inline std::atomic<uint64_t> vu_native_programs{0},vu_native_program_pairs{0};
 inline std::atomic<uint64_t> vu_native_pairs{0},vu_interpreted_pairs{0},vu_coverage_misses{0};
 inline std::atomic<uint32_t> vu_coverage_pc{0},vu_coverage_unit{0};
 inline void vu_gap(uint32_t unit,uint32_t pc) {

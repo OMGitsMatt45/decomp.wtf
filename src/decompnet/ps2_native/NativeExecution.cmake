@@ -23,11 +23,16 @@ else()
   target_include_directories(ps2_iop PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native/iop"
     "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xIOP/src/lle")
   file(GLOB VU_NATIVE_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/vu/*.cpp")
+  file(GLOB VU_NATIVE_PROGRAMS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/vu_programs/*.cpp")
   target_sources(ps2_runtime PRIVATE ${VU_NATIVE_OPERATIONS}
+    ${VU_NATIVE_PROGRAMS}
     "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu/decomp_vu_pipeline.cpp")
   target_compile_definitions(ps2_runtime PRIVATE DECOMP_PS2_NATIVE_VU=1)
+  if(VU_NATIVE_PROGRAMS)
+    target_compile_definitions(ps2_runtime PRIVATE DECOMP_PS2_NATIVE_VU_PROGRAMS=1)
+  endif()
   target_include_directories(ps2_runtime PRIVATE "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu")
-  set_source_files_properties(${VU_NATIVE_OPERATIONS} TARGET_DIRECTORY ps2_runtime
+  set_source_files_properties(${VU_NATIVE_OPERATIONS} ${VU_NATIVE_PROGRAMS} TARGET_DIRECTORY ps2_runtime
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
 endif()
 
@@ -47,10 +52,15 @@ if(DECOMP_PS2_BUILD_NATIVE_TESTS)
   if(NOT DECOMP_PS2_REFERENCE)
     file(GLOB TEST_VU_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/vu/*.cpp")
     file(GLOB TEST_IOP_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/iop/*.cpp")
+    file(GLOB TEST_VU_PROGRAMS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/vu_programs/*.cpp")
     target_sources(ps2_vu_probe PRIVATE ${TEST_VU_OPERATIONS})
-    set_source_files_properties(${TEST_VU_OPERATIONS} PROPERTIES COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
+    target_sources(ps2_vu_probe PRIVATE ${TEST_VU_PROGRAMS})
+    set_source_files_properties(${TEST_VU_OPERATIONS} ${TEST_VU_PROGRAMS} PROPERTIES COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
     target_sources(ps2_iop_probe PRIVATE ${TEST_IOP_OPERATIONS})
     target_compile_definitions(ps2_vu_probe PRIVATE DECOMP_PS2_NATIVE_VU=1)
+    if(VU_NATIVE_PROGRAMS)
+      target_compile_definitions(ps2_vu_probe PRIVATE DECOMP_PS2_NATIVE_VU_PROGRAMS=1)
+    endif()
     target_compile_definitions(ps2_iop_probe PRIVATE DECOMP_PS2_NATIVE_IOP=1)
   endif()
   target_include_directories(ps2_vu_probe PRIVATE

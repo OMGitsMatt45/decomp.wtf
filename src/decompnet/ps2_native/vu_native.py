@@ -27,6 +27,18 @@ NATIVE_BODY=r'''
     struct Rounding {int previous;bool rounded;~Rounding(){if(rounded&&previous!=-1)std::fesetround(previous);}} rounding{previous,rounded};
     const uint64_t budgetEnd=m_cycle+maxCycles;bool programEnded=false;
     commitReadyPipelines();
+#ifdef DECOMP_PS2_NATIVE_VU_PROGRAMS
+    static const bool wholePrograms=[](){const char *value=std::getenv("DECOMP_PS2_VU_PROGRAMS");return !value||std::strcmp(value,"0")!=0;}();
+    const bool trackedCode=memory&&m_unit==Unit::VU1&&vuCode==memory->getVU1Code()&&codeSize==PS2_VU1_CODE_SIZE;
+    if(wholePrograms&&trackedCode&&budgetEnd-m_cycle>=ps2_vu_program::kMinimumBudget&&ps2_vu_program::Access::drained(*this)){
+        if(const auto routine=ps2_vu_program::find(vuCode,codeSize,m_state.pc,memory->getVU1CodeGeneration())){
+            const auto programBefore=m_compiledPairsExecuted;
+            programEnded=ps2_vu_program::run(*this,vuCode,codeSize,budgetEnd,routine);
+            decomp_ps2::execution::vu_native_programs.fetch_add(1,std::memory_order_relaxed);
+            decomp_ps2::execution::vu_native_program_pairs.fetch_add(m_compiledPairsExecuted-programBefore,std::memory_order_relaxed);
+        }else ps2_vu_program::recordMissing(vuCode,codeSize,m_state.pc);
+    }
+#endif
     while(!programEnded&&m_cycle<budgetEnd&&!m_stopRequested){
         const uint32_t pc=m_state.pc;
         DecompVuFunction function=nullptr;
@@ -85,6 +97,42 @@ bool ps2_vu_program::Access::decompRunPair(VU1Interpreter &vu,
         '// Same pinned conductor; decoded pair metadata and operation calls are compile-time constants.\n'+specialized+'\n')
 
 
+def _program_support(folder):
+    """Keep whole-program operations static, including exceptional arithmetic."""
+    header=folder/'ps2_vu1_program.h'
+    replace(header,'void forgetRoutines();',
+        'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif')
+    replace(header,'    void exactUpper(uint32_t upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
+    template<uint32_t Upper> void exactUpper(){
+        constexpr uint32_t fs=(Upper>>11u)&31u,ft=(Upper>>16u)&31u;
+        const UpperInputs inputs{m_state.vf[fs],m_state.vf[ft],m_state.acc,m_state.i,m_state.q};
+        m_upper={};ps2_vu_detail::upper::computeUpper(Upper,inputs,m_upper);
+    }
+#else
+    void exactUpper(uint32_t upper);
+#endif''')
+    replace(header,'        m_run.exactUpper(Upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
+        m_run.exactUpper<Upper>();
+#else
+        m_run.exactUpper(Upper);
+#endif''')
+    implementation=folder/'ps2_vu1_program.cpp';text=implementation.read_text()
+    opening=text.index('const Entry kEntries[] = {');closing=text.index('\n};',opening)+3
+    text=text[:opening]+'#ifndef DECOMP_PS2_NATIVE_VU\n'+text[opening:closing]+'\n#endif'+text[closing:]
+    old='''    const Entry *const begin = std::begin(kEntries);
+    const Entry *const end = std::end(kEntries) - 1;'''
+    if text.count(old)!=1:raise PCError('pinned VU program registry differs')
+    text=text.replace(old,'''#ifdef DECOMP_PS2_NATIVE_VU
+    size_t count=0;const Entry *const begin=nativeEntries(count);
+    if(!begin||!count){slot={code,generation,epoch,nullptr,true};return nullptr;}
+    const Entry *const end=begin+count;
+#else
+'''+old+'\n#endif')
+    opening=text.index('void Run::exactUpper(uint32_t upper)');closing=text.index('\n}\n',opening)+3
+    text=text[:opening]+'#ifndef DECOMP_PS2_NATIVE_VU\n'+text[opening:closing]+'\n#endif\n'+text[closing:]
+    implementation.write_text(text)
+
+
 def patch(root):
     runtime=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime'
     folder=runtime/'src/lib/vu'
@@ -103,6 +151,7 @@ def patch(root):
                               DecompOperation,DecompOperation,uint64_t,uint32_t);
 ''')
     _shared_pipeline(folder)
+    _program_support(folder)
     core=folder/'ps2_vu1_core.cpp';text=core.read_text();opening,closing=_body(text,'run')
     original=text[opening+1:closing]
     accounting=r'''
@@ -117,7 +166,7 @@ def patch(root):
     text='#include "decomp_vu_catalog.hpp"\n#include "decomp_vu_execution.hpp"\n'+text
     core.write_text(text)
     replace(core,'    if (m_unit == Unit::VU1)\n        ps2_vu_program::forgetRoutines();',
-        '#ifndef DECOMP_PS2_NATIVE_VU\n    if (m_unit == Unit::VU1)\n        ps2_vu_program::forgetRoutines();\n#endif')
+        '#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n    if (m_unit == Unit::VU1)\n        ps2_vu_program::forgetRoutines();\n#endif')
     replace(core,'void VU1Interpreter::reportReservedInstruction(bool upper, uint32_t instruction)\n{',
         '''void VU1Interpreter::reportReservedInstruction(bool upper, uint32_t instruction)
 {
@@ -125,13 +174,16 @@ def patch(root):
     decomp_ps2::execution::vu_gap(m_unit==Unit::VU1?1u:0u,m_state.pc);
 #endif''')
     lower=folder/'ps2_vu1_lower.inl';text=lower.read_text()
-    call='            ps2_vu_program::noteJump(memory, target);'
+    call='        if (m_unit == Unit::VU1)\n            ps2_vu_program::noteJump(memory, target);'
     if text.count(call)!=2:raise PCError('pinned VU jump observer differs')
-    lower.write_text(text.replace(call,'#ifndef DECOMP_PS2_NATIVE_VU\n'+call+'\n#endif'))
-    # The primary executable has neither dynamic opcode entry points nor the
-    # whole-program path's dynamic arithmetic escape. Reference builds keep them.
-    for name in ('ps2_vu1_upper.cpp','ps2_vu1_lower.cpp','ps2_vu1_program.cpp'):
+    lower.write_text(text.replace(call,'#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n'+call+'\n#endif'))
+    # Guard the condition and call together, preserving VU0 register jumps.
+    # Native programs use fixed arithmetic templates; reference builds retain
+    # the pinned dynamic opcode entry points.
+    for name in ('ps2_vu1_upper.cpp','ps2_vu1_lower.cpp'):
         path=folder/name;path.write_text('#ifndef DECOMP_PS2_NATIVE_VU\n'+path.read_text()+'\n#endif\n')
+    path=folder/'ps2_vu1_program.cpp'
+    path.write_text('#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n'+path.read_text()+'\n#endif\n')
 
 
 def generate(catalog,folder):

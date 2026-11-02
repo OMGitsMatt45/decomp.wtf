@@ -12,7 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
-from . import iop_native,vu_native,vu_discovery,irx_fixture,vector_fixture,cheats
+from . import iop_native,vu_native,vu_discovery,vu_programs,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -154,6 +154,7 @@ def generate(project,root):
                 _log('Inspect VU uploads in '+item['path'])
                 vectors.scan_stream(item['path'],lambda offset,size:disc.read(item['lba']+offset//2048,size),item['size'])
     vu_generation=vu_native.generate(vectors,root/'game/vu')
+    vu_programs.empty(root/'game/vu_programs')
     _native_execution_tests(root,sdk)
     _dependencies(root/'native/dependencies.cmake')
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PS2-runtime-GPL-3.0.txt')
@@ -217,6 +218,7 @@ def generate(project,root):
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
     for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
         ('send_pad_command.py','tools/send_pad_command.py'),
+        ('vu_programs.py','tools/import_vu_programs.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),
         ('RuntimeTests.cmake','native/RuntimeTests.cmake'),('runtime_tests.cpp','tests/runtime.cpp'),('mpeg_probe.cpp','tests/mpeg.cpp'),
         ('irx_tests.cpp','tests/irx.cpp'),('NativeExecution.cmake','native/NativeExecution.cmake'),
@@ -261,8 +263,12 @@ def _native_execution_tests(root,sdk):
     (root/'tests/iop/original.irx').write_bytes(original)
     catalog=vu_discovery.Catalog();programs=vector_fixture.programs()
     for index,data in enumerate(programs):catalog.scan(str(index),data,raw_programs=True)
+    extra=vu_programs.qualification_inputs()
+    for name,data in extra.items():catalog.scan(name,data,raw_programs=True)
     vu_native.generate(catalog,root/'tests/vu')
     for index,data in enumerate(programs):(root/f'tests/vu/program{index}.bin').write_bytes(data)
+    vu_programs.fixtures(sdk,root/'tests/vu_programs',[*programs,*extra.values()],catalog.words)
+    for name,data in extra.items():(root/f'tests/vu_programs/{name}.bin').write_bytes(data)
 
 
 def _config(root,project,boot,files,recipe,iop,arena,loaded_end):
