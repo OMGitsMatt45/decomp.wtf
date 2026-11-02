@@ -21,3 +21,9 @@ For example, Cross is `0xbfff`.
 Set `DECOMP_PSX_TRACE=1` to log keyboard scancodes and changes to the actual P1
 SIO buttons, connection state, analog state, and device kind. Diagnostics go to
 stderr so redirected runs can be inspected while the player is still running.
+
+Native snapshot resume has not passed functional qualification: a retail image
+can restore visually while forward progress stalls. The native player therefore
+rejects PSX_LOAD_SLOT and disables the snapshot shortcut. Use ordinary in-game
+memory-card saves. The separate reference target keeps its existing behavior;
+the LIVE replay handoff supports automation without snapshot transfer.
