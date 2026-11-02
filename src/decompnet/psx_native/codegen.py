@@ -33,6 +33,10 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
             data=(cache/name).read_bytes()
             if hashlib.sha256(data).hexdigest()!=digest:raise ValueError('changed cache file')
             payload.append((name,data))
+        # A second seed pass may produce fewer shards. Do not retain a
+        # previous raw shard that the verified cache no longer declares.
+        for path in folder.glob(exe.name+'_full*.c'):
+            if path.name not in metadata:path.unlink()
         for name,data in payload:(folder/name).write_bytes(data)
         return
     except (OSError,ValueError,TypeError):
@@ -56,6 +60,50 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
             for path in stage.iterdir():
                 if path.name!='files.json':os.replace(path,cache/path.name)
             os.replace(stage/'files.json',cache/'files.json')
+
+
+_SYSCALL=re.compile(r'(?m)^([ \t]*)psx_syscall\(cpu, (\d+)\);  /\* syscall (\d+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
+
+
+def native_traps(text):
+    """Repair the pinned full emitter's legacy SYSCALL into its CPS ABI."""
+    continuations=set()
+    def replace_call(match):
+        indent,code,repeated,pc,word=match.groups();address=int(pc,16);instruction=int(word,16)
+        if code!=repeated or instruction&0xfc00003f!=0x0c or int(code)!=(instruction>>6)&0xfffff:
+            raise ValueError('pinned SYSCALL metadata disagrees with its original instruction')
+        continuations.add(address+4)
+        return (indent+'#ifdef PSX_ENABLE_BLOCK_CYCLES\n'+indent+'psx_cyc_bb_defer_flush();\n'+indent+'#endif\n'+
+            indent+f'cpu->pc = 0x{address:08X}u; if (psx_syscall(cpu, {code})) return;  /* original SYSCALL */\n'+
+            indent+'#ifdef PSX_ENABLE_BLOCK_CYCLES\n'+indent+'psx_cyc_bb_defer_begin();\n'+indent+'#endif')
+    matches=list(_SYSCALL.finditer(text))
+    if len(re.findall(r'(?m)^[ \t]*psx_syscall\(cpu,',text))!=len(matches):
+        raise ValueError('pinned legacy SYSCALL format differs')
+    return _SYSCALL.sub(replace_call,text),continuations
+
+
+def emit_native(recompiler,exe,seed,folder,run,sdk,label):
+    """Emit native trap calls and all post-exception resume entries."""
+    image=exe.read_bytes();load=struct.unpack_from('<I',image,0x18)[0]
+    roots={int(line,0) for line in seed.read_text().splitlines() if line.strip()}
+    for _ in range(16):
+        emit(recompiler,exe,seed,folder,run,sdk,label)
+        sources=sorted(folder.glob(exe.name+'_full*.c'))
+        rewritten=[];continuations=set()
+        for path in sources:
+            text,targets=native_traps(path.read_text(encoding='utf-8'))
+            rewritten.append((path,text));continuations.update(targets)
+        if any(not load<=target<load+len(image)-2048 or target&3 for target in continuations):
+            raise ValueError('native SYSCALL continuation escapes the original image')
+        emitted=set(dispatch_entries((folder/(exe.name+'_dispatch.c')).read_text(encoding='utf-8')))
+        missing=continuations-emitted
+        if not missing:
+            for path,text in rewritten:path.write_text(text,encoding='utf-8')
+            return sorted(roots)
+        if missing<=roots:raise ValueError('pinned emitter omitted requested SYSCALL continuations')
+        roots.update(missing)
+        seed.write_text(''.join(f'{entry:#x}\n' for entry in sorted(roots)),encoding='utf-8')
+    raise ValueError('native SYSCALL continuation discovery did not converge')
 
 
 def seeds(image,info):
@@ -97,7 +145,7 @@ def module(recompiler,disc,folder,run,sdk):
     exe=folder/(Path(disc.get('boot','PSX.EXE')).name or 'PSX.EXE');exe.write_bytes(image)
     entries=seeds(image,info)
     (folder/'seeds.txt').write_text(''.join(f'{entry:#x}\n' for entry in entries),encoding='utf-8')
-    emit(recompiler,exe,folder/'seeds.txt',folder,run,sdk,
+    entries=emit_native(recompiler,exe,folder/'seeds.txt',folder,run,sdk,
          'PS1 static C generation for disc '+str(disc['index']))
     dispatch=folder/(exe.name+'_dispatch.c')
     original=dispatch.read_text(encoding='utf-8')
