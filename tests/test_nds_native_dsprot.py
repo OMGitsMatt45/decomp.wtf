@@ -55,3 +55,11 @@ def test_native_rejects_unproven_external_record_atomically(tmp_path, change):
     with pytest.raises(ValueError):
         prepare(tmp_path)
     assert path.read_bytes() == before
+def test_revision_tracks_dsprot_source(monkeypatch):
+    from decompnet import nds_native
+    before = nds_native.revision()
+    original = nds_native._source
+    monkeypatch.setattr(nds_native, '_source',
+                        lambda name: original(name) + ('\n# fingerprint regression\n' if name == 'dsprot.py' else ''))
+    assert nds_native.revision() != before
+
