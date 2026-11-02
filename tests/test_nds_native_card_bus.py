@@ -48,15 +48,20 @@ int main(int argc,char** argv) {
   auto rom=folder/(std::to_string(variant)+".nds");
   {std::ofstream f(rom,std::ios::binary);f.write(reinterpret_cast<char*>(bytes.data()),bytes.size());}
   dsr::GameCard card(rom,folder/(std::to_string(variant)+".sav"),dsr::BackupType::Flash512K);
-  for(auto address:std::vector<std::uint32_t>{0x1000,0x1200,0x1400,0x1001,
-      capacity+0x1000,capacity+0x1200,capacity+0x1400,capacity*3+0x8124,
-      0x8ffc,capacity+0x8fff,0xffffffff,0x20000}) {
-   auto block=read_block(card,address);
+  // Explicit expected file spans: command, first byte, wrap byte, first span length.
+  // These fixtures do not recompute the implementation's masks or redirect rule.
+  const std::vector<std::array<std::uint32_t,4>> cases={
+   {0x1000,0x8000,0,512},{0x1200,0x8000,0,512},{0x1400,0x8000,0,512},
+   {0x1001,0x8001,0,512},{capacity+0x1000,0x8000,0,512},
+   {capacity+0x1200,0x8000,0,512},{capacity+0x1400,0x8000,0,512},
+   {capacity*3+0x8124,0x8124,0,512},{0x8ffc,0x8ffc,0x8000,4},
+   {capacity+0x8fff,0x8fff,0x8000,1},{0xffffffff,capacity-1,capacity-0x1000,1},
+   {0x20000,variant?0x20000u:0x8000u,0,512}};
+  for(const auto& check:cases) {
+   auto block=read_block(card,check[0]);
    if(block.size()!=512)return 1;
-   auto start=address&(capacity-1);
-   if(start<0x8000)start=0x8000+(start&0x1ff);
    for(unsigned i=0;i<512;++i) {
-    auto at=(start&~0xfffu)|((start+i)&0xfffu);
+    auto at=i<check[3]?check[1]+i:check[2]+i-check[3];
     auto expected=at<bytes.size()?bytes[at]:0xff;
     if(block[i]!=expected)return 2;
    }
