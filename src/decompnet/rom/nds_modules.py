@@ -72,11 +72,12 @@ class Module:
 
 
 class NdsImage:
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes, *, allow_dsi_enhanced=False):
         self.data = data
         if len(data) < 0x200:
             raise ValueError("truncated DS header")
-        if data[0x12] or data[0x1C] & 3:
+        self.dsi_enhanced = data[0x12] == 2
+        if (data[0x12] != 0 and not (allow_dsi_enhanced and self.dsi_enhanced)) or data[0x1C] & 3:
             raise ValueError("TWL containers need the separate DSi inspector")
         if crc16(data[:0x15E]) != struct.unpack_from("<H", data, 0x15E)[0]:
             raise ValueError("invalid DS header CRC")
@@ -155,13 +156,17 @@ class NdsImage:
                 continue
             start, end, source, bss_start, bss_end = struct.unpack_from("<5I", code, params)
             lo, hi, loaded = start - main.address, end - main.address, source - main.address
-            if not (0 <= loaded <= lo <= hi <= len(code) and (hi - lo) % 12 == 0 and hi - lo <= 12 * 64):
+            stride = 16 if self.dsi_enhanced else 12
+            if not (0 <= loaded <= lo <= hi <= len(code) and (hi - lo) % stride == 0 and hi - lo <= stride * 64):
                 continue
             if not 0x02000000 <= bss_start <= bss_end <= 0x04000000:
                 continue
             blocks, cursor = [], loaded
-            for pos in range(lo, hi, 12):
-                address, size, bss = struct.unpack_from("<3I", code, pos)
+            for pos in range(lo, hi, stride):
+                values = struct.unpack_from('<' + 'I' * (stride // 4), code, pos)
+                address, size, bss = values[0], values[1], values[-1]
+                if stride == 16 and not address <= values[2] <= address + size:
+                    break
                 if not (0 <= size <= MAX_MODULE_SIZE and size + bss > 0 and cursor + size <= lo and address % 4 == 0
                         and 0x02000000 <= address < address + size + bss <= 0x04000000):
                     break

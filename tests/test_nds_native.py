@@ -68,6 +68,7 @@ def test_backend_revision_changes_with_emitted_runtime_and_host_dependencies(mon
 
 def test_analysis_retries_when_decoder_fails_before_creating_config(tmp_path,monkeypatch):
     from decompnet import nds_native
+    (tmp_path/'original.nds').write_bytes(bytes(0x200))
     monkeypatch.setattr(toolchains,'ensure',lambda *a,**k:tmp_path)
     monkeypatch.setattr(toolchains,'binary',lambda *a,**k:tmp_path/'dsd')
     attempts=[]

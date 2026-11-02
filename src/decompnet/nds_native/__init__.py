@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -97,13 +97,26 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     tools = work/'tools';tools.mkdir()
     for name in ('extract.py','nds_input.py'):
         (tools/name).write_text(template.joinpath(name).read_text(encoding='utf-8'),encoding='utf-8')
+    enhanced = None
+    analysis_rom = rom
+    with Path(rom).open('rb') as stream:
+        header = stream.read(0x200)
+    if len(header) >= 0x200 and header[0x12] == 2:
+        from .enhanced import stage
+        if bios is not None:raise pc.PCError('enhanced NTR analysis currently needs a decrypted input without a BIOS')
+        analysis_rom = work/'enhanced-ntr-analysis.nds'
+        enhanced = stage(rom,analysis_rom,input_format=input_format)
+        _log('Analyzing enhanced cartridge in NTR mode; original assets and startup retained')
     extracted = work/'extract'
-    command=[sys.executable,tools/'extract.py',dsd,'rom','extract','--rom',rom,
+    command=[sys.executable,tools/'extract.py',dsd,'rom','extract','--rom',analysis_rom,
              '--output-path',extracted,'--analysis-layout','--input-format',input_format]
     if bios:
         if input_format=='decrypted':raise pc.PCError('decrypted input must not be decrypted again with a BIOS')
         command.extend(['--arm7-bios',bios])
     _run(command,work,'DS module extraction')
+    if enhanced is not None:
+        from .enhanced import prepare_extracted
+        prepare_extracted(extracted)
     config_dir=work/'config';build=work/'build'
     init=[dsd,'init','--rom-config',extracted/'config.yaml','--output-path',config_dir,'--build-path',build]
     try:
@@ -124,9 +137,20 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     for path in (extracted/'arm9_overlays').glob('ov*.bin'):
         binary=images/('arm9_'+path.name)
         if not binary.exists():shutil.copyfile(path,binary)
+    if enhanced is not None:
+        from .enhanced import restore_images
+        for path in (extracted/'arm9').glob('unk_autoload_*'):
+            shutil.copyfile(path,images/path.name)
+        restore_images(extracted,images,enhanced)
     arm9=reader.build_arm9_manifest(config)
+    if enhanced is not None:
+        from .enhanced import restore_manifest
+        restore_manifest(arm9,{**document,'_directory':str(config.parent)},images,enhanced,reader)
     metadata=yaml.safe_load((extracted/'arm7/arm7.yaml').read_text(encoding='utf-8'))
     analyzer=_tool(sdk,'arm7_analyze')
+    if enhanced is not None:
+        from .enhanced import install_arm7
+        install_arm7(analyzer)
     from .callbacks import complete,codec_functions,recover,arm7_executable_ranges
     codec_metadata={module_id:yaml.safe_load((images/(name+'.yaml')).read_text(encoding='utf-8'))
                     for module_id,name in ((-1,'arm9'),(-2,'itcm'),(-3,'dtcm'))}
@@ -162,13 +186,14 @@ def _analyze(rom, work, sdk, reader, input_format, bios):
     # derived from this owner's input, so the output needs no BIOS/toolkit.
     with rom.open('rb') as stream:
         stream.seek(0x20);offset=struct.unpack('<I',stream.read(4))[0]
-    prefix=(extracted/'arm9/arm9.bin').read_bytes()[:0x800]
+    prefix=(bytes.fromhex(enhanced['original_prefix_hex']) if enhanced is not None else
+            (extracted/'arm9/arm9.bin').read_bytes()[:0x800])
     with rom.open('rb') as stream:
         stream.seek(offset);stored=stream.read(len(prefix))
     patches=[]
     if offset>=0x4000 and prefix!=stored:
         patches.append(dict(offset=offset,hex=prefix.hex()))
-    return [arm9,arm7],dict(abi=abi,asset_patches=patches)
+    return [arm9,arm7],dict(abi=abi,asset_patches=patches,execution_mode='ntr',dsi_enhanced=enhanced is not None)
 
 
 def _reviewed(data, profile, work):
@@ -180,7 +205,7 @@ def _reviewed(data, profile, work):
         raise pc.PCError('hardware runtime requires the original loader code; remove native test-harness hooks')
     if profile.get('save_region'):
         raise pc.PCError('RAM checkpoints belong to nds-generate; nds-native uses the cartridge save device')
-    image=NdsImage(data)
+    image=NdsImage(data,allow_dsi_enhanced=True)
     if image.modules['arm9'].offset>=0x4000:
         raise pc.PCError('retail DS input requires automatic module decoding, without --profile')
     code=profile.get('code')
@@ -460,7 +485,8 @@ def generate(project,root):
         asset_digest=hashlib.sha256(normalized).hexdigest()
     _profile(root,asset_digest,reviewed,project['save_type'],project['renderer'])
     (root/'game/input.json').write_text(json.dumps(dict(sha256=digest,size=len(data),
-        asset_sha256=asset_digest,asset_patches=patches),indent=2)+'\n',encoding='utf-8')
+        asset_sha256=asset_digest,asset_patches=patches,execution_mode='ntr',
+        dsi_enhanced=bool(project.get('dsi_enhanced'))),indent=2)+'\n',encoding='utf-8')
     for source,destination in (('main.cpp','native/main.cpp'),('hash.hpp','native/hash.hpp'),
                                ('save_lock.hpp','native/save_lock.hpp'),
                                ('audio_queue.hpp','native/audio_queue.hpp'),
@@ -621,7 +647,8 @@ build and successful boot are separate from field/battle/save compatibility.
 ''',encoding='utf-8')
     manifest=dict(schema=pc.SCHEMA,platform='nds',backend=dict(id=BACKEND_ID,revision=revision()),
         runtime=dict(id='dq9-decomp-dsr',revision=SDK_COMMIT),inputs=[dict(sha256=digest)],
-        execution_model='static-recompiled',build=dict(system='cmake',target='ds_pc'),
+        execution_model='static-recompiled',execution_mode='ntr',dsi_enhanced=bool(project.get('dsi_enhanced')),
+        build=dict(system='cmake',target='ds_pc'),
         fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
         code_generation=stats,save_type=project['save_type'],asset_sha256=asset_digest,
         presentation=pc.presentation(project['renderer'],screens=2,screen_mode=project['screen_mode']),files={})
@@ -634,7 +661,7 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
     rom=Path(rom).resolve()
     if not rom.is_file() or not 0x200<=rom.stat().st_size<=512*1024*1024:
         raise pc.PCError('DS input must be an existing ROM no larger than 512 MiB')
-    NdsImage(rom.read_bytes())  # reject invalid headers/TWL before any dependency install
+    image=NdsImage(rom.read_bytes(),allow_dsi_enhanced=True)  # DSi-exclusive inputs remain rejected
     if input_format not in ('auto','decrypted'):raise pc.PCError('input format must be auto or decrypted')
     if renderer not in ('auto','opengl','software'):raise pc.PCError('renderer must be auto, opengl or software')
     if screen_mode != 'dual':raise pc.PCError('screen mode must be dual; combined screens are a game-specific customization')
@@ -652,7 +679,8 @@ def _prepare(rom,*,profile=None,input_format='auto',arm7_bios=None,save_type='au
         if path.stat().st_size>1024*1024:raise pc.PCError('reviewed profile is too large')
         reviewed=json.loads(path.read_text(encoding='utf-8'))
     return dict(platform='nds',root=str(rom.parent),rom=str(rom),profile=reviewed,
-        input_format=input_format,bios=bios,save_type=save_type,renderer=renderer,screen_mode=screen_mode)
+        input_format=input_format,bios=bios,save_type=save_type,renderer=renderer,screen_mode=screen_mode,
+        execution_mode='ntr',dsi_enhanced=image.dsi_enhanced)
 
 
 def _generate_project(project,root):
