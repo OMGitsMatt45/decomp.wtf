@@ -31,9 +31,16 @@ int main(int argc,char** argv){
   {std::ofstream file(rom,std::ios::binary);file.write(reinterpret_cast<char*>(header.data()),header.size());}
   {
    dsr::GameCard card(rom,save,dsr::BackupType::Flash512K);
+   // IR firmware identification is independent of savedata commands and WEL.
+   const auto version=transfer(card,{8,0,0});
+   if(version.back()!=(infrared?0xaa:0xff))return 9;
+   if(transfer(card,{8}).back()==0xaa)return 10;
+   if(transfer(card,{0,8,0}).back()!=0xff)return 11;
    if(transfer(card,{0,5,0}).back()!=(infrared?0:255))return 1;
    auto command=[&](std::vector<uint8_t> bytes){if(infrared)bytes.insert(bytes.begin(),0);return transfer(card,bytes);};
    command({6});if((command({5,0}).back()&2)==0)return 2;
+   if(transfer(card,{8,0}).back()!=(infrared?0xaa:0xff))return 12;
+   if((command({5,0}).back()&2)==0)return 13;
    command({2,0,0x12,0x34,0x5a,0,0xa5});
    auto read=command({3,0,0x12,0x34,0,0,0});
    if(read[read.size()-3]!=0x5a||read[read.size()-2]!=0||read.back()!=0xa5)return 3;
@@ -59,4 +66,4 @@ int main(int argc,char** argv){
         assert done.returncode==0,done.stdout+done.stderr
     exe=next(p for p in(build/'ir_check',build/'Release/ir_check.exe')if p.exists())
     done=subprocess.run([str(exe),str(tmp_path)],capture_output=True,text=True,timeout=20)
-    assert done.returncode==0,done.stdout+done.stderr
+    assert done.returncode==0,f'exit={done.returncode}\n'+done.stdout+done.stderr
