@@ -40,3 +40,10 @@ def test_guard_does_not_trust_an_executable_section_outside_its_load_mapping(tmp
     with pytest.raises(PCError, match='load mapping'):
         guard_generated(tmp_path, original, expected_functions=1)
     assert snapshot(tmp_path) == before
+
+
+def test_code_identity_is_checked_before_cheat_data_side_effects(tmp_path):
+    emission(tmp_path)
+    guard_generated(tmp_path,program()[0],expected_functions=1,cheat_poll=True)
+    text=(tmp_path/'original.cpp').read_text()
+    assert text.index('::check(rdram);')<text.index('decomp_ps2_cheats::poll(rdram);')

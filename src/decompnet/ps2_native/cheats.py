@@ -144,6 +144,7 @@ def install(root, policy, prepared, records, emitter, run):
                 generated.append(dict(group=group['index'],mask=alternative['mask'],function=start,
                     analysis_sha256=hashlib.sha256(source).hexdigest(),**counts))
             wrapper += [declaration+' {',f'    {namespace}::check_range(rdram,{start}u,{size}u);',
+                f'    if(decomp_ps2_cheats::selection({group["index"]}u)) decomp_ps2_cheats::poll(rdram);',
                 f'    switch(decomp_ps2_cheats::selection({group["index"]}u)) {{',
                 f'case 0: {base}(rdram,ctx,runtime); return;',*cases,
                 'default: throw std::runtime_error("uncompiled PS2 cheat selection");','    }','}']

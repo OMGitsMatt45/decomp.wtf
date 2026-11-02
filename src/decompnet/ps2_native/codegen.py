@@ -79,14 +79,14 @@ def guard_generated(folder: Path, original: bytes, *, expected_functions: int,
         if matches:
             def checked(match):
                 hook='\n    decomp_ps2_cheats::poll(rdram);' if cheat_poll else ''
-                if function_ranges is None:return match[0] + hook + f'\n    {namespace}::check(rdram);'
+                if function_ranges is None:return match[0] + f'\n    {namespace}::check(rdram);' + hook
                 suffix = re.search(r'_0x([0-9a-fA-F]+)$', match[1])
                 address = int(suffix[1],16) if suffix else None
                 size = function_ranges.get(address,0)
                 if not size or address & 3 or size & 3 or not any(s['address'] <= address and
                     address + size <= s['address'] + s['size'] for s in sections):
                     raise PCError('PS2 function guard has no exact typed code range: '+match[1])
-                return match[0] + hook + f'\n    {namespace}::check_range(rdram, {address}u, {size}u);'
+                return match[0] + f'\n    {namespace}::check_range(rdram, {address}u, {size}u);' + hook
             text = re.sub(DECLARATION + r' \{',
                 checked, text)
             sources[path] = ('#include "decomp_cheats.hpp"\n' if cheat_poll else '') + f'#include "{header.name}"\n' + text
