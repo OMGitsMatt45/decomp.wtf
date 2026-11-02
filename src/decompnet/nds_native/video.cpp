@@ -289,6 +289,21 @@ bool background_polygon(const Scene& scene,const dsr::Gpu3DPolygon& p) {
 }
 }
 
+WorldSource world_source(const Frame& frame) {
+    WorldSource result;
+    if(!frame.history||!frame.top_origins||!frame.bottom_origins)return result;
+    std::map<std::pair<uint64_t,bool>,unsigned> counts;
+    for(bool top:{false,true}) {
+        const auto tags=top?frame.top_origins:frame.bottom_origins;
+        for(unsigned i=0;i<256*192;++i)if(tags[i]){++counts[{tags[i]>>16,top}];++result.origins;}
+    }
+    for(const auto& scene:*frame.history)if(scene.widescreen&&scene.supported&&
+        std::any_of(scene.polygons.begin(),scene.polygons.end(),[](const auto& p){return world_polygon(p);}))
+        for(bool top:{false,true})if(counts[{scene.serial,top}]>result.pixels)
+            {result.scene=&scene;result.on_top=top;result.pixels=counts[{scene.serial,top}];}
+    return result;
+}
+
 struct Display::Impl {
     Options options;
     SDL_Window* window=nullptr;SDL_GLContext context=nullptr;
@@ -653,19 +668,43 @@ struct Display::Impl {
         }
         return false;
     }
+    Rect anchored(const Frame::HudRegion& region,Box b,float ui_scale,float margin,Rect destination) {
+        using Anchor=Frame::HudRegion::Anchor;
+        if(region.anchor==Anchor::Canvas)return {width/2.f+(b.x-128)*ui_scale,margin+(192-b.y-b.h)*ui_scale,b.w*ui_scale,b.h*ui_scale};
+        if(region.anchor==Anchor::Center)destination.x=(width-b.w*ui_scale)/2;
+        if(region.anchor==Anchor::TopRight)return {width-margin-(region.x+region.w-b.x)*ui_scale,height-margin-(b.y-region.y+b.h)*ui_scale,b.w*ui_scale,b.h*ui_scale};
+        return destination;
+    }
+    bool sparse_hud(const Frame& frame,const uint32_t* primary,bool upper,float ui_scale,float margin) {
+        using Anchor=Frame::HudRegion::Anchor;
+        const auto color=primary[0];
+        auto contains=[](const auto& r,int x,int y){return x>=r.x&&y>=r.y&&x<r.x+r.w&&y<r.y+r.h;};
+        const bool hints=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& r){return r.on_top==upper&&r.anchor!=Anchor::Automatic;});
+        if(!hints)return false;
+        for(int y=0;y<192;++y)for(int x=0;x<256;++x)if(primary[y*256+x]!=color&&
+            std::none_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& r){return r.on_top==upper&&r.anchor!=Anchor::Automatic&&contains(r,x,y);}))return false;
+        std::vector<uint32_t> base(primary,primary+256*192),overlay(256*192);
+        for(const auto& r:frame.hud_regions)if(r.on_top==upper&&r.anchor!=Anchor::Automatic)
+            for(int y=std::max(0,r.y);y<std::min(192,r.y+r.h);++y)for(int x=std::max(0,r.x);x<std::min(256,r.x+r.w);++x)base[y*256+x]=color;
+        native_pane(base.data(),{0,0,256,192},fit(float(width),float(height),4.f/3),!upper);
+        for(const auto& r:frame.hud_regions)if(r.on_top==upper&&r.anchor!=Anchor::Automatic) {
+            std::fill(overlay.begin(),overlay.end(),0);int left=256,right=0,top=192,bottom=0;
+            for(int y=std::max(0,r.y);y<std::min(192,r.y+r.h);++y)for(int x=std::max(0,r.x);x<std::min(256,r.x+r.w);++x)if(primary[y*256+x]!=color)
+                {overlay[y*256+x]=primary[y*256+x];left=std::min(left,x);right=std::max(right,x+1);top=std::min(top,y);bottom=std::max(bottom,y+1);}
+            if(left>=right||top>=bottom)continue;
+            const Box b{left,top,right-left,bottom-top};
+            const auto destination=anchored(r,b,ui_scale,margin,{(width-b.w*ui_scale)/2,margin+(192-b.y-b.h)*ui_scale,b.w*ui_scale,b.h*ui_scale});
+            upload(screen_texture,256,192,overlay.data(),GL_BGRA);blit(screen_texture,b,destination,false);
+            touch_regions.push_back({destination,b,!upper});
+        }
+        return true;
+    }
     bool dynamic(const Frame& frame) {
         if(!options.dynamic_widescreen||width<height||!frame.history||!frame.top_origins||!frame.bottom_origins)return false;
         // Follow the raster actually on the LCD, including CPU/VRAM captures,
         // rather than a newer submitted scene or POWCNT1 alone.
-        std::map<std::pair<uint64_t,bool>,unsigned> counts;
-        for(bool top:{false,true}) {
-            const auto tags=top?frame.top_origins:frame.bottom_origins;
-            for(unsigned i=0;i<256*192;++i)if(tags[i])++counts[{tags[i]>>16,top}];
-        }
-        const Scene* scene=nullptr;bool on_top=false;unsigned dominant=1024;
-        for(const auto& s:*frame.history)if(s.widescreen&&s.supported&&
-            std::any_of(s.polygons.begin(),s.polygons.end(),[](const auto& p){return world_polygon(p);}))
-            for(bool top:{false,true})if(counts[{s.serial,top}]>dominant){scene=&s;on_top=top;dominant=counts[{s.serial,top}];}
+        const auto source=world_source(frame);
+        const Scene* scene=source.scene;const bool on_top=source.on_top;const unsigned dominant=source.pixels;
         if(!scene) {
             if(frame.mode==Frame::Mode::Gameplay) {
                 // A loading/fade frame can lack replayable world geometry.
@@ -683,8 +722,10 @@ struct Display::Impl {
                 // origin. It must use the same HUD scale as its later frames.
                 const auto destination=page?Rect{width-margin-256*ui_scale,height-margin-192*ui_scale,256*ui_scale,192*ui_scale}:
                     fit(float(width),float(height),4.f/3);
-                native_pane(primary,{0,0,256,192},destination,!upper);
-                for(const auto& s:*frame.history)captured(s,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
+                if(page||!sparse_hud(frame,primary,upper,ui_scale,margin)) {
+                    native_pane(primary,{0,0,256,192},destination,!upper);
+                    for(const auto& s:*frame.history)captured(s,upper?frame.top_origins:frame.bottom_origins,destination,true,upper?frame.top_brightness:frame.bottom_brightness);
+                }
                 const bool battle=frame.auxiliary==Frame::Auxiliary::Battle;
                 layout_name=battle?"battle":"field";
                 if(battle) {
@@ -799,12 +840,17 @@ struct Display::Impl {
                 const bool opaque_menu=opaque>256*192*9/10;
                 const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
                     b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
+                const auto hint=std::find_if(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
+                    b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
                 const bool panel=opaque_menu||fixed_hud||layout_detail::framed_box(frames,b);
                 const bool dialogue=(!opaque_menu&&panel&&b.w>=190&&b.y+b.h>=155)||caption;
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
                 Rect destination{dialogue?(width-w)/2:width-margin-w,
                     dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
                 if(authored_caption)destination.x=width/2.f+(b.x-128)*ui_scale;
+                if(hint!=frame.hud_regions.end()) {
+                    destination=anchored(*hint,b,ui_scale,margin,destination);
+                }
                 // Unframed sprites remain attached to their native world
                 // projection: damage, touch arrows, NPC and item indicators.
                 if(!panel&&!dialogue) {
