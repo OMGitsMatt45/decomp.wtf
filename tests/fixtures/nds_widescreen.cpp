@@ -117,6 +117,13 @@ int main() {
             require(pixels[px+py*960]==0xffff00ff,"world sprites keep their position across animation sizes and heights");
         }
         foreground.fill(1ull<<32);bottom.fill(0xffc0a060);
+        for(int yy=8;yy<41;++yy)for(int xx=212;xx<244;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
+        std::array<video::Frame::HudRegion,1> hud{{{208,0,48,48,true}}};frame.hud_regions=hud;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[925+55*960]==0xffff00ff,"identified fixed HUD buttons retain their corner and smaller scale");
+        hud[0].on_top=false;display.present(frame);pixels=display.read_pixels();
+        require(pixels[760+67*960]==0xffff00ff,"HUD ownership never relocates sprites on the other LCD");
+        frame.hud_regions={};foreground.fill(1ull<<32);
         frame.mode=video::Frame::Mode::Gameplay;frame.auxiliary=video::Frame::Auxiliary::Battle;
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="battle"&&pixels[60+60*960]!=0xffc0a060,"battle setup/results never expose an empty map backdrop");

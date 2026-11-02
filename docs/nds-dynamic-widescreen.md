@@ -80,7 +80,10 @@ Unframed foreground sprites keep their native world projection regardless of
 animation size or height. Bounded frames and lower captions use the smaller
 HUD scale; a choice window touching its dialogue remains one group. Party and
 results panels retain native touch coordinates while cropping outside border
-margins. A gameplay frame without replayable geometry uses its current native
+margins. Optional `Frame::hud_regions` identify fixed buttons by native bounds
+and source LCD; these stay at HUD scale while other unframed sprites follow
+the world. Projects must identify their buttons rather than treating every
+small sprite as a fixed HUD element. A gameplay frame without replayable geometry uses its current native
 primary LCD and background color rather than promoting its map to the main
 picture. It cannot synthesize geometry missing from that frame.
 

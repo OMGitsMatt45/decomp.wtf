@@ -779,7 +779,9 @@ struct Display::Impl {
             for(const auto b:boxes) {
                 const bool caption=b.y>=140&&b.h<=32&&b.w>=80;
                 const bool opaque_menu=opaque>256*192*9/10;
-                const bool panel=opaque_menu||layout_detail::framed_box(frames,b);
+                const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
+                    b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
+                const bool panel=opaque_menu||fixed_hud||layout_detail::framed_box(frames,b);
                 const bool dialogue=(!opaque_menu&&panel&&b.w>=190&&b.y+b.h>=155)||caption;
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
                 Rect destination{dialogue?(width-w)/2:width-margin-w,

@@ -6,6 +6,7 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,8 @@ struct Frame {
     enum class Auxiliary {Auto,Hidden,Map,Battle};
     Mode mode=Mode::Auto;
     Auxiliary auxiliary=Auxiliary::Auto;
+    struct HudRegion {int x,y,w,h;bool on_top;};
+    std::span<const HudRegion> hud_regions;
 };
 struct Options {
     std::string renderer="auto";
