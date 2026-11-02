@@ -166,7 +166,7 @@ def parameterize(first, second, size):
 def emit_body(recompiler, sdk, item, folder, ordinal, run):
     """Retain ordinary editable C; the temporary paired translation is discarded."""
     folder.mkdir(parents=True)
-    data = item['data'];prefix = f'decomp_copy{ordinal}_'
+    data = item['data'];prefix = f'decomp_copy{ordinal}_';external_calls=set()
     with tempfile.TemporaryDirectory(prefix='.copy-proof-', dir=folder) as temporary:
         stages = [];uncompiled=[]
         for index, base in enumerate(BASES):
@@ -183,7 +183,10 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
         sources = sorted(first.glob('*_full_*.c'))+[first/'COPY.EXE_decls.h']
         for path in sources:
             paired = second/path.name
-            text = parameterize(path.read_text(), paired.read_text(), len(data))
+            original=path.read_text()
+            external_calls.update(address for address in codegen.direct_call_targets(original)
+                if not BASES[0]<=address<BASES[0]+len(data))
+            text = parameterize(original, paired.read_text(), len(data))
             text = re.sub(r'\b((?:func_|psx_alias_body_)[0-9a-fA-F]{8})\b', prefix+r'\1', text)
             text = re.sub(r'\b('+prefix+r'(?:func_|psx_alias_body_)[0-9a-fA-F]{8})\(CPUState\* cpu\)',
                           r'\1(CPUState* cpu,uint32_t decomp_base)', text)
@@ -203,6 +206,7 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
             entries.append(dict(offset=offset,resume=continuation-BASES[0] if continuation else None,
                                 function=prefix+function))
     return dict(sha256=item['sha256'],size=len(data),source=item['source'],entries=entries,
+                external_calls=sorted(external_calls),
                 uncompiled_trap_offsets=uncompiled[0])
 
 

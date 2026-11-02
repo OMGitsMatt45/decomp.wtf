@@ -140,8 +140,13 @@ def dispatch_entries(text):
     return sorted(entries)
 
 
+def direct_call_targets(text):
+    return {int(target,16) for target in re.findall(
+        r'cpu->pc = (0x[0-9a-fA-F]+)u; return;\s*/\* CPS jal -> 0x[0-9a-fA-F]+ \*/',text)}
+
+
 def module(recompiler,disc,folder,run,sdk):
-    folder.mkdir(parents=True)
+    folder.mkdir(parents=True,exist_ok=True)
     image=disc['image'];info=disc['info'];ordinal=disc.get('module_index',disc['index']);prefix=f'decomp_m{ordinal}_'
     exe=folder/(Path(disc.get('boot','PSX.EXE')).name or 'PSX.EXE');exe.write_bytes(image)
     entries=seeds(image,info)
@@ -157,9 +162,14 @@ def module(recompiler,disc,folder,run,sdk):
         f'    extern uint64_t decomp_native_dispatches, decomp_module_dispatches[];\n'
         f'    decomp_native_dispatches++;decomp_module_dispatches[{ordinal-1}]++;\n    entry->fn(cpu);')
     dispatch.write_text(original,encoding='utf-8')
+    external_calls=set()
+    physical_low=info['load']&0x1fffffff
     for path in folder.iterdir():
         if path.suffix not in ('.c','.h'):continue
         text=path.read_text(encoding='utf-8')
+        for address in direct_call_targets(text):
+            if not physical_low<=(address&0x1fffffff)<physical_low+len(image)-2048:
+                external_calls.add(address)
         for name in sorted(EXPORTS,key=len,reverse=True):text=re.sub(r'\b'+name+r'\b',prefix+name,text)
         text=re.sub(r'\b(?:func_|psx_alias_body_)[0-9a-fA-F]{8}\b',lambda match:prefix+match[0],text)
         for name in ('dirty_ram_text_native_ok_ranges_from','dirty_ram_text_native_ok_ranges'):
@@ -195,11 +205,43 @@ int {prefix}dirty_ram_text_native_ok_ranges(const uint32_t *ranges,uint32_t coun
 '''
     with dispatch.open('a',encoding='utf-8') as stream:stream.write(guard)
     return dict(index=ordinal,disc=disc['index'],prefix=prefix,seeds=len(entries),
+                external_calls=sorted(external_calls),
                 uncompiled_trap_continuations=uncompiled,
                 entries=emitted_entries,load_address=low,image_size=len(payload),
                 image_sha256=hashlib.sha256(image).hexdigest(),
                 dispatch_sha256=hashlib.sha256(dispatch.read_bytes()).hexdigest(),
                 **({'source':disc['source']} if 'source' in disc else {}))
+
+
+def close_resident_calls(recompiler,originals,modules,run,sdk,log=lambda value:None,*,additional_calls=()):
+    """Close emitted cross-image calls over boot code and loaded libraries."""
+    attempted={}
+    for _ in range(16):
+        calls={address&0x1fffffff for item in modules for address in item['external_calls']}
+        calls.update(address&0x1fffffff for address in additional_calls)
+        changed=False
+        for position,(item,folder) in enumerate(originals):
+            info=item['info'];low=info['load']&0x1fffffff;size=len(item['image'])-2048
+            ordinal=item['module_index'];compiled=modules[ordinal-1]
+            tried=attempted.setdefault(ordinal,set())
+            candidates={info['load']+address-low for address in calls if low<=address<low+size}
+            missing=candidates-set(compiled['entries'])-tried
+            if not missing:continue
+            tried.update(missing);changed=True
+            updated={**item,'info':{**info,'native_entries':sorted(set(info.get('native_entries',[]))|missing)}}
+            log(f'Compiling {len(missing)} external call entries for image {ordinal}, disc {item["index"]}')
+            # The exporter owns this newly generated tree. Keep nested overlay
+            # directories; replace only this image's flat output files.
+            for path in folder.iterdir():
+                if path.is_file():path.unlink()
+            regenerated=module(recompiler,updated,folder,run,sdk)
+            compiled.update(regenerated)
+            originals[position]=(updated,folder)
+        if not changed:
+            return [dict(module_index=ordinal,seeded_calls=sorted(entries),
+                uncompiled_calls=sorted(entries-set(modules[ordinal-1]['entries'])))
+                for ordinal,entries in sorted(attempted.items()) if entries]
+    raise ValueError('native cross-image call discovery did not converge')
 
 
 def registry(modules,path,*,copied=False):
