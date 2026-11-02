@@ -191,7 +191,7 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     assert first['observed'][:4]==[1,0xd0000001,2048,0xa004]
     assert first['observed'][5]==2048
     assert first['audio_nonzero_frames']>0
-    second,_=run(native_project,'disc2','--headless','--renderer','software','--disc',
+    second,second_pixels=run(native_project,'disc2','--headless','--renderer','software','--disc',
         str(native_project[1]/'assets/disc2/Original disc 2.iso'),frames=360)
     assert second['disc_index']==2 and second['disc_count']==2
     assert second['interpreted_instructions']==0 and second['coverage_misses']==0
@@ -200,6 +200,10 @@ def test_native_guest_cd_audio_and_shared_memory_cards_across_disc_boots(native_
     # The original helper bytes are identical on both discs and may safely
     # reuse the first module. Disc-specific code must produce disc 2's marker.
     assert second['depth24']
+    assert second['depth24_trailing_margin']==0
+    header=second_pixels.read_bytes().split(b'\n',3)
+    assert header[:3]==[b'P6',b'320 240',b'255']
+    assert header[3][(120*320+319)*3:(120*320+320)*3]==b'\xff\0\0'
     reference,other=run(native_project,'original-interpreted','--headless','--renderer','software',interp=True,frames=360)
     assert reference['native_dispatches']==0 and reference['interpreted_instructions']>0
     assert reference['execution_model']=='reference'

@@ -59,6 +59,10 @@ def executable(index=1):
         p.li(8,0x1f801810);p.li(9,0xff0000ff);p.li(10,0x00ff0000);p.li(11,0x0000ff00);p.li(12,19200)
         p.label('rgb888');p.emit(0xad090000,0xad0a0000,0xad0b0000,0x258cffff)
         p.branch(5,12,0,'rgb888')
+        # Display a VRAM-only copy. CPU-upload coverage at x=0 must not
+        # erase the right edge of the scanout now located at x=512.
+        for value in (0x80000000,0,512,(240<<16)|480):p.store(0x1f801810,value)
+        p.store(0x1f801814,0x05000200)
     # A looping original ADPCM block through the SPU transfer FIFO and voice 0.
     for address,value in ((0x1f801daa,0xc010),(0x1f801da6,0x0200),(0x1f801dac,4)):
         p.store(address,value,True)

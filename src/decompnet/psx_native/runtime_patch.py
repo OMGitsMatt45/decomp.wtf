@@ -10,6 +10,11 @@ def replace(text,old,new):
 
 
 def patch(root):
+    config=root/'recompiler/src/config_loader.h'
+    text=config.read_text(encoding='utf-8-sig')
+    text=replace(text,'int                   video_depth24_trailing_margin = 8;',
+        'int                   video_depth24_trailing_margin = 0;')
+    config.write_text(text,encoding='utf-8')
     execution=root/'runtime/src/dirty_ram_interp.c'
     execution.write_text(execution_policy.patch(execution.read_text(encoding='utf-8-sig')),encoding='utf-8')
     bios=root/'generated/OpenBIOS_dispatch.c'
@@ -29,6 +34,11 @@ def patch(root):
     bios.write_text(text,encoding='utf-8')
     path=root/'runtime/src/main.cpp'
     text=path.read_text(encoding='utf-8-sig')
+    # A CPU-upload coverage heuristic cannot identify pixels rendered/copied
+    # entirely inside VRAM. Preserve the full 24-bit scanout by default;
+    # explicit game configuration can still request a trailing margin.
+    text=replace(text,'static int           g_video_depth24_trailing_margin = 8;',
+        'static int           g_video_depth24_trailing_margin = 0;')
     text=replace(text,'/* ---- SDL state ---- */',
         '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\n'
         'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);\n'

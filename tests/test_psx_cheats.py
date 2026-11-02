@@ -28,6 +28,7 @@ def test_emitter_cache_reuses_verified_bytes_and_regenerates_corruption(tmp_path
         seed=folder/'seeds.txt';seed.write_text('0x80010000\n')
         if index==2:
             next((tmp_path/'.psx-native-cache').glob('*/*/original.c')).write_text('corrupt')
+        if index==1:(folder/'ORIGINAL.EXE_full_99.c').write_text('obsolete raw shard')
         if index==4:
             metadata=next((tmp_path/'.psx-native-cache').glob('*/*/files.json'))
             legacy=json.loads(metadata.read_text())
@@ -36,6 +37,7 @@ def test_emitter_cache_reuses_verified_bytes_and_regenerates_corruption(tmp_path
         emit('emitter',exe,seed,folder,run,sdk,'original emitter')
         assert (folder/'original.c').read_text()=='int original(void){return 42;}\n'
         assert (folder/'ORIGINAL.EXE_full.ranges').read_text()=='F 80010000\nR 80010000 C\n'
+        assert not (folder/'ORIGINAL.EXE_full_99.c').exists()
     assert len(calls)==3
     # The repaired entry must be reused on the following export too.
     emit('emitter',exe,seed,folder,run,sdk,'original emitter')
@@ -257,6 +259,44 @@ def test_compiled_instruction_variants_execute_and_reject_stale_bytes(tmp_path):
         assert result['registers'][2]==wanted and result['native_dispatches']>0 and result['cps_mode']==1
     result=json.loads(_run([exe,tmp_path/'variant/CHEAT_VARIANT.EXE','0x80010000','0','0','corrupt'],'Reject stale native choice'))
     assert result['native_rejected']
+
+
+def test_native_syscall_transfer_preserves_epc_and_resumes_after_the_trap(tmp_path):
+    if not os.environ.get('DECOMP_REQUIRE_PSX_NATIVE'):pytest.skip('pinned static emitter required')
+    from decompnet.psx_native import _sdk,_recompiler,_run,codegen
+    sdk=_sdk();emitter=_recompiler(sdk)
+    header=bytearray(2048);header[:8]=b'PS-X EXE'
+    struct.pack_into('<4I',header,0x10,0x80010000,0,0x80010000,16)
+    image=bytes(header)+struct.pack('<4I',0x0000000c,0x2402002a,0x03e00008,0)
+    item=dict(image=image,info=dict(load=0x80010000,entrypoint=0x80010000),
+              boot='ORIGINAL.EXE',index=1,module_index=1)
+    meta=codegen.module(emitter,item,tmp_path/'original',_run,sdk)
+    assert 0x80010004 in meta['entries']
+    codegen.registry([meta],tmp_path/'modules.c')
+    host=(Path(__file__).parent/'fixtures/psx-native/runner.c').read_text()
+    host=host.replace('static size_t original_size;','unsigned char *g_psx_ram=memory;\nstatic size_t original_size;')
+    host=host.replace('/* IRQs and accelerated BIOS calls are absent in these CPU probes. */','''
+int psx_syscall(CPUState*cpu,uint32_t code){(void)code;
+    if(cpu->gpr[4]==1){cpu->pc=0;return 0;}
+    cpu->gpr[3]=cpu->pc;cpu->pc+=4;return 1;
+}
+''')
+    (tmp_path/'runner.c').write_text(host)
+    sources=[*tmp_path.glob('original/*_full_*.c'),*tmp_path.glob('original/*_dispatch.c')]
+    q=lambda value:json.dumps(value.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\nproject(TrapResume LANGUAGES C)\n'
+        'set(CMAKE_C_STANDARD 11)\nadd_executable(checks runner.c modules.c '+
+        ' '.join(q(path.relative_to(tmp_path)) for path in sources)+')\n'
+        'target_include_directories(checks PRIVATE '+q(sdk/'runtime/include')+')\n'
+        'target_compile_definitions(checks PRIVATE PSX_NO_DEBUG_TOOLS)\n')
+    _run(['cmake','-S',tmp_path,'-B',tmp_path/'build'],'Configure native trap continuation')
+    _run(['cmake','--build',tmp_path/'build','--config','Release','--parallel','2'],'Compile native trap continuation')
+    exe=next(path for path in (tmp_path/'build/checks',tmp_path/'build/Release/checks.exe') if path.is_file())
+    transfer=json.loads(_run([exe,tmp_path/'original/ORIGINAL.EXE','0x80010000','16','0'],'Run native exception transfer'))
+    assert transfer['registers'][2]==42 and transfer['registers'][3]==0x80010000
+    assert transfer['native_dispatches']>=2 and transfer['cps_mode']==1
+    direct=json.loads(_run([exe,tmp_path/'original/ORIGINAL.EXE','0x80010000','1','0'],'Run inline syscall continuation'))
+    assert direct['registers'][2]==42 and direct['registers'][3]==0
 
 
 def test_identical_programs_on_distinct_discs_share_native_code(tmp_path):

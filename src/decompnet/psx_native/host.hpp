@@ -272,6 +272,7 @@ static void decomp_frame_end() {
        <<",\"fullscreen\":"<<(s_window_fullscreen.mode?"true":"false")
        <<",\"monitor_width\":"<<monitor.w<<",\"monitor_height\":"<<monitor.h
        <<",\"depth24\":"<<(display.depth24?"true":"false")
+       <<",\"depth24_trailing_margin\":"<<g_video_depth24_trailing_margin
        <<",\"software_fallback\":"<<(!g_headless&&!gl&&g_video_renderer==1?"true":"false")
        <<",\"native_dispatches\":"<<decomp_native_dispatches<<",\"interpreted_instructions\":"<<g_dirty_ram_insns_run
        <<",\"copied_dispatches\":"<<decomp_copy_dispatches<<",\"kernel_bridge_dispatches\":"<<decomp_kernel_stub_dispatches
