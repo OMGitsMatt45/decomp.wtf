@@ -117,6 +117,18 @@ int main() {
             require(pixels[px+py*960]==0xffff00ff,"world sprites keep their position across animation sizes and heights");
         }
         foreground.fill(1ull<<32);bottom.fill(0xffc0a060);
+        // Revealing text must not jump from world scale to a HUD corner, or
+        // move its first letter as its visible width crosses a heuristic.
+        std::array<video::Frame::HudRegion,1> caption_region{{{0,148,256,32,true,true}}};
+        frame.hud_regions=caption_region;
+        for(int length:{4,30,62,79,82,180}) {
+            foreground.fill(1ull<<32);
+            for(int yy=154;yy<171;++yy)for(int xx=14;xx<14+length;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[322+485*960]==0xffff00ff,"caption prefix retains its authored position and HUD scale at every reveal width");
+            require(pixels[160+450*960]!=0xffff00ff,"short caption is never projected as a floating world sprite");
+        }
+        frame.hud_regions={};foreground.fill(1ull<<32);
         for(int yy=8;yy<41;++yy)for(int xx=212;xx<244;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
         std::array<video::Frame::HudRegion,1> hud{{{208,0,48,48,true}}};frame.hud_regions=hud;
         display.present(frame);pixels=display.read_pixels();

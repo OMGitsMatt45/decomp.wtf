@@ -82,8 +82,12 @@ HUD scale; a choice window touching its dialogue remains one group. Party and
 results panels retain native touch coordinates while cropping outside border
 margins. Optional `Frame::hud_regions` identify fixed buttons by native bounds
 and source LCD; these stay at HUD scale while other unframed sprites follow
-the world. Projects must identify their buttons rather than treating every
-small sprite as a fixed HUD element. A gameplay frame without replayable geometry uses its current native
+the world. A region with `caption=true` groups a revealing text line even
+before it reaches the automatic caption width threshold. Its first glyph
+keeps its authored native x coordinate at HUD scale instead of re-centering
+as more letters appear. Projects identify active text bounds from their own
+read-only UI context; ordinary floating sprites retain world projection.
+A gameplay frame without replayable geometry uses its current native
 primary LCD and background color rather than promoting its map to the main
 picture. An opaque known 2D page keeps its HUD scale even when it hides every
 world origin on its first frame. Native fallback cannot synthesize geometry
