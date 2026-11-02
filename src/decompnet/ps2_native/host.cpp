@@ -285,6 +285,8 @@ int main(int argc,char **argv) {
            <<",\n  \"iop_coverage_misses\":"<<decomp_ps2::execution::iop_coverage_misses.load()
            <<",\n  \"iop_coverage_pc\":"<<decomp_ps2::execution::iop_coverage_pc.load()
            <<",\n  \"vu_native_pairs\":"<<decomp_ps2::execution::vu_native_pairs.load()
+           <<",\n  \"vu_native_programs\":"<<decomp_ps2::execution::vu_native_programs.load()
+           <<",\n  \"vu_native_program_pairs\":"<<decomp_ps2::execution::vu_native_program_pairs.load()
            <<",\n  \"vu_interpreted_pairs\":"<<decomp_ps2::execution::vu_interpreted_pairs.load()
            <<",\n  \"vu_coverage_misses\":"<<decomp_ps2::execution::vu_coverage_misses.load()
            <<",\n  \"vu_coverage_pc\":"<<decomp_ps2::execution::vu_coverage_pc.load()
