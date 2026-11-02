@@ -106,8 +106,17 @@ def emit_native(recompiler,exe,seed,folder,run,sdk,label):
             # A cache refill can service an interrupt inside a compiled block.
             # Returning through the BIOS resumes at this fetch PC, which need
             # not be a CFG entry. Export the actual emitted suspension sites.
-            targets.update(int(pc,16) for pc in re.findall(
-                r'(?m)^[ \t]*psx_icache_fetch\(cpu, 0x([0-9A-Fa-f]{8})u\);$',text))
+            for pc in re.findall(r'(?m)^[ \t]*psx_icache_fetch\(cpu, 0x([0-9A-Fa-f]{8})u\);$',text):
+                target=int(pc,16);offset=target-load
+                if 4<=offset<len(image)-2048:
+                    previous=struct.unpack_from('<I',image,2048+offset-4)[0]
+                    op=previous>>26
+                    # An IRQ in a branch delay slot resumes at the branch,
+                    # not by independently executing its delay instruction.
+                    if (op in (1,2,3,4,5,6,7) or
+                        op==0 and previous&63 in (8,9) or
+                        op in (16,17,18,19) and previous>>21&31==8):continue
+                targets.add(target)
             rewritten.append((path,text));continuations.update(targets)
         emitted=set(dispatch_entries((folder/(exe.name+'_dispatch.c')).read_text(encoding='utf-8')))
         missing=continuations-emitted
