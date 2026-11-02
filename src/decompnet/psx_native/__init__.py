@@ -9,7 +9,7 @@ import shutil
 import subprocess
 
 from .. import pc,toolchains
-from . import codegen,compatibility,copies,media,runtime_patch
+from . import cheats,codegen,compatibility,copies,media,runtime_patch
 
 BACKEND_ID='psx-psxrecomp-experimental'
 SDK_COMMIT='31df2e1e0e0a6525733e68ff70e72ecbef84bb09'
@@ -24,7 +24,7 @@ def _source(name):return resources.files(__package__).joinpath(name).read_text(e
 
 def revision():
     digest=hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','media.py','module_discovery.py','codegen.py','compatibility.py','openbios_compat.LICENSE','copies.py','execution_policy.py','kernel_stubs.inc','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake'):
+    for name in ('__init__.py','media.py','module_discovery.py','codegen.py','compatibility.py','openbios_compat.LICENSE','copies.py','execution_policy.py','kernel_stubs.inc','host.hpp','runtime_patch.py','extract_assets.py','Project.cmake','cheats.py','cheats.hpp','menu.cpp','desktop_font.hpp','desktop_font.LICENSE'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     return digest.hexdigest()
 
@@ -95,16 +95,41 @@ def generate(project,root):
     shutil.copyfile(vendor/'LICENSE',root/'LICENSES/PSXRecomp.txt')
     shutil.copyfile(vendor/'bios/OpenBIOS.LICENSE',root/'LICENSES/OpenBIOS-MIT.txt')
     (root/'LICENSES/OpenBIOS-compat-MIT.txt').write_text(_source('openbios_compat.LICENSE'),encoding='utf-8')
-    modules=[]
+    modules=[];originals=[];seen={}
+    total=sum(1+len(d.get('modules',[])) for d in project['discs'])
+    processed=0
     for disc in project['discs']:
         for index,item in enumerate([disc,*disc.get('modules',[])]):
+            processed+=1
+            # A code image shared by discs needs one native implementation.
+            # Keep all media provenance while the runtime still guards bytes.
+            identity=(hashlib.sha256(item['image']).hexdigest(),
+                tuple(codegen.seeds(item['image'],item['info'])))
+            origin=dict(disc=disc['index'],**({'source':item['source']} if 'source' in item else {}))
+            if identity in seen:
+                seen[identity]['origins'].append(origin)
+                continue
             folder=root/f'game/disc{disc["index"]}'
             if index:folder=folder/f'module{index}'
             item={**item,'index':disc['index'],'module_index':len(modules)+1}
-            modules.append(codegen.module(recompiler,item,folder,_run,sdk))
+            _log(f'Translating PS1 program {processed}/{total}; disc {disc["index"]}, module {index}')
+            compiled=codegen.module(recompiler,item,folder,_run,sdk)
+            compiled['origins']=[origin]
+            modules.append(compiled);seen[identity]=compiled
+            originals.append((item,folder))
+    entries=project.get('cheats',[])
+    if entries:
+        for item,folder in originals:
+            ranges=cheats.code_ranges(next(folder.glob('*_dispatch.c')))
+            for variant in cheats.variant_images(item,entries,ranges):
+                variant=dict(variant,module_index=len(modules)+1)
+                target=root/f'game/cheats/variant{len(modules)+1}'
+                modules.append(codegen.module(recompiler,variant,target,_run,sdk))
+    cheats.emit(entries,root)
     _log('Discover position-independent input routines for guarded RAM copies...')
     bodies=copies.discover(project['discs']);copied=[]
     for index,item in enumerate(bodies,1):
+        _log(f'Translating guarded PS1 RAM routine {index}/{len(bodies)}')
         folder=root/f'game/copies/body{index}'
         copied.append(copies.emit_body(recompiler,sdk,item,folder,index,_run))
     copies.registry(list(zip(bodies,copied)),root/'native/copies.c')
@@ -112,7 +137,10 @@ def generate(project,root):
     (root/'native/defaults.hpp').write_text('#pragma once\ninline constexpr bool decomp_default_require_gpu='+
         ('true' if project['renderer']=='opengl' else 'false')+';\n',encoding='utf-8')
     for source,target in (('host.hpp','native/decomp_host.hpp'),('Project.cmake','CMakeLists.txt'),
-                          ('extract_assets.py','tools/extract_assets.py')):
+                          ('extract_assets.py','tools/extract_assets.py'),
+                          ('cheats.hpp','native/cheats.hpp'),('menu.cpp','native/menu.cpp'),
+                          ('desktop_font.hpp','native/desktop_font.hpp'),
+                          ('desktop_font.LICENSE','LICENSES/Spleen-BSD-2-Clause.txt')):
         (root/target).write_text(_source(source),encoding='utf-8')
     (root/'native/static_execution.c').write_text('#define DECOMP_PSX_NATIVE_ONLY 1\n'
         '#include "../runtime/psxrecomp/runtime/src/dirty_ram_interp.c"\n',encoding='utf-8')
@@ -199,6 +227,17 @@ the previous/next disc through the actual tray-change path. Use this when the
 game requests a disc change. Keyboard/gamepad mapping is in config.ini; memory
 cards live under saves. Keep them when updating the source project.
 
+F1 opens Game settings, including Cheats and the ordered disc roster. Cheats
+start disabled each launch. Use --cheat INDEX for bounded developer checks.
+An export made with --cheats OWNER.cht includes the validated GameShark catalog
+and separately guarded native code variants for its instruction-changing writes.
+Data grants can persist after a cheat is disabled. A7 match/restore patches and
+instruction writes restore their owned bytes when switched off. Related choices
+whose names share a backslash group are mutually exclusive.
+
+--input-script PATH replays FRAME ACTIVE_LOW_PAD_MASK rows at VBlank boundaries
+for offline regression checks; the chosen mask persists until the next row.
+
 For development, configure with -DPS1_BUILD_REFERENCE=ON and build the separate
 ps1_probe target. PSX_FORCE_INTERP=1 selects original-byte reference execution in
 that executable. The normal player rejects this setting. Reference and native
@@ -215,18 +254,22 @@ acceptance step; a build or boot does not certify every game's compatibility.
 '''
 
 
-def _prepare(inputs,*,title='',renderer='auto'):
+def _prepare(inputs,*,title='',renderer='auto',cheat_file=None):
     pc.presentation(renderer)
     from ..rom.errors import RomError
     try:discs=media.prepare(inputs)
     except RomError as error:raise pc.PCError(str(error)) from error
-    return dict(platform='psx',discs=discs,title=title or discs[0]['path'].stem,renderer=renderer)
+    return dict(platform='psx',discs=discs,title=title or discs[0]['path'].stem,renderer=renderer,
+                cheats=cheats.load(cheat_file) if cheat_file else [])
 
 
-def export(inputs,output,*,title='',renderer='auto',log=None):
-    project=_prepare(inputs,title=title,renderer=renderer)
+def export(inputs,output,*,title='',renderer='auto',cheat_file=None,log=None):
     token=_progress.set(log)
-    try:return pc.export_backend(project,Path(output),backend())
+    try:
+        _log('Inspecting ordered PS1 media and discovering embedded programs...')
+        project=_prepare(inputs,title=title,renderer=renderer,cheat_file=cheat_file)
+        _log('Discovered '+', '.join(f'disc {d["index"]}: {1+len(d.get("modules",[]))} programs' for d in project['discs']))
+        return pc.export_backend(project,Path(output),backend())
     finally:_progress.reset(token)
 
 

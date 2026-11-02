@@ -77,6 +77,13 @@ Keyboard/gamepad configuration is recorded in `config.ini`.
 requires a working GPU context. `--renderer software` explicitly selects software.
 `--resolution WIDTHxHEIGHT` chooses a starting size; it does not fix the render
 resolution for later resizes. `--fullscreen` starts at native monitor resolution.
+
+F1 opens **Game settings**, including **Cheats** and **Discs**, without requiring
+the optional recomp-ui dependency. Export with `--cheats owner.cht` to include an
+owner-supplied DuckStation GameShark catalog. Supported data/condition/slide codes
+and guarded native instruction choices are described in [PS1 cheats](ps1-native-cheats.md).
+Identical code images shared by multiple discs use one byte-guarded native module;
+the manifest retains each disc's source provenance.
 An export made with `--renderer opengl` also requires OpenGL by default at launch;
 headless checks can explicitly override it with `--renderer software`.
 
