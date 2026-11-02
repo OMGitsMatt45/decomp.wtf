@@ -21,15 +21,25 @@ def test_emitter_cache_reuses_verified_bytes_and_regenerates_corruption(tmp_path
         destination=Path(command[command.index('--out-dir')+1])
         (destination/'original.c').write_text('int original(void){return 42;}\n')
         (destination/'original.h').write_text('int original(void);\n')
-    for index in range(3):
+        (destination/'ORIGINAL.EXE_full.ranges').write_text('F 80010000\nR 80010000 C\n')
+    for index in range(6):
         folder=tmp_path/f'output{index}';folder.mkdir()
         exe=folder/'ORIGINAL.EXE';exe.write_bytes(b'original input')
         seed=folder/'seeds.txt';seed.write_text('0x80010000\n')
         if index==2:
             next((tmp_path/'.psx-native-cache').glob('*/*/original.c')).write_text('corrupt')
+        if index==4:
+            metadata=next((tmp_path/'.psx-native-cache').glob('*/*/files.json'))
+            legacy=json.loads(metadata.read_text())
+            legacy.pop('ORIGINAL.EXE_full.ranges')
+            metadata.write_text(json.dumps(legacy))
         emit('emitter',exe,seed,folder,run,sdk,'original emitter')
         assert (folder/'original.c').read_text()=='int original(void){return 42;}\n'
-    assert len(calls)==2
+        assert (folder/'ORIGINAL.EXE_full.ranges').read_text()=='F 80010000\nR 80010000 C\n'
+    assert len(calls)==3
+    # The repaired entry must be reused on the following export too.
+    emit('emitter',exe,seed,folder,run,sdk,'original emitter')
+    assert len(calls)==3
 
 
 def catalog(tmp_path, body):

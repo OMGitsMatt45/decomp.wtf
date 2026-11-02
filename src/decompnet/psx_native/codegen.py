@@ -25,10 +25,11 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
     try:
         metadata=json.loads((cache/'files.json').read_text(encoding='utf-8'))
         if not isinstance(metadata,dict) or not metadata:raise ValueError('empty cache')
+        if exe.name+'_full.ranges' not in metadata:raise ValueError('legacy cache omits emitter sidecars')
         payload=[]
         for name,digest in metadata.items():
             path=Path(name)
-            if path.name!=name or path.suffix not in ('.c','.h'):raise ValueError('external cache file')
+            if path.name!=name or path.suffix not in ('.c','.h','.ranges'):raise ValueError('external cache file')
             data=(cache/name).read_bytes()
             if hashlib.sha256(data).hexdigest()!=digest:raise ValueError('changed cache file')
             payload.append((name,data))
@@ -37,7 +38,7 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
     except (OSError,ValueError,TypeError):
         pass
     run([recompiler,exe,'--seeds',seed,'--out-dir',folder,'--strict','--project-root',sdk],label)
-    files=sorted(p for p in folder.iterdir() if p.suffix in ('.c','.h'))
+    files=sorted(p for p in folder.iterdir() if p.suffix in ('.c','.h','.ranges'))
     if not files:raise ValueError('PS1 emitter produced no source files')
     cache.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.emission-',dir=cache.parent) as temporary:
@@ -50,8 +51,11 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
         try:stage.rename(cache)
         except OSError:
             if not cache.is_dir():raise
-            # Another export may have published it. Leave an invalid existing
-            # entry unused rather than replacing concurrently accessed data.
+            # Upgrade legacy/corrupt entries without exposing partial files.
+            # Readers verify every file; the complete index is published last.
+            for path in stage.iterdir():
+                if path.name!='files.json':os.replace(path,cache/path.name)
+            os.replace(stage/'files.json',cache/'files.json')
 
 
 def seeds(image,info):
