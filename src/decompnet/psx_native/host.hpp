@@ -160,9 +160,14 @@ static bool decomp_event(const SDL_Event &event) {
     if(event.type!=SDL_KEYDOWN||event.key.repeat)return false;
 #ifdef PSX_SDL3
     const auto key=event.key.key;
+    const auto scan=event.key.scancode;
 #else
     const auto key=event.key.keysym.sym;
+    const auto scan=event.key.keysym.scancode;
 #endif
+    if(std::getenv("DECOMP_PSX_TRACE"))std::fprintf(stdout,
+        "decomp.wtf: keydown frame=%llu key=%u scan=%u menu=%d\n",
+        (unsigned long long)s_frame_count,(unsigned)key,(unsigned)scan,(int)menu);
     if(key==SDLK_F1) {
         decomp_keybinds_clear_pulses();
         if(!savestate_menu_open&&!psx_rewind_is_open())psx_runtime_menu_open();
@@ -187,6 +192,16 @@ static bool decomp_event(const SDL_Event &event) {
 #endif
     }
     return false;
+}
+static void decomp_input_trace(int override) {
+    if(!std::getenv("DECOMP_PSX_TRACE"))return;
+    static int last_buttons=-1,last_connected=-1,last_analog=-1,last_kind=-1;
+    const int buttons=sio_get_pad_buttons_slot(0),connected=sio_get_pad_connected(0);
+    const int analog=sio_get_pad_analog(0),kind=g_players[0].kind;
+    if(buttons==last_buttons&&connected==last_connected&&analog==last_analog&&kind==last_kind)return;
+    std::fprintf(stdout,"decomp.wtf: input frame=%llu buttons=%04x connected=%d analog=%d kind=%d override=%d\n",
+        (unsigned long long)s_frame_count,buttons,connected,analog,kind,override);
+    last_buttons=buttons;last_connected=connected;last_analog=analog;last_kind=kind;
 }
 static bool decomp_capture(int dw,int dh) {
     if(decomp_capture_path.empty())return true;

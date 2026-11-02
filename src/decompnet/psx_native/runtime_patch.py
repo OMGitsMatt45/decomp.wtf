@@ -77,7 +77,7 @@ def patch(root):
     text=replace(text,'static int           g_video_depth24_trailing_margin = 8;',
         'static int           g_video_depth24_trailing_margin = 0;')
     text=replace(text,'/* ---- SDL state ---- */',
-        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\n'
+        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\nstatic void decomp_input_trace(int);\n'
         'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);\n'
         'static bool decomp_bounded_run();')
     text=replace(text,'static bool frontend_unattended() { return g_headless || g_hidden_window; }',
@@ -94,6 +94,10 @@ def patch(root):
         '        if(scripted_input>=0)override=scripted_input;')
     text=replace(text,'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {',
         'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {\n        if(decomp_event(ev))continue;')
+    if text.count('sample_pad_into_sio(override);')!=2:
+        raise ValueError('pinned PS1 pad sampling sites differ')
+    text=text.replace('sample_pad_into_sio(override);',
+        'sample_pad_into_sio(override);decomp_input_trace(override);')
     text=replace(text,'if (!repeat && host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod))',
         'if (!repeat && (key == SDLK_F1 || host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod)))')
     text=replace(text,'    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;',
