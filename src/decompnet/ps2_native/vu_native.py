@@ -146,14 +146,32 @@ def generate(catalog,folder):
                     f'return ps2_vu_program::Access::decompNativePair<VU1Interpreter::Unit::VU{unit},0x{word:016x}ull>(vu,budget,size);}}')
             entries.append('{'+f'0x{word:016x}ull,decomp_vu0_pair{index},decomp_vu1_pair{index}'+'}')
         (folder/f'pairs{start//batch}.cpp').write_text('\n'.join(text)+'\n')
-    text=['#include "decomp_vu_catalog.hpp"','#include <algorithm>',*declarations]
+    text=['#include "decomp_vu_catalog.hpp"',*declarations]
     if entries:
+        # Every vector pair performs this lookup. A fixed, immutable table
+        # avoids a binary search through the retail catalog on every pair.
+        size=1
+        while size<len(words)*2:size*=2
+        table=[None]*size;maximum=0
+        for word,entry in zip(words,entries):
+            mixed=word^(word>>30);mixed=(mixed*0xbf58476d1ce4e5b9)&0xffffffffffffffff
+            mixed^=mixed>>27;mixed=(mixed*0x94d049bb133111eb)&0xffffffffffffffff;mixed^=mixed>>31
+            slot=mixed&(size-1);probes=1
+            while table[slot] is not None:slot=(slot+1)&(size-1);probes+=1
+            table[slot]=entry;maximum=max(maximum,probes)
         text.extend(['namespace {struct Entry{uint64_t word;DecompVuFunction unit0,unit1;};',
-            'const Entry entries[]={',',\n'.join(entries),'};}','''
+            'const Entry entries[]={',',\n'.join(e or '{0,nullptr,nullptr}' for e in table),'};}','''
 DecompVuFunction decomp_find_vu_pair(uint64_t word,bool unit1){
-    const auto *found=std::lower_bound(std::begin(entries),std::end(entries),word,
-        [](const Entry &entry,uint64_t value){return entry.word<value;});
-    return found!=std::end(entries)&&found->word==word?(unit1?found->unit1:found->unit0):nullptr;
+    uint64_t mixed=word^(word>>30);mixed*=0xbf58476d1ce4e5b9ull;
+    mixed^=mixed>>27;mixed*=0x94d049bb133111ebull;mixed^=mixed>>31;
+    uint32_t slot=uint32_t(mixed)&'''+str(size-1)+'''u;
+    for(unsigned n=0;n<'''+str(maximum)+'''u;++n){
+        const auto &entry=entries[slot];
+        if(!entry.unit0)return nullptr;
+        if(entry.word==word)return unit1?entry.unit1:entry.unit0;
+        slot=(slot+1)&'''+str(size-1)+'''u;
+    }
+    return nullptr;
 }'''])
     else:text.append('DecompVuFunction decomp_find_vu_pair(uint64_t,bool){return nullptr;}')
     (folder/'catalog.cpp').write_text('\n'.join(text)+'\n')

@@ -10,7 +10,10 @@ separate reviewed profile. The runtime/core contains no title address hooks.
 [DQ8-Recompiled](https://github.com/Sinan-Karakaya/DQ8-Recompiled/tree/f6dfd968001b492415969bb70bd5aad3bfa79abd/config/SLUS_212.07).
 The profile retains the original ELF entry, excludes embedded vector/data bytes
 while preserving late EE initializers, and marks all 237 SDK bindings explicitly.
-It contains 10,881 resident entries and 1,539 entries across six MWo3 modules.
+It contains 10,882 resident entries and 1,539 entries across six MWo3 modules.
+The reviewed six-case table at `0x003c1350`, indexed by the bounded indirect
+jump at `0x002d0b80`, also registers its cross-function case `0x002d0df0`.
+The owner bytes and existing function end bound this additional entry.
 Constructor code after a module's primary text is explicitly typed; intermediate
 mutable data remains data. The complete original input hash is in index.json.
 The profile is GPL-3.0; see GPL-3.0.txt. The application integration remains MIT.

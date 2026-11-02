@@ -9,6 +9,8 @@
 #include "decomp_disc_files.hpp"
 #include "decomp_iop_execution.hpp"
 #include "decomp_vu_execution.hpp"
+#include "settings.hpp"
+#include "command_pad.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>
@@ -57,6 +59,10 @@ struct Host {
     SDL_Texture *texture=nullptr;
     dq8::gfx::SdlPadInput pad;
     std::atomic<bool> toggle{false};
+    std::atomic<bool> settings_requested{false};
+    std::filesystem::path settings_script,settings_capture;
+    std::filesystem::path pad_commands;
+    decomp_ps2::CommandPad command_pad;
     uint64_t frames=0,fields=0,last_field=UINT64_MAX,limit=0,seconds=0,pumps=0,resize_frame=0;
     uint32_t source_width=0,source_height=0;
     int drawable_width=0,drawable_height=0,resize_width=0,resize_height=0;
@@ -68,6 +74,7 @@ struct Host {
     static bool watch(void *data,SDL_Event *event) {
         auto &host=*static_cast<Host*>(data);
         if(event->type==SDL_EVENT_KEY_DOWN&&event->key.scancode==SDL_SCANCODE_F11&&!event->key.repeat)host.toggle=true;
+        if(event->type==SDL_EVENT_KEY_DOWN&&event->key.scancode==SDL_SCANCODE_F1&&!event->key.repeat&&event->key.windowID==SDL_GetWindowID(host.window))host.settings_requested=true;
         return true;
     }
     void save(const std::vector<uint8_t> &rgba,uint32_t width,uint32_t height) {
@@ -83,10 +90,17 @@ struct Host {
         if(decomp_ps2::execution::iop_coverage_misses.load()||decomp_ps2::execution::vu_coverage_misses.load())
             throw std::runtime_error("native execution coverage failure; see the run report");
         ++pumps;
+        if(settings_requested.exchange(false)){
+            runtime->eeScheduler().setHostPaused(true);
+            const bool running=decomp_ps2_settings::open(window,settings_script,settings_capture);
+            runtime->eeScheduler().setHostPaused(false);
+            if(!running)return false;
+        }
         fields=runtime->eeScheduler().currentVSyncTick();
         if(gpu) {
             if(!gpu->pumpEvents())return false;
             uint32_t held=0,pressed=0,sticks=0;gpu->hostPadState(held,pressed,sticks);
+            command_pad.sample(pad_commands,fields,held,pressed);
             ps2PadPublishHostState(held,pressed,sticks);
             frames=gpu->stats().presents;
         } else {
@@ -97,6 +111,7 @@ struct Host {
             }
             pad.poll(SDL_GetKeyboardState(nullptr),(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0);
             uint32_t held=0,pressed=0,sticks=0;pad.read(held,pressed,sticks);
+            command_pad.sample(pad_commands,fields,held,pressed);
             ps2PadPublishHostState(held,pressed,sticks);
             std::vector<uint8_t> rgba;uint32_t w=0,h=0;
             if(runtime->gs().copyLatchedHostPresentationFrame(rgba,w,h)&&w&&h) {
@@ -114,7 +129,7 @@ struct Host {
             }
         }
         if(toggle.exchange(false)){
-            fullscreen=!fullscreen;
+            fullscreen=(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN)==0;
             if(!SDL_SetWindowFullscreen(window,fullscreen))throw std::runtime_error(SDL_GetError());
         }
         if(resize_frame&&frames>=resize_frame){
@@ -166,6 +181,9 @@ int main(int argc,char **argv) {
             else if(key=="--frames")host.limit=positive(value());
             else if(key=="--seconds")host.seconds=positive(value());
             else if(key=="--capture")host.capture=value();
+            else if(key=="--settings-script"){host.settings_script=fs::u8path(value());host.settings_requested=true;}
+            else if(key=="--settings-capture")host.settings_capture=fs::u8path(value());
+            else if(key=="--pad-commands")host.pad_commands=fs::u8path(value());
             else if(key=="--resolution")dimensions(value(),width,height);
             else if(key=="--resize"){
                 const auto text=value();const auto colon=text.find(':');
@@ -259,6 +277,8 @@ int main(int argc,char **argv) {
         out<<']'
            <<",\n  \"missing_functions\":"<<(runtime?runtime->decompMissingFunctions.load():0)
            <<",\n  \"execution_failures\":"<<(runtime?runtime->decompExecutionFailures.load():0)
+           <<",\n  \"cheat_applications\":"<<decomp_ps2_cheats::applications.load()
+           <<",\n  \"settings_openings\":"<<decomp_ps2_cheats::menu_openings.load()
            <<",\n  \"execution_model\":"<<quoted(reference_execution?"reference":"static-recompiled")
            <<",\n  \"iop_native_instructions\":"<<decomp_ps2::execution::iop_native_instructions.load()
            <<",\n  \"iop_interpreted_instructions\":"<<decomp_ps2::execution::iop_interpreted_instructions.load()

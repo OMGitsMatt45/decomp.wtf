@@ -74,4 +74,5 @@ def test_optional_profile_requires_the_exact_full_original_hash():
     data=profile.known('a38f71b7a02f1ae0fe65cc78137ee9c943b75b44473ae1cd5ed89ef0e61400e9')
     assert len(data['modules'])==7
     assert len(data['modules'][0]['native_services'])==237
-    assert sum(len(m['functions']) for m in data['modules'])==12420
+    assert sum(len(m['functions']) for m in data['modules'])==12421
+    assert any(f['address']==0x002d0df0 for f in data['modules'][0]['functions'])
