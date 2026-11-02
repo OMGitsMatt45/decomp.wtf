@@ -114,20 +114,22 @@ def generate(project,root):
                 continue
             folder=root/f'game/disc{disc["index"]}'
             if index:folder=folder/f'module{index}'
-            item={**item,'index':disc['index'],'module_index':len(modules)+1}
+            item={**item,'index':disc['index'],'module_index':len(modules)+1,'resident_boot':index==0}
             _log(f'Translating PS1 program {processed}/{total}; disc {disc["index"]}, module {index}')
             compiled=codegen.module(recompiler,item,folder,_run,sdk)
             compiled['origins']=[origin]
             modules.append(compiled);seen[identity]=compiled
             originals.append((item,folder))
+    closure_sources=list(originals)
     entries=project.get('cheats',[])
     if entries:
         for item,folder in originals:
             ranges=cheats.code_ranges(next(folder.glob('*_dispatch.c')))
             for variant in cheats.variant_images(item,entries,ranges):
-                variant=dict(variant,module_index=len(modules)+1)
+                variant=dict(variant,module_index=len(modules)+1,resident_boot=item.get('resident_boot',False))
                 target=root/f'game/cheats/variant{len(modules)+1}'
                 modules.append(codegen.module(recompiler,variant,target,_run,sdk))
+                closure_sources.append((variant,target))
     cheats.emit(entries,root)
     _log('Discover position-independent input routines for guarded RAM copies...')
     bodies=copies.discover(project['discs']);copied=[]
@@ -135,6 +137,8 @@ def generate(project,root):
         _log(f'Translating guarded PS1 RAM routine {index}/{len(bodies)}')
         folder=root/f'game/copies/body{index}'
         copied.append(copies.emit_body(recompiler,sdk,item,folder,index,_run))
+    resident_calls=codegen.close_resident_calls(recompiler,closure_sources,modules,_run,sdk,_log,
+        additional_calls=[address for body in copied for address in body['external_calls']])
     copies.registry(list(zip(bodies,copied)),root/'native/copies.c')
     codegen.registry(modules,root/'native/modules.c',copied=True)
     (root/'native/defaults.hpp').write_text('#pragma once\ninline constexpr bool decomp_default_require_gpu='+
@@ -173,7 +177,8 @@ def generate(project,root):
         execution_model='static-recompiled',build=dict(system='cmake',target='ps1_pc',reference_target='ps1_probe'),
         fallback=dict(interpreter=False,runtime_compilation=False),qualification=dict(experimental=True,retail=False),
         inputs=[dict(sha256=d['files'][0]['sha256'],disc=d['index'],identity=d['identity'],files=d['files']) for d in discs],
-        code_generation=modules,copied_routines=copied,presentation=pc.presentation(project['renderer']),files={})
+        code_generation=modules,copied_routines=copied,resident_call_closure=resident_calls,
+        presentation=pc.presentation(project['renderer']),files={})
     for path in sorted(root.rglob('*')):
         if path.is_file():manifest['files'][path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
     (root/'pc-project.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')

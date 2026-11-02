@@ -264,6 +264,37 @@ def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     assert report['interpreted_instructions']==0 and report['coverage_misses']==0
 
 
+def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,tmp_path):
+    import struct
+    from decompnet.psx_native import _sdk,_recompiler,_run,codegen
+    sdk=_sdk();emitter=_recompiler(sdk);target=0x80010200
+    def image(load,words,leaf=False):
+        payload=bytearray(2048);struct.pack_into('<'+'I'*len(words),payload,0,*words)
+        if leaf:
+            # A valid varargs-style entry has no initial stack adjustment and
+            # no caller in its own resident image, like the missed retail case.
+            struct.pack_into('<6I',payload,0x200,0xafa50004,0xafa60008,0xafa7000c,
+                             0x24020007,0x03e00008,0)
+        header=bytearray(2048);header[:8]=b'PS-X EXE'
+        struct.pack_into('<4I',header,0x10,load,0,load,len(payload))
+        return bytes(header+payload)
+    boot=dict(index=1,module_index=1,boot='BOOT.EXE',resident_boot=True,
+        image=image(0x80010000,[0x1000ffff,0],True),info=dict(load=0x80010000,entrypoint=0x80010000))
+    overlay=dict(index=1,module_index=2,boot='OVERLAY.EXE',
+        image=image(0x80130000,[0x0c000000|((target>>2)&0x03ffffff),0,0x1000ffff,0]),
+        info=dict(load=0x80130000,entrypoint=0x80130000))
+    resident=tmp_path/'disc1';nested=resident/'module1'
+    modules=[codegen.module(emitter,boot,resident,_run,sdk),
+             codegen.module(emitter,overlay,nested,_run,sdk)]
+    modules[0]['origins']=[dict(disc=1),dict(disc=2)]
+    assert target not in modules[0]['entries'] and target in modules[1]['external_calls']
+    overlay_hash=modules[1]['dispatch_sha256']
+    report=codegen.close_resident_calls(emitter,[(boot,resident),(overlay,nested)],modules,_run,sdk)
+    assert target in modules[0]['entries'] and report[0]['uncompiled_calls']==[]
+    assert modules[0]['origins']==[dict(disc=1),dict(disc=2)]
+    assert modules[1]['dispatch_sha256']==overlay_hash and (nested/'OVERLAY.EXE_dispatch.c').is_file()
+
+
 def test_automatic_fallback_and_required_gpu_failure(native_project):
     report,_=run(native_project,'automatic-fallback','--hidden-window','--renderer','auto')
     assert report['renderer']=='software' and report['software_fallback']
