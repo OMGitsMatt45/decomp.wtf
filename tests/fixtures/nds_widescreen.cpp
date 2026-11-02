@@ -61,6 +61,10 @@ int main() {
         video::Display display(options);
         video::Frame frame{&history[0],top.data(),bottom.data(),nullptr,false,none.data(),tags.data(),&history,
             foreground.data(),foreground.data(),brightness.data(),brightness.data()};
+        auto newer=scene;newer.serial+=100;history.push_back(newer);frame.scene=&history.back();
+        const auto shown=video::world_source(frame);
+        require(shown.scene==&history.front()&&!shown.on_top&&shown.pixels==256*192,"project hints use the displayed captured scene, not a newer submission");
+        frame.scene=&history.front();history.pop_back();
         display.present(frame);auto pixels=display.read_pixels();
         require(display.layout()=="field"&&display.render_scale()>=2,"dynamic field selected");
         require((pixels[912+270*960]&0x00ff0000)==0&&(pixels[912+270*960]&0x0000ff00)>0x8000,"side geometry visible beyond old DS edge");
@@ -128,11 +132,36 @@ int main() {
             require(pixels[322+485*960]==0xffff00ff,"caption prefix retains its authored position and HUD scale at every reveal width");
             require(pixels[160+450*960]!=0xffff00ff,"short caption is never projected as a floating world sprite");
         }
+        using Anchor=video::Frame::HudRegion::Anchor;
+        caption_region[0].anchor=Anchor::Center;
+        for(int length:{4,30,62,79,82,180}) {
+            foreground.fill(1ull<<32);
+            for(int yy=154;yy<171;++yy)for(int xx=14;xx<14+length;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[480+485*960]==0xffff00ff,"revealing captions remain centered from the first glyph");
+            const int left=int(480-length*540/384.f/2);
+            require(pixels[left-3+485*960]!=0xffff00ff&&pixels[left+3+485*960]==0xffff00ff,"centered captions retain their HUD width across reveal thresholds");
+        }
+        std::array<video::Frame::HudRegion,1> dialog_canvas{{{0,64,256,128,true,false,Anchor::Canvas}}};frame.hud_regions=dialog_canvas;
+        for(bool joined:{false,true,false}) {
+            foreground.fill(1ull<<32);
+            if(joined)for(int yy=112;yy<192;++yy)for(int xx=0;xx<256;++xx)foreground[yy*256+xx]=(1ull<<32)|0xff0000ff;
+            for(int yy=69;yy<118;++yy)for(int xx=207;xx<255;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[623+388*960]==0xffff00ff,"choice position and scale survive joining and detaching from dialogue");
+        }
         frame.hud_regions={};foreground.fill(1ull<<32);
         for(int yy=8;yy<41;++yy)for(int xx=212;xx<244;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
         std::array<video::Frame::HudRegion,1> hud{{{208,0,48,48,true}}};frame.hud_regions=hud;
         display.present(frame);pixels=display.read_pixels();
         require(pixels[925+55*960]==0xffff00ff,"identified fixed HUD buttons retain their corner and smaller scale");
+        hud[0].anchor=Anchor::TopRight;
+        for(int left:{212,218,212}) {
+            foreground.fill(1ull<<32);
+            for(int yy=8;yy<41;++yy)for(int xx=left;xx<244;++xx)foreground[yy*256+xx]=(1ull<<32)|0xffff00ff;
+            display.present(frame);pixels=display.read_pixels();
+            require(pixels[915+51*960]==0xffff00ff,"corner glyph placement survives changing animation bounds");
+        }
         hud[0].on_top=false;display.present(frame);pixels=display.read_pixels();
         require(pixels[760+67*960]==0xffff00ff,"HUD ownership never relocates sprites on the other LCD");
         frame.hud_regions={};foreground.fill(1ull<<32);
@@ -308,6 +337,12 @@ int main() {
         frame.bottom_foreground=foreground.data();display.present(frame);pixels=display.read_pixels();
         require(pixels[1100+100*1280]==0xff0000ff&&pixels[640+270*1280]==0xff0000ff,"opaque menu fallback retains its page colors");
         require(display.touch(1100,100,x,y)&&x>100&&y<100,"an opaque menu with no world origins keeps its smaller HUD inverse touch mapping");
+        bottom.fill(0xff000000);foreground.fill(1ull<<32);
+        for(int yy=8;yy<41;++yy)for(int xx=212;xx<244;++xx)bottom[yy*256+xx]=0xffff00ff;
+        std::array<video::Frame::HudRegion,1> fading_menu{{{208,0,48,48,false,false,Anchor::TopRight}}};
+        frame.hud_regions=fading_menu;frame.auxiliary=video::Frame::Auxiliary::Hidden;
+        display.present(frame);pixels=display.read_pixels();
+        require(pixels[1235+51*1280]==0xffff00ff&&pixels[925+51*1280]!=0xffff00ff,"a menu on a flat geometry-free fade remains at its corner without a duplicate");
         std::cout<<"Optional frustum, visibility, field UI, party rows, touch and ultrawide resize checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     return 0;

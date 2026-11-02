@@ -87,6 +87,20 @@ before it reaches the automatic caption width threshold. Its first glyph
 keeps its authored native x coordinate at HUD scale instead of re-centering
 as more letters appear. Projects identify active text bounds from their own
 read-only UI context; ordinary floating sprites retain world projection.
+Regions can also select an explicit `HudRegion::Anchor`: `Canvas` maps pieces
+through one centered native HUD canvas, retaining their relative positions
+when a choice window joins or separates from its dialogue. `Center` centers
+the current text extent, including the first few glyphs. `TopRight` anchors
+to the declared region rather than the changing visible animation bounds.
+`Automatic` preserves the existing placement behavior. Identified HUD on a
+flat geometry-free fade keeps its anchor without drawing a second copy in the
+native picture; nonuniform fallback artwork is retained intact.
+
+`video::world_source(frame)` exposes the same displayed scene and source LCD
+used by the renderer, plus the source origin count. Projects should identify
+UI from this captured scene rather than a newer submitted scene that may not
+yet be visible. These selections and anchors add no guest frames, delay,
+cached screenshots or guest memory writes.
 A gameplay frame without replayable geometry uses its current native
 primary LCD and background color rather than promoting its map to the main
 picture. An opaque known 2D page keeps its HUD scale even when it hides every

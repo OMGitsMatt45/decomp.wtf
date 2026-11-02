@@ -53,9 +53,17 @@ struct Frame {
     Mode mode=Mode::Auto;
     Auxiliary auxiliary=Auxiliary::Auto;
     // Captions retain their authored native x coordinate while text reveals.
-    struct HudRegion {int x,y,w,h;bool on_top;bool caption=false;};
+    struct HudRegion {
+        int x,y,w,h;bool on_top;bool caption=false;
+        // Canvas preserves native relative placement when windows split/join.
+        enum class Anchor {Automatic,Canvas,Center,TopRight};
+        Anchor anchor=Anchor::Automatic;
+    };
     std::span<const HudRegion> hud_regions;
 };
+struct WorldSource {const Scene* scene=nullptr;bool on_top=false;unsigned pixels=1024,origins=0;};
+// Select the raster actually presented, including captured/older scenes.
+WorldSource world_source(const Frame& frame);
 struct Options {
     std::string renderer="auto";
     int width=0,height=0; // Zero chooses an initial size from the active monitor.
