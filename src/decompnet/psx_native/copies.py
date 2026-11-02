@@ -21,9 +21,9 @@ MAX_BODY = 1024
 MAX_COPIES = 16384
 _C_TOKEN = re.compile(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
                       r'0[xX][0-9a-fA-F]+[uUlL]*|\d+[uUlL]*|[a-zA-Z_]\w*|\S')
-_CONT = re.compile(r'switch\s*\(_cont\)\s*\{\s*'
+_CONT = re.compile(r'switch\s*\((_cont|entry)\)\s*\{\s*'
                    r'((?:case\s+0x[0-9a-fA-F]+u:\s*goto\s+\w+;\s*)+)'
-                   r'default:\s*break;\s*\}')
+                   r'default:\s*(break|return);\s*\}')
 
 
 def _word(data, offset):
@@ -122,8 +122,9 @@ def discover(discs):
 
 def _continuations(text):
     return _CONT.sub(lambda match: ''.join(
-        f'if (_cont == {value}) goto {label};\n' for value, label in re.findall(
-            r'case\s+(0x[0-9a-fA-F]+u):\s*goto\s+(\w+);', match[1])), text)
+        f'if ({match[1]} == {value}) goto {label};\n' for value, label in re.findall(
+            r'case\s+(0x[0-9a-fA-F]+u):\s*goto\s+(\w+);', match[2]))+
+            ('return;' if match[3]=='return' else ''), text)
 
 
 def _tokens(text):
@@ -188,10 +189,10 @@ def emit_body(recompiler, sdk, item, folder, ordinal, run):
                 if not BASES[0]<=address<BASES[0]+len(data))
             text = parameterize(original, paired.read_text(), len(data))
             text = re.sub(r'\b((?:func_|psx_alias_body_)[0-9a-fA-F]{8})\b', prefix+r'\1', text)
-            text = re.sub(r'\b('+prefix+r'(?:func_|psx_alias_body_)[0-9a-fA-F]{8})\(CPUState\* cpu\)',
-                          r'\1(CPUState* cpu,uint32_t decomp_base)', text)
-            text = re.sub(r'\b('+prefix+r'(?:func_|psx_alias_body_)[0-9a-fA-F]{8})\(cpu\)',
-                          r'\1(cpu,decomp_base)', text)
+            text = re.sub(r'\b('+prefix+r'(?:func_|psx_alias_body_)[0-9a-fA-F]{8})\(CPUState\* cpu(?=[,)])',
+                          r'\1(CPUState* cpu,uint32_t decomp_base', text)
+            text = re.sub(r'\b('+prefix+r'(?:func_|psx_alias_body_)[0-9a-fA-F]{8})\(cpu(?=[,)])',
+                          r'\1(cpu,decomp_base', text)
             (folder/path.name).write_text(text,encoding='utf-8')
         table = (first/'COPY.EXE_dispatch.c').read_text().split(
             'static const PsxGameDispatchEntry k_psx_game_dispatch[] = {',1)[1].split('};',1)[0]
@@ -240,8 +241,10 @@ static const DecompCopy *copy_at(uint32_t address,uint32_t *base){
     uint32_t segment=address&0xe0000000u,physical=address&0x1fffffffu;
     if(!g_psx_ram||(address&3u)||physical>0x1ffffcu||
        (segment!=0u&&segment!=0x80000000u&&segment!=0xa0000000u))return NULL;
+#ifndef DECOMP_PSX_NATIVE_ONLY
     const char *force=getenv("PSX_FORCE_INTERP");
     if(force&&*force&&*force!='0')return NULL;
+#endif
     uint32_t word;memcpy(&word,g_psx_ram+physical,4);
     uint32_t low=0,high=(uint32_t)(sizeof(copies)/sizeof(copies[0]));
     while(low<high){uint32_t mid=low+(high-low)/2;

@@ -63,6 +63,7 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
 
 
 _SYSCALL=re.compile(r'(?m)^([ \t]*)psx_syscall\(cpu, (\d+)\);  /\* syscall (\d+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
+_GTE=re.compile(r'(?m)^[ \t]*gte_execute\(cpu, 0x([0-9A-Fa-f]+)\);  /\* gte cmd 0x([0-9A-Fa-f]+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
 
 
 def native_traps(text):
@@ -79,11 +80,21 @@ def native_traps(text):
     matches=list(_SYSCALL.finditer(text))
     if len(re.findall(r'(?m)^[ \t]*psx_syscall\(cpu,',text))!=len(matches):
         raise ValueError('pinned legacy SYSCALL format differs')
+    # The firmware IRQ return path inspects EPC for a COP2 command and can
+    # resume at its following instruction, including inside the original CFG.
+    gte=list(_GTE.finditer(text))
+    if len(re.findall(r'(?m)^[ \t]*gte_execute\(cpu,',text))!=len(gte):
+        raise ValueError('pinned GTE command format differs')
+    for match in gte:
+        command,opcode,pc,word=(int(value,16) for value in match.groups())
+        if word&0xfe000000!=0x4a000000 or word&0x1ffffff!=command or word&63!=opcode:
+            raise ValueError('pinned GTE metadata disagrees with its original instruction')
+        continuations.add(pc+4)
     return _SYSCALL.sub(replace_call,text),continuations
 
 
 def emit_native(recompiler,exe,seed,folder,run,sdk,label):
-    """Emit native trap calls and supported post-exception resume entries."""
+    """Emit native trap calls and interruptible instruction-cache resume entries."""
     image=exe.read_bytes();load=struct.unpack_from('<I',image,0x18)[0]
     roots={int(line,0) for line in seed.read_text().splitlines() if line.strip()}
     for _ in range(16):
@@ -92,6 +103,20 @@ def emit_native(recompiler,exe,seed,folder,run,sdk,label):
         rewritten=[];continuations=set()
         for path in sources:
             text,targets=native_traps(path.read_text(encoding='utf-8'))
+            # A cache refill can service an interrupt inside a compiled block.
+            # Returning through the BIOS resumes at this fetch PC, which need
+            # not be a CFG entry. Export the actual emitted suspension sites.
+            for pc in re.findall(r'(?m)^[ \t]*psx_icache_fetch\(cpu, 0x([0-9A-Fa-f]{8})u\);$',text):
+                target=int(pc,16);offset=target-load
+                if 4<=offset<len(image)-2048:
+                    previous=struct.unpack_from('<I',image,2048+offset-4)[0]
+                    op=previous>>26
+                    # An IRQ in a branch delay slot resumes at the branch,
+                    # not by independently executing its delay instruction.
+                    if (op in (1,2,3,4,5,6,7) or
+                        op==0 and previous&63 in (8,9) or
+                        op in (16,17,18,19) and previous>>21&31==8):continue
+                targets.add(target)
             rewritten.append((path,text));continuations.update(targets)
         emitted=set(dispatch_entries((folder/(exe.name+'_dispatch.c')).read_text(encoding='utf-8')))
         missing=continuations-emitted
@@ -104,7 +129,7 @@ def emit_native(recompiler,exe,seed,folder,run,sdk,label):
             return sorted(roots),sorted(missing)
         roots.update(pending)
         seed.write_text(''.join(f'{entry:#x}\n' for entry in sorted(roots)),encoding='utf-8')
-    raise ValueError('native SYSCALL continuation discovery did not converge')
+    raise ValueError('native exception continuation discovery did not converge')
 
 
 def seeds(image,info):
@@ -189,8 +214,12 @@ static const unsigned char {prefix}image[]={{
 int {prefix}dirty_ram_text_native_ok_ranges_from(const uint32_t *ranges,uint32_t count,uint32_t pc) {{
     (void)pc;
     if(!ranges||!count)return 0;
+#ifndef DECOMP_PSX_NATIVE_ONLY
+    /* Native players reject interpreter mode once during startup. The
+       reference player retains its live mode switch. */
     const char *force=getenv("PSX_FORCE_INTERP");
     if(force&&*force&&*force!='0')return 0;
+#endif
     for(uint32_t i=0;i<count;i++) {{
         uint32_t address=ranges[i*2]&0x1fffffffu,length=ranges[i*2+1];
         if(address<{low}u||address-{low}u>sizeof({prefix}image)||

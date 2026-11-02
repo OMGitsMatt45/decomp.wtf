@@ -287,7 +287,10 @@ def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,t
         struct.pack_into('<4I',header,0x10,load,0,load,len(payload))
         return bytes(header+payload)
     boot=dict(index=1,module_index=1,boot='LIBRARY.EXE',resident_boot=resident,
-        image=image(library_load,[0x1000ffff,0],True),info=dict(load=library_load,entrypoint=library_load))
+        # A direct self-jump has no speculative not-taken CFG edge into the
+        # deliberately unreachable callback. A constant BEQ still emits one.
+        image=image(library_load,[0x08000000|((library_load>>2)&0x03ffffff),0],True),
+        info=dict(load=library_load,entrypoint=library_load))
     overlay=dict(index=1,module_index=2,boot='OVERLAY.EXE',
         image=image(0x80130000,[0x0c000000|((target>>2)&0x03ffffff),0,0x1000ffff,0]),
         info=dict(load=0x80130000,entrypoint=0x80130000))
@@ -301,6 +304,62 @@ def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,t
     assert target in modules[0]['entries'] and report[0]['uncompiled_calls']==[]
     assert modules[0]['origins']==[dict(disc=1),dict(disc=2)]
     assert modules[1]['dispatch_sha256']==overlay_hash and (nested/'OVERLAY.EXE_dispatch.c').is_file()
+
+
+def test_emitted_exception_entries_resume_without_replaying_prefix(tmp_path,monkeypatch):
+    if not os.environ.get('DECOMP_REQUIRE_PSX_NATIVE'):
+        pytest.skip('actual PS1 emitter and C compiler run in the native workflow')
+    import struct
+    import unicorn
+    from unicorn import mips_const as mips
+    from decompnet.psx_native import _sdk,_recompiler,_run,codegen
+    base=0x80010000
+    # A post-COP2 return and the second cache line lie inside the original
+    # block. Neither may replay the completed prefix when native code resumes.
+    words=[0x4a280030,0x24840001,0x24a50002,0x24840004,
+           0x00851021,0x24420007,0x03e00008,0]
+    header=bytearray(2048);header[:8]=b'PS-X EXE'
+    payload=struct.pack('<8I',*words)
+    struct.pack_into('<4I',header,0x10,base,0,base,len(payload))
+    image=bytes(header)+payload
+    sdk=_sdk();folder=tmp_path/'module'
+    module=codegen.module(_recompiler(sdk),dict(index=1,boot='ORIGINAL.EXE',image=image,
+        info=dict(load=base,entrypoint=base)),folder,_run,sdk)
+    assert {base+4,base+16}<=set(module['entries'])
+    codegen.registry([module],tmp_path/'registry.c')
+    host=(Path(__file__).parent/'fixtures/psx-native/runner.c').read_text()
+    host=host.replace('static size_t original_size;',
+        'unsigned char *g_psx_ram=memory;\nstatic size_t original_size;')
+    host+='\nvoid gte_execute(CPUState *cpu,uint32_t command){(void)cpu;(void)command;abort();}\n'
+    (tmp_path/'runner.c').write_text(host)
+    sources=sorted(folder.glob('*_full_*.c'))+sorted(folder.glob('*_dispatch.c'))
+    quote=lambda p:json.dumps(p.as_posix())
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\n'
+        'project(CacheResume LANGUAGES C)\nset(CMAKE_C_STANDARD 11)\n'
+        'add_executable(native_probe runner.c registry.c '+
+        ' '.join(quote(p.relative_to(tmp_path)) for p in sources)+')\n'
+        'target_include_directories(native_probe PRIVATE '+quote(sdk/'runtime/include')+')\n'
+        'target_compile_definitions(native_probe PRIVATE PSX_NO_DEBUG_TOOLS DECOMP_PSX_NATIVE_ONLY=1)\n')
+    _run(['cmake','-S',tmp_path,'-B',tmp_path/'build'],'Configure native cache resume probe')
+    _run(['cmake','--build',tmp_path/'build','--config','Release','--parallel','2'],
+         'Build native cache resume probe')
+    binary=next(p for p in (tmp_path/'build/native_probe',tmp_path/'build/Release/native_probe.exe') if p.is_file())
+    original=folder/'ORIGINAL.EXE'
+    # Interpreter policy is rejected by the player at startup. Individual native
+    # guards need no environment query; immutable instruction bytes still matter.
+    monkeypatch.setenv('PSX_FORCE_INTERP','1')
+    for start in (base+4,base+16):
+        result=json.loads(_run([binary,original,hex(start),'7','9'],'Resume actual emitted native C'))
+        cpu=unicorn.Uc(unicorn.UC_ARCH_MIPS,unicorn.UC_MODE_MIPS32|unicorn.UC_MODE_LITTLE_ENDIAN)
+        cpu.mem_map(0,0x200000);cpu.mem_write(0x10000,payload)
+        for register,value in ((mips.UC_MIPS_REG_A0,7),(mips.UC_MIPS_REG_A1,9),(mips.UC_MIPS_REG_RA,0x801fff00)):
+            cpu.reg_write(register,value)
+        cpu.emu_start(start,0x801fff00,count=100)
+        assert result['registers']==[cpu.reg_read(mips.UC_MIPS_REG_0+i)&0xffffffff for i in range(32)]
+        assert result['native_dispatches']>0
+        rejected=json.loads(_run([binary,original,hex(start),'7','9','mutate'],
+                                'Retain native instruction-byte rejection'))
+        assert rejected==dict(native_rejected=True)
 
 
 def test_automatic_fallback_and_required_gpu_failure(native_project):

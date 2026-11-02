@@ -76,6 +76,9 @@ def test_copies_match_original_registers_and_memory_at_relocated_segment_address
     import unicorn
     from unicorn import mips_const as mips
     root,binary,items=native_copies
+    # A refill in JR's delay slot resumes at the branch, not at a standalone
+    # final NOP that would escape the copied body.
+    assert 16 not in {entry['offset'] for entry in items[2][1]['entries']}
     for index,(item,meta) in enumerate(items):
         for base in (0x80070000,0xa000800c,0x00090004):
             for offset in sorted({entry['offset'] for entry in meta['entries']}):
