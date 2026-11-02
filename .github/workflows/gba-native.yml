@@ -39,7 +39,7 @@ jobs:
         run: uv run --no-sync python -m pytest -q tests/test_gba_native.py tests/test_gba_cheats.py --basetemp "${{ runner.temp }}/gba-native" --junitxml=gba-native-results.xml
       - name: Build and test Windows standalone desktop and cartridge services
         if: runner.os == 'Windows'
-        run: uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
+        run: uv run --no-sync python -m pytest -q tests/test_gba_desktop.py tests/test_gba_native_app.py tests/test_gba_audio.py --basetemp "${{ runner.temp }}/gba-desktop" --junitxml=gba-desktop-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:

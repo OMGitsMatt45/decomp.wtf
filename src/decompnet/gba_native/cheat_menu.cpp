@@ -2,6 +2,7 @@
 #include "cheat_menu.hpp"
 #include "cheats.hpp"
 #include "video.hpp"
+#include "audio_settings.hpp"
 #include <algorithm>
 #include <cctype>
 #include <string_view>
@@ -60,17 +61,24 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
  display.pause(true);
  struct Resume {gba_video::Display& d;~Resume(){d.pause(false);}} resume{display};
  std::vector<std::string> categories{"All"};for(const auto& p:catalog.presets())if(std::find(categories.begin(),categories.end(),p.category)==categories.end())categories.push_back(p.category);
+ if(audio_)categories.push_back("Audio");
  if(category_>=categories.size())category_=0;
  std::string message=catalog.warning();
  uint64_t frame=0;uint16_t script_keys=script_.contains(0)?script_.at(0):0;
  uint16_t previous=0;if(!display.poll(previous))return false;if(!script_.empty())previous=script_keys;
  unsigned hold=0;uint16_t last_direction=0;
  for(;;){
-  std::vector<size_t> rows;for(size_t i=0;i<catalog.presets().size();++i)if(category_==0||catalog.presets()[i].category==categories[category_])rows.push_back(i);
+  const bool audio_page=audio_&&category_==categories.size()-1;
+  std::vector<size_t> rows;if(!audio_page)for(size_t i=0;i<catalog.presets().size();++i)if(category_==0||catalog.presets()[i].category==categories[category_])rows.push_back(i);
   if(selection_>=rows.size())selection_=rows.empty()?0:rows.size()-1;
-  pixels_.assign(240*160,background);box(pixels_,0,0,240,20,accent);text(pixels_,7,6,"CHEATS");text(pixels_,151,6,std::to_string(catalog.enabled_count()+custom.enabled())+" ENABLED",ink,14);
+  pixels_.assign(240*160,background);box(pixels_,0,0,240,20,accent);text(pixels_,7,6,audio_page?"AUDIO":"CHEATS");
+  if(!audio_page)text(pixels_,151,6,std::to_string(catalog.enabled_count()+custom.enabled())+" ENABLED",ink,14);
   text(pixels_,7,25,"< "+categories[category_]+" >",gold,27);text(pixels_,177,25,"Q/W PAGE",muted,10);
-  if(rows.empty())wrap(pixels_,9,50,"No presets loaded. F2 opens custom code entry.",36,3);
+  if(audio_page){
+   box(pixels_,4,38,232,11,selected);text(pixels_,8,40,"ENHANCED AUDIO");text(pixels_,204,40,audio_->enhanced?"ON":"OFF",gold);
+   wrap(pixels_,8,60,"Band-limited DirectSound. Original songs and instruments; cleaner sample playback.",37,4);
+   wrap(pixels_,8,111,"OFF restores original playback. Saved separately from your game save.",37,3);
+  }else if(rows.empty())wrap(pixels_,9,50,"No presets loaded. F2 opens custom code entry.",36,3);
   const size_t first=selection_/8*8;
   for(size_t i=first;i<std::min(rows.size(),first+8);++i){const auto& p=catalog.presets()[rows[i]];int y=39+int(i-first)*10;
    if(i==selection_)box(pixels_,4,y-1,232,9,selected);
@@ -78,8 +86,8 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
    text(pixels_,204,y,!p.unavailable.empty()?"N/A":catalog.enabled(p.id)?"ON":"OFF",catalog.enabled(p.id)?gold:muted,5);
   }
   if(!rows.empty()){const auto& p=catalog.presets()[rows[selection_]];wrap(pixels_,8,122,p.name+(p.note.empty()?"":". "+p.note),37,2);text(pixels_,194,143,std::to_string(selection_+1)+"/"+std::to_string(rows.size()),muted,8);}
-  else wrap(pixels_,8,122,status,37,2);
-  box(pixels_,0,149,240,11,panel);text(pixels_,5,151,"X:TOGGLE Z:BACK BS:OFF F2:CODES",ink,39);
+  else if(!audio_page)wrap(pixels_,8,122,status,37,2);
+  box(pixels_,0,149,240,11,panel);text(pixels_,5,151,audio_page?"X:TOGGLE Z:BACK LEFT/RIGHT:CATEGORY":"X:TOGGLE Z:BACK BS:OFF F2:CODES",ink,39);
   if(!message.empty()){box(pixels_,9,43,222,99,panel);box(pixels_,9,43,222,2,gold);text(pixels_,17,51,"CHEAT INFO",gold);wrap(pixels_,17,65,message,34,6,ink);text(pixels_,17,131,"X/Z RETURN",gold);}
   display.present_pixels(pixels_);++presented_frames_;if(script_.empty())display.pace();
   uint16_t keys=0;bool close=false,advanced=false;
@@ -100,12 +108,14 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
   const auto action=uint16_t(down|((hold>=20&&hold%4==0)?direction:0));
   if(action&16){category_=(category_+1)%categories.size();selection_=0;}
   else if(action&32){category_=(category_+categories.size()-1)%categories.size();selection_=0;}
-  else if(!rows.empty()){
+  else if(audio_page){
+   if(down&1)try{audio_->set(!audio_->enhanced,true);}catch(const std::exception& e){message=e.what();}
+  }else if(!rows.empty()){
    if(action&128)selection_=(selection_+1)%rows.size();else if(action&64)selection_=(selection_+rows.size()-1)%rows.size();
    else if(action&256)selection_=std::min(selection_+8,rows.size()-1);else if(action&512)selection_=selection_>=8?selection_-8:0;
    if(down&1){const auto& p=catalog.presets()[rows[selection_]];if(auto e=catalog.set_enabled(p.id,!catalog.enabled(p.id)))message=*e;}
   }
-  if(down&4){
+  if((down&4)&&!audio_page){
    auto manual=custom.list();for(size_t i=0;i<manual.cheats().size();++i)manual.set_enabled(i,false);
    if(auto e=custom.commit(std::move(manual)))message=*e;
    else if(auto e=catalog.all_off())message=*e;

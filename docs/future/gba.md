@@ -15,6 +15,8 @@ presentation, audio, controllers, cartridge saves and explicit compatibility rep
 - Input-bound code profiles for callbacks and ROM-to-RAM code copies. Runtime byte
   checks prevent modified RAM code from executing stale native instructions.
 - Headless frame/PCM capture, input, RAM observations and raw save persistence.
+- Optional [band-limited DirectSound playback](../gba-audio.md) with an in-window
+  Audio setting, per-save preferences and explicit original/enhanced capture modes.
   The player contains no interpreter; an optional separate probe retains the
   reference implementation for validation and coverage investigation.
 - The standalone frontend includes the pinned SDK's Action Replay/GameShark,
