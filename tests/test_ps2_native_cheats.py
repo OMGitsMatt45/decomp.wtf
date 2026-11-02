@@ -20,16 +20,17 @@ def test_actual_emitted_choices_execute_and_reject_tampered_original_code(tmp_pa
     if not emitter or not sdk:pytest.skip('requires the pinned runtime and built emitter')
     from decompnet.ps2_native import codegen,modules,registry,reports
     from tests.fixtures.ps2_native import i,r
-    raw=bytearray(program()[0]);struct.pack_into('<4I',raw,0x100,i(9,4,2,1),i(9,2,2,2),r(8,rs=31),0)
+    raw=bytearray(program()[0]);struct.pack_into('<7I',raw,0x100,i(9,4,2,1),0,i(9,2,2,2),i(9,2,2,4),0,r(8,rs=31),0)
     raw=bytes(raw);mapping=profile.module(raw)
-    mapping['functions']=[dict(name='original',address=BASE,size=16)]
-    mapping['code_ranges']=[dict(address=BASE,size=16)]
-    policy=cheats.prepare(dict(cheats=[entry('first',BASE,i(9,4,2,10)),entry('second',BASE+4,i(9,2,2,20)),entry('data',0x200000,99)]),[(raw,mapping)])
+    mapping['functions']=[dict(name='original',address=BASE,size=28)]
+    mapping['code_ranges']=[dict(address=BASE,size=28)]
+    policy=cheats.prepare(dict(cheats=[entry('first',BASE,i(9,4,2,10)),entry('second',BASE+8,i(9,2,2,20)),entry('data',0x200000,99),
+        entry('branch',BASE+12,i(7,0,0,-2))]),[(raw,mapping)])
     root=tmp_path/'source';folder=root/'game/modules/module0';folder.mkdir(parents=True);(root/'native').mkdir()
     elf=tmp_path/'input.elf';elf.write_bytes(modules.typed_elf(raw,mapping['code_ranges']))
     csv_path=tmp_path/'map.csv'
     with csv_path.open('w',newline='') as out:
-        writer=csv.writer(out);writer.writerow(['Name','Start','End','Size']);writer.writerow(['original',hex(BASE),hex(BASE+16),16])
+        writer=csv.writer(out);writer.writerow(['Name','Start','End','Size']);writer.writerow(['original',hex(BASE),hex(BASE+28),28])
     q=lambda path:json.dumps(str(path).replace('\\','/'))
     config=tmp_path/'input.toml';config.write_text('[general]\ninput='+q(elf)+'\noutput='+q(folder)+'\nghidra_output='+q(csv_path)+'\noutput_worker_threads=1\npatch_syscalls=false\npatch_cop0=true\npatch_cache=true\n')
     def run(command,cwd,label):
@@ -37,10 +38,11 @@ def test_actual_emitted_choices_execute_and_reject_tampered_original_code(tmp_pa
         assert result.returncode==0,result.stdout+result.stderr
         return result.stdout+result.stderr
     reports.generation_report(run([emitter,config],tmp_path,'original'),expected_functions=1)
-    guards=codegen.guard_generated(folder,raw,expected_functions=1,function_ranges={BASE:16},code_ranges=mapping['code_ranges'],cheat_poll=True)
+    guards=codegen.guard_generated(folder,raw,expected_functions=1,function_ranges={BASE:28},code_ranges=mapping['code_ranges'],cheat_poll=True)
     record=registry.isolate(folder,guards);cheats.header(root,policy)
     emitted=cheats.install(root,policy,[(raw,mapping)],[record],Path(emitter),run)
-    assert len(emitted)==3
+    assert len(emitted)==11
+    assert any(e['address']==BASE+8 for e in record['entries'])
     symbol=next(e['function'] for e in record['entries'] if e['address']==BASE)
     (root/'main.cpp').write_text('''#include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
@@ -50,17 +52,21 @@ def test_actual_emitted_choices_execute_and_reject_tampered_original_code(tmp_pa
 void '''+symbol+'''(uint8_t*,R5900Context*,PS2Runtime*);
 int main(){
     std::vector<uint8_t> ram(0x2000000);
-    const uint32_t original[]={'''+','.join(str(w)+'u' for w in struct.unpack_from('<4I',raw,0x100))+'''};
-    std::memcpy(ram.data()+'''+str(BASE)+''',original,16);
+    const uint32_t original[]={'''+','.join(str(w)+'u' for w in struct.unpack_from('<7I',raw,0x100))+'''};
+    std::memcpy(ram.data()+'''+str(BASE)+''',original,28);
     R5900Context ctx{};
     auto execute=[&](){ctx.pc='''+str(BASE)+''';ctx.r[4]=_mm_set_epi64x(0,5);ctx.r[31]=_mm_set_epi64x(0,0x100);'''+symbol+'''(ram.data(),&ctx,nullptr);return uint32_t(_mm_cvtsi128_si32(ctx.r[2]));};
-    if(execute()!=8)return 1;
-    decomp_ps2_cheats::toggle(0);if(execute()!=17)return 2;
-    decomp_ps2_cheats::toggle(1);if(execute()!=35)return 3;
-    decomp_ps2_cheats::toggle(0);if(execute()!=26)return 4;
-    decomp_ps2_cheats::toggle(1);if(execute()!=8)return 5;
+    if(execute()!=12)return 1;
+    decomp_ps2_cheats::toggle(0);if(execute()!=21)return 2;
+    decomp_ps2_cheats::toggle(1);if(execute()!=39)return 3;
+    decomp_ps2_cheats::toggle(0);if(execute()!=30)return 4;
+    decomp_ps2_cheats::toggle(1);if(execute()!=12)return 5;
+    decomp_ps2_cheats::toggle(3);if(execute()!=8)return 8;
+    decomp_ps2_cheats::toggle(3);ctx.pc='''+str(BASE+8)+''';ctx.r[2]=_mm_set_epi64x(0,73);
+    '''+symbol+'''(ram.data(),&ctx,nullptr);
+    if(_mm_cvtsi128_si32(ctx.r[2])!=79)return 9;
     decomp_ps2_cheats::toggle(2);for(int n=0;n<256;++n)execute();
-    if(ram[0x200000]!=99||std::memcmp(ram.data()+'''+str(BASE)+''',original,16))return 6;
+    if(ram[0x200000]!=99||std::memcmp(ram.data()+'''+str(BASE)+''',original,28))return 6;
     ram['''+str(BASE)+''']^=1;bool rejected=false;
     try{execute();}catch(const decomp_ps2::CodeMismatch&){rejected=true;}
     return rejected?0:7;
@@ -68,9 +74,9 @@ int main(){
 ''')
     includes=[root/'native',Path(sdk)/'thirdparty/PS2Recomp/ps2xRuntime/include',Path(sdk)/'thirdparty/PS2Recomp/ps2xIOP/include',
               Path(sdk)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel',Path(sdk)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu']
-    (root/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\nproject(ActualChoices LANGUAGES CXX)\nfile(GLOB_RECURSE SOURCES game/*.cpp)\nadd_executable(actual_choices main.cpp native/cheats.cpp ${SOURCES})\ntarget_compile_features(actual_choices PRIVATE cxx_std_20)\ntarget_include_directories(actual_choices PRIVATE '+' '.join(q(p) for p in includes)+')\n')
+    (root/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\nproject(ActualChoices LANGUAGES CXX)\nfile(GLOB_RECURSE SOURCES game/*.cpp native/cheat_resumes/*.cpp)\nadd_executable(actual_choices main.cpp native/cheats.cpp ${SOURCES})\ntarget_compile_features(actual_choices PRIVATE cxx_std_20)\ntarget_include_directories(actual_choices PRIVATE '+' '.join(q(p) for p in includes)+')\n')
     build=tmp_path/'build'
-    run(['cmake','-S',root,'-B',build],tmp_path,'configure')
+    run(['cmake','-S',root,'-B',build,'-DCMAKE_BUILD_TYPE=Release'],tmp_path,'configure')
     run(['cmake','--build',build,'--config','Release','--parallel','2'],tmp_path,'build')
     run([executable(build,'actual_choices')],tmp_path,'execute')
 

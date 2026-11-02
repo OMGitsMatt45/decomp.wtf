@@ -94,6 +94,33 @@ def header(root, policy):
     (root/'native/settings.hpp').write_bytes(Path(__file__).with_name('settings.hpp').read_bytes())
 
 
+def _resume_pcs(text):
+    return {int(value,16) for value in re.findall(r'case 0x([0-9a-fA-F]+)u: goto label_',text)}
+
+
+def _emit_choice(original,patch,start,size,label,destination,work,emitter,run):
+    source=bytearray(modules.typed_elf(original,[dict(address=start,size=size)]))
+    info=elf_info(source)
+    for address,value in patch.items():source[_offset(info,address,1)]=value
+    # Analysis-only entry; the owner's boot contract and RAM remain unchanged.
+    struct.pack_into('<I',source,24,start)
+    elf=work/'choice.elf';elf.write_bytes(source);csv_path=work/'choice.csv'
+    with csv_path.open('w',newline='') as out:
+        writer=csv.writer(out);writer.writerow(['Name','Start','End','Size']);writer.writerow([label,hex(start),hex(start+size),size])
+    output=work/label;q=lambda p:json.dumps(p.as_posix());config=work/'choice.toml'
+    config.write_text('[general]\ninput='+q(elf)+'\noutput='+q(output)+'\nghidra_output='+q(csv_path)+'\noutput_worker_threads=1\npatch_syscalls=false\npatch_cop0=true\npatch_cache=true\n')
+    log=run([emitter,config],work,'Translate PS2 instruction choice '+label)
+    counts=reports.generation_report(log,expected_functions=1);runtime_patch.install_vu_header(output)
+    symbol=label+'_0x'+format(start,'x');text=(output/(symbol+'.cpp')).read_text(encoding='utf-8')
+    destination.mkdir(parents=True,exist_ok=True)
+    if '#include "decomp_vu0.hpp"' in text:(destination/'decomp_vu0.hpp').write_bytes((output/'decomp_vu0.hpp').read_bytes())
+    if len(re.findall(r'void \w+\(uint8_t\* rdram, R5900Context\* ctx, PS2Runtime \*runtime\) \{',text))!=1:
+        raise PCError('PS2 choice emitted an unexpected definition')
+    text=text.replace('#include "ps2_recompiled_functions.h"','').replace('#include "ps2_recompiled_stubs.h"','')
+    (destination/(label+'.cpp')).write_text(text,encoding='utf-8')
+    return symbol,text,dict(entry=start,analysis_sha256=hashlib.sha256(source).hexdigest(),**counts)
+
+
 def install(root, policy, prepared, records, emitter, run):
     """Each compiled alternative executes behind its original function's guard."""
     generated=[]
@@ -108,47 +135,46 @@ def install(root, policy, prepared, records, emitter, run):
             names={e['function'] for e in record['entries'] if e['address']==start}
             if len(names)!=1:raise PCError('PS2 cheat function has no unique original entry')
             public=names.pop();base=public+'_unchanged';declaration=f'void {public}(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime)'
-            sources=[p for p in folder.glob('*.cpp') if declaration+' {' in p.read_text(encoding='utf-8')]
+            sources=[p for p in folder.glob(f'*_0x{start:x}.cpp') if declaration+' {' in p.read_text(encoding='utf-8')]
             if len(sources)!=1:raise PCError('PS2 cheat function definition differs')
-            wrapper=[f'#include "{record["functions_header"]}"',f'#include "{namespace}.hpp"','#include "decomp_cheats.hpp"']
+            wrapper=['#include "ps2_runtime.h"',f'#include "{record["functions_header"]}"',f'#include "{namespace}.hpp"','#include "decomp_cheats.hpp"']
             wrapper.append(declaration.replace(public,base)+';')
-            cases=[]
+            original_source=sources[0].read_text(encoding='utf-8')
+            bodies={0:dict(symbol=base,text=original_source,patch={})}
             for alternative in group['alternatives']:
                 label=f'choice_{group["index"]}_{alternative["mask"]}'
-                source=bytearray(modules.typed_elf(original,[dict(address=start,size=size)]))
-                info=elf_info(source)
-                for address,value in alternative['bytes'].items():source[_offset(info,address,1)]=value
-                # This is an analysis-only image, never an owner boot replacement.
-                struct.pack_into('<I',source,24,start)
-                elf=work/'choice.elf';elf.write_bytes(source)
-                csv_path=work/'choice.csv'
-                with csv_path.open('w',newline='') as out:
-                    writer=csv.writer(out);writer.writerow(['Name','Start','End','Size']);writer.writerow([label,hex(start),hex(start+size),size])
-                output=work/label;q=lambda p:json.dumps(p.as_posix())
-                config=work/'choice.toml'
-                config.write_text('[general]\ninput='+q(elf)+'\noutput='+q(output)+'\nghidra_output='+q(csv_path)+'\noutput_worker_threads=1\npatch_syscalls=false\npatch_cop0=true\npatch_cache=true\n')
-                log=run([emitter,config],work,'Translate PS2 instruction choice '+label)
-                counts=reports.generation_report(log,expected_functions=1)
-                runtime_patch.install_vu_header(output)
-                symbol=label+'_0x'+format(start,'x')
-                path=output/(symbol+'.cpp')
-                text=path.read_text(encoding='utf-8')
-                if '#include "decomp_vu0.hpp"' in text:
-                    (destination/'decomp_vu0.hpp').write_bytes((output/'decomp_vu0.hpp').read_bytes())
-                if len(re.findall(r'void \w+\(uint8_t\* rdram, R5900Context\* ctx, PS2Runtime \*runtime\) \{',text))!=1:
-                    raise PCError('PS2 choice emitted an unexpected definition')
-                text=text.replace('#include "ps2_recompiled_functions.h"','').replace('#include "ps2_recompiled_stubs.h"','')
-                (destination/(label+'.cpp')).write_text(text,encoding='utf-8')
+                symbol,text,statistics=_emit_choice(original,alternative['bytes'],start,size,label,destination,work,emitter,run)
+                bodies[alternative['mask']]=dict(symbol=symbol,text=text,patch=alternative['bytes'])
                 wrapper.append(f'void {symbol}(uint8_t*, R5900Context*, PS2Runtime*);')
-                cases.append(f'case {alternative["mask"]}u: {symbol}(rdram,ctx,runtime); return;')
-                generated.append(dict(group=group['index'],mask=alternative['mask'],function=start,
-                    analysis_sha256=hashlib.sha256(source).hexdigest(),**counts))
+                generated.append(dict(group=group['index'],mask=alternative['mask'],function=start,**statistics))
+            # A patch can add calls/branches, creating resume PCs absent from
+            # the original table. Every selection, including OFF, must accept
+            # the union: a checkpoint may unwind just before the user toggles.
+            resumes=set().union(*(_resume_pcs(body['text']) for body in bodies.values()))
+            if len(resumes)>8192:raise PCError('PS2 cheat resume-entry bound exceeded')
+            cases=[]
+            for mask,body in bodies.items():
+                lines=[f'case {mask}u:']
+                for pc in sorted(resumes-_resume_pcs(body['text'])):
+                    if not start<=pc<start+size:raise PCError('PS2 cheat resume exceeds its owner function')
+                    label=f'choice_{group["index"]}_{mask}_resume_{pc:x}'
+                    symbol,_,statistics=_emit_choice(original,body['patch'],pc,start+size-pc,label,
+                        root/'native/cheat_resumes',work,emitter,run)
+                    wrapper.append(f'void {symbol}(uint8_t*, R5900Context*, PS2Runtime*);')
+                    lines.append(f'    if(ctx->pc=={pc}u){{{symbol}(rdram,ctx,runtime);return;}}')
+                    generated.append(dict(group=group['index'],mask=mask,function=start,resume=True,**statistics))
+                lines.append(f'    {body["symbol"]}(rdram,ctx,runtime); return;');cases+=lines
+            known={entry['address'] for entry in record['entries']}
+            additions=[dict(address=pc,function=public) for pc in sorted(resumes-known)]
+            if additions:
+                record['entries'].extend(additions);record['entries'].sort(key=lambda e:e['address'])
+                record.setdefault('cheat_resume_entries',[]).extend(e['address'] for e in additions)
+                (folder/'module.json').write_text(json.dumps({**record,'path':'.'},indent=2)+'\n',encoding='utf-8')
             wrapper += [declaration+' {',f'    {namespace}::check_range(rdram,{start}u,{size}u);',
-                f'    if(decomp_ps2_cheats::selection({group["index"]}u)) decomp_ps2_cheats::poll(rdram);',
-                f'    switch(decomp_ps2_cheats::selection({group["index"]}u)) {{',
-                f'case 0: {base}(rdram,ctx,runtime); return;',*cases,
+                f'    const auto choice=decomp_ps2_cheats::selection({group["index"]}u);',
+                '    if(choice) decomp_ps2_cheats::poll(rdram);',
+                '    switch(choice) {',*cases,
                 'default: throw std::runtime_error("uncompiled PS2 cheat selection");','    }','}']
-            original_source=sources[0].read_text(encoding='utf-8')
             sources[0].write_text(original_source.replace(declaration+' {',declaration.replace(public,base)+' {',1),encoding='utf-8')
             (folder/f'choices_{group["index"]}.cpp').write_text('\n'.join(wrapper)+'\n',encoding='utf-8')
     return generated
