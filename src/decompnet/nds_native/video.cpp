@@ -929,6 +929,7 @@ struct Display::Impl {
         if(frame.history)for(const auto& scene:*frame.history){captured(scene,frame.top_origins,top,true,frame.top_brightness);captured(scene,frame.bottom_origins,bottom,true,frame.bottom_brightness);}
         return true;
     }
+    float display_gain=1.f;
     void present(const Frame& frame) {
         check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;touch_regions.clear();previous_layout=layout_name;layout_name="dual";
         if(!gl) {
@@ -937,6 +938,13 @@ struct Display::Impl {
             check(SDL_UpdateTexture(software_texture,&bottom,frame.bottom,256*4)==0,SDL_GetError());
             SDL_RenderClear(software);SDL_RenderCopy(software,software_texture,nullptr,nullptr);
             SDL_GetRendererOutputSize(software,&width,&height);
+            if(display_gain<1.f) {
+                SDL_SetRenderDrawBlendMode(software,SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(software,0,0,0,uint8_t(std::lround((1.f-display_gain)*255)));
+                SDL_RenderFillRect(software,nullptr);
+                SDL_SetRenderDrawColor(software,0,0,0,255);
+                SDL_SetRenderDrawBlendMode(software,SDL_BLENDMODE_NONE);
+            }
             if(options.readback) {
                 last_pixels.resize(size_t(width)*height);
                 // SDL reads only the current viewport. Disable logical sizing
@@ -978,6 +986,11 @@ struct Display::Impl {
                 captured(*frame.scene,tags.data(),frame.on_top?top:bottom,false,frame.on_top?frame.top_brightness:frame.bottom_brightness);
             }
         }
+        if(display_gain<1.f) {
+            const uint32_t black=uint32_t(std::lround((1.f-display_gain)*255))<<24;
+            gl->Disable(GL_SCISSOR_TEST);
+            flat(&black,1,1,{0,0,float(width),float(height)});
+        }
         check(gl->GetError()==GL_NO_ERROR,"OpenGL presentation failed");
         if(options.readback) {
             last_pixels.resize(size_t(width)*height);
@@ -991,6 +1004,9 @@ struct Display::Impl {
 Display::Display(Options options):impl_(std::make_unique<Impl>(std::move(options))){}
 Display::~Display()=default;
 void Display::present(const Frame& frame){impl_->present(frame);}
+void Display::set_brightness(float gain){
+    check(std::isfinite(gain),"invalid display brightness");impl_->display_gain=std::clamp(gain,0.f,1.f);
+}
 void Display::key(const SDL_KeyboardEvent& event) {
     if(event.repeat||event.type!=SDL_KEYDOWN)return;
     if(event.keysym.scancode==SDL_SCANCODE_F11) {
