@@ -150,6 +150,13 @@ static std::string decomp_json(const char *value) {
     out<<'"';return out.str();
 }
 static bool decomp_event(const SDL_Event &event) {
+    const bool menu=psx_runtime_menu_is_open()||savestate_menu_open||psx_rewind_is_open();
+    if(menu)decomp_keybinds_clear_pulses();
+#ifdef PSX_SDL3
+    if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST)decomp_keybinds_clear_pulses();
+#else
+    if(event.type==SDL_WINDOWEVENT&&event.window.event==SDL_WINDOWEVENT_FOCUS_LOST)decomp_keybinds_clear_pulses();
+#endif
     if(event.type!=SDL_KEYDOWN||event.key.repeat)return false;
 #ifdef PSX_SDL3
     const auto key=event.key.key;
@@ -157,6 +164,7 @@ static bool decomp_event(const SDL_Event &event) {
     const auto key=event.key.keysym.sym;
 #endif
     if(key==SDLK_F1) {
+        decomp_keybinds_clear_pulses();
         if(!savestate_menu_open&&!psx_rewind_is_open())psx_runtime_menu_open();
         return true;
     }
@@ -170,6 +178,13 @@ static bool decomp_event(const SDL_Event &event) {
         if(psx_disc_tray_cycle(index,PSX_DISC_TRAY_ORIGIN_MENU)!=PSX_DISC_TRAY_OK)std::fprintf(stderr,"could not mount disc %d\n",index);
         else std::fprintf(stdout,"decomp.wtf: inserted disc %d of %d\n",index,count);
         return true;
+    }
+    if(!menu){
+#ifdef PSX_SDL3
+        decomp_keybinds_note_keydown(event.key.scancode);
+#else
+        decomp_keybinds_note_keydown(event.key.keysym.scancode);
+#endif
     }
     return false;
 }
