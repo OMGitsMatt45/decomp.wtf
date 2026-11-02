@@ -240,6 +240,10 @@ def _git_policy(root):
     # sources. Git must preserve those bytes across platforms and user configs.
     (root/'.gitattributes').write_text('# Preserve checksum-bound export bytes.\n* -text\n',encoding='utf-8')
     (root/'.gitignore').write_text('/assets/\n/build*/\n/saves/\n/captures/\n/.ps2-assets-*/\n',encoding='utf-8')
+    # Upstream development ignores omit required pinned runner sources. The
+    # complete exported runtime must be tracked; local artifacts live at root.
+    for path in (root/'runtime').rglob('.gitignore'):
+        path.write_text('# Exported runtime source is versioned in full.\n# Local assets/build/saves use the project root exclusions.\n',encoding='utf-8')
 
 
 def _native_execution_tests(root,sdk):
