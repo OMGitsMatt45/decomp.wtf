@@ -21,15 +21,83 @@ def test_emitter_cache_reuses_verified_bytes_and_regenerates_corruption(tmp_path
         destination=Path(command[command.index('--out-dir')+1])
         (destination/'original.c').write_text('int original(void){return 42;}\n')
         (destination/'original.h').write_text('int original(void);\n')
-    for index in range(3):
+        (destination/'ORIGINAL.EXE_full.ranges').write_text('F 80010000\nR 80010000 C\n')
+    for index in range(6):
         folder=tmp_path/f'output{index}';folder.mkdir()
         exe=folder/'ORIGINAL.EXE';exe.write_bytes(b'original input')
         seed=folder/'seeds.txt';seed.write_text('0x80010000\n')
         if index==2:
             next((tmp_path/'.psx-native-cache').glob('*/*/original.c')).write_text('corrupt')
+        if index==4:
+            metadata=next((tmp_path/'.psx-native-cache').glob('*/*/files.json'))
+            legacy=json.loads(metadata.read_text())
+            legacy.pop('ORIGINAL.EXE_full.ranges')
+            metadata.write_text(json.dumps(legacy))
         emit('emitter',exe,seed,folder,run,sdk,'original emitter')
         assert (folder/'original.c').read_text()=='int original(void){return 42;}\n'
-    assert len(calls)==2
+        assert (folder/'ORIGINAL.EXE_full.ranges').read_text()=='F 80010000\nR 80010000 C\n'
+    assert len(calls)==3
+    # The repaired entry must be reused on the following export too.
+    emit('emitter',exe,seed,folder,run,sdk,'original emitter')
+    assert len(calls)==3
+
+
+def test_overlay_owner_hints_recheck_bytes_after_replacement(tmp_path):
+    if not shutil.which('cmake'):pytest.skip('CMake compiler required')
+    from decompnet.psx_native import _run,codegen
+    modules=[dict(prefix=f'decomp_m{i+1}_',entries=[0x80010000,0x80010004],
+                  load_address=0x10000,image_size=8) for i in range(3)]
+    codegen.registry(modules,tmp_path/'modules.c')
+    (tmp_path/'cpu_state.h').write_text('''#include <stdint.h>
+typedef struct {uint32_t gpr[32],pc;uint8_t(*read_byte)(uint32_t);
+uint32_t(*read_word)(uint32_t);void(*write_word)(uint32_t,uint32_t);} CPUState;
+''')
+    declarations='\n'.join(f'''
+int decomp_m{i+1}_psx_dispatch_game_compiled(CPUState*c,uint32_t a){{
+if(!check({i},a))return 0;c->gpr[2]={i+100};return 1;}}
+int decomp_m{i+1}_psx_game_text_native_ok(uint32_t a){{return check({i},a);}}
+int decomp_m{i+1}_psx_game_text_native_ok_full(uint32_t a){{return check({i},a);}}
+''' for i in range(3))
+    (tmp_path/'runner.c').write_text('''#include "cpu_state.h"
+#include <stdio.h>
+#include <string.h>
+static int selected=2,checks[3];
+static int check(int i,uint32_t a){checks[i]++;return selected==i&&(a==0x80010000u||a==0x80010004u);}
+int psx_dispatch_game_compiled(CPUState*,uint32_t);
+int psx_game_text_native_ok(uint32_t);
+int psx_game_text_native_ok_full(uint32_t);
+int psx_game_is_function_entry(uint32_t);
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"failed line %d\\n",__LINE__);return 1;}}while(0)
+'''+declarations+'''
+int main(void){CPUState cpu={0};
+CHECK(psx_game_text_native_ok(0x80010000u));
+memset(checks,0,sizeof(checks));
+CHECK(psx_dispatch_game_compiled(&cpu,0x80010000u)&&cpu.gpr[2]==102);
+CHECK(checks[0]==0&&checks[1]==0&&checks[2]==1);
+/* A cold neighboring entry uses the page hint, with its own guard. */
+memset(checks,0,sizeof(checks));
+CHECK(psx_game_text_native_ok_full(0x80010004u));
+CHECK(checks[0]==1&&checks[1]==0&&checks[2]==1);
+selected=1;
+CHECK(psx_dispatch_game_compiled(&cpu,0x80010000u)&&cpu.gpr[2]==101);
+selected=-1;cpu.gpr[2]=999;
+CHECK(!psx_dispatch_game_compiled(&cpu,0x80010000u)&&cpu.gpr[2]==999);
+CHECK(!psx_game_text_native_ok_full(0x80010004u));
+selected=0;
+CHECK(psx_dispatch_game_compiled(&cpu,0x80010004u)&&cpu.gpr[2]==100);
+CHECK(psx_game_is_function_entry(0x80010000u));
+memset(checks,0,sizeof(checks));
+CHECK(psx_dispatch_game_compiled(&cpu,0x80010000u));
+CHECK(checks[0]==1&&checks[1]==0&&checks[2]==0);
+return 0;}
+''')
+    (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\n'
+        'project(OwnerHints LANGUAGES C)\nset(CMAKE_C_STANDARD 11)\n'
+        'add_executable(checks runner.c modules.c)\ntarget_include_directories(checks PRIVATE .)\n')
+    _run(['cmake','-S',tmp_path,'-B',tmp_path/'build'],'Configure owner-hint guard regression')
+    _run(['cmake','--build',tmp_path/'build','--config','Release','--parallel','2'],'Compile owner-hint guard regression')
+    exe=next(path for path in (tmp_path/'build/checks',tmp_path/'build/Release/checks.exe') if path.is_file())
+    _run([exe],'Check cached owners after code replacement')
 
 
 def catalog(tmp_path, body):
