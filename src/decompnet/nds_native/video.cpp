@@ -775,6 +775,16 @@ struct Display::Impl {
             const auto box=polygon_box(*scene,p);if(box.w&&box.h)boxes.push_back(box);
         }
         layout_detail::group(boxes);
+        for(const auto& region:frame.hud_regions)if(region.caption&&region.on_top==on_top) {
+            Box text{};
+            for(size_t i=0;i<boxes.size();) {
+                const auto b=boxes[i];
+                if(b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h) {
+                    text=text.w?layout_detail::unite(text,b):b;boxes.erase(boxes.begin()+i);
+                } else ++i;
+            }
+            if(text.w)boxes.push_back(text);
+        }
         layout_detail::group_battle_messages(boxes);
         if(!boxes.empty()) {
             const auto frames=layout_detail::window_frames(primary);
@@ -783,7 +793,9 @@ struct Display::Impl {
             std::array<uint32_t,256*192> foreground{};
             for(size_t i=0;i<foreground.size();++i)foreground[i]=uint32_t(fg[i]);
             for(const auto b:boxes) {
-                const bool caption=b.y>=140&&b.h<=32&&b.w>=80;
+                const bool authored_caption=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.caption&&region.on_top==on_top&&
+                    b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
+                const bool caption=authored_caption||(b.y>=140&&b.h<=32&&b.w>=80);
                 const bool opaque_menu=opaque>256*192*9/10;
                 const bool fixed_hud=std::any_of(frame.hud_regions.begin(),frame.hud_regions.end(),[&](const auto& region){return region.on_top==on_top&&
                     b.x>=region.x&&b.y>=region.y&&b.x+b.w<=region.x+region.w&&b.y+b.h<=region.y+region.h;});
@@ -792,6 +804,7 @@ struct Display::Impl {
                 const float w=b.w*ui_scale,h=b.h*ui_scale;
                 Rect destination{dialogue?(width-w)/2:width-margin-w,
                     dialogue||b.y>=128?margin+(192-b.y-b.h)*ui_scale:height-margin-(b.y+b.h)*ui_scale,w,h};
+                if(authored_caption)destination.x=width/2.f+(b.x-128)*ui_scale;
                 // Unframed sprites remain attached to their native world
                 // projection: damage, touch arrows, NPC and item indicators.
                 if(!panel&&!dialogue) {
