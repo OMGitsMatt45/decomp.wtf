@@ -23,4 +23,8 @@ template<class Feature,class Options>
 void configure_video(Feature& feature,Options& options) {
     if constexpr(requires { feature.configure_video(options); }) feature.configure_video(options);
 }
+template<class Feature,class Frame>
+void configure_frame(Feature& feature,dsr::Session& session,Frame& frame) {
+    if constexpr(requires { feature.configure_frame(session,frame); })feature.configure_frame(session,frame);
+}
 }

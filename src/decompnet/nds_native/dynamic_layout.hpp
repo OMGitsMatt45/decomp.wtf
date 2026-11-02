@@ -88,27 +88,74 @@ inline Box party_band(const uint32_t* pixels) {
         if(distance>=16&&distance<=96){top=std::min(top,lines[i]-2);bottom=std::max(bottom,lines[i+1]+3);i+=2;}
         else ++i;
     }
+    int left=256,right=0;
     if(bottom>top)for(int y=0;y<192;++y) {
-        int run=0,longest=0;
+        int run=0,longest=0,start=0;
         for(int x=0;x<256;++x) {
             const auto p=pixels[y*256+x];const int r=(p>>16)&255,g=(p>>8)&255,b=p&255;
-            if(std::min({r,g,b})>180&&std::max({r,g,b})-std::min({r,g,b})<25)longest=std::max(longest,++run);else run=0;
+            if(std::min({r,g,b})>180&&std::max({r,g,b})-std::min({r,g,b})<25) {
+                if(++run>longest){longest=run;start=x-run+1;}
+            } else run=0;
         }
         // Nested command/target lists can extend beyond the party rows.
         // Keep their full borders, contents and source touch coordinates too.
-        if(longest>=24&&longest<252){top=std::min(top,y-2);bottom=std::max(bottom,y+3);}
+        if(longest>=24&&longest<256){top=std::min(top,y-2);bottom=std::max(bottom,y+3);left=std::min(left,start-2);right=std::max(right,start+longest+2);}
     }
-    return bottom>top?Box{0,std::max(0,top),256,std::min(192,bottom)-std::max(0,top)}:Box{};
+    left=std::max(0,left);right=std::min(256,right);
+    if(left>=16&&right<=240&&right-left<224){++left;--right;top+=2;bottom-=2;}
+    return bottom>top&&right>left?Box{left,std::max(0,top),right-left,std::min(192,bottom)-std::max(0,top)}:Box{};
+}
+// Remove only the solid backdrop reachable from a cropped panel's exterior.
+// Matching text/interior colors remain enclosed by the original frame border.
+inline std::vector<uint32_t> panel_pixels(const uint32_t* pixels,Box box) {
+    std::vector<uint32_t> result(pixels,pixels+256*192);std::vector<int> queue;
+    const auto background=pixels[0]&0xffffff;
+    auto visit=[&](int x,int y){if(x<box.x||x>=box.x+box.w||y<box.y||y>=box.y+box.h)return;
+        const int p=y*256+x;if((result[p]>>24)&&(result[p]&0xffffff)==background){result[p]=0;queue.push_back(p);}};
+    for(int x=box.x;x<box.x+box.w;++x){visit(x,box.y);visit(x,box.y+box.h-1);}
+    for(int y=box.y;y<box.y+box.h;++y){visit(box.x,y);visit(box.x+box.w-1,y);}
+    for(size_t n=0;n<queue.size();++n){const int p=queue[n],x=p%256,y=p/256;visit(x-1,y);visit(x+1,y);visit(x,y-1);visit(x,y+1);}
+    return result;
 }
 inline void group_battle_messages(std::vector<Box>& boxes) {
     Box message{};
+    std::vector<Box> candidates;
     for(size_t i=0;i<boxes.size();) {
         const auto b=boxes[i];
-        if(b.y>=128||(b.w>=190&&b.y+b.h>=155)) {
-            message=message.w?unite(message,b):b;boxes.erase(boxes.begin()+i);
+        if(b.y>=140&&b.h<=32) {
+            candidates.push_back(b);message=message.w?unite(message,b):b;boxes.erase(boxes.begin()+i);
         } else ++i;
     }
-    if(message.w)boxes.push_back(message);
+    if(message.w>=80)boxes.push_back(message);
+    else boxes.insert(boxes.end(),candidates.begin(),candidates.end());
+}
+inline std::vector<Box> window_frames(const uint32_t* pixels) {
+    if(!pixels||blank_screen(pixels))return {};
+    struct Line {int y,x,end;};std::vector<Line> lines;std::vector<Box> frames;
+    auto border=[&](int x,int y){const auto p=pixels[y*256+x];const int r=(p>>16)&255,g=(p>>8)&255,b=p&255;
+        return std::min({r,g,b})>130&&std::max({r,g,b})-std::min({r,g,b})<25;};
+    for(int y=0;y<192;++y) {
+        int start=0;
+        for(int x=0;x<=256;++x)if(x==256||!border(x,y)) {
+            if(x-start>=64)lines.push_back({y,start,x-1});
+            start=x+1;
+        }
+    }
+    for(const auto a:lines)for(const auto b:lines)if(b.y-a.y>=12&&std::abs(a.x-b.x)<=6&&std::abs(a.end-b.end)<=6) {
+        auto side=[&](int edge){int best=0;for(int x=std::max(0,edge-6);x<=std::min(255,edge+6);++x){int n=0;
+            for(int y=a.y+4;y<=b.y-4;++y)n+=border(x,y);best=std::max(best,n);}return best;};
+        const int left=side(std::min(a.x,b.x)),right=side(std::max(a.end,b.end)),h=b.y-a.y-7;
+        if(std::max(left,right)*5>=h*4&&std::min(left,right)*2>=h)
+            frames.push_back({std::min(a.x,b.x),a.y,std::max(a.end,b.end)-std::min(a.x,b.x)+1,b.y-a.y+1});
+    }
+    group(frames,0);return frames;
+}
+inline bool framed_box(const std::vector<Box>& frames,Box box) {
+    // One overlay group can contain a dialogue frame, its shadow and a smaller
+    // choice window. Find the actual contained frame rather than requiring
+    // borders to coincide with the outermost group's transparent padding.
+    return std::any_of(frames.begin(),frames.end(),[&](Box b){return b.x>=box.x-4&&b.y>=box.y-4&&
+        b.x+b.w<=box.x+box.w+4&&b.y+b.h<=box.y+box.h+4;});
 }
 inline bool full_window(const uint32_t* pixels) {
     if(!pixels)return false;
