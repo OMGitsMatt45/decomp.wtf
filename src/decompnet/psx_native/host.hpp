@@ -25,7 +25,6 @@ static std::string decomp_report_path, decomp_capture_path;
 static std::vector<uint32_t> decomp_observe;
 static uint32_t decomp_coverage_pc=0;
 static std::map<uint64_t,uint16_t> decomp_inputs;
-static uint16_t decomp_input=0xffff;
 static int decomp_exit_status=0;
 #ifdef DECOMP_PSX_NATIVE_ONLY
 static constexpr const char *decomp_execution_model="static-recompiled";
@@ -206,13 +205,15 @@ static bool decomp_capture(int dw,int dh) {
     }
     return file.good();
 }
+static int decomp_script_input() {
+    extern uint64_t s_frame_count;
+    if(decomp_inputs.empty()||psx_netplay_active())return -1;
+    const auto cursor=decomp_inputs.upper_bound(s_frame_count);
+    sio_set_pad_connected(0,1);
+    return cursor==decomp_inputs.begin()?0xffff:std::prev(cursor)->second;
+}
 static void decomp_frame_end() {
     extern uint64_t s_frame_count;
-    if(!decomp_inputs.empty()) {
-        auto cursor=decomp_inputs.upper_bound(s_frame_count);
-        decomp_input=cursor==decomp_inputs.begin()?0xffff:std::prev(cursor)->second;
-        sio_set_pad_state_slot(0,decomp_input);
-    }
     ps1_host::cheat_tick();
     if(s_frame_count%60==0&&std::getenv("DECOMP_PSX_TRACE")) {
         std::fprintf(stderr,"decomp.wtf: frame=%llu pc=%08x ra=%08x native=%llu interpreted=%llu observed=",
@@ -276,6 +277,7 @@ static void decomp_frame_end() {
        <<",\"disc_index\":"<<cdrom_disc_selected()<<",\"disc_count\":"<<cdrom_disc_roster_count()
        <<",\"settings_openings\":"<<ps1_host::cheat_menu_openings<<",\"cheat_toggles\":"<<ps1_host::cheat_toggles
        <<",\"scripted_input\":"<<(!decomp_inputs.empty()?"true":"false")
+       <<",\"pad0_buttons\":"<<sio_get_pad_buttons_slot(0)<<",\"pad0_connected\":"<<sio_get_pad_connected(0)
        <<",\"disc_sectors\":"<<cdrom_mounted_sector_count()<<",\"audio_frames\":"<<audio.render_frames
        <<",\"audio_nonzero_frames\":"<<audio.nonzero_frames<<",\"observed\":[";
     if(gl)rt_release();

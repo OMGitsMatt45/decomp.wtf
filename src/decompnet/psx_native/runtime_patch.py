@@ -30,7 +30,7 @@ def patch(root):
     path=root/'runtime/src/main.cpp'
     text=path.read_text(encoding='utf-8-sig')
     text=replace(text,'/* ---- SDL state ---- */',
-        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic bool decomp_event(const SDL_Event&);\n'
+        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\n'
         'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);\n'
         'static bool decomp_bounded_run();')
     text=replace(text,'static bool frontend_unattended() { return g_headless || g_hidden_window; }',
@@ -42,7 +42,9 @@ def patch(root):
     text=replace(text,'    CPUState cpu;\n    std::memset(&cpu, 0, sizeof(cpu));',
         '    CPUState cpu;\n    decomp_cpu=&cpu;\n    std::memset(&cpu, 0, sizeof(cpu));')
     text=replace(text,'        frame_report_tick(s_frame_count);',
-        '        frame_report_tick(s_frame_count);\n        decomp_frame_end();')
+        '        frame_report_tick(s_frame_count);\n        decomp_frame_end();\n'
+        '        const int scripted_input=decomp_script_input();\n'
+        '        if(scripted_input>=0)override=scripted_input;')
     text=replace(text,'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {',
         'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {\n        if(decomp_event(ev))continue;')
     text=replace(text,'    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;',

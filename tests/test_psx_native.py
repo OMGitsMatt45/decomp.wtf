@@ -245,6 +245,16 @@ def test_standalone_executable_envelope_boots_through_real_bios(native_project):
     assert report['observed'][0]==1 and report['native_dispatches']>0
 
 
+def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
+    script=native_project[0]/'original-input.txt'
+    script.write_text('# held masks\n0 0xffff\n100 0xbfff\n400 0xffef\n500 0xffff\n')
+    report,_=run(native_project,'scripted-cross','--headless','--renderer','software',
+        '--input-script',script,frames=360)
+    assert report['scripted_input'] and report['pad0_connected']==1
+    assert report['pad0_buttons']==0xbfff
+    assert report['interpreted_instructions']==0 and report['coverage_misses']==0
+
+
 def test_automatic_fallback_and_required_gpu_failure(native_project):
     report,_=run(native_project,'automatic-fallback','--hidden-window','--renderer','auto')
     assert report['renderer']=='software' and report['software_fallback']
