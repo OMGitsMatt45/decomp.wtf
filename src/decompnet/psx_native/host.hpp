@@ -156,6 +156,10 @@ static bool decomp_event(const SDL_Event &event) {
 #else
     const auto key=event.key.keysym.sym;
 #endif
+    if(key==SDLK_F1) {
+        if(!savestate_menu_open&&!psx_rewind_is_open())psx_runtime_menu_open();
+        return true;
+    }
     if(key==SDLK_F11) {
         psx_window_fullscreen_set(sdl_window,&s_window_fullscreen,s_window_fullscreen.mode?0:1);
         return true;

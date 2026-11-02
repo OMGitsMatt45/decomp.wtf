@@ -47,6 +47,8 @@ def patch(root):
         '        if(scripted_input>=0)override=scripted_input;')
     text=replace(text,'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {',
         'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {\n        if(decomp_event(ev))continue;')
+    text=replace(text,'if (!repeat && host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod))',
+        'if (!repeat && (key == SDLK_F1 || host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod)))')
     text=replace(text,'    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;',
         '    if(decomp_fullscreen)g_fullscreen=1;\n    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;')
     text=replace(text,'    sdl_window = SDL_CreateWindow(\n        window_title.c_str(),',
