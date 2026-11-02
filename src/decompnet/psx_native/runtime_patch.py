@@ -10,18 +10,27 @@ def replace(text,old,new):
 
 
 def keyboard_sampling(text,header):
-    """Keep quick SDL keyboard presses until one coherent guest-pad sample."""
+    """Keep quick SDL keyboard presses for a bounded number of pad samples."""
     marker='static uint8_t s_suppressed[PSXKB_MAX_PLAYERS][PSXKB_MOUSE_SC_BASE + 6];'
     text=replace(text,marker,marker+r'''
 static uint8_t decomp_pulse_next[PSXKB_MAX_PLAYERS][SDL_NUM_SCANCODES];
 static uint8_t decomp_pulse_current[PSXKB_MAX_PLAYERS][SDL_NUM_SCANCODES];
+static uint8_t decomp_tap_frames=1;
+void decomp_keybinds_set_tap_frames(unsigned frames) {
+    if(frames>=1&&frames<=30)decomp_tap_frames=(uint8_t)frames;
+}
 void decomp_keybinds_note_keydown(SDL_Scancode sc) {
     if((int)sc<=0||(int)sc>=SDL_NUM_SCANCODES)return;
     for(int slot=0;slot<PSXKB_MAX_PLAYERS;slot++)
         if(!s_suppressed[slot][sc])decomp_pulse_next[slot][sc]=1;
 }
 void decomp_keybinds_begin_sample(void) {
-    memcpy(decomp_pulse_current,decomp_pulse_next,sizeof(decomp_pulse_current));
+    for(int slot=0;slot<PSXKB_MAX_PLAYERS;slot++)
+        for(int sc=0;sc<SDL_NUM_SCANCODES;sc++) {
+            uint8_t *current=&decomp_pulse_current[slot][sc];
+            if(decomp_pulse_next[slot][sc])*current=decomp_tap_frames;
+            else if(*current)--*current;
+        }
     memset(decomp_pulse_next,0,sizeof(decomp_pulse_next));
 }
 void decomp_keybinds_clear_pulses(void) {
@@ -38,6 +47,7 @@ void decomp_keybinds_clear_pulses(void) {
         '(int)sc < SDL_NUM_SCANCODES && (keys[sc] || decomp_pulse_current[slot][sc]);')
     header=replace(header,'#ifdef __cplusplus\n}\n#endif',
         'void decomp_keybinds_note_keydown(SDL_Scancode sc);\n'
+        'void decomp_keybinds_set_tap_frames(unsigned frames);\n'
         'void decomp_keybinds_begin_sample(void);\nvoid decomp_keybinds_clear_pulses(void);\n'
         '#ifdef __cplusplus\n}\n#endif')
     return text,header
@@ -77,7 +87,7 @@ def patch(root):
     text=replace(text,'static int           g_video_depth24_trailing_margin = 8;',
         'static int           g_video_depth24_trailing_margin = 0;')
     text=replace(text,'/* ---- SDL state ---- */',
-        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\n'
+        '/* ---- SDL state ---- */\nstatic void decomp_frame_end();\nstatic int decomp_script_input();\nstatic bool decomp_event(const SDL_Event&);\nstatic void decomp_input_trace(int);\n'
         'static void decomp_opening_size(int*,int*,int,int);\nstatic void decomp_place_window(SDL_Window*);\n'
         'static bool decomp_bounded_run();')
     text=replace(text,'static bool frontend_unattended() { return g_headless || g_hidden_window; }',
@@ -89,13 +99,22 @@ def patch(root):
     text=replace(text,'    CPUState cpu;\n    std::memset(&cpu, 0, sizeof(cpu));',
         '    CPUState cpu;\n    decomp_cpu=&cpu;\n    std::memset(&cpu, 0, sizeof(cpu));')
     text=replace(text,'        frame_report_tick(s_frame_count);',
-        '        frame_report_tick(s_frame_count);\n        decomp_keybinds_begin_sample();\n        decomp_frame_end();\n'
+        '        frame_report_tick(s_frame_count);\n        decomp_frame_end();\n'
         '        const int scripted_input=decomp_script_input();\n'
         '        if(scripted_input>=0)override=scripted_input;')
     text=replace(text,'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {',
         'static bool drain_host_events() {\n    SDL_Event ev;\n    while (SDL_PollEvent(&ev)) {\n        if(decomp_event(ev))continue;')
+    if text.count('sample_pad_into_sio(override);')!=2:
+        raise ValueError('pinned PS1 pad sampling sites differ')
+    text=text.replace('sample_pad_into_sio(override);',
+        '{sample_pad_into_sio(override);decomp_input_trace(override);}')
+    text=replace(text,"    /* Sample each player's device and feed the matching SIO pad slot.",
+        "    decomp_keybinds_begin_sample();\n    /* Sample each player's device and feed the matching SIO pad slot.")
     text=replace(text,'if (!repeat && host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod))',
         'if (!repeat && (key == SDLK_F1 || host_keymap_match_event(HOST_KEYMAP_OPEN_LAUNCHER, key, scan, mod)))')
+    for key,keypad,action in (('UP','8','UP'),('DOWN','2','DOWN'),('LEFT','4','LEFT'),('RIGHT','6','RIGHT')):
+        text=replace(text,f'else if (key == SDLK_{key}) psx_runtime_menu_input(PSX_MENU_{action}, repeat);',
+            f'else if (key == SDLK_{key} || key == SDLK_KP_{keypad}) psx_runtime_menu_input(PSX_MENU_{action}, repeat);')
     text=replace(text,'    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;',
         '    if(decomp_fullscreen)g_fullscreen=1;\n    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;')
     text=replace(text,'    sdl_window = SDL_CreateWindow(\n        window_title.c_str(),',

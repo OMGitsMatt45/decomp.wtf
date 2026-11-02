@@ -249,6 +249,13 @@ def test_standalone_executable_envelope_boots_through_real_bios(native_project):
     assert report['observed'][0]==1 and report['native_dispatches']>0
 
 
+def test_native_snapshot_load_is_explicitly_unavailable(native_project,monkeypatch):
+    monkeypatch.setenv('PSX_LOAD_SLOT','0')
+    output=run(native_project,'native-snapshot-unavailable','--headless','--renderer','software',ok=False,frames=1)
+    assert "Snapshots are unavailable in this native build" in output
+    assert "Use the game's own save menu" in output
+
+
 def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     script=native_project[0]/'original-input.txt'
     script.write_text('# held masks\n0 0xffff\n100 0xbfff\n400 0xffef\n500 0xffff\n')
@@ -257,6 +264,43 @@ def test_scripted_input_reaches_the_actual_offline_pad_sampler(native_project):
     assert report['scripted_input'] and report['pad0_connected']==1
     assert report['pad0_buttons']==0xbfff
     assert report['interpreted_instructions']==0 and report['coverage_misses']==0
+    script.write_text('0 0xbfff\n300 LIVE\n')
+    report,_=run(native_project,'scripted-handoff','--headless','--renderer','software',
+        '--input-script',script,frames=360)
+    assert report['pad0_buttons']==0xffff
+    assert report['interpreted_instructions']==0 and report['coverage_misses']==0
+
+
+@pytest.mark.parametrize('library_load,resident',[(0x80010000,True),(0x80100000,False)])
+def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,tmp_path,library_load,resident):
+    import struct
+    from decompnet.psx_native import _sdk,_recompiler,_run,codegen
+    sdk=_sdk();emitter=_recompiler(sdk);target=library_load+0x200
+    def image(load,words,leaf=False):
+        payload=bytearray(2048);struct.pack_into('<'+'I'*len(words),payload,0,*words)
+        if leaf:
+            # A valid varargs-style entry has no initial stack adjustment and
+            # no caller in its own resident image, like the missed retail case.
+            struct.pack_into('<6I',payload,0x200,0xafa50004,0xafa60008,0xafa7000c,
+                             0x24020007,0x03e00008,0)
+        header=bytearray(2048);header[:8]=b'PS-X EXE'
+        struct.pack_into('<4I',header,0x10,load,0,load,len(payload))
+        return bytes(header+payload)
+    boot=dict(index=1,module_index=1,boot='LIBRARY.EXE',resident_boot=resident,
+        image=image(library_load,[0x1000ffff,0],True),info=dict(load=library_load,entrypoint=library_load))
+    overlay=dict(index=1,module_index=2,boot='OVERLAY.EXE',
+        image=image(0x80130000,[0x0c000000|((target>>2)&0x03ffffff),0,0x1000ffff,0]),
+        info=dict(load=0x80130000,entrypoint=0x80130000))
+    resident=tmp_path/'disc1';nested=resident/'module1'
+    modules=[codegen.module(emitter,boot,resident,_run,sdk),
+             codegen.module(emitter,overlay,nested,_run,sdk)]
+    modules[0]['origins']=[dict(disc=1),dict(disc=2)]
+    assert target not in modules[0]['entries'] and target in modules[1]['external_calls']
+    overlay_hash=modules[1]['dispatch_sha256']
+    report=codegen.close_resident_calls(emitter,[(boot,resident),(overlay,nested)],modules,_run,sdk)
+    assert target in modules[0]['entries'] and report[0]['uncompiled_calls']==[]
+    assert modules[0]['origins']==[dict(disc=1),dict(disc=2)]
+    assert modules[1]['dispatch_sha256']==overlay_hash and (nested/'OVERLAY.EXE_dispatch.c').is_file()
 
 
 def test_automatic_fallback_and_required_gpu_failure(native_project):
@@ -355,6 +399,20 @@ int main(void){
     decomp_keybinds_note_keydown((SDL_Scancode)-1);
     decomp_keybinds_note_keydown((SDL_Scancode)SDL_NUM_SCANCODES);
     decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    /* Optional automation pulses span slow guest polling loops exactly. */
+    decomp_keybinds_set_tap_frames(6);
+    decomp_keybinds_set_tap_frames(0);decomp_keybinds_set_tap_frames(31);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_C);
+    for(int frame=0;frame<6;frame++) {
+        decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+        CHECK(psx_keybinds_pad_word(keys,1)==0xbfff);
+    }
+    decomp_keybinds_begin_sample();CHECK(psx_keybinds_pad_word(keys,1)==0xffff);
+    decomp_keybinds_note_keydown(SDL_SCANCODE_C);decomp_keybinds_note_keydown(SDL_SCANCODE_X);
+    decomp_keybinds_begin_sample();
+    psx_keybinds_suppress_control(1,SDL_SCANCODE_C);
+    CHECK(psx_keybinds_pad_word(keys,1)==0xffff&&psx_keybinds_pad_word(keys,2)==0xbfff);
+    decomp_keybinds_clear_pulses();
     return 0;
 }''')
     q=lambda value:json.dumps(value.as_posix())
