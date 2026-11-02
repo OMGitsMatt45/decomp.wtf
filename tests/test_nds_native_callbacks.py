@@ -36,7 +36,7 @@ def callback_image(tmp_path,module_id=0,increment=1):
         code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
 
 
-def interworking_image(tmp_path,cpu='arm9',variant='valid'):
+def interworking_image(tmp_path,cpu='arm9',variant='valid',broad=False):
     base=0x0201e000;raw=bytearray(0xa0)
     # Original Thumb caller, aligned BX-PC veneer, ARM literal-load tail and
     # Thumb leaf. No retail or vendor SDK payloads are used.
@@ -55,6 +55,10 @@ def interworking_image(tmp_path,cpu='arm9',variant='valid'):
     module=dict(name='original',module_id=3,base=base,image=str(path),functions=functions,
         labels=[],calls=[],code_ranges=[[base,base+12],[base+0x20,base+0x22],[base+0x40,base+0x44]],
         data_ranges=[[base+12,base+0x20],[base+0x22,base+0x40],[base+0x44,base+len(raw)]])
+    if broad:
+        functions[0]['size']=0x44
+        module['dispatch_regions']=[dict(addr=base,size=0x44,thumb=True,
+            data_ranges=[[base+12,base+0x20],[base+0x22,base+0x40]],entries=[base,base+0x20,base+0x40])]
     return dict(cpu=cpu,arch='v5te'if cpu=='arm9'else 'v4t',modules=[module]),path
 
 
@@ -74,9 +78,20 @@ def test_mode_bridge_does_not_seed_another_overlay_with_the_same_virtual_address
     assert [(r['module_id'],r['address'],r['thumb'])for r in added]==[(3,0x0201e024,False)]
 
 
+def test_mode_bridge_preserves_existing_reachable_thumb_instructions(tmp_path,sdk):
+    manifest,image=interworking_image(tmp_path);raw=bytearray(image.read_bytes())
+    struct.pack_into('<I',raw,0x24,0xe1a00000);image.write_bytes(raw)
+    # The first halfword is an existing Thumb LSLS instruction as well as
+    # part of a possible ARM MOV. A state-changing root must not replace it.
+    manifest['modules'][0]['functions'].append(dict(addr=0x0201e024,size=2,thumb=True,name='existing_thumb'))
+    _,emitter,reader=nds_native._sdk()
+    assert recover(manifest,emitter,reader)==[]
+
+
 @pytest.mark.parametrize('cpu',['arm9','arm7'])
-def test_thumb_bx_pc_continuation_executes_arm_literal_tail_and_returns_to_thumb(tmp_path,sdk,hardware_project,cpu):
-    manifest,image=interworking_image(tmp_path,cpu);before=image.read_bytes();base=manifest['modules'][0]['base']
+@pytest.mark.parametrize('broad',[False,True])
+def test_thumb_bx_pc_continuation_executes_arm_literal_tail_and_returns_to_thumb(tmp_path,sdk,hardware_project,cpu,broad):
+    manifest,image=interworking_image(tmp_path,cpu,broad=broad);before=image.read_bytes();base=manifest['modules'][0]['base']
     _,emitter,reader=nds_native._sdk();added=recover(manifest,emitter,reader)
     assert len(added)==1 and added[0]['address']==base+0x24 and not added[0]['thumb']
     assert added[0]['call_sources']==[dict(module_id=3,address=base+0x20)]

@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import tempfile
+import time
 from typing import Callable
 
 from . import platforms
@@ -256,7 +257,17 @@ def export_backend(project: dict, destination: Path, backend: Backend) -> dict:
         if manifest['platform'] != platform or manifest['backend'] != dict(id=backend.id, revision=backend.revision):
             raise PCError('generated project does not match the selected backend/platform')
         # Renaming on the same filesystem publishes only a complete checked tree.
-        if destination.exists():
-            raise PCError('PC-project destination appeared during generation')
-        stage.rename(destination)
+        for attempt in range(6):
+            if destination.exists():
+                raise PCError('PC-project destination appeared during generation')
+            try:
+                stage.rename(destination)
+                break
+            except PermissionError as error:
+                # Windows can temporarily deny renaming a newly written tree.
+                # Retry only its access/sharing/lock errors, with a bounded
+                # delay and a fresh destination-preservation check each time.
+                if getattr(error,'winerror',None) not in (5,32,33) or attempt==5:
+                    raise
+                time.sleep(.05*(2**attempt))
     return dict(path=str(destination), format='pc', **verified)

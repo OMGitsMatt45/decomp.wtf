@@ -229,7 +229,7 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
     address_entries=defaultdict(list)
     for entry in entries:address_entries[entry.address].append(entry)
     mode_entries={(e.module_id,e.address,e.thumb):e for e in entries}
-    direct_roots=defaultdict(lambda:defaultdict(list))
+    direct_roots=defaultdict(lambda:defaultdict(list));mode_bridges=defaultdict(set)
     for source in manifest['modules']:
         image=images[int(source['module_id'])];base=int(source['base'])
         ranges=sorted((int(f['addr']),int(f['addr'])+int(f['size']),bool(f['thumb']))
@@ -266,6 +266,7 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
                 or op.operands[0].type!=ARM_OP_REG or op.operands[0].reg!=ARM_REG_PC):continue
         direct_roots[entry.module_id][(entry.address+4,False)].append(
             dict(module_id=entry.module_id,address=entry.address))
+        mode_bridges[entry.module_id].add((entry.address+4,False))
     if cpu=='arm7':
         # The importer can omit a cross-autoload edge along with a weak root.
         # Decode real source bodies and qualify a destination only when exactly
@@ -313,6 +314,28 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
             return result
         decoders={thumb:emitter.Decoder(image,base,arch,thumb) for thumb in (False,True)}
         reference_roots={}
+        owner_code={}
+        def instructions(owner):
+            key=int(owner['addr']),int(owner['size']),bool(owner['thumb'])
+            if key not in owner_code:
+                start,_,mode=key
+                entry=emitter.Entry(module,owner,start,mode,owner['name'],False,cpu)
+                body=emitter.FunctionEmitter(cpu,arch,module,image,entry,address_entries,
+                    calls,{},module_entries,decoders[mode],module_mode_entries=mode_entries)
+                body._discover()
+                owner_code[key]={byte for op in body.insns.values()for byte in range(op.address,op.next_address)}
+            return owner_code[key]
+        bridge_code={}
+        for key in mode_bridges[int(module['module_id'])]:
+            address,thumb=key
+            if (int(module['module_id']),address,thumb)in mode_entries:continue
+            # A broad Thumb extent may include this ARM tail as a data hole.
+            # Its complete reachable instructions must remain disjoint from
+            # the continuation, including instructions straddling its start.
+            known=set().union(*(instructions(owner)for owner in functions
+                if int(owner['addr'])<=address<int(owner['addr'])+int(owner['size'])))
+            if not any(byte in known for byte in range(address,address+4)):
+                bridge_code[key]=known
         for (address,thumb),size in references[int(module['module_id'])].items():
             if (int(module['module_id']),address,thumb) in mode_entries:continue
             # A broad imported extent can contain a separate callback after
@@ -354,7 +377,7 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
         call_sources={}
         for key,sources in direct_roots[int(module['module_id'])].items():
             address,thumb=key
-            if not covered(address) and plausible(address,thumb):
+            if (not covered(address) or key in bridge_code) and plausible(address,thumb):
                 roots[key]=[];call_sources[key]=sources
         for offset in range((-base)%4,len(image)-3,4):
             source=base+offset;index=bisect_right(data_starts,source)-1
@@ -393,7 +416,8 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
                         and base<=address<address+size<=limit):deferred[address,thumb]=size
         while pending:
             address,thumb=pending.popleft();key=(address,thumb)
-            if key in visited or (covered(address) and key not in reference_roots) or not plausible(address,thumb):continue
+            if (key in visited or (covered(address) and key not in reference_roots and key not in bridge_code)
+                    or not plausible(address,thumb)):continue
             visited.add(key)
             # Reviewed full bounds may span partial importer records. Those
             # fragments must not truncate the callback's enclosing stack frame.
@@ -439,6 +463,7 @@ def recover(manifest,emitter,reader,*,reference_entries=()):
                         targets.append((target,mode))
                         body_calls.append(dict(**{'from':op.address,'to':target},modules=[module['module_id']]))
             if not valid:continue
+            if code & bridge_code.get(key,set()):continue
             # Check literal conflicts after the complete graph has been decoded.
             if any(effect.literal is not None and any(byte in code for byte in
                     range(effect.literal[0],effect.literal[0]+effect.literal[1]))

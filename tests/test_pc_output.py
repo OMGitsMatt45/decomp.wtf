@@ -58,6 +58,42 @@ def test_existing_work_preserved(tmp_path,backend):
     assert (output/'user.cpp').read_text() == 'user changes'
 
 
+@pytest.mark.parametrize('failure',[5,32,33,None])
+def test_publish_retries_only_bounded_windows_lock_errors(tmp_path,backend,monkeypatch,failure):
+    original=Path.rename;attempts=[];delays=[];output=tmp_path/'output'
+    def rename(source,target):
+        attempts.append(source)
+        if len(attempts)<=2:
+            error=PermissionError('original simulated filesystem failure')
+            if failure is not None:error.winerror=failure
+            raise error
+        return original(source,target)
+    monkeypatch.setattr(Path,'rename',rename);monkeypatch.setattr(pc.time,'sleep',delays.append)
+    if failure is None:
+        with pytest.raises(PermissionError):pc.export(dict(platform='nds'),output)
+        assert len(attempts)==1 and not delays and not output.exists()
+    else:
+        assert pc.export(dict(platform='nds'),output)['integrity_verified']
+        assert len(attempts)==3 and delays==[.05,.1]
+    assert not list(tmp_path.glob('.pc-export-*'))
+
+
+@pytest.mark.parametrize('appears',[False,True])
+def test_publish_retry_preserves_competing_destination_and_fails_persistent_locks(tmp_path,backend,monkeypatch,appears):
+    output=tmp_path/'output';attempts=[]
+    def rename(source,target):
+        attempts.append(source)
+        if appears:
+            output.mkdir();(output/'user.cpp').write_text('preserved competing work')
+        error=PermissionError('persistent Windows lock');error.winerror=32;raise error
+    monkeypatch.setattr(Path,'rename',rename);monkeypatch.setattr(pc.time,'sleep',lambda _:None)
+    with pytest.raises(pc.PCError if appears else PermissionError):pc.export(dict(platform='nds'),output)
+    assert len(attempts)==(1 if appears else 6)
+    if appears:assert (output/'user.cpp').read_text()=='preserved competing work'
+    else:assert not output.exists()
+    assert not list(tmp_path.glob('.pc-export-*'))
+
+
 def test_invalid_generated_project_never_published(tmp_path,monkeypatch):
     def bad(project,root):
         generate(project,root)
