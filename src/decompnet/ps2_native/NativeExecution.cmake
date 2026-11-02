@@ -1,6 +1,12 @@
 # Build-selected CPU policy. Reference builds preserve the original ISA engines.
 option(DECOMP_PS2_REFERENCE "Build the separate instruction-reference player" OFF)
-set(_decomp_ps2_vu_options "$<$<CXX_COMPILER_ID:MSVC>:/O1>" "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-O1>")
+set(DECOMP_PS2_VU_OPTIMIZATION "2" CACHE STRING "Native vector operation optimization level (1 or 2)")
+set_property(CACHE DECOMP_PS2_VU_OPTIMIZATION PROPERTY STRINGS 1 2)
+if(NOT DECOMP_PS2_VU_OPTIMIZATION MATCHES "^[12]$")
+  message(FATAL_ERROR "DECOMP_PS2_VU_OPTIMIZATION must be 1 or 2")
+endif()
+set(_decomp_ps2_vu_options "$<$<CXX_COMPILER_ID:MSVC>:/O${DECOMP_PS2_VU_OPTIMIZATION}>"
+  "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-O${DECOMP_PS2_VU_OPTIMIZATION}>")
 set(DECOMP_PS2_PLAYER ps2_pc)
 if(DECOMP_PS2_REFERENCE)
   set(DECOMP_PS2_PLAYER ps2_probe)
@@ -29,6 +35,12 @@ option(DECOMP_PS2_BUILD_NATIVE_TESTS "Build original native IOP/vector execution
 if(DECOMP_PS2_BUILD_NATIVE_TESTS)
   set(PS2_TEST_ROOT "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xTest")
   add_executable(ps2_vu_probe tests/native_vu_probe.cpp "${PS2_TEST_ROOT}/src/test_function_table.cpp")
+  # Probe operations must preserve the player's floating-point policy.
+  if(MSVC)
+    target_compile_options(ps2_vu_probe PRIVATE /fp:strict)
+  else()
+    target_compile_options(ps2_vu_probe PRIVATE -ffp-contract=off)
+  endif()
   add_executable(ps2_iop_probe tests/native_iop_probe.cpp)
   add_executable(ps2_scheduler_probe tests/native_scheduler_probe.cpp "${PS2_TEST_ROOT}/src/test_function_table.cpp")
   target_link_libraries(ps2_scheduler_probe PRIVATE ps2_runtime)
