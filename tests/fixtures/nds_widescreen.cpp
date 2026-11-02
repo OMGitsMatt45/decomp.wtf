@@ -52,6 +52,9 @@ int main() {
         for(size_t i=0;i<tags.size();++i)tags[i]=(scene.serial<<16)|(i+1);
         for(int y=8;y<53;++y)for(int x=4;x<124;++x)foreground[y*256+x]=(1ull<<32)|0xffff0000;
         std::array<uint8_t,192> brightness{};
+        for(int yy=7;yy<=53;++yy)for(int xx=3;xx<=124;++xx)if(yy==7||yy==53||xx==3||xx==124) {
+            bottom[yy*256+xx]=0xffffffff;foreground[yy*256+xx]=(1ull<<32)|0xffffffff;
+        }
         std::deque<video::Scene> history{scene};
         require(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS)==0,SDL_GetError());
         video::Options options{"opengl",960,540,false,true};options.dynamic_widescreen=true;
@@ -76,7 +79,11 @@ int main() {
         for(int count=1;count<=4;++count){bottom.fill(0xff000000);for(int i=0;i<count;++i)panel(bottom,12+i*43,49+i*43);
             auto band=video::layout_detail::party_band(bottom.data());require(band.h>=(count-1)*43+38,"all party rows remain ordered and complete");}
         foreground.fill(1ull<<32);frame.top_origins=tags.data();frame.bottom_origins=none.data();
-        for(int y=120;y<192;++y)for(int x=0;x<256;++x)foreground[y*256+x]=(1ull<<32)|0xff00ff00;
+        for(int y=120;y<192;++y)for(int x=0;x<256;++x) {
+            const bool edge=y==120||y==191||x==0||x==255;
+            foreground[y*256+x]=(1ull<<32)|(edge?0xffffffff:0xff00ff00);
+            if(edge)top[y*256+x]=0xffffffff;
+        }
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="battle","party border detection selects battle layout");
         require(!display.touch(800,270,x,y),"battle world cannot masquerade as lower-LCD touch");
@@ -100,6 +107,29 @@ int main() {
         for(int y=80;y<92;++y)for(int x=32;x<52;++x)foreground[y*256+x]=(1ull<<32)|0xffff00ff;
         display.present(frame);pixels=display.read_pixels();
         require(pixels[238+242*960]==0xffff00ff,"enemy target marker stays at its world projection instead of a HUD corner");
+        // Sprite animation may change size or cross the old y/size thresholds.
+        // Its anchor must follow the native world rather than any HUD corner.
+        for(int yy:{90,125,135})for(int size:{16,36,50}) {
+            foreground.fill(1ull<<32);
+            for(int y=yy;y<yy+size&&y<192;++y)for(int x=80;x<80+size;++x)foreground[y*256+x]=(1ull<<32)|0xffff00ff;
+            display.present(frame);pixels=display.read_pixels();
+            const int px=int(480+(80+size/2.f-128)*540/192.f),py=int((yy+size/2.f)*540/192.f);
+            require(pixels[px+py*960]==0xffff00ff,"world sprites keep their position across animation sizes and heights");
+        }
+        foreground.fill(1ull<<32);bottom.fill(0xffc0a060);
+        frame.mode=video::Frame::Mode::Gameplay;frame.auxiliary=video::Frame::Auxiliary::Battle;
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="battle"&&pixels[60+60*960]!=0xffc0a060,"battle setup/results never expose an empty map backdrop");
+        for(int yy=72;yy<=110;++yy)for(int xx=32;xx<=223;++xx)
+            bottom[yy*256+xx]=yy==72||yy==110||xx==32||xx==223?0xffffffff:0xff505050;
+        const auto experience=video::layout_detail::party_band(bottom.data());
+        require(experience.x>=28&&experience.x+experience.w<=228,"XP panel crop excludes its wide tan background margins");
+        bottom[90*256+100]=bottom[0];
+        const auto cropped=video::layout_detail::panel_pixels(bottom.data(),experience);
+        require(cropped[experience.y*256+experience.x]==0&&cropped[90*256+100]==bottom[0],"panel exterior becomes transparent without erasing enclosed pixels of the same color");
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="battle"&&display.touch(150,500,x,y),"battle result panel keeps lower-LCD input");
+        frame.mode=video::Frame::Mode::Auto;frame.auxiliary=video::Frame::Auxiliary::Auto;
         auto* window=SDL_GetWindowFromID(1);require(window,"test window");SDL_SetWindowSize(window,1280,540);SDL_PumpEvents();
         display.present(frame);require(display.width()==1280&&display.world_aspect()>2.3f,"live ultrawide resize updates the camera frustum");
         // One-screen cinematics keep backdrop and narration in one native
@@ -231,6 +261,30 @@ int main() {
         display.present(frame);pixels=display.read_pixels();
         require(display.layout()=="credits-wide"&&pixels[320+270*1280]==0xffa0a0a0&&pixels[960+270*1280]==0xffff0000,"independent paired logos keep proportions in landscape");
         bottom.fill(0xffffffff);require(!video::layout_detail::full_window(bottom.data()),"uniform white fades are not menu frames");
+        frame.mode=video::Frame::Mode::MovieVertical;
+        for(int phase=0;phase<24;++phase) {
+            top.fill(phase%2?0xff000000:0xffffffff);bottom.fill(phase%3?0xff00ff00:0xff000000);
+            if(phase%4==0)panel(bottom,8,184);
+            display.present(frame);pixels=display.read_pixels();
+            require(display.layout()=="movie","explicit movie context keeps one layout through dark, logo-like and window-like frames");
+            require(!display.touch(640,135,x,y)&&display.touch(640,405,x,y)&&std::abs(x-128)<=1,"locked paired movie retains its two-screen order and touch mapping");
+        }
+        frame.mode=video::Frame::Mode::MenuLandscape;
+        display.present(frame);
+        require(display.layout()=="menu-wide"&&display.touch(960,270,x,y)&&std::abs(x-128)<=1,"explicit paired menu keeps a tall start page in landscape with native touch");
+        frame.mode=video::Frame::Mode::MovieSingle;frame.on_top=true;
+        for(int phase=0;phase<24;++phase) {
+            top.fill(phase%2?0xff000000:0xffffffff);bottom.fill(0xffff0000);
+            if(phase%3==0)panel(top,8,184);
+            display.present(frame);pixels=display.read_pixels();
+            require(display.layout()=="cinematic"&&pixels[80+270*1280]==0xff000000,"single-screen movie preserves its entire 4:3 frame and side bars through every fade");
+            require(pixels[640+270*1280]==top[128+96*256]&&!display.touch(640,270,x,y),"top-screen movie excludes the unused lower LCD and touch");
+        }
+        frame.mode=video::Frame::Mode::Gameplay;frame.auxiliary=video::Frame::Auxiliary::Map;
+        frame.on_top=false;top.fill(0xffff0000);bottom.fill(0xff0000ff);
+        display.present(frame);pixels=display.read_pixels();
+        require(display.layout()=="field"&&pixels[640+270*1280]==0xff0000ff&&pixels[80+270*1280]==0xff0000ff,"missing world geometry retains the known primary LCD and fills its fade color");
+        require(pixels[80+80*1280]==0xffff0000,"an auxiliary map stays inset during a geometry-free transition");
         std::cout<<"Optional frustum, visibility, field UI, party rows, touch and ultrawide resize checks passed\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
     return 0;

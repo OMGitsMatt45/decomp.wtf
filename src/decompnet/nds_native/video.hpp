@@ -46,6 +46,11 @@ struct Frame {
     const uint64_t* bottom_foreground=nullptr;
     const uint8_t* top_brightness=nullptr;
     const uint8_t* bottom_brightness=nullptr;
+    // Optional read-only game context. Auto keeps generic visual detection.
+    enum class Mode {Auto,Gameplay,MovieVertical,MenuLandscape,MovieSingle};
+    enum class Auxiliary {Auto,Hidden,Map,Battle};
+    Mode mode=Mode::Auto;
+    Auxiliary auxiliary=Auxiliary::Auto;
 };
 struct Options {
     std::string renderer="auto";

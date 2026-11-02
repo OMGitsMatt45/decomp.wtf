@@ -63,6 +63,27 @@ scenes cover side-only primitives, independent hardware counts, opt-in object
 visibility, orthographic exclusion, reset ownership, UI inverse mapping, one
 through four party rows, 4:3 pages, movies and live ultrawide resizing.
 
+Projects that can identify game states may optionally implement
+`Features::configure_frame(dsr::Session&, video::Frame&)`. The host calls it
+immediately before presenting the current frame. Its `mode` defaults to `Auto`;
+`Gameplay` retains world/HUD composition during menu and battle fades,
+`MovieVertical` keeps both original LCDs in one fixed vertical composition,
+and `MenuLandscape` keeps a paired menu in landscape even with tall page
+frames. `MovieSingle` uses the original 4:3 image from the LCD selected by
+`Frame::on_top`, with side bars, including during entirely blank movie frames.
+These hints do not change the native pixels or guest execution.
+`auxiliary` can identify a `Map`, `Battle` panel or `Hidden` secondary LCD.
+For example, explicit battle context prevents an empty results backdrop from
+being displayed as a map. Projects own state detection and movie lifetimes.
+
+Unframed foreground sprites keep their native world projection regardless of
+animation size or height. Bounded frames and lower captions use the smaller
+HUD scale; a choice window touching its dialogue remains one group. Party and
+results panels retain native touch coordinates while cropping outside border
+margins. A gameplay frame without replayable geometry uses its current native
+primary LCD and background color rather than promoting its map to the main
+picture. It cannot synthesize geometry missing from that frame.
+
 DQIX Enhanced's public README/STATE documentation informed the behavioral
 target. No GPL implementation code or game assets were copied into this MIT
 runtime implementation.
