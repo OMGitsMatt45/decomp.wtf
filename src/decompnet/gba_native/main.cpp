@@ -6,6 +6,7 @@
 #include "cheats.hpp"
 #include "cheat_catalog.hpp"
 #include "customization.hpp"
+#include "audio_settings.hpp"
 #include <charconv>
 #include <fstream>
 #include <iostream>
@@ -82,6 +83,7 @@ int main(int argc, char** argv) {
         std::vector<std::string> preset_picks;
         std::vector<std::filesystem::path> cheat_files;
         std::string renderer="auto";
+        std::string audio_mode;
 #ifdef GBA_GAME_DEFAULT
         frames=0;window=true;renderer=GBA_DEFAULT_RENDERER;
 #endif
@@ -104,6 +106,7 @@ int main(int argc, char** argv) {
                     "  [--frames N] [--headless]\n"
                     "  [--save game.sav] [--keys 0x001] [--observe 0x02000000]...\n"
                     "  [--capture screen.ppm] [--audio-pcm audio.pcm] [--rtc-start unix-seconds]\n"
+                    "  [--audio-mode original|enhanced] (band-limited DirectSound playback)\n"
                     "  [--bios owner-gba-bios.bin] (optional; a translated BIOS is selected automatically)\n"
                     "  [--miss-log NEW_FILE] (input-bound feedback for the next translation)\n"
                     "  [--window] [--renderer auto|opengl|software] [--fullscreen]\n"
@@ -128,7 +131,7 @@ int main(int argc, char** argv) {
             if (arg == "--settings") { open_settings=true;window=true;continue; }
             if (arg != "--rom" && arg != "--bios" && arg != "--save" && arg != "--capture" && arg != "--audio-pcm" && arg != "--miss-log" &&
                 arg != "--frames" && arg != "--keys" && arg != "--observe" && arg != "--rtc-start" &&
-                arg != "--renderer" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
+                arg != "--renderer" && arg != "--audio-mode" && arg != "--resolution" && arg != "--present-every" && arg != "--resize" &&
                 arg != "--input-script" && arg != "--menu-input-script" && arg != "--display-capture" && arg != "--cheat" && arg != "--cheats" && arg != "--preset")
                 throw anygba::Error("unknown option: "+std::string(arg));
             if (++i == argc) throw anygba::Error("missing option value");
@@ -145,6 +148,7 @@ int main(int argc, char** argv) {
             else if (arg == "--preset") preset_picks.emplace_back(argv[i]);
             else if (arg == "--cheats") cheat_files.emplace_back(argv[i]);
             else if (arg == "--renderer") renderer=argv[i];
+            else if (arg == "--audio-mode") audio_mode=argv[i];
             else if (arg == "--resolution" || arg == "--resize") {
                 std::string_view value=argv[i];
                 if(arg=="--resize") {auto colon=value.find(':');if(colon==value.npos)throw anygba::Error("resize needs FRAME:WIDTHxHEIGHT");resize_frame=number(value.substr(0,colon));value.remove_prefix(colon+1);}
@@ -187,6 +191,7 @@ int main(int argc, char** argv) {
             (reference && options.strict_static))
             throw anygba::Error("provide a ROM, 1..1000000 frames, valid keys and one CPU mode");
         if(renderer!="auto"&&renderer!="opengl"&&renderer!="software")throw anygba::Error("invalid renderer");
+        if(!audio_mode.empty()&&audio_mode!="original"&&audio_mode!="enhanced")throw anygba::Error("audio mode must be original or enhanced");
         if(!window&&!display_capture.empty())throw anygba::Error("display capture requires --window");
         auto script=buttons(input_script),menu_script=buttons(menu_input_script);
         if(!menu_input_script.empty()&&(!window||menu_script.empty()))throw anygba::Error("menu input scripts require a desktop window and at least one input row");
@@ -211,6 +216,10 @@ int main(int argc, char** argv) {
 #ifdef GBA_GAME_DEFAULT
         if(save.empty())save=(asset_root.empty()?std::filesystem::current_path():asset_root)/"saves"/(std::string(anygba_game_info.rom_sha256).substr(0,16)+".sav");
 #endif
+        gba_frontend::AudioSettings audio_settings;
+        audio_settings.load(save,window&&!reference);
+        if(!audio_mode.empty())audio_settings.set(audio_mode=="enhanced");
+        options.enhanced_audio=audio_settings.enhanced;
         if (!miss_log.empty()) {
             if (std::filesystem::exists(miss_log)) throw anygba::Error("choose a new miss-log file; existing work is preserved");
             std::ofstream header(miss_log, std::ios::binary);
@@ -225,6 +234,7 @@ int main(int argc, char** argv) {
         if (anygba_game_info.save_type) options.save_type = anygba_game_info.save_type;
         if (anygba_game_info.rtc >= 0) options.rtc = anygba_game_info.rtc ? "on" : "off";
         auto system = std::make_unique<anygba::System>(std::move(data), reference ? nullptr : &anygba_game_info, options);
+        audio_settings.changed=[&](bool enabled){system->set_enhanced_audio(enabled);};
         if(!bios_data.empty())system->set_bios_image(bios_data);
         uint16_t scripted=script.contains(0)?script.at(0):0;
         system->set_keys(static_cast<std::uint16_t>(keys)|scripted);
@@ -252,6 +262,7 @@ int main(int argc, char** argv) {
         for(const auto& id:preset_picks)if(auto error=catalog.set_enabled(id,true,false))throw anygba::Error(*error);
 #if defined(GBA_WITH_DESKTOP)
         gba_frontend::CheatBrowser browser;
+        browser.set_audio_settings(&audio_settings);
         browser.set_input_script(menu_script);
         uint16_t menu_blocked=0,previous_menu_keys=0;
         if(open_settings){
@@ -354,7 +365,8 @@ int main(int argc, char** argv) {
             << ",\"bios_native_dispatches\":" << system->bios_native_instructions()
             << ",\"rtc\":" << (system->has_rtc() ? "true" : "false")
             << ",\"audio_frames\":" << audio_frames << ",\"screen_sha256\":\"" << image_hash
-            << "\",\"gpu_rendering\":"<<(gpu?"true":"false")<<",\"renderer\":"<<std::quoted(selected)
+            << "\",\"audio_mode\":" << std::quoted(audio_settings.enhanced?"enhanced":"original")
+            << ",\"gpu_rendering\":"<<(gpu?"true":"false")<<",\"renderer\":"<<std::quoted(selected)
             <<",\"device\":"<<std::quoted(device)<<",\"audio_device\":"<<(audio_device?"true":"false")
             <<",\"drawable\":["<<drawable_width<<','<<drawable_height<<"],\"retail_qualified\":false,\"observed\":[";
         for (std::size_t i = 0; i < observe.size(); ++i) {

@@ -15,6 +15,7 @@ import tempfile
 
 from .. import pc, toolchains
 from ..rom.gba import is_gba, read_info
+from . import audio_patch
 
 SDK_COMMIT = 'a3eb412f79627eaae27e2523039d893f72dada1d'
 SDK_TREE_SHA256 = '521b2093b9eb66bffb501484bf187df34b83e87fcb0f56e2d269c8afff4db74a'
@@ -44,7 +45,8 @@ def revision():
     value = hashlib.sha256(SDK_COMMIT.encode())
     for name in ('__init__.py', 'Emitter.cmake', 'Project.cmake', 'main.cpp', 'extract.py',
                  'video.hpp', 'video.cpp', 'frame_input.hpp', 'frame_input_tests.cpp', 'ppu.frag', 'shader.hpp.in', 'graphics_tests.cpp', 'cartridge_tests.cpp', 'ram_feedback.hpp', 'overlay_emitter.cpp', 'bios_image.cpp', 'timing.cpp', 'discovery.inc', 'copy_discovery.cpp', 'bios_native.h', 'bios_emitter.cpp', 'native_entries.cpp', 'relocated.h', 'relocated.cpp', 'relocated_runtime.cpp', 'native_idle.hpp',
-                 'cheats.hpp', 'cheats.cpp', 'cheat_catalog.hpp', 'cheat_catalog.cpp', 'cheat_menu.hpp', 'cheat_menu.cpp', 'native_hooks.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt'):
+                 'cheats.hpp', 'cheats.cpp', 'cheat_catalog.hpp', 'cheat_catalog.cpp', 'cheat_menu.hpp', 'cheat_menu.cpp', 'native_hooks.cpp', 'settings_win32.cpp', 'customization.hpp', 'customization.cpp', 'cheat_tests.cpp', 'tomlplusplus-license.txt',
+                 'audio_patch.py', 'audio_interpolator.hpp', 'audio_settings.hpp', 'audio_tests.cpp'):
         value.update(name.encode()+b'\0'+_source(name).encode())
     return value.hexdigest()
 
@@ -402,6 +404,7 @@ def _runtime(sdk, destination):
         shutil.copyfile(sdk/'common/src'/name, destination/'common/src'/name)
     shutil.copyfile(sdk/'LICENSE', destination/'LICENSE')
     (destination/'runtime/src/native_hooks.cpp').write_text(_source('native_hooks.cpp'), encoding='utf-8')
+    audio_patch.apply(destination, _source)
     codes = destination/'runtime/src/cheats/codes.cpp'
     text = codes.read_text(encoding='utf-8')
     old = 'in(0x02000000, 0x40000) || in(0x03000000, 0x8000)'
@@ -775,6 +778,8 @@ def generate(project, root):
                          ('frame_input.hpp', 'native/frame_input.hpp'), ('frame_input_tests.cpp', 'tests/frame_input.cpp'),
                          ('ppu.frag', 'native/ppu.frag'), ('shader.hpp.in', 'native/shader.hpp.in'),
                          ('graphics_tests.cpp', 'tests/graphics.cpp'),
+                         ('audio_tests.cpp', 'tests/audio.cpp'),
+                         ('audio_settings.hpp', 'native/audio_settings.hpp'),
                          ('cartridge_tests.cpp', 'tests/cartridge.cpp'),
                          ('native_idle.hpp', 'tests/native_idle.hpp'),
                          ('ram_feedback.hpp', 'native/ram_feedback.hpp'),
@@ -921,7 +926,14 @@ the report names the actual device. `--renderer software` selects CPU compatibil
 
 Controls: arrows, X (A), Z (B), Enter (Start), Backspace (Select), Q (L), W (R).
 Gamepads use the directional pad, south/east buttons, Start/Back and shoulders.
-Stereo sound plays at 32768 Hz. Raw cartridge saves persist atomically under
+Stereo sound plays at 32768 Hz. Desktop play defaults to band-limited DirectSound
+reconstruction: original songs, instruments and guest timing with cleaner sample
+playback. In F1/Escape or the Start-to-R browser, select the Audio category and
+toggle Enhanced Audio with A (keyboard X). The preference is stored in a separate
+`.sav.audio.cfg` sidecar. `--audio-mode original|enhanced` overrides it for one run;
+headless/reference runs default to original playback when no preference exists.
+This does not replace low-resolution instrument samples or remaster the music.
+Raw cartridge saves persist atomically under
 `saves/<input-hash>.sav`; `--save PATH` imports/reuses your raw save. The original
 cartridge's save chip and RTC are detected automatically; generation options can
 override unusual cartridges. Close the window to flush saves.
