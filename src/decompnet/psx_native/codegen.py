@@ -63,6 +63,7 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
 
 
 _SYSCALL=re.compile(r'(?m)^([ \t]*)psx_syscall\(cpu, (\d+)\);  /\* syscall (\d+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
+_GTE=re.compile(r'(?m)^[ \t]*gte_execute\(cpu, 0x([0-9A-Fa-f]+)\);  /\* gte cmd 0x([0-9A-Fa-f]+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
 
 
 def native_traps(text):
@@ -79,6 +80,16 @@ def native_traps(text):
     matches=list(_SYSCALL.finditer(text))
     if len(re.findall(r'(?m)^[ \t]*psx_syscall\(cpu,',text))!=len(matches):
         raise ValueError('pinned legacy SYSCALL format differs')
+    # The firmware IRQ return path inspects EPC for a COP2 command and can
+    # resume at its following instruction, including inside the original CFG.
+    gte=list(_GTE.finditer(text))
+    if len(re.findall(r'(?m)^[ \t]*gte_execute\(cpu,',text))!=len(gte):
+        raise ValueError('pinned GTE command format differs')
+    for match in gte:
+        command,opcode,pc,word=(int(value,16) for value in match.groups())
+        if word&0xfe000000!=0x4a000000 or word&0x1ffffff!=command or word&63!=opcode:
+            raise ValueError('pinned GTE metadata disagrees with its original instruction')
+        continuations.add(pc+4)
     return _SYSCALL.sub(replace_call,text),continuations
 
 

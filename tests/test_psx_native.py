@@ -303,7 +303,7 @@ def test_overlay_calls_seed_unreferenced_resident_varargs_entry(native_project,t
     assert modules[1]['dispatch_sha256']==overlay_hash and (nested/'OVERLAY.EXE_dispatch.c').is_file()
 
 
-def test_emitted_cacheline_entry_resumes_without_replaying_prefix(tmp_path,monkeypatch):
+def test_emitted_exception_entries_resume_without_replaying_prefix(tmp_path,monkeypatch):
     if not os.environ.get('DECOMP_REQUIRE_PSX_NATIVE'):
         pytest.skip('actual PS1 emitter and C compiler run in the native workflow')
     import struct
@@ -311,9 +311,9 @@ def test_emitted_cacheline_entry_resumes_without_replaying_prefix(tmp_path,monke
     from unicorn import mips_const as mips
     from decompnet.psx_native import _sdk,_recompiler,_run,codegen
     base=0x80010000
-    # The second cache line starts inside a straight-line block. Resuming there
-    # must preserve the supplied registers rather than execute the prefix again.
-    words=[0x24840001,0x24a50002,0x24840004,0x24a50008,
+    # A post-COP2 return and the second cache line lie inside the original
+    # block. Neither may replay the completed prefix when native code resumes.
+    words=[0x4a280030,0x24840001,0x24a50002,0x24840004,
            0x00851021,0x24420007,0x03e00008,0]
     header=bytearray(2048);header[:8]=b'PS-X EXE'
     payload=struct.pack('<8I',*words)
@@ -322,11 +322,12 @@ def test_emitted_cacheline_entry_resumes_without_replaying_prefix(tmp_path,monke
     sdk=_sdk();folder=tmp_path/'module'
     module=codegen.module(_recompiler(sdk),dict(index=1,boot='ORIGINAL.EXE',image=image,
         info=dict(load=base,entrypoint=base)),folder,_run,sdk)
-    assert base+16 in module['entries']
+    assert {base+4,base+16}<=set(module['entries'])
     codegen.registry([module],tmp_path/'registry.c')
     host=(Path(__file__).parent/'fixtures/psx-native/runner.c').read_text()
     host=host.replace('static size_t original_size;',
         'unsigned char *g_psx_ram=memory;\nstatic size_t original_size;')
+    host+='\nvoid gte_execute(CPUState *cpu,uint32_t command){(void)cpu;(void)command;abort();}\n'
     (tmp_path/'runner.c').write_text(host)
     sources=sorted(folder.glob('*_full_*.c'))+sorted(folder.glob('*_dispatch.c'))
     quote=lambda p:json.dumps(p.as_posix())
@@ -344,7 +345,7 @@ def test_emitted_cacheline_entry_resumes_without_replaying_prefix(tmp_path,monke
     # Interpreter policy is rejected by the player at startup. Individual native
     # guards need no environment query; immutable instruction bytes still matter.
     monkeypatch.setenv('PSX_FORCE_INTERP','1')
-    for start in (base,base+16):
+    for start in (base+4,base+16):
         result=json.loads(_run([binary,original,hex(start),'7','9'],'Resume actual emitted native C'))
         cpu=unicorn.Uc(unicorn.UC_ARCH_MIPS,unicorn.UC_MODE_MIPS32|unicorn.UC_MODE_LITTLE_ENDIAN)
         cpu.mem_map(0,0x200000);cpu.mem_write(0x10000,payload)
