@@ -58,6 +58,8 @@ struct Frame {
         // Canvas preserves native relative placement when windows split/join.
         enum class Anchor {Automatic,Canvas,Center,TopRight};
         Anchor anchor=Anchor::Automatic;
+        // Anchor the native 2D foreground separately from 3D world indicators.
+        bool foreground_only=false;
     };
     std::span<const HudRegion> hud_regions;
 };
