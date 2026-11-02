@@ -45,6 +45,7 @@ def revision():
         digest.update(name.encode()+b'\0'+_source(name).encode())
     digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
     digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
+    digest.update(b'shared_calls.py\0'+_source('shared_calls.py').encode())
     return digest.hexdigest()
 
 

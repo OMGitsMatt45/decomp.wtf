@@ -36,29 +36,40 @@ def callback_image(tmp_path,module_id=0,increment=1):
         code_ranges=[[base,base+4]],data_ranges=[[base+4,base+len(raw)]])
 
 
-def interworking_image(tmp_path,cpu='arm9',variant='valid',broad=False):
+def interworking_image(tmp_path,cpu='arm9',variant='valid',broad=False,external=False):
     base=0x0201e000;raw=bytearray(0xa0)
     # Original Thumb caller, aligned BX-PC veneer, ARM literal-load tail and
     # Thumb leaf. No retail or vendor SDK payloads are used.
-    struct.pack_into('<6H',raw,0,0xb510,0x245a,0xf000,0xf80c,0x3001,0xbd10)
+    # The caller owns a 256-byte frame, including its saved registers.
+    struct.pack_into('<8H',raw,0,0xb510,0xb0be,0x245a,0xf000,0xf80b,0x3001,0xb03e,0xbd10)
     struct.pack_into('<2H',raw,0x20,0x4778,0x46c0)
     struct.pack_into('<3I',raw,0x24,0xe59fc000,0xe12fff1c,base+0x41)
     struct.pack_into('<2H',raw,0x40,0x2029,0x4770)
-    functions=[dict(addr=base,size=12,thumb=True,name='caller'),
+    functions=[dict(addr=base,size=16,thumb=True,name='caller'),
                dict(addr=base+0x20,size=2,thumb=True,name='veneer'),
                dict(addr=base+0x40,size=4,thumb=True,name='leaf')]
     if variant=='unreferenced':
-        functions.pop(1);struct.pack_into('<2H',raw,4,0x46c0,0x46c0)
+        functions.pop(1);struct.pack_into('<2H',raw,6,0x46c0,0x46c0)
     if variant=='non_pc':struct.pack_into('<H',raw,0x20,0x4700)
     if variant=='invalid_arm':struct.pack_into('<I',raw,0x24,0xe7f000f0)
     path=tmp_path/'original-interworking.bin';path.write_bytes(raw)
     module=dict(name='original',module_id=3,base=base,image=str(path),functions=functions,
-        labels=[],calls=[],code_ranges=[[base,base+12],[base+0x20,base+0x22],[base+0x40,base+0x44]],
-        data_ranges=[[base+12,base+0x20],[base+0x22,base+0x40],[base+0x44,base+len(raw)]])
+        labels=[],calls=[],code_ranges=[[base,base+16],[base+0x20,base+0x22],[base+0x40,base+0x44]],
+        data_ranges=[[base+16,base+0x20],[base+0x22,base+0x40],[base+0x44,base+len(raw)]])
     if broad:
         functions[0]['size']=0x44
         module['dispatch_regions']=[dict(addr=base,size=0x44,thumb=True,
-            data_ranges=[[base+12,base+0x20],[base+0x22,base+0x40]],entries=[base,base+0x20,base+0x40])]
+            data_ranges=[[base+16,base+0x20],[base+0x22,base+0x40]],entries=[base,base+0x20,base+0x40])]
+    if external:
+        assert broad
+        struct.pack_into('<I',raw,0x2c,base+0x81)
+        struct.pack_into('<2H',raw,0x80,0x2029,0x4770)
+        functions[-1]['addr']=base+0x80
+        module['dispatch_regions'][0]['entries'].remove(base+0x40)
+        module['dispatch_regions'][0]['data_ranges'][-1][1]=base+0x44
+        module['code_ranges'][-1]=[base+0x80,base+0x84]
+        module['data_ranges']=[[base+16,base+0x20],[base+0x22,base+0x80],[base+0x84,base+len(raw)]]
+        path.write_bytes(raw)
     return dict(cpu=cpu,arch='v5te'if cpu=='arm9'else 'v4t',modules=[module]),path
 
 
@@ -89,9 +100,9 @@ def test_mode_bridge_preserves_existing_reachable_thumb_instructions(tmp_path,sd
 
 
 @pytest.mark.parametrize('cpu',['arm9','arm7'])
-@pytest.mark.parametrize('broad',[False,True])
-def test_thumb_bx_pc_continuation_executes_arm_literal_tail_and_returns_to_thumb(tmp_path,sdk,hardware_project,cpu,broad):
-    manifest,image=interworking_image(tmp_path,cpu,broad=broad);before=image.read_bytes();base=manifest['modules'][0]['base']
+@pytest.mark.parametrize('broad,external',[(False,False),(True,False),(True,True)])
+def test_thumb_bx_pc_continuation_executes_arm_literal_tail_and_returns_to_thumb(tmp_path,sdk,hardware_project,cpu,broad,external):
+    manifest,image=interworking_image(tmp_path,cpu,broad=broad,external=external);before=image.read_bytes();base=manifest['modules'][0]['base']
     _,emitter,reader=nds_native._sdk();added=recover(manifest,emitter,reader)
     assert len(added)==1 and added[0]['address']==base+0x24 and not added[0]['thumb']
     assert added[0]['call_sources']==[dict(module_id=3,address=base+0x20)]
@@ -115,9 +126,10 @@ int main(int argc,char** argv) {
  std::ifstream file(argv[1],std::ios::binary);
  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
  for(unsigned i=0;i<bytes.size();++i)machine.write8(dsr::CpuId::ID,0x0201e000+i,bytes[i]);
- c.budget=10000;c.r[0]=0;c.r[4]=0xcafe;c.r[13]=0x02030000;c.r[14]=0x02001001;
+ c.budget=10000;c.r[0]=0;for(unsigned i=4;i<12;++i)c.r[i]=0xcafe0000+i;c.r[13]=0x02030000;c.r[14]=0x02001001;
  dsr::dsr_call(&c,0x0201e001);
- if(c.r[0]!=42||c.r[4]!=0xcafe||c.r[13]!=0x02030000||!(dsr::dsr_mrs_cpsr(&c)&0x20))return 1;
+ if(c.r[0]!=42||c.r[13]!=0x02030000||!(dsr::dsr_mrs_cpsr(&c)&0x20))return 1;
+ for(unsigned i=4;i<12;++i)if(c.r[i]!=0xcafe0000+i)return 3;
  for(unsigned i=0;i<bytes.size();++i)if(machine.read8(dsr::CpuId::ID,0x0201e000+i)!=bytes[i])return 2;
  return 0;
 }

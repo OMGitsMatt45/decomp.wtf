@@ -439,4 +439,6 @@ def install(emitter):
     emitter._prepare_entries=prepare_entries
     from .wider_table import make
     cls._thumb_halfword_table_info=make(emitter)
+    from .shared_calls import install as install_shared_calls
+    install_shared_calls(emitter)
     cls._decomp_bounds_fixed=True
