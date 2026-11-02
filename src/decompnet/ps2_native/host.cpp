@@ -124,7 +124,7 @@ struct Host {
             }
         }
         if(toggle.exchange(false)){
-            fullscreen=!fullscreen;
+            fullscreen=(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN)==0;
             if(!SDL_SetWindowFullscreen(window,fullscreen))throw std::runtime_error(SDL_GetError());
         }
         if(resize_frame&&frames>=resize_frame){
