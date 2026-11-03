@@ -92,6 +92,11 @@ def patch(root):
         'static bool decomp_bounded_run();')
     text=replace(text,'static bool frontend_unattended() { return g_headless || g_hidden_window; }',
         'static bool frontend_unattended() { return g_headless || g_hidden_window || decomp_bounded_run(); }')
+    # The source-shipped menu also edits settings when recomp-ui is absent.
+    text=replace(text,'        g_overlay_settings_path = settings_path;\n#endif',
+        '#endif\n        g_overlay_settings_path = settings_path;')
+    text=replace(text,'            (void)quality_save_user_settings(g_overlay_settings_path, us);',
+        '            if (!us.parse_error) (void)quality_save_user_settings(g_overlay_settings_path, us);')
     text=replace(text,'    SDL_Rect bounds;\n    const int have_bounds =\n        (SDL_GetDisplayUsableBounds(0, &bounds) == 0 && bounds.w > 0 && bounds.h > 0);\n    psx_window_size(w, h, num, den, have_bounds,\n                    have_bounds ? bounds.w : 0, have_bounds ? bounds.h : 0);',
         '    decomp_opening_size(w,h,num,den);')
     text=replace(text,'int main(int argc, char** argv) {',

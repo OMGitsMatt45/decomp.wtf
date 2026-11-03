@@ -33,6 +33,27 @@ static constexpr const char *decomp_execution_model="reference";
 #endif
 static bool decomp_bounded_run() { return decomp_limit>0; }
 
+extern "C" int decomp_audio_hq_enabled() {
+    return spu_shadow_enabled();
+}
+
+extern "C" int decomp_audio_hq_set(int enabled) {
+    if(std::getenv("PSX_AUDIO_SHADOW"))return -1;
+    g_audio_spu_hq=enabled!=0;
+    spu_shadow_set_enabled(g_audio_spu_hq);
+    spu_shadow_reset();
+    if(g_overlay_settings_path.empty())return 0;
+    try {
+        auto settings=PSXRecompV4::load_user_settings(g_overlay_settings_path);
+        if(settings.parse_error)return 0;
+        settings.spu_hq=g_audio_spu_hq;
+        settings.has_spu_hq=true;
+        return quality_save_user_settings(g_overlay_settings_path,settings);
+    } catch (...) {
+        return 0;
+    }
+}
+
 static void decomp_gpu_error() {
     const char *message="OpenGL GPU rendering was required but is unavailable. Use --renderer software to select compatibility mode.";
     std::fprintf(stderr,"%s\n",message);
@@ -318,6 +339,7 @@ static void decomp_frame_end() {
     }
     if(!decomp_exit_status&&!decomp_capture(dw,dh)){std::fprintf(stderr,"capture failed\n");std::exit(1);}
     SpuDebugInfo audio;spu_debug_info(&audio);
+    SpuShadowInfo mixer;spu_shadow_get_info(&mixer);
     GpuDisplayInfo display;gpu_get_display_info(&display);
     const bool gl=gr_backend()==GR_BACKEND_OPENGL;
     const char *device="";
@@ -342,7 +364,12 @@ static void decomp_frame_end() {
        <<",\"scripted_input\":"<<(!decomp_inputs.empty()?"true":"false")
        <<",\"pad0_buttons\":"<<sio_get_pad_buttons_slot(0)<<",\"pad0_connected\":"<<sio_get_pad_connected(0)
        <<",\"disc_sectors\":"<<cdrom_mounted_sector_count()<<",\"audio_frames\":"<<audio.render_frames
-       <<",\"audio_nonzero_frames\":"<<audio.nonzero_frames<<",\"observed\":[";
+       <<",\"audio_nonzero_frames\":"<<audio.nonzero_frames
+       <<",\"audio_hq_enabled\":"<<(mixer.enabled?"true":"false")
+       <<",\"audio_hq_verified\":"<<(mixer.proven?"true":"false")
+       <<",\"audio_hq_fallbacks\":"<<mixer.pauses
+       <<",\"master_volume\":"<<host_volume_get()
+       <<",\"texture_filter\":"<<g_video_texfilter<<",\"observed\":[";
     if(gl)rt_release();
     for(size_t i=0;i<decomp_observe.size();i++)out<<(i?",":"")<<psx_read_word(decomp_observe[i]);
     out<<"],\"coverage_words\":[";
