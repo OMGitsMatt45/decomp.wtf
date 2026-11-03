@@ -105,7 +105,8 @@ def qualify(destination,*,sdk=None,execute=True):
     build=out/'Standalone build with spaces'
     extra=json.loads(os.environ.get('DECOMP_PS2_CMAKE_ARGS','[]'))
     run(['cmake','-S',project,'-B',build,'-DDECOMP_PS2_BUILD_SERVICE_TESTS=ON','-DDECOMP_PS2_BUILD_NATIVE_TESTS=ON',*extra],out,out/'configure.log')
-    run(['cmake','--build',build,'--target','ps2_pc','ps2_service_probe','ps2_mpeg_probe','ps2_vu_probe','ps2_iop_probe','--config','Release','--parallel','2'],out,out/'build.log')
+    run(['cmake','--build',build,'--target','ps2_pc','ps2_service_probe','ps2_mpeg_probe','ps2_vu_probe','ps2_iop_probe',
+         'ps2_vif_gif_worker_probe','--config','Release','--parallel','2'],out,out/'build.log')
     reference_build=out/'Separate reference build'
     run(['cmake','-S',project,'-B',reference_build,'-DDECOMP_PS2_REFERENCE=ON',
          '-DDECOMP_PS2_BUILD_NATIVE_TESTS=ON','-DDECOMP_PS2_BUILD_RUNTIME_TESTS=ON',*extra],out,out/'reference-configure.log')
@@ -122,6 +123,7 @@ def qualify(destination,*,sdk=None,execute=True):
         service_results[mode]=json.loads(service.stdout)
     movie=run([executable(build,'ps2_mpeg_probe')],out,out/'mpeg.log',timeout=30)
     service_results['mpeg']=json.loads(movie.stdout)
+    run([executable(build,'ps2_vif_gif_worker_probe')],out,out/'vif-gif-worker.log',timeout=30)
     suites={}
     for suite in ('pad','io','kernel','interrupt','fiber','memory','vu1','vu_upper','vu_program','vu0','gs','iop','native_iop','sif_rpc','sif_dma','media','irx'):
         result=run([executable(reference_build,'ps2_runtime_tests'),'--suite',suite],services,out/('runtime-'+suite+'.log'),

@@ -12,7 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
-from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,packet_reuse,dma_chain_reuse,vif_unpack,irx_fixture,vector_fixture,cheats
+from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,packet_reuse,dma_chain_reuse,vif_unpack,vif_gif_worker,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
 _progress=ContextVar('ps2_native_progress',default=None)
@@ -141,6 +141,7 @@ def generate(project,root):
     runtime_patch.patch_irx_loader(vendor)
     runtime_patch.patch_invocation_stacks(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
+    vif_gif_worker.patch(vendor)
     _log('Translate input-bound IOP modules...')
     iop_generation=iop_native.generate([(name,_read(path,inspection,name)) for name in inspection.get('iop_modules',[])],
         sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'game/iop')
@@ -259,7 +260,8 @@ def _native_execution_tests(root,sdk):
         ('iop_execution.hpp','native/iop/decomp_iop_execution.hpp'),('iop_execution.hpp','native/decomp_iop_execution.hpp'),
         ('vu_execution.hpp','native/decomp_vu_execution.hpp'),('native_iop_probe.cpp','tests/native_iop_probe.cpp'),
         ('native_vu_probe.cpp','tests/native_vu_probe.cpp'),('native_scheduler_probe.cpp','tests/native_scheduler_probe.cpp'),
-        ('native_gs_worker_probe.cpp','tests/native_gs_worker_probe.cpp')):
+        ('native_gs_worker_probe.cpp','tests/native_gs_worker_probe.cpp'),
+        ('native_vif_gif_worker_probe.cpp','tests/native_vif_gif_worker_probe.cpp')):
         (root/target).write_text(_source(source),encoding='utf-8')
     original=irx_fixture.original_irx()
     iop_native.generate([('ORIGINAL.IRX',original)],sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'tests/iop')
