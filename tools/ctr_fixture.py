@@ -25,6 +25,11 @@ def fixture(kind='arm'):
         'arm-relative-table': struct.pack('<18I',0xe3a00001,0xe28fe000,0xea000004,0xef000003,
             0x20,0x28,0x30,0,0xe24f4018,0xe7945100,0xe084f005,0,
             0xe3a00029,0xe12fff1e,0xe3a0002a,0xe12fff1e,0xe3a0002b,0xe12fff1e),
+        # Case code lies between the table and dispatch, a slot is unused,
+        # and an unrelated register is restored before branching.
+        'arm-relative-table-restore': struct.pack('<20I',0xe3a00002,0xe28fe000,0xea00000c,0xef000003,
+            0x10,0,0x18,0x20,0xe3a00029,0xe12fff1e,0xe3a0002a,0xe12fff1e,0xe3a0002b,0xe12fff1e,0,0,
+            0xe24f4038,0xe7945100,0xe1a06007,0xe085f004),
         'vfp': struct.pack('<IIIIII', 0xe59f000c, 0xee000a10, 0xee300a00, 0xee100a10, 0xef000003, 0x3f800000),
         # The callback address exists only in .data, reached through a table.
         'data-callback': struct.pack('<IIIII',0xe59f3008,0xe5933000,0xe12fff33,0xef000003,BASE+0x2000)
