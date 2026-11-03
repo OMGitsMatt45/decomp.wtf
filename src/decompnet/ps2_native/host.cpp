@@ -238,6 +238,9 @@ int main(int argc,char **argv) {
                 if(host.gs_worker)backend=std::make_unique<GSThreadedBackend>(std::move(backend),4u*1024u*1024u);
             }catch(...){host.gpu=nullptr;host.window=nullptr;throw;}
             runtime->gs().setRasterBackend(std::move(backend));
+            const char *gifWorker = std::getenv("DECOMP_PS2_VIF_GIF_WORKER");
+            if (host.gs_worker && gifWorker && std::strcmp(gifWorker, "1") == 0)
+                runtime->gs().enableVifGifWorker();
         }
         runtime->setMissingFunctionPolicy(PS2Runtime::MissingFunctionPolicy::Stop);
         if(!runtime->loadELF((root/"assets/cd"/decomp_ps2_game::boot).string()))throw std::runtime_error("owner boot ELF failed to load");

@@ -119,6 +119,14 @@ direct path for comparison. The run report records `gs_worker`. The native
 `ps2_gs_worker_probe released` check exercises prompt frame-reference release
 while later queue work is blocked.
 
+On x86-64, `DECOMP_PS2_VIF_GIF_WORKER=1` opts into an additional frontend
+worker with the threaded Vulkan backend. It copies VIF1 PATH1 and PATH2
+packets into a bounded FIFO and completes them at VIF synchronization,
+interrupt, and DMA boundaries. Presentation snapshots are ordered after
+the same GS instance's pending packets. Custom callback configurations
+run inline. The native `ps2_vif_gif_worker_probe` compares both paths
+using synthetic VIF1 commands, GS observations, and VRAM readback.
+
 Drained GIF packets can reuse one buffer of up to 64 KiB per submitting
 thread. Queued packets still own their bytes. The GS worker grows its pending
 storage in batches, keeping the same command byte limit and processing order.
