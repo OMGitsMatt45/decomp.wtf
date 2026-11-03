@@ -21,7 +21,8 @@ def payload(increment=7):
     struct.pack_into('<I', data, 1, BASE+64)
     data += struct.pack('<8I', 0x27bdfff0, 0xafbf000c, 0x24820000 | increment,
                         0x8fbf000c, 0x27bd0010, 0x03e00008, 0x24420005, 0)
-    data += struct.pack('<3I', 0x00041040, 0x03e00008, 0x24420002)
+    # ADDIU in the return delay slot must discard its result in $zero.
+    data += struct.pack('<3I', 0x00041040, 0x03e00008, 0x24000070)
     return bytes(data)
 
 
