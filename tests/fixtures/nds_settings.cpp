@@ -1,5 +1,6 @@
 // Original settings readback fixture: drawable pixels exceed logical UI size.
 #include "settings.hpp"
+#include "video.hpp"
 #include <stdexcept>
 #include <iostream>
 int main(int argc,char** argv) {
@@ -19,8 +20,27 @@ int main(int argc,char** argv) {
         for(unsigned i=0;i<180;++i)cheats.entries.push_back({"Entry "+std::to_string(i),{},{},false});
         const auto script=std::filesystem::path(argv[1])/"large-menu.txt";
         {std::ofstream file(script);file<<"0 enter\n1 pagedown\n2 end\n3 up\n4 enter\n5 home\n6 enter\n7 back\n8 back\n";}
-        if(!ds_host::settings(cheats,script)||cheats.enabled_count()!=2||!cheats.entries.front().enabled||!cheats.entries.back().enabled)
+        ds_host::Presentation presentation({},false);
+        if(!ds_host::settings(cheats,presentation,script)||cheats.enabled_count()!=2||!cheats.entries.front().enabled||!cheats.entries.back().enabled)
             throw std::runtime_error("large catalog paging did not reach both ends");
+        {
+            video::Display display({"software",530,510,false,true});
+            std::vector<uint32_t> top(256*192,0xffff0000),bottom(256*192,0xff00ff00);
+            video::Frame frame{nullptr,top.data(),bottom.data()};
+            display.set_graphics(ds_host::Scaling::Sharp,ds_host::Colors::Soft);
+            display.present(frame);
+            auto pixels=display.read_pixels();
+            int x=0,y=0;
+            if(!display.touch(265,351,x,y)||x!=128||y!=96||display.touch(130,351,x,y)||display.touch(265,159,x,y))
+                throw std::runtime_error("sharp output shifted the lower-screen touch bounds");
+            if(pixels[265+62*530]!=0xff000000u||pixels[265+159*530]!=0xffd21313u||top[0]!=0xffff0000u)
+                throw std::runtime_error("sharp placement or soft host colors differ");
+            display.set_graphics(ds_host::Scaling::Smooth,ds_host::Colors::Original);
+            display.present(frame);
+            pixels=display.read_pixels();
+            if(pixels[265+254*530]!=top[0]||pixels[265+255*530]!=bottom[0])
+                throw std::runtime_error("smooth filtering mixed the two LCDs across the hinge");
+        }
         SDL_Quit();std::cout<<"Settings capture uses drawable dimensions\n";
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}
 }

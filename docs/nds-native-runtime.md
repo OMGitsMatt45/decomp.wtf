@@ -178,12 +178,22 @@ number of native LCD texels actually replayed from captured 3D in the last frame
 The original DS game supplies all required assets and audio. Mobile OBB data is
 optional enhancement material in some existing ports, and is not used here.
 
+F1 → Graphics offers Original, Sharp and Smooth scaling for the two-screen
+display. Sharp uses whole LCD pixels when the window can fit them. Smooth
+filters the native LCD textures separately from the internal 3D render. Soft
+colors gently reduce saturation on the presented screens. Scaling and colors
+are saved in `<save>.graphics.cfg`, and fullscreen is available here and with
+F11. Touch follows the fitted lower screen. `--scaling` and `--colors` override
+the corresponding preferences for a launch.
+
 ### Optional original-score audio cleanup
 
 `Spu::set_output_quality(Spu::OutputQuality::Clean)` enables 16-bit host mixing
 without the final DS 10-bit DAC quantization, plus causal linear interpolation
-for PCM8/PCM16/ADPCM instruments. A project feature can enable it at startup.
-The runtime's default remains `Hardware`; there is no generic menu toggle.
+for PCM8/PCM16/ADPCM instruments. The native desktop host defaults to Enhanced
+and F1 → Audio switches between Enhanced and Original. The choice is saved in
+`<save>.audio.cfg`. Headless runs default to the original mixer; use
+`--audio-mode original|enhanced` for a per-launch override.
 The host setting survives machine resets. The sample count/rate and existing
 SDL output buffers are unchanged; interpolation uses one past source sample,
 without fetching future memory or adding an output buffer. PSG/noise waveforms

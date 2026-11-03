@@ -3,6 +3,7 @@
 #include <dsr/gpu3d.h>
 #include <dsr/machine.h>
 #include <SDL.h>
+#include "presentation.hpp"
 #include <array>
 #include <deque>
 #include <memory>
@@ -72,6 +73,8 @@ struct Options {
     bool fullscreen=false,readback=false;
     bool dynamic_widescreen=false;
     bool expand_visibility=false;
+    ds_host::Scaling scaling=ds_host::Scaling::Original;
+    ds_host::Colors colors=ds_host::Colors::Original;
 };
 class Display {
 public:
@@ -82,6 +85,9 @@ public:
     void present(const Frame& frame);
     // Presentation only; does not change captured pixels or guest registers.
     void set_brightness(float gain);
+    void set_graphics(ds_host::Scaling scaling,ds_host::Colors colors);
+    void set_fullscreen(bool enabled);
+    bool fullscreen() const;
     void key(const SDL_KeyboardEvent& event);
     bool touch(int window_x,int window_y,int& ds_x,int& ds_y) const;
     // Last presented output, top-to-bottom, including UI and letterboxing.

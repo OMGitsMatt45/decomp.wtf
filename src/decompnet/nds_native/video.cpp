@@ -227,10 +227,11 @@ void main(){gl_Position=vec4(vertex.xy,0,1);uv=vertex.zw;}
 )GLSL";
 const char* flat_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;uniform sampler2D image;
-uniform int brightness;uniform bool premultiplied;
+uniform int brightness;uniform bool premultiplied,soft_colors;
 void main(){pixel=texture(image,uv);float f=float(brightness&31)/16;
  if((brightness>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(premultiplied?pixel.a:1),f);
- if((brightness>>5)==2)pixel.rgb*=1-f;}
+ if((brightness>>5)==2)pixel.rgb*=1-f;
+ if(soft_colors)pixel.rgb=mix(vec3(dot(pixel.rgb,vec3(77,150,29)/256.0)),pixel.rgb,0.75);}
 )GLSL";
 // A captured bitmap may be scrolled or rotated. Reconstruct subpixel source
 // coordinates only from neighbours carrying the same raster identity; coverage
@@ -238,7 +239,7 @@ void main(){pixel=texture(image,uv);float f=float(brightness&31)/16;
 const char* captured_fragment=R"GLSL(#version 330 core
 in vec2 uv;out vec4 pixel;
 uniform sampler2D image,origins;
-uniform bool opaque_output;
+uniform bool opaque_output,soft_colors;
 vec4 origin(ivec2 p){return texelFetch(origins,clamp(p,ivec2(0),ivec2(255,191)),0);}
 vec2 derivative(ivec2 p,ivec2 step,vec4 center){
  vec4 a=origin(p-step),b=origin(p+step);vec2 d=vec2(0);float n=0;
@@ -258,6 +259,7 @@ void main(){
  int brightness=int(center.z+0.5)-1;float factor=float(min(brightness&31,16))/16;
  if((brightness>>5)==1)pixel.rgb=mix(pixel.rgb,vec3(1),factor);
  if((brightness>>5)==2)pixel.rgb*=1-factor;
+ if(soft_colors)pixel.rgb=mix(vec3(dot(pixel.rgb,vec3(77,150,29)/256.0)),pixel.rgb,0.75);
 }
 )GLSL";
 struct Rect {float x=0,y=0,w=0,h=0;}; // Bottom-left drawable coordinates.
@@ -335,6 +337,7 @@ struct Display::Impl {
     CapturedTarget* active_target=nullptr;
     uint64_t draws=0,captured_pixel_count=0;
     std::vector<uint32_t> last_pixels;
+    std::array<uint32_t,256*192> soft_pixels;
 
     explicit Impl(Options value):options(std::move(value)) {
         try {
@@ -417,8 +420,29 @@ struct Display::Impl {
         if(found!=locations.end())return found->second;
         return locations.emplace(name,gl->GetUniformLocation(program,name)).first->second;
     }
+    void upload_lcd(int w,int h,const uint32_t* pixels) {
+        upload(screen_texture,w,h,pixels,GL_BGRA);
+        if(options.scaling==ds_host::Scaling::Smooth) {
+            gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+            gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        }
+    }
+    void color_profile(GLuint program) {
+        gl->Uniform1i(uniform(program,"soft_colors"),options.colors==ds_host::Colors::Soft);
+    }
+    const uint32_t* lcd_colors(const uint32_t* pixels) {
+        if(options.colors!=ds_host::Colors::Soft)return pixels;
+        for(size_t i=0;i<soft_pixels.size();++i) {
+            const uint32_t p=pixels[i];
+            const unsigned r=(p>>16)&255,g=(p>>8)&255,b=p&255;
+            const unsigned y=77*r+150*g+29*b;
+            const auto soft=[y](unsigned channel){return (768*channel+y+512)/1024;};
+            soft_pixels[i]=(p&0xff000000u)|(soft(r)<<16)|(soft(g)<<8)|soft(b);
+        }
+        return soft_pixels.data();
+    }
     void flat(const uint32_t* pixels,int w,int h,Rect rect) {
-        gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,w,h,pixels,GL_BGRA);
+        gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);upload_lcd(w,h,pixels);color_profile(flat_program);
         gl->Uniform1i(uniform(flat_program,"image"),0);
         gl->Uniform1i(uniform(flat_program,"brightness"),0);gl->Uniform1i(uniform(flat_program,"premultiplied"),false);
         const float x0=2*rect.x/width-1,x1=2*(rect.x+rect.w)/width-1;
@@ -611,6 +635,7 @@ struct Display::Impl {
         auto& target=captured_target(scene,256*scale,192*scale,opaque);
         gl->UseProgram(captured_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,target.result);gl->Uniform1i(uniform(captured_program,"image"),0);
         gl->Uniform1i(uniform(captured_program,"opaque_output"),opaque);
+        color_profile(captured_program);
         gl->ActiveTexture(GL_TEXTURE1);gl->BindTexture(GL_TEXTURE_2D,origin_texture);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
@@ -627,6 +652,7 @@ struct Display::Impl {
         gl->UseProgram(flat_program);gl->ActiveTexture(GL_TEXTURE0);gl->BindTexture(GL_TEXTURE_2D,image);
         gl->Uniform1i(uniform(flat_program,"image"),0);gl->Uniform1i(uniform(flat_program,"brightness"),brightness);
         gl->Uniform1i(uniform(flat_program,"premultiplied"),premultiplied);
+        color_profile(flat_program);
         const float x0=2*destination.x/width-1,x1=2*(destination.x+destination.w)/width-1;
         const float y0=2*destination.y/height-1,y1=2*(destination.y+destination.h)/height-1;
         const float u0=float(source.x)/256,u1=float(source.x+source.w)/256;
@@ -639,7 +665,7 @@ struct Display::Impl {
         gl->EnableVertexAttribArray(0);gl->VertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,4*sizeof(float),nullptr);gl->DrawArrays(GL_TRIANGLES,0,6);
     }
     void native_pane(const uint32_t* pixels,Box source,Rect destination,bool lower) {
-        gl->ActiveTexture(GL_TEXTURE0);upload(screen_texture,256,192,pixels,GL_BGRA);
+        gl->ActiveTexture(GL_TEXTURE0);upload_lcd(256,192,pixels);
         blit(screen_texture,source,destination,false);
         touch_regions.push_back({destination,source,lower});
     }
@@ -1009,10 +1035,21 @@ struct Display::Impl {
     void present(const Frame& frame) {
         check(frame.top&&frame.bottom,"missing DS video frames");captured_pixel_count=0;touch_regions.clear();previous_layout=layout_name;layout_name="dual";
         if(!gl) {
+            SDL_GetRendererOutputSize(software,&width,&height);
+            const bool integer=options.scaling==ds_host::Scaling::Sharp&&width>=256&&height>=384;
+            if(bool(SDL_RenderGetIntegerScale(software))!=integer)
+                check(SDL_RenderSetIntegerScale(software,integer?SDL_TRUE:SDL_FALSE)==0,SDL_GetError());
+            check(SDL_SetTextureScaleMode(software_texture,options.scaling==ds_host::Scaling::Smooth?
+                                         SDL_ScaleModeLinear:SDL_ScaleModeNearest)==0,SDL_GetError());
             SDL_Rect top{0,0,256,192},bottom{0,192,256,192};
-            check(SDL_UpdateTexture(software_texture,&top,frame.top,256*4)==0,SDL_GetError());
-            check(SDL_UpdateTexture(software_texture,&bottom,frame.bottom,256*4)==0,SDL_GetError());
-            SDL_RenderClear(software);SDL_RenderCopy(software,software_texture,nullptr,nullptr);
+            check(SDL_UpdateTexture(software_texture,&top,lcd_colors(frame.top),256*4)==0,SDL_GetError());
+            check(SDL_UpdateTexture(software_texture,&bottom,lcd_colors(frame.bottom),256*4)==0,SDL_GetError());
+            SDL_RenderClear(software);
+            if(options.scaling==ds_host::Scaling::Smooth) {
+                // Each LCD has its own sampling boundary at the hinge.
+                check(SDL_RenderCopy(software,software_texture,&top,&top)==0,SDL_GetError());
+                check(SDL_RenderCopy(software,software_texture,&bottom,&bottom)==0,SDL_GetError());
+            } else check(SDL_RenderCopy(software,software_texture,nullptr,nullptr)==0,SDL_GetError());
             SDL_GetRendererOutputSize(software,&width,&height);
             if(display_gain<1.f) {
                 SDL_SetRenderDrawBlendMode(software,SDL_BLENDMODE_BLEND);
@@ -1045,7 +1082,12 @@ struct Display::Impl {
             }else ++it;
         }
         if(!contextual(frame)&&!dynamic(frame)&&!wide_screens(frame)) {
-            const auto total=fit(float(width),float(height),256.0F/384);
+            auto total=fit(float(width),float(height),256.0F/384);
+            const int integer=std::min(width/256,height/384);
+            if(options.scaling==ds_host::Scaling::Sharp&&integer>0) {
+                const int w=256*integer,h=384*integer;
+                total={float((width-w)/2),float((height-h)/2),float(w),float(h)};
+            }
             Rect bottom{total.x,total.y,total.w,total.h/2},top{total.x,total.y+total.h/2,total.w,total.h/2};
             flat(frame.top,256,192,top);flat(frame.bottom,256,192,bottom);touch_rect=bottom;
             if(frame.history&&frame.top_origins&&frame.bottom_origins) {
@@ -1083,12 +1125,20 @@ void Display::present(const Frame& frame){impl_->present(frame);}
 void Display::set_brightness(float gain){
     check(std::isfinite(gain),"invalid display brightness");impl_->display_gain=std::clamp(gain,0.f,1.f);
 }
+void Display::set_graphics(ds_host::Scaling scaling,ds_host::Colors colors) {
+    impl_->options.scaling=scaling;
+    impl_->options.colors=colors;
+}
+bool Display::fullscreen() const {
+    return (SDL_GetWindowFlags(impl_->window)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0;
+}
+void Display::set_fullscreen(bool enabled) {
+    if(enabled!=fullscreen())
+        check(SDL_SetWindowFullscreen(impl_->window,enabled?SDL_WINDOW_FULLSCREEN_DESKTOP:0)==0,SDL_GetError());
+}
 void Display::key(const SDL_KeyboardEvent& event) {
     if(event.repeat||event.type!=SDL_KEYDOWN)return;
-    if(event.keysym.scancode==SDL_SCANCODE_F11) {
-        const bool full=(SDL_GetWindowFlags(impl_->window)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0;
-        check(SDL_SetWindowFullscreen(impl_->window,full?0:SDL_WINDOW_FULLSCREEN_DESKTOP)==0,SDL_GetError());
-    }
+    if(event.keysym.scancode==SDL_SCANCODE_F11)set_fullscreen(!fullscreen());
 }
 bool Display::touch(int x,int y,int& ds_x,int& ds_y) const {
     if(impl_->software) {

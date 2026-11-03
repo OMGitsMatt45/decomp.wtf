@@ -62,8 +62,8 @@ if(NDS_WITH_SDL)
   target_include_directories(audio_checks PRIVATE native)
   target_compile_definitions(audio_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(audio_checks PRIVATE SDL2::SDL2-static)
-  add_executable(settings_checks tests/settings_checks.cpp ${DSR_ROOT}/runtime/frontend/src/ui_toolkit.cpp)
-  target_include_directories(settings_checks PRIVATE native)
+  add_executable(settings_checks tests/settings_checks.cpp native/video.cpp ${DSR_ROOT}/runtime/frontend/src/ui_toolkit.cpp)
+  target_include_directories(settings_checks PRIVATE native ${DSR_ROOT}/runtime/gpu3d/src)
   target_compile_definitions(settings_checks PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(settings_checks PRIVATE ds_runtime SDL2::SDL2-static)
   hide_test_window(settings_checks)
@@ -154,6 +154,33 @@ def test_settings_capture_allocates_for_drawable_pixels(tmp_path,desktop_project
         png=(tmp_path/f'{width}x{height}.png').read_bytes()
         assert png.startswith(b'\x89PNG\r\n\x1a\n')
         assert struct.unpack_from('>II',png,16)==(width,height)
+
+
+def test_presentation_preferences_survive_restart_without_guest_changes(tmp_path,desktop_project):
+    _,root,_,build=desktop_project
+    exe=next(p for p in (build/'ds_pc',build/'ds_pc.exe',build/'Release/ds_pc.exe') if p.is_file())
+    save=tmp_path/'game.sav'
+    script=tmp_path/'menu.txt'
+    script.write_text('0 down\n1 enter\n2 enter\n3 back\n4 down\n5 down\n6 enter\n7 right\n8 down\n9 enter\n10 back\n11 back\n')
+    env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy'}
+    command=[str(exe),'--assets',str(root/'assets'),'--save',str(save),'--frames','8',
+             '--rtc-start','1793365200','--renderer','software','--resolution','530x510']
+    def run(case,*args):
+        done=subprocess.run(command+['--capture',str(tmp_path/case),*args],env=env,capture_output=True,text=True,timeout=30)
+        assert done.returncode==0,done.stdout+done.stderr
+        return json.loads(done.stdout)
+    before=run('original')
+    assert before['presentation']==dict(audio='enhanced',scaling='original',colors='original',fullscreen=False)
+    changed=run('changed','--settings','--menu-input-script',str(script))
+    reopened=run('reopened')
+    assert changed['presentation']==reopened['presentation']==dict(audio='original',scaling='sharp',colors='soft',fullscreen=False)
+    assert save.with_suffix('.sav.audio.cfg').read_text()=='enhanced=0\n'
+    assert save.with_suffix('.sav.graphics.cfg').read_text()=='scaling=sharp\ncolors=soft\n'
+    for key in ('ticks','frames','top_hash','bottom_hash','audio_frames'):
+        assert before[key]==changed[key]==reopened[key]
+    assert (tmp_path/'original/display.ppm').read_bytes()!=(tmp_path/'changed/display.ppm').read_bytes()
+    assert (tmp_path/'changed/display.ppm').read_bytes()==(tmp_path/'reopened/display.ppm').read_bytes()
+    assert reopened['cheats']['applications']==0
 
 
 def test_generated_opengl_renderer_preserves_both_lcds_and_ui(tmp_path,desktop_project):
