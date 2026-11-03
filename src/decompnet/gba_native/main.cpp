@@ -242,6 +242,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<gba_video::Display> display;
         std::unique_ptr<gba_video::Scene> scene;
         if(window){scene=std::make_unique<gba_video::Scene>();gba_video::Options view;view.renderer=renderer;view.width=width;view.height=height;
+            if(!save.empty()){view.graphics_path=save;view.graphics_path+=".graphics.cfg";}
             view.fullscreen=fullscreen;view.readback=!display_capture.empty();display=std::make_unique<gba_video::Display>(view);
             system->on_line_rendered=[&](anygba::System& s,unsigned line){scene->capture(s,line);};}
 #else

@@ -14,11 +14,15 @@ static std::vector<uint8_t> rgb(std::span<const uint16_t> frame){
 }
 // Compare at the actual drawable size: Windows display scaling can make it
 // differ from the requested logical window size. Include letterbox pixels.
-static void compare(const gba_video::Display& display,const std::vector<uint8_t>& expected,unsigned variant){
+static void compare(const gba_video::Display& display,const std::vector<uint8_t>& expected,unsigned variant,bool sharp=false){
     const int width=display.width(),height=display.height();
     const auto& actual=display.pixels();
     if(width<=0||height<=0||actual.size()!=size_t(width)*height*3)throw std::runtime_error("invalid GPU readback dimensions");
     int w=width,h=w*2/3;if(h>height){h=height;w=h*3/2;}
+    if(sharp){
+        const int scale=std::min(width/240,height/160);
+        if(scale>0){w=240*scale;h=160*scale;}
+    }
     if(w<=0||h<=0)throw std::runtime_error("invalid GPU viewport dimensions");
     const int left=(width-w)/2,top=height-(height-h)/2-h;
     for(int y=0;y<height;++y)for(int x=0;x<width;++x)for(int c=0;c<3;++c){
@@ -101,6 +105,27 @@ int main(int argc,char** argv){try{
     for(const auto size:{std::pair{240,160},std::pair{720,480},std::pair{477,317}}){
         display.resize(size.first,size.second);display.present_pixels(menu);compare(display,rgb(menu),18);
     }
+    display.set_graphics({gba_video::Scaling::Sharp,gba_video::Colors::Original});
+    for(const auto size:{std::pair{503,337},std::pair{139,91}}){
+        display.resize(size.first,size.second);display.present_pixels(menu);compare(display,rgb(menu),19,true);
+    }
+    display.resize(720,480);
+    std::fill(menu.begin(),menu.end(),uint16_t{0x001f});
+    display.set_graphics({gba_video::Scaling::Original,gba_video::Colors::Soft});
+    display.present_pixels(menu);
+    std::vector<uint8_t> softened(240*160*3);
+    for(size_t i=0;i<softened.size();i+=3){softened[i]=191;softened[i+1]=32;softened[i+2]=32;}
+    compare(display,softened,20);
+    display.present_pixels(menu,false);compare(display,rgb(menu),21);
+
+    for(unsigned y=0;y<160;++y)for(unsigned x=120;x<240;++x)menu[y*240+x]=0x7c00;
+    display.set_graphics({gba_video::Scaling::Smooth,gba_video::Colors::Original});
+    display.present_pixels(menu);
+    const auto center=(size_t(display.height()/2)*display.width()+display.width()/2)*3;
+    const auto& blended=display.pixels();
+    if(blended[center]==0||blended[center+1]!=0||blended[center+2]==0)
+        throw std::runtime_error("Smooth did not blend neighboring game pixels");
+    display.present_pixels(menu,false);compare(display,rgb(menu),22);
     if(argc==3){
         if(std::filesystem::exists(argv[2]))throw std::runtime_error("choose a new GPU report path");
         std::ofstream report(argv[2]);if(!report)throw std::runtime_error("cannot open GPU report");

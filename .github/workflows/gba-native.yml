@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     # MSVC qualification builds separate CPU/firmware and desktop projects.
     # Leave time for the desktop stage after the expanded native CPU suite.
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       DECOMP_RUNTIME: native
       DECOMP_UPDATES: 'off'

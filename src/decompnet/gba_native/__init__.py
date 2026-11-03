@@ -933,6 +933,14 @@ toggle Enhanced Audio with A (keyboard X). The preference is stored in a separat
 `.sav.audio.cfg` sidecar. `--audio-mode original|enhanced` overrides it for one run;
 headless/reference runs default to original playback when no preference exists.
 This does not replace low-resolution instrument samples or remaster the music.
+
+The Graphics category offers Original (fit to the window), Sharp (integer
+scaling when the window fits at least 1x), and Smooth (linear filtering). Colors
+can use the Original palette or a less saturated Soft profile. Select a row with
+Up/Down and change it with A (keyboard X). Scaling and colors are saved beside
+the game save in `.sav.graphics.cfg`. Fullscreen is also available from this
+category or with F11.
+
 Raw cartridge saves persist atomically under
 `saves/<input-hash>.sav`; `--save PATH` imports/reuses your raw save. The original
 cartridge's save chip and RTC are detected automatically; generation options can

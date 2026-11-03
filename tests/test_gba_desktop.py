@@ -77,6 +77,33 @@ def test_in_window_browser_returns_to_native_game_with_scripted_menu_input(deskt
     assert capture.read_bytes().startswith(b'P6\n240 160\n255\n'+bytes((41,156,123)))
 
 
+def test_graphics_menu_persists_scaling_and_color_on_software_renderer(desktop, tmp_path):
+    _, exe = desktop
+    script = tmp_path/'graphics.txt'
+    # Left through Audio to Graphics, then choose Sharp and Soft.
+    script.write_text('0 0\n1 32\n2 0\n3 32\n4 0\n5 1\n6 0\n7 128\n8 0\n9 1\n10 0\n11 2\n12 0\n')
+    save = tmp_path/'graphics.sav'
+    capture = tmp_path/'graphics.ppm'
+    env = {**os.environ, 'SDL_VIDEODRIVER': 'dummy', 'SDL_AUDIODRIVER': 'dummy'}
+    args = [exe, '--frames', '8', '--unpaced', '--resolution', '503x337', '--save', save,
+            '--display-capture', capture]
+    report = json.loads(run([*args, '--settings', '--menu-input-script', script], env=env))
+    assert report['menu_openings'] == 1 and report['enabled_cheats'] == 0
+    preference = Path(str(save)+'.graphics.cfg')
+    assert preference.read_bytes() == b'1 1\n'
+    first = capture.read_bytes()
+    assert first.startswith(b'P6\n503 337\n255\n')
+    pixels = first.split(b'\n', 3)[3]
+    middle = (168*503)*3
+    assert pixels[middle+30:middle+33] == b'\x00\x00\x00'
+    assert pixels[middle+33:middle+36] == bytes((191, 32, 32))
+    run(args, env=env)
+    assert capture.read_bytes() == first
+    preference.write_bytes(b'invalid')
+    run(args, env=env)
+    assert bytes((255, 0, 0)) in capture.read_bytes()[middle:middle+503*3]
+
+
 def test_desktop_finds_assets_persists_save_and_reports_software_fallback(desktop, tmp_path):
     root, exe = desktop
     env = {**os.environ, 'SDL_VIDEODRIVER': 'dummy', 'SDL_AUDIODRIVER': 'dummy'}
