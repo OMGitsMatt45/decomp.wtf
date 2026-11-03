@@ -91,6 +91,37 @@ def apply(root):
     replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
         '    buffer.reply(&mut system.memory, command, &[]);\n    for index in 2..8 {',
         '    buffer.reply_error(&mut system.memory, command, zakuro_common::result::errors::UNIMPLEMENTED.0);\n    for index in 2..8 {')
+    replace(root, 'runtime/crates/zakuro-core/src/services/uds.rs',
+        '''    // with no room wireless is off, the way the offline answer has it,
+    // unless a title already started on it in one
+    if !system.services.uds.initialized && system.room.as_ref().is_none_or(|room| !room.open()) {
+        return false;
+    }
+    let command = header.command_id();''',
+        '''    let command = header.command_id();
+    // Local UDS resources can be created before joining a host room.
+    // Hosting and joining still require an open room.
+    if !matches!(command, 0x0001 | 0x001B)
+        && !system.services.uds.initialized
+        && system.room.as_ref().is_none_or(|room| !room.open())
+    {
+        return false;
+    }''')
+    replace(root, 'runtime/crates/zakuro-core/src/services/uds.rs',
+        '    /// one console hosts a network, the other finds it scanning, reads its',
+        '''    #[test]
+    fn initialize_without_a_room_reports_disconnected() {
+        let (mut system, buffer) = system_with_thread();
+        initialize(&mut system, &buffer, 'A');
+        let event = buffer.get(&mut system.memory, 3);
+        assert!(system.kernel.resolve(event).is_some());
+        assert_eq!(request(&mut system, &buffer, &[0x000B_0000]), 0);
+        assert_eq!(buffer.get(&mut system.memory, 2), NOT_CONNECTED);
+        assert_eq!(request(&mut system, &buffer, &[0x001A_0000]), 0);
+        assert_eq!(buffer.get(&mut system.memory, 2), 0);
+    }
+
+    /// one console hosts a network, the other finds it scanning, reads its''')
     import shutil
     shutil.copyfile(Path(__file__).with_name('cecd_empty.rs'),root/'runtime/crates/zakuro-core/src/services/cecd_empty.rs')
     replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
