@@ -123,6 +123,11 @@ Drained GIF packets can reuse one buffer of up to 64 KiB per submitting
 thread. Queued packets still own their bytes. The GS worker grows its pending
 storage in batches, keeping the same command byte limit and processing order.
 
+The graphics DMA parser retains storage from consumed chain snapshots. It
+keeps at most 8 MiB for VIF1 and 1 MiB each for VIF0 and GIF per submitting
+thread. Each new chain still copies its RAM or scratchpad bytes before
+submission; packet order, tag transfer data and completion events are unchanged.
+
 On x86, whole-program VU conversions, min/max, absolute value and CLIP use
 SSE2 while retaining the original normalization, saturation and flag timing.
 The vector optimization setting uses the compiler's frontend syntax, including
