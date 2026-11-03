@@ -98,9 +98,17 @@ bool ps2_vu_program::Access::decompRunPair(VU1Interpreter &vu,
         '// Same pinned conductor; decoded pair metadata and operation calls are compile-time constants.\n'+specialized+'\n')
 
 
+def flag_queue_bounds(header):
+    # Forming tail + requested slots is undefined when the queue needs room.
+    # Compare the available distance between pointers inside the array instead.
+    replace(header,'        if (m_flagTail + 2u * Pairs > m_run.m_flags.data() + Run::kFlagSlots) [[unlikely]]',
+        '        if (m_run.m_flags.data() + Run::kFlagSlots - m_flagTail < static_cast<std::ptrdiff_t>(2u * Pairs)) [[unlikely]]')
+
+
 def _program_support(folder):
     """Keep whole-program operations static, including exceptional arithmetic."""
     header=folder/'ps2_vu1_program.h'
+    flag_queue_bounds(header)
     replace(header,'void forgetRoutines();',
         'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif')
     replace(header,'    void exactUpper(uint32_t upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
