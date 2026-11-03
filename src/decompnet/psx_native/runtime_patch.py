@@ -53,7 +53,101 @@ void decomp_keybinds_clear_pulses(void) {
     return text,header
 
 
+def shadow_audio(root):
+    """Keep the alternate SPU render on the same source and timing as the original mix."""
+    header=root/'runtime/include/spu.h'
+    source=root/'runtime/src/spu.c'
+    mixer=root/'runtime/src/spu_shadow.c'
+    info=root/'runtime/include/spu_shadow.h'
+    tap_fields='    int16_t main_l;\n    int16_t main_r;'
+    aux_fields='    int32_t other_l;  /* CD and reverb on the pre-volume mix bus */\n    int32_t other_r;\n'
+    voice_field='    SpuShadowVoiceTapPub voice[SPU_SHADOW_MAX_VOICES];\n'
+    text=replace(header.read_text(encoding='utf-8-sig'),voice_field+tap_fields,
+                 voice_field+aux_fields+tap_fields)
+    header.write_text(text.replace('1.14 scale (effective int16 >> 1)', 'Q15 scale'),encoding='utf-8')
+    text=replace(source.read_text(encoding='utf-8-sig'),tap_fields,aux_fields+tap_fields)
+    text=replace(text,'''    if (idx<SPU_VOICE_COUNT?(non_mask & (1u << idx)):
+            (private_modes[idx-SPU_VOICE_COUNT]&1u)) {''',
+        '''    const int noise = idx < SPU_VOICE_COUNT ? (non_mask & (1u << idx)) != 0
+                                           : (private_modes[idx-SPU_VOICE_COUNT] & 1u) != 0;
+    if (noise) {''')
+    start=text.index('    /* Shadow tap: record the four decoded samples')
+    end=text.index('    /* Step envelope',start)
+    text=text[:start]+'''    /* Both interpolators read the same four causal samples. The cubic
+     * spans the middle two, matching the Gaussian filter's sample delay. */
+    if (s_shadow_tap_on && s_shadow_tap_frame < SPU_SHADOW_TAP_FRAMES) {
+        SpuShadowVoiceTap *t = &s_shadow_tap[s_shadow_tap_frame].voice[idx];
+        for (int k = 0; k < 4; ++k) {
+            const int sample = v->sample_idx - 3 + k;
+            t->s[k] = noise ? raw_s : sample < 0 ? v->previous_samples[sample + 3]
+                                                : v->samples[sample];
+        }
+        t->frac = (float)(v->phase & 0xfffu) / 4096.0f;
+        t->env = v->env_level;
+        t->active = 1;
+    }
+
+'''+text[end:]
+    text=replace(text,'s_shadow_tap_on = spu_shadow_enabled() ? 1 : 0;',
+        's_shadow_tap_on = enabled && any_voice && spu_shadow_enabled();')
+    text=replace(text,'''                        /* Tap keeps its historical 1.14 volume scale. */
+                        t->vol_l = (int16_t)(vl >> 1);
+                        t->vol_r = (int16_t)(vr >> 1);''',
+        '''                        t->vol_l = vl;
+                        t->vol_r = vr;''')
+    text=replace(text,'''            /* The 16-bit mix bus saturates BEFORE the main volume applies''',
+        '''            if (s_shadow_tap_on && f < SPU_SHADOW_TAP_FRAMES) {
+                s_shadow_tap[f].other_l = mix_l - voice_l;
+                s_shadow_tap[f].other_r = mix_r - voice_r;
+            }
+
+            /* The 16-bit mix bus saturates BEFORE the main volume applies''')
+    text=replace(text,'''            /* Tap keeps its historical 1.14 volume scale. */
+            s_shadow_tap[f].main_l  = (int16_t)(main_l >> 1);
+            s_shadow_tap[f].main_r  = (int16_t)(main_r >> 1);''',
+        '''            s_shadow_tap[f].main_l = main_l;
+            s_shadow_tap[f].main_r = main_r;''')
+    text=text.replace('1.14 scale (effective int16 >> 1)', 'Q15 scale')
+    text=text.replace('Main L/R volumes are sweep-aware and can glide per sample. Kept\n'
+                      '         * live-per-frame; the >>1 below preserves the shadow tap\'s historical\n'
+                      '         * 1.14 volume scale (identical bytes for direct-mode registers).',
+                      'Main L/R volumes are sweep-aware and can glide per sample.')
+    source.write_text(text,encoding='utf-8')
+    text=replace(mixer.read_text(encoding='utf-8-sig'),
+        'void spu_shadow_process(int16_t* canon, int frames) {',
+        '''static float shadow_saturate(float sample) {
+    return sample < -32768.0f ? -32768.0f : sample > 32767.0f ? 32767.0f : sample;
+}
+
+void spu_shadow_process(int16_t* canon, int frames) {''')
+    text=replace(text,'float s = catmull_rom(t->s, t->frac);',
+        'float s = shadow_saturate(catmull_rom(t->s, t->frac));')
+    text=replace(text,'''                ml += sv * (float)t->vol_l * (1.0f / 16384.0f);
+                mr += sv * (float)t->vol_r * (1.0f / 16384.0f);
+            }
+            ml *= (float)fr->main_l * (1.0f / 16384.0f);
+            mr *= (float)fr->main_r * (1.0f / 16384.0f);
+        }
+        shadow_l[f] = ml * gain;
+        shadow_r[f] = mr * gain;''',
+        '''                ml += sv * (float)t->vol_l * SHADOW_NORM;
+                mr += sv * (float)t->vol_r * SHADOW_NORM;
+            }
+            ml = shadow_saturate(ml * gain + (float)fr->other_l) * (float)fr->main_l * SHADOW_NORM;
+            mr = shadow_saturate(mr * gain + (float)fr->other_r) * (float)fr->main_r * SHADOW_NORM;
+        }
+        shadow_l[f] = ml * SHADOW_NORM;
+        shadow_r[f] = mr * SHADOW_NORM;''')
+    text=replace(text,'    if (!s_info.proven) return;',
+        '    if (!s_info.proven) return;\n    s_info.applied_frames += (uint64_t)tap_n;')
+    mixer.write_text(text,encoding='utf-8')
+    text=replace(info.read_text(encoding='utf-8-sig'),'    uint64_t pauses;',
+        '    uint64_t pauses;\n    uint64_t applied_frames;')
+    info.write_text(text,encoding='utf-8')
+
+
 def patch(root):
+    shadow_audio(root)
     keys=root/'runtime/src/psx_keybinds.c';key_header=root/'runtime/include/psx_keybinds.h'
     body,header=keyboard_sampling(keys.read_text(encoding='utf-8-sig'),key_header.read_text(encoding='utf-8-sig'))
     keys.write_text(body,encoding='utf-8');key_header.write_text(header,encoding='utf-8')
