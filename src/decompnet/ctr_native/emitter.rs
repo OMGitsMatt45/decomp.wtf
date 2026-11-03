@@ -8,6 +8,8 @@
 #[path = "sdk/src/overrides.rs"] mod overrides;
 #[path = "sdk/src/codegen/mod.rs"] mod codegen;
 #[path = "sdk/src/cro.rs"] mod cro;
+#[cfg(test)]
+#[path = "sdk/src/compile.rs"] mod compile;
 
 fn imported(modules:&[(cro::Module,Vec<u8>)], crs:Option<&cro::Module>, target:&cro::Module)->Vec<u32> {
     modules.iter().map(|(module,_)|module).chain(crs)
@@ -98,13 +100,57 @@ fn arm_relative_targets(text: &image::Segment, function: &discover::Function, pc
     (targets.len() >= 3).then_some(targets)
 }
 
+/// A speculative literal can hide an ARM loop's back edge. Restore a single
+/// word when ARM fallthrough reaches it and the branch rejoins decoded code in
+/// the same function. A relocation is authoritative evidence of data.
+fn recover_arm_loop_edges(program: &discover::Program, analysis: &mut discover::Analysis) {
+    use arm::{Flow, ALWAYS};
+    use discover::{Byte, Mode};
+
+    let text = &program.text;
+    let mut recovered = Vec::new();
+    for function in analysis.functions.values_mut().filter(|f| f.mode == Mode::Arm) {
+        let mut edges = Vec::new();
+        for pair in function.instructions.windows(2) {
+            let previous = pair[0];
+            let at = previous + 4;
+            if pair[1] != at + 4 || program.slots.as_ref().is_some_and(|slots| slots.contains(&at)) {
+                continue;
+            }
+            let offset = (at - text.base) as usize;
+            if analysis.map[offset..offset + 4] != [Byte::Literal; 4] {
+                continue;
+            }
+            let before = arm::decode(text.read32(previous).unwrap(), previous);
+            if before.flow != Flow::Other {
+                continue;
+            }
+            let branch = arm::decode(text.read32(at).unwrap(), at);
+            if let Flow::Branch { target, link: false } = branch.flow {
+                if branch.condition == ALWAYS && target <= previous && function.instructions.binary_search(&target).is_ok() {
+                    edges.push(at);
+                    function.labels.insert(target);
+                    recovered.push(offset);
+                }
+            }
+        }
+        if !edges.is_empty() {
+            function.instructions.extend(edges);
+            function.instructions.sort_unstable();
+        }
+    }
+    for offset in recovered {
+        analysis.map[offset..offset + 4].fill(Byte::Code);
+    }
+}
+
 /// Recover Thumb PIC callback pointers only from decoded instruction paths.
 /// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
 /// them. A branch, a write to Rt or an unknown gap ends the candidate.
 fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static str> {
     interworking(program);
     for _ in 0..8 {
-        let analysis=discover::analyze(program);
+        let mut analysis=discover::analyze(program);
         let text=&program.text;
         let hints=program.seeds.iter().filter_map(|(at,source)|(*source==discover::Source::Hint).then_some(*at))
             .collect::<std::collections::BTreeSet<_>>();
@@ -143,7 +189,10 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
                 }
             }
         }
-        if found.is_empty() {return Ok(analysis);}
+        if found.is_empty() {
+            recover_arm_loop_edges(program, &mut analysis);
+            return Ok(analysis);
+        }
         program.seeds.extend(found.into_iter().map(|at|(at,discover::Source::Hint)));
     }
     Err("position-independent target discovery exceeded eight passes")
@@ -256,4 +305,44 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() {
     if let Err(error) = run() { eprintln!("3DS source generation: {error}"); std::process::exit(1); }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arm_loop_edge_survives_a_competing_thumb_literal() {
+        use discover::{Byte, Source};
+
+        let base = 0x100000;
+        let words: [u32; 8] = [
+            0xe12fff1e, // ARM entry: bx lr
+            0x47704804, // Thumb guess: ldr r0, [pc, #16]; bx lr
+            0xe3500000, // cmp r0, #0
+            0x0a000002, // beq exit
+            0xe2400001, // sub r0, r0, #1
+            0xe320f000, // nop
+            0xeafffffa, // b loop (also the guessed Thumb literal)
+            0xe12fff1e, // exit: bx lr
+        ];
+        let mut program = discover::Program {
+            text: image::Segment { base, bytes: words.into_iter().flat_map(u32::to_le_bytes).collect() },
+            seeds: vec![(base, Source::Entry), (base + 5, Source::Pointer), (base + 8, Source::Pointer)],
+            slots: None,
+        };
+        let branch = base + 24;
+        let original = discover::analyze(&program);
+        assert_eq!(original.map[24], Byte::Literal);
+        assert!(!original.functions[&(base + 8)].instructions.contains(&branch));
+
+        let repaired = analyze(&mut program).unwrap();
+        assert!(repaired.functions[&(base + 8)].instructions.contains(&branch));
+        assert_eq!(repaired.map[24], Byte::Code);
+
+        program.slots = Some([branch].into_iter().collect());
+        let with_relocation = analyze(&mut program).unwrap();
+        assert_eq!(with_relocation.map[24], Byte::Literal);
+        assert!(!with_relocation.functions[&(base + 8)].instructions.contains(&branch));
+    }
 }
