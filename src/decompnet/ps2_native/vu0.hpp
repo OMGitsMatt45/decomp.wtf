@@ -44,11 +44,31 @@ namespace vu0_detail {
         void clip(uint32_t bits) { ctx.vu0_clip_flags=((ctx.vu0_clip_flags << 6) | bits) & 0xffffffu; }
         void reserved(uint32_t) { throw std::runtime_error("unsupported static VU0 operation"); }
     };
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+    // This engine uses float and double SSE arithmetic on Windows x64.
+    // Keep the host exception flags raised by the instruction.
+    struct Rounding {
+        static constexpr unsigned mask = _MM_ROUND_MASK;
+        static constexpr unsigned towardZero = _MM_ROUND_TOWARD_ZERO;
+        unsigned previous;
+        Rounding() {
+            const unsigned control = _mm_getcsr();
+            previous = control & mask;
+            if (previous != towardZero)
+                _mm_setcsr((control & ~mask) | towardZero);
+        }
+        ~Rounding() {
+            if (previous != towardZero)
+                _mm_setcsr((_mm_getcsr() & ~mask) | previous);
+        }
+    };
+#else
     struct Rounding {
         int previous=std::fegetround();
         Rounding() { std::fesetround(FE_TOWARDZERO); }
         ~Rounding() { std::fesetround(previous); }
     };
+#endif
 }
 // Keep each literal's arithmetic in one native function. Inlining the full
 // arithmetic engine into every EE call site can exhaust compiler memory when
