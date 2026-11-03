@@ -34,38 +34,51 @@ fn interworking(program:&mut discover::Program) {
 }
 
 /// Read a backward ARM jump table addressed by ADR, LDR (scaled index),
-/// and ADD PC. Its signed offsets are relative to the table, not each slot.
+/// and ADD PC. The epilogue can restore a different register before branching.
 fn arm_relative_targets(text: &image::Segment, function: &discover::Function, pc: u32) -> Option<Vec<u32>> {
     let branch = text.read32(pc)?;
     if branch & 0xfff0fff0 != 0xe080f000 { return None; }
-    let adr_pc = pc.checked_sub(8)?;
-    if function.instructions.binary_search(&adr_pc).is_err()
-        || function.instructions.binary_search(&(pc - 4)).is_err() { return None; }
-    let load = text.read32(pc - 4)?;
+    let left = (branch >> 16) & 15;
+    let right = branch & 15;
+    let preceding = |at: u32| {
+        let address = at.checked_sub(4)?;
+        function.instructions.binary_search(&address).ok()?;
+        Some((address, text.read32(address)?))
+    };
+    let (mut load_pc, mut load) = preceding(pc)?;
+    let written = (load >> 12) & 15;
+    if load & 0xffff0ff0 == 0xe1a00000 && written != 15 && written != left && written != right {
+        (load_pc, load) = preceding(load_pc)?;
+    }
     if load & 0xfff00ff0 != 0xe7900100 || load & 15 == 15 { return None; }
     let base = (load >> 16) & 15;
     let offset = (load >> 12) & 15;
-    let left = (branch >> 16) & 15;
-    let right = branch & 15;
     if base == offset || base == 15 || offset == 15
         || !((left == base && right == offset) || (left == offset && right == base)) {
         return None;
     }
-    let adr = text.read32(adr_pc)?;
+    let (adr_pc, adr) = preceding(load_pc)?;
     if (adr >> 12) & 15 != base { return None; }
     let distance = (adr & 255).rotate_right(((adr >> 8) & 15) * 2);
     // A backward table has a structural upper bound at its ADR instruction.
     let table = match adr >> 16 {
-        0xe24f => pc.checked_sub(distance)?,
+        0xe24f => (adr_pc + 8).checked_sub(distance)?,
         _ => return None,
     };
     if table % 4 != 0 || table >= adr_pc { return None; }
     let mut targets = Vec::new();
-    for index in 0..((adr_pc - table) / 4).min(256) {
-        let target = table.wrapping_add(text.read32(table + index * 4)?);
-        if target % 4 != 0 || (table..adr_pc).contains(&target) || text.read32(target).is_none() {
+    let mut table_end = adr_pc;
+    for slot in (table..adr_pc).step_by(4).take(256) {
+        if slot >= table_end { break; }
+        let word = text.read32(slot)?;
+        // Once a forward case bounds the table, a zero slot can be padding
+        // for an unused case without terminating discovery of later entries.
+        if word == 0 && table_end < adr_pc { continue; }
+        let target = table.wrapping_add(word);
+        if target % 4 != 0 || (table..=slot).contains(&target) || text.read32(target).is_none() {
             break;
         }
+        if target > slot { table_end = table_end.min(target); }
         targets.push(target);
     }
     (targets.len() >= 3).then_some(targets)
