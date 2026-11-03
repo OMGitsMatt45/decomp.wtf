@@ -57,6 +57,48 @@ namespace vu0_detail {
             _mm_and_si128(special, _mm_or_si128(sign, _mm_set1_epi32(0x7f7fffff))))));
     }
 
+    constexpr bool isMinMax(uint32_t word)
+    {
+        const auto op = word & 0x3fu;
+        return (op >= 0x10u && op <= 0x17u) || op == 0x1du || op == 0x1fu ||
+               op == 0x2bu || op == 0x2fu;
+    }
+
+    template <uint32_t Word>
+    PS2_VU_FORCE_INLINE void selectMinMax(R5900Context &ctx)
+    {
+        constexpr unsigned op = Word & 0x3fu, dest = (Word >> 21u) & 15u;
+        constexpr unsigned fs = (Word >> 11u) & 31u, ft = (Word >> 16u) & 31u, fd = (Word >> 6u) & 31u;
+        if constexpr (fd != 0u && dest != 0u)
+        {
+            const auto left = normalizedLanes(ctx.vu0_vf[fs]);
+            __m128 right;
+            if constexpr (op <= 0x17u)
+            {
+                constexpr unsigned component = op & 3u;
+                const auto lanes = ctx.vu0_vf[ft];
+                right = _mm_shuffle_ps(lanes, lanes, _MM_SHUFFLE(component, component, component, component));
+            }
+            else if constexpr (op == 0x1du || op == 0x1fu)
+                right = _mm_set1_ps(ctx.vu0_i);
+            else
+                right = ctx.vu0_vf[ft];
+            right = normalizedLanes(right);
+
+            // Normalization leaves finite normals and signed zeros. SSE
+            // selects the second operand on ties, preserving its zero sign.
+            constexpr bool maximum = op <= 0x13u || op == 0x1du || op == 0x2bu;
+            const auto result = maximum ? _mm_max_ps(left, right) : _mm_min_ps(left, right);
+            if constexpr (dest == 15u)
+                ctx.vu0_vf[fd] = result;
+            else
+            {
+                constexpr uint8_t reverse[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+                ctx.vu0_vf[fd] = _mm_blend_ps(ctx.vu0_vf[fd], result, reverse[dest]);
+            }
+        }
+    }
+
     template <uint32_t Word>
     PS2_VU_FORCE_INLINE bool tryBroadcastMadd(const Inputs &in, Sink &sink)
     {
@@ -153,23 +195,30 @@ namespace vu0_detail {
 template<uint32_t Word> DECOMP_VU0_NOINLINE void vu_upper(R5900Context &ctx) {
     // VF0 is a hardwired vector, independent of a host context's zero-fill.
     ctx.vu0_vf[0]=_mm_set_ps(1.0f,0.0f,0.0f,0.0f);
-    constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
-    float left[4], right[4], accumulator[4];
-    std::memcpy(left, &ctx.vu0_vf[fs], 16);
-    std::memcpy(right, &ctx.vu0_vf[ft], 16);
-    std::memcpy(accumulator, &ctx.vu0_acc, 16);
-    if constexpr (fs == 0) { left[0]=left[1]=left[2]=0; left[3]=1; }
-    if constexpr (ft == 0) { right[0]=right[1]=right[2]=0; right[3]=1; }
-    vu0_detail::Inputs inputs{left,right,accumulator,ctx.vu0_i,ctx.vu0_q};
-    vu0_detail::Sink sink{ctx};
-    vu0_detail::Rounding rounding;
-    // Word is fixed in generated C++; no guest instruction is fetched and no
-    // guest-code compiler runs on this path.
 #if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
-    if (vu0_detail::tryBroadcastMadd<Word>(inputs, sink))
-        return;
+    if constexpr (vu0_detail::isMinMax(Word))
+        vu0_detail::selectMinMax<Word>(ctx);
+    else
 #endif
-    ps2_vu_detail::upper::computeUpper(Word,inputs,sink);
+    {
+        constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
+        float left[4], right[4], accumulator[4];
+        std::memcpy(left, &ctx.vu0_vf[fs], 16);
+        std::memcpy(right, &ctx.vu0_vf[ft], 16);
+        std::memcpy(accumulator, &ctx.vu0_acc, 16);
+        if constexpr (fs == 0) { left[0]=left[1]=left[2]=0; left[3]=1; }
+        if constexpr (ft == 0) { right[0]=right[1]=right[2]=0; right[3]=1; }
+        vu0_detail::Inputs inputs{left,right,accumulator,ctx.vu0_i,ctx.vu0_q};
+        vu0_detail::Sink sink{ctx};
+        vu0_detail::Rounding rounding;
+        // Word is fixed in generated C++; no guest instruction is fetched and no
+        // guest-code compiler runs on this path.
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+        if (vu0_detail::tryBroadcastMadd<Word>(inputs, sink))
+            return;
+#endif
+        ps2_vu_detail::upper::computeUpper(Word,inputs,sink);
+    }
 }
 #undef DECOMP_VU0_NOINLINE
 }
