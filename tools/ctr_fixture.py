@@ -20,6 +20,11 @@ def fixture(kind='arm'):
         # adds the instruction's PC and calls the resulting Thumb callback.
         'pic-callback': struct.pack('<6I12HI',0xeb000002,0xef000003,0,0,0xe28fc001,0xe12fff1c,
             0xb500,0xb081,0x4b04,0x9000,0x447b,0x4798,0xb001,0xbd00,0x202a,0x4770,0x46c0,0x46c0,5),
+        # Three ARM case offsets relative to a backward table. The selected
+        # case has no prologue or direct branch that would reveal it.
+        'arm-relative-table': struct.pack('<18I',0xe3a00001,0xe28fe000,0xea000004,0xef000003,
+            0x20,0x28,0x30,0,0xe24f4018,0xe7945100,0xe084f005,0,
+            0xe3a00029,0xe12fff1e,0xe3a0002a,0xe12fff1e,0xe3a0002b,0xe12fff1e),
         'vfp': struct.pack('<IIIIII', 0xe59f000c, 0xee000a10, 0xee300a00, 0xee100a10, 0xef000003, 0x3f800000),
         # The callback address exists only in .data, reached through a table.
         'data-callback': struct.pack('<IIIII',0xe59f3008,0xe5933000,0xe12fff33,0xef000003,BASE+0x2000)

@@ -33,6 +33,44 @@ fn interworking(program:&mut discover::Program) {
     }
 }
 
+/// Read a backward ARM jump table addressed by ADR, LDR (scaled index),
+/// and ADD PC. Its signed offsets are relative to the table, not each slot.
+fn arm_relative_targets(text: &image::Segment, function: &discover::Function, pc: u32) -> Option<Vec<u32>> {
+    let branch = text.read32(pc)?;
+    if branch & 0xfff0fff0 != 0xe080f000 { return None; }
+    let adr_pc = pc.checked_sub(8)?;
+    if function.instructions.binary_search(&adr_pc).is_err()
+        || function.instructions.binary_search(&(pc - 4)).is_err() { return None; }
+    let load = text.read32(pc - 4)?;
+    if load & 0xfff00ff0 != 0xe7900100 || load & 15 == 15 { return None; }
+    let base = (load >> 16) & 15;
+    let offset = (load >> 12) & 15;
+    let left = (branch >> 16) & 15;
+    let right = branch & 15;
+    if base == offset || base == 15 || offset == 15
+        || !((left == base && right == offset) || (left == offset && right == base)) {
+        return None;
+    }
+    let adr = text.read32(adr_pc)?;
+    if (adr >> 12) & 15 != base { return None; }
+    let distance = (adr & 255).rotate_right(((adr >> 8) & 15) * 2);
+    // A backward table has a structural upper bound at its ADR instruction.
+    let table = match adr >> 16 {
+        0xe24f => pc.checked_sub(distance)?,
+        _ => return None,
+    };
+    if table % 4 != 0 || table >= adr_pc { return None; }
+    let mut targets = Vec::new();
+    for index in 0..((adr_pc - table) / 4).min(256) {
+        let target = table.wrapping_add(text.read32(table + index * 4)?);
+        if target % 4 != 0 || (table..adr_pc).contains(&target) || text.read32(target).is_none() {
+            break;
+        }
+        targets.push(target);
+    }
+    (targets.len() >= 3).then_some(targets)
+}
+
 /// Recover Thumb PIC callback pointers only from decoded instruction paths.
 /// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
 /// them. A branch, a write to Rt or an unknown gap ends the candidate.
@@ -44,6 +82,14 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
         let hints=program.seeds.iter().filter_map(|(at,source)|(*source==discover::Source::Hint).then_some(*at))
             .collect::<std::collections::BTreeSet<_>>();
         let mut found=std::collections::BTreeSet::new();
+        for function in analysis.functions.values().filter(|f| f.mode == discover::Mode::Arm) {
+            for &pc in &function.instructions {
+                if let Some(targets) = arm_relative_targets(text, function, pc) {
+                    found.extend(targets.into_iter().filter(|at| !hints.contains(at)
+                        && !analysis.functions.get(at).is_some_and(|f| f.mode == discover::Mode::Arm && !f.instructions.is_empty())));
+                }
+            }
+        }
         for function in analysis.functions.values().filter(|f|f.mode==discover::Mode::Thumb) {
             for &pc in &function.instructions {
                 let Some(op)=text.read16(pc) else {continue;};
@@ -73,7 +119,7 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
         if found.is_empty() {return Ok(analysis);}
         program.seeds.extend(found.into_iter().map(|at|(at,discover::Source::Hint)));
     }
-    Err("position-independent callback discovery exceeded eight passes")
+    Err("position-independent target discovery exceeded eight passes")
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
