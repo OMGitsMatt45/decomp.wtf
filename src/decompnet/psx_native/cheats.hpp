@@ -21,7 +21,7 @@ struct Cheat {
     bool enabled=false;
     uint64_t applications=0,changes=0;
 };
-#include "cheat_catalog.inc"
+extern std::vector<Cheat> cheats;
 inline uint64_t cheat_menu_openings=0,cheat_toggles=0;
 inline uint32_t cheat_read(uint32_t address,unsigned width) {
     uint32_t value=0;

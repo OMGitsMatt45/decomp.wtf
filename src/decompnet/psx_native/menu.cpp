@@ -6,6 +6,11 @@
 #include <algorithm>
 #include <cstdio>
 
+// One definition keeps catalog initialization out of inline COMDAT sections.
+namespace ps1_host {
+#include "cheat_catalog.inc"
+}
+
 namespace {
 bool opened=false,fallback=true;
 int page=0,selected=0,disc=1;

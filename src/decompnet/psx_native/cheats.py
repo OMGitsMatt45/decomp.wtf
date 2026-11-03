@@ -181,7 +181,7 @@ def variant_images(item, entries, ranges):
 
 def emit(entries, root):
     (root/'game/cheats.json').write_text(json.dumps(dict(schema='decomp.wtf.ps1-cheats/v1', entries=entries), indent=2)+'\n', encoding='utf-8')
-    lines = ['inline std::vector<Cheat> cheats={']
+    lines = ['std::vector<Cheat> cheats={']
     for entry in entries:
         lines.append('{'+','.join(json.dumps(entry[key], ensure_ascii=True) for key in ('name','description','group'))+',{')
         for op in entry['operations']:
