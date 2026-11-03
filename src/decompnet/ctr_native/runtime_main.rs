@@ -197,3 +197,82 @@ fn main() {
         Err(error) => { eprintln!("3DS runtime: {error}"); std::process::exit(1); }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use zakuro_common::{memory_map::TLS_IPC_STATIC_BUFFERS, result::errors};
+    use zakuro_core::{
+        kernel::{ipc::{CommandBuffer, Descriptor}, object::KObject, sync::ResetType},
+        services::{handle_request, Target},
+        Config, System,
+    };
+    use zakuro_cpu::Bus;
+
+    fn ipc_system() -> (System, CommandBuffer, u32) {
+        let mut system = System::new(Config { strict_static: true, ..Config::default() });
+        let thread = system.kernel.create_thread("main", 0x0010_0000, 0x1000_0000, 0, 0x30, 0);
+        system.map_tls_page(thread);
+        system.kernel.current_thread = Some(thread);
+        let tls = system.kernel.thread(thread).tls;
+        (system, CommandBuffer::new(tls), tls)
+    }
+
+    #[test]
+    fn socket_initialization_returns_an_offline_result_without_a_strict_fault() {
+        let (mut system, buffer, _) = ipc_system();
+        for (index, word) in [0x0001_0044, 0x0010_0000, 0x20, 0, 0, 0].into_iter().enumerate() {
+            buffer.set(&mut system.memory, index as u32, word);
+        }
+        handle_request(&mut system, Target::service("soc:U".into(), 0));
+        assert_eq!(buffer.get(&mut system.memory, 0), 0x0001_0040);
+        assert_eq!(buffer.get(&mut system.memory, 1), errors::NOT_CONNECTED.0);
+        assert!(system.services.unimplemented.is_empty());
+
+        buffer.set(&mut system.memory, 0, 0x00ff_0000);
+        handle_request(&mut system, Target::service("soc:U".into(), 0));
+        assert_eq!(buffer.get(&mut system.memory, 1), errors::UNIMPLEMENTED.0);
+        assert_eq!(system.services.unimplemented.get(&("soc:U".into(), 0xff)), Some(&1));
+    }
+
+    #[test]
+    fn offline_access_control_fills_the_config_and_completes_the_event() {
+        let (mut system, buffer, tls) = ipc_system();
+        let service = Target::service("ac:u".into(), 0);
+        let config = tls + 0x400;
+        let descriptor = Descriptor::static_buffer(0x200, 0);
+        system.memory.write32(tls + TLS_IPC_STATIC_BUFFERS, descriptor);
+        system.memory.write32(tls + TLS_IPC_STATIC_BUFFERS + 4, config);
+        system.memory.write_bytes(config, &[0xff; 0x200]);
+        buffer.set(&mut system.memory, 0, 0x0001_0000);
+        handle_request(&mut system, service.clone());
+        assert_eq!(buffer.get(&mut system.memory, 0), 0x0001_0042);
+        assert_eq!(buffer.get(&mut system.memory, 1), 0);
+        assert_eq!(buffer.get(&mut system.memory, 2), descriptor);
+        assert_eq!(buffer.get(&mut system.memory, 3), config);
+        let mut result = [0xff; 0x200];
+        system.memory.read_bytes(config, &mut result);
+        assert_eq!(result, [0; 0x200]);
+
+        buffer.set(&mut system.memory, 0, 0x0027_0002);
+        buffer.set(&mut system.memory, 1, descriptor);
+        buffer.set(&mut system.memory, 2, config);
+        handle_request(&mut system, service.clone());
+        assert_eq!(buffer.get(&mut system.memory, 1), 0);
+        assert_eq!(buffer.get(&mut system.memory, 2), 0);
+
+        let (event, handle) = system.kernel.create_event(ResetType::OneShot, "offline connect");
+        let words = [0x0004_0006, 0x20, 0, Descriptor::handles(1), handle,
+            Descriptor::static_buffer(0x200, 1), config];
+        for (index, word) in words.into_iter().enumerate() {
+            buffer.set(&mut system.memory, index as u32, word);
+        }
+        handle_request(&mut system, service.clone());
+        assert_eq!(buffer.get(&mut system.memory, 1), 0);
+        assert!(matches!(system.kernel.objects.get(event), Some(KObject::Event(event)) if event.signaled));
+
+        buffer.set(&mut system.memory, 0, 0x0005_0002);
+        handle_request(&mut system, service);
+        assert_eq!(buffer.get(&mut system.memory, 1), errors::NOT_CONNECTED.0);
+        assert!(system.services.unimplemented.is_empty());
+    }
+}

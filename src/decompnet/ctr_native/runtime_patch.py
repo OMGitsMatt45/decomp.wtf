@@ -91,6 +91,22 @@ def apply(root):
     replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
         '    buffer.reply(&mut system.memory, command, &[]);\n    for index in 2..8 {',
         '    buffer.reply_error(&mut system.memory, command, zakuro_common::result::errors::UNIMPLEMENTED.0);\n    for index in 2..8 {')
+    replace(root, 'runtime/crates/zakuro-core/src/services/misc.rs',
+        '        // -- Wifi connection ------------------------------------------------',
+        '''        // Offline socket initialization fails without opening a host socket.
+        "soc:U" if header.0 == 0x0001_0044 => {
+            buffer.reply_error(&mut system.memory, command, zakuro_common::result::errors::NOT_CONNECTED.0);
+            true
+        }
+
+        // -- Wifi connection ------------------------------------------------''')
+    replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
+        'pub mod apt;', 'pub mod apt;\n#[path = "ac_offline.rs"] mod ac_offline;')
+    replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
+        '        _ => misc::handle(system, &buffer, header, &name),',
+        '''        "ac:u" | "ac:i" => ac_offline::handle(system, &buffer, header)
+            || misc::handle(system, &buffer, header, &name),
+        _ => misc::handle(system, &buffer, header, &name),''')
     replace(root, 'runtime/crates/zakuro-core/src/room.rs',
         '        let listener = TcpListener::bind(("0.0.0.0", port))?;',
         '''        Self::bind(std::net::SocketAddr::from(([0, 0, 0, 0], port)), name, password, most)
@@ -131,6 +147,7 @@ def apply(root):
 
     /// one console hosts a network, the other finds it scanning, reads its''')
     import shutil
+    shutil.copyfile(Path(__file__).with_name('ac_offline.rs'),root/'runtime/crates/zakuro-core/src/services/ac_offline.rs')
     shutil.copyfile(Path(__file__).with_name('cecd_empty.rs'),root/'runtime/crates/zakuro-core/src/services/cecd_empty.rs')
     replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
         'use crate::System;',
