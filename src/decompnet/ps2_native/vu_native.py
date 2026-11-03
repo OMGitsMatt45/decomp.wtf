@@ -5,7 +5,7 @@ import re
 
 from ..pc import PCError
 from .runtime_patch import replace
-from . import vu_plain_sse
+from . import vu_normalized_inputs, vu_plain_sse
 
 _TOKENS=re.compile(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[{}]')
 
@@ -194,6 +194,7 @@ def patch(root):
     path=folder/'ps2_vu1_program.cpp'
     path.write_text('#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n'+path.read_text()+'\n#endif\n')
     vu_plain_sse.patch(root)
+    vu_normalized_inputs.patch(root)
 
 
 def generate(catalog,folder):
