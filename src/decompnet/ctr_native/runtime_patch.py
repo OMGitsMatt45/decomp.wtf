@@ -162,6 +162,40 @@ def apply(root):
         '                .min(self.next_frame_boundary);')
     apply_gsp_lifetime(root)
     apply_graphics(root)
+    apply_microphone(root)
+
+
+def apply_microphone(root):
+    """Install the guest MIC service with a silent host source."""
+    import shutil
+
+    core = Path(root) / 'runtime/crates/zakuro-core/src'
+    shutil.copyfile(Path(__file__).with_name('mic_silent.rs'), core/'services/mic_silent.rs')
+    replace(core, 'services/mod.rs', 'pub mod misc;', 'pub mod misc;\npub mod mic_silent;')
+    replace(core, 'services/mod.rs', '    pub cam: cam::CamState,',
+        '    pub cam: cam::CamState,\n    #[serde(skip)]\n    pub mic: mic_silent::MicState,')
+    replace(core, 'services/mod.rs', '        "cam:u" | "cam:s" => cam::handle(system, &buffer, header),',
+        '        "cam:u" | "cam:s" => cam::handle(system, &buffer, header),\n'
+        '        "mic:u" => mic_silent::handle(system, &buffer, header),')
+    replace(core, 'lib.rs', '        services::cam::tick(self);',
+        '        services::cam::tick(self);\n        services::mic_silent::tick(self);')
+    # Keep the original postcard layout so pre-MIC savestates still load.
+    replace(core, 'state/mod.rs', '        Ok(out)',
+        '''        let mic = postcard::to_allocvec(&self.services.mic)
+            .map_err(|error| format!("the microphone state could not be written, {error}"))?;
+        section(&mut out, &mic);
+        Ok(out)''')
+    replace(core, 'state/mod.rs',
+        '        let memories = [reader.section()?, reader.section()?, reader.section()?, reader.section()?];',
+        '''        let memories = [reader.section()?, reader.section()?, reader.section()?, reader.section()?];
+        let mic = if reader.0.is_empty() {
+            crate::services::mic_silent::MicState::default()
+        } else {
+            postcard::from_bytes(&reader.section()?)
+                .map_err(|error| format!("the microphone state could not be read, {error}"))?
+        };''')
+    replace(core, 'state/mod.rs', '        self.services = saved.services;',
+        '        self.services = saved.services;\n        self.services.mic = mic;')
 
 
 def apply_graphics(root):
