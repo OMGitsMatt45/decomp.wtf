@@ -2,6 +2,7 @@
 #include "video.hpp"
 #include "anygba/system.hpp"
 #include "ppu_shader.hpp"
+#include "save/save.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 #define SDL_MAIN_HANDLED
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -52,6 +54,29 @@ void Scene::capture(anygba::System& system,unsigned line) {
 }
 namespace {
 void check(bool success,const std::string& text){if(!success)throw std::runtime_error(text);}
+
+Graphics load_graphics(const std::filesystem::path& path) {
+    if(path.empty())return {};
+    std::ifstream file(path,std::ios::binary);
+    if(!file)return {};
+    char bytes[4]{};
+    if(!file.read(bytes,sizeof(bytes)) || bytes[0]<'0' || bytes[0]>'2' || bytes[1]!=' ' ||
+       bytes[2]<'0' || bytes[2]>'1' || bytes[3]!='\n' || file.peek()!=std::char_traits<char>::eof()) {
+        std::cerr<<"Invalid graphics preferences, using Original settings\n";
+        return {};
+    }
+    return {static_cast<Scaling>(bytes[0]-'0'),static_cast<Colors>(bytes[2]-'0')};
+}
+
+std::array<uint8_t,3> display_rgb(uint16_t pixel, Colors colors) {
+    const auto expand=[](unsigned value){return (value<<3)|(value>>2);};
+    const auto r=expand(pixel&31),g=expand((pixel>>5)&31),b=expand((pixel>>10)&31);
+    if(colors==Colors::Soft) {
+        // Mild channel mixing with a neutral gray axis. See the PPU shader.
+        return {uint8_t((12*r+3*g+b+8)/16),uint8_t((2*r+13*g+b+8)/16),uint8_t((2*r+3*g+11*b+8)/16)};
+    }
+    return {uint8_t(r),uint8_t(g),uint8_t(b)};
+}
 #define GL_FUNCTIONS(X) \
  X(const GLubyte*,GetString,(GLenum)) X(GLenum,GetError,()) X(void,GetIntegerv,(GLenum,GLint*)) \
  X(void,Viewport,(GLint,GLint,GLsizei,GLsizei)) X(void,ClearColor,(GLfloat,GLfloat,GLfloat,GLfloat)) \
@@ -65,6 +90,10 @@ void check(bool success,const std::string& text){if(!success)throw std::runtime_
  X(void,GenVertexArrays,(GLsizei,GLuint*)) X(void,BindVertexArray,(GLuint)) X(void,DeleteVertexArrays,(GLsizei,const GLuint*)) \
  X(void,GenTextures,(GLsizei,GLuint*)) X(void,BindTexture,(GLenum,GLuint)) X(void,DeleteTextures,(GLsizei,const GLuint*)) \
  X(void,TexParameteri,(GLenum,GLenum,GLint)) X(void,TexImage2D,(GLenum,GLint,GLint,GLsizei,GLsizei,GLint,GLenum,GLenum,const void*)) \
+ X(void,GenFramebuffers,(GLsizei,GLuint*)) X(void,DeleteFramebuffers,(GLsizei,const GLuint*)) \
+ X(void,BindFramebuffer,(GLenum,GLuint)) X(GLenum,CheckFramebufferStatus,(GLenum)) \
+ X(void,FramebufferTexture2D,(GLenum,GLenum,GLenum,GLuint,GLint)) \
+ X(void,BlitFramebuffer,(GLint,GLint,GLint,GLint,GLint,GLint,GLint,GLint,GLbitfield,GLenum)) \
  X(void,DrawArrays,(GLenum,GLint,GLsizei))
 struct GL {
 #define DECLARE(result,name,args) using name##Fn=result(APIENTRY*)args;name##Fn name=nullptr;
@@ -98,7 +127,8 @@ struct Display::Impl {
     SDL_Renderer* software=nullptr;SDL_Texture* software_texture=nullptr;
     SDL_AudioStream* sound=nullptr;SDL_Gamepad* pad=nullptr;
     std::unique_ptr<GL> gl;
-    GLuint program=0,texture=0,array=0;
+    GLuint program=0,texture=0,array=0,smooth_framebuffer=0,smooth_texture=0;
+    Graphics graphics;
     int width=0,height=0;
     std::string renderer_name,device_name;
     std::vector<uint32_t> upload;
@@ -111,8 +141,14 @@ struct Display::Impl {
     }
     void close_video(){
         if(context)SDL_GL_MakeCurrent(window,context);
-        if(gl){if(program)gl->DeleteProgram(program);if(texture)gl->DeleteTextures(1,&texture);if(array)gl->DeleteVertexArrays(1,&array);}
-        gl.reset();program=texture=array=0;
+        if(gl){
+            if(program)gl->DeleteProgram(program);
+            if(texture)gl->DeleteTextures(1,&texture);
+            if(array)gl->DeleteVertexArrays(1,&array);
+            if(smooth_framebuffer)gl->DeleteFramebuffers(1,&smooth_framebuffer);
+            if(smooth_texture)gl->DeleteTextures(1,&smooth_texture);
+        }
+        gl.reset();program=texture=array=smooth_framebuffer=smooth_texture=0;
         if(context)SDL_GL_DestroyContext(context);context=nullptr;
         if(software_texture)SDL_DestroyTexture(software_texture);software_texture=nullptr;
         if(software)SDL_DestroyRenderer(software);software=nullptr;
@@ -138,6 +174,7 @@ struct Display::Impl {
     }
     void init(Options value){
         options=std::move(value);
+        graphics=load_graphics(options.graphics_path);
         check(options.renderer=="auto"||options.renderer=="opengl"||options.renderer=="software","invalid renderer");
         SDL_SetMainReady();check(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMEPAD),SDL_GetError());
         if(options.renderer!="software")try{
@@ -149,6 +186,14 @@ struct Display::Impl {
             gl->GenVertexArrays(1,&array);gl->BindVertexArray(array);gl->GenTextures(1,&texture);
             gl->BindTexture(GL_TEXTURE_2D,texture);gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
             gl->TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            gl->GenTextures(1,&smooth_texture);
+            gl->BindTexture(GL_TEXTURE_2D,smooth_texture);
+            gl->TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,240,160,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+            gl->GenFramebuffers(1,&smooth_framebuffer);
+            gl->BindFramebuffer(GL_FRAMEBUFFER,smooth_framebuffer);
+            gl->FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,smooth_texture,0);
+            check(gl->CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"cannot create GBA smoothing framebuffer");
+            gl->BindFramebuffer(GL_FRAMEBUFFER,0);
             gl->Disable(GL_DITHER);gl->Disable(GL_BLEND);gl->Disable(GL_FRAMEBUFFER_SRGB);
             SDL_GL_SetSwapInterval(0);renderer_name="opengl";
             device_name=reinterpret_cast<const char*>(gl->GetString(GL_RENDERER));
@@ -172,7 +217,7 @@ bool Display::poll(uint16_t& keys,bool* settings,bool* cheat_button,bool* advanc
     SDL_Event event;while(SDL_PollEvent(&event)) {
         if(event.type==SDL_EVENT_QUIT||event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED)return false;
         if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_F11)
-            check(SDL_SetWindowFullscreen(p->window,!(SDL_GetWindowFlags(p->window)&SDL_WINDOW_FULLSCREEN)),SDL_GetError());
+            toggle_fullscreen();
         if(advanced&&event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&event.key.scancode==SDL_SCANCODE_F2)*advanced=true;
         if(settings&&event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&
            (event.key.scancode==SDL_SCANCODE_F1||event.key.scancode==SDL_SCANCODE_ESCAPE))*settings=true;
@@ -192,9 +237,19 @@ bool Display::poll(uint16_t& keys,bool* settings,bool* cheat_button,bool* advanc
     return true;
 }
 void Display::present(const Scene& scene,std::span<const uint16_t> frame){
+    present_frame(scene,frame,true);
+}
+void Display::present_frame(const Scene& scene,std::span<const uint16_t> frame,bool game_image){
     check(SDL_GetWindowSizeInPixels(p->window,&p->width,&p->height),SDL_GetError());
     if(p->width<=0||p->height<=0)return;
     int w=p->width,h=w*2/3;if(h>p->height){h=p->height;w=h*3/2;}
+    w=std::max(w,1);h=std::max(h,1);
+    if(p->graphics.scaling==Scaling::Sharp) {
+        const int scale=std::min(p->width/240,p->height/160);
+        if(scale>0){w=240*scale;h=160*scale;}
+    }
+    const bool smooth=game_image&&p->graphics.scaling==Scaling::Smooth;
+    const auto colors=game_image?p->graphics.colors:Colors::Original;
     if(p->gl){auto& g=*p->gl;
         p->upload.assign(scene.rows.begin(),scene.rows.end());p->upload.insert(p->upload.end(),scene.vram.begin(),scene.vram.end());
         const int rows=int((p->upload.size()+1023)/1024);p->upload.resize(size_t(rows)*1024);
@@ -202,18 +257,33 @@ void Display::present(const Scene& scene,std::span<const uint16_t> frame){
         g.BindTexture(GL_TEXTURE_2D,p->texture);g.PixelStorei(GL_UNPACK_ALIGNMENT,1);
         g.TexImage2D(GL_TEXTURE_2D,0,GL_R32UI,1024,rows,0,GL_RED_INTEGER,GL_UNSIGNED_INT,p->upload.data());
         g.Viewport(0,0,p->width,p->height);g.ClearColor(0,0,0,1);g.Clear(GL_COLOR_BUFFER_BIT);
-        int x=(p->width-w)/2,y=(p->height-h)/2;g.Viewport(x,y,w,h);
+        const int x=(p->width-w)/2,y=(p->height-h)/2;
+        if(smooth){
+            g.BindFramebuffer(GL_FRAMEBUFFER,p->smooth_framebuffer);
+            g.Viewport(0,0,240,160);
+        }else g.Viewport(x,y,w,h);
         g.UseProgram(p->program);g.Uniform1i(g.GetUniformLocation(p->program,"memory_image"),0);
-        g.Uniform2f(g.GetUniformLocation(p->program,"viewport_size"),float(w),float(h));
-        g.Uniform2f(g.GetUniformLocation(p->program,"viewport_origin"),float(x),float(y));
+        g.Uniform1i(g.GetUniformLocation(p->program,"soft_colors"),colors==Colors::Soft);
+        g.Uniform2f(g.GetUniformLocation(p->program,"viewport_size"),float(smooth?240:w),float(smooth?160:h));
+        g.Uniform2f(g.GetUniformLocation(p->program,"viewport_origin"),float(smooth?0:x),float(smooth?0:y));
         g.BindVertexArray(p->array);g.DrawArrays(GL_TRIANGLES,0,3);
+        if(smooth){
+            // Shade each source pixel once, then interpolate the resulting image.
+            g.BindFramebuffer(GL_DRAW_FRAMEBUFFER,0);
+            g.BlitFramebuffer(0,0,240,160,x,y,x+w,y+h,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+            g.BindFramebuffer(GL_READ_FRAMEBUFFER,0);
+        }
         if(p->options.readback){p->pixels.resize(size_t(p->width)*p->height*3);std::vector<uint8_t> raw(p->pixels.size());
             g.PixelStorei(GL_PACK_ALIGNMENT,1);g.ReadPixels(0,0,p->width,p->height,GL_RGB,GL_UNSIGNED_BYTE,raw.data());
             for(int row=0;row<p->height;++row)std::memcpy(p->pixels.data()+size_t(row)*p->width*3,raw.data()+size_t(p->height-1-row)*p->width*3,size_t(p->width)*3);}
         check(g.GetError()==GL_NO_ERROR,"OpenGL GBA rendering failed");check(SDL_GL_SwapWindow(p->window),SDL_GetError());
     }else{
         std::vector<uint8_t> rgba(240*160*4);
-        for(size_t i=0;i<frame.size();++i){for(int c=0;c<3;++c){unsigned v=(frame[i]>>(c*5))&31;rgba[i*4+c]=uint8_t((v<<3)|(v>>2));}rgba[i*4+3]=255;}
+        for(size_t i=0;i<frame.size();++i){
+            const auto rgb=display_rgb(frame[i],colors);
+            std::copy(rgb.begin(),rgb.end(),rgba.begin()+i*4);rgba[i*4+3]=255;
+        }
+        check(SDL_SetTextureScaleMode(p->software_texture,smooth?SDL_SCALEMODE_LINEAR:SDL_SCALEMODE_NEAREST),SDL_GetError());
         check(SDL_UpdateTexture(p->software_texture,nullptr,rgba.data(),240*4),SDL_GetError());
         SDL_SetRenderDrawColor(p->software,0,0,0,255);SDL_RenderClear(p->software);
         SDL_FRect dest{float((p->width-w)/2),float((p->height-h)/2),float(w),float(h)};
@@ -224,10 +294,23 @@ void Display::present(const Scene& scene,std::span<const uint16_t> frame){
         check(SDL_RenderPresent(p->software),SDL_GetError());
     }
 }
-void Display::present_pixels(std::span<const uint16_t> pixels){
+void Display::present_pixels(std::span<const uint16_t> pixels,bool game_image){
     if(!p->bitmap_scene)p->bitmap_scene=std::make_unique<Scene>();
-    p->bitmap_scene->bitmap(pixels);present(*p->bitmap_scene,pixels);
+    p->bitmap_scene->bitmap(pixels);present_frame(*p->bitmap_scene,pixels,game_image);
 }
+Graphics Display::graphics() const {return p->graphics;}
+void Display::set_graphics(Graphics graphics) {
+    if(!p->options.graphics_path.empty()) {
+        const std::array<uint8_t,4> data{
+            uint8_t('0'+static_cast<int>(graphics.scaling)), ' ',
+            uint8_t('0'+static_cast<int>(graphics.colors)), '\n'};
+        if(auto error=anygba::save::replace_file(p->options.graphics_path,data,false))
+            throw std::runtime_error(*error);
+    }
+    p->graphics=graphics;
+}
+bool Display::fullscreen() const {return (SDL_GetWindowFlags(p->window)&SDL_WINDOW_FULLSCREEN)!=0;}
+void Display::toggle_fullscreen() {check(SDL_SetWindowFullscreen(p->window,!fullscreen()),SDL_GetError());}
 void Display::audio(std::span<const int16_t> samples,bool unpaced){
     if(!p->sound||unpaced)return;
     check(SDL_PutAudioStreamData(p->sound,samples.data(),int(samples.size_bytes())),SDL_GetError());

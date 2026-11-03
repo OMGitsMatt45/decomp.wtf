@@ -61,6 +61,9 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
  display.pause(true);
  struct Resume {gba_video::Display& d;~Resume(){d.pause(false);}} resume{display};
  std::vector<std::string> categories{"All"};for(const auto& p:catalog.presets())if(std::find(categories.begin(),categories.end(),p.category)==categories.end())categories.push_back(p.category);
+ const auto controls=std::find(categories.begin(),categories.end(),"Controls");
+ const auto graphics_index=size_t(controls-categories.begin());
+ categories.insert(controls,"Graphics");
  if(audio_)categories.push_back("Audio");
  if(category_>=categories.size())category_=0;
  std::string message=catalog.warning();
@@ -69,12 +72,31 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
  unsigned hold=0;uint16_t last_direction=0;
  for(;;){
   const bool audio_page=audio_&&category_==categories.size()-1;
-  std::vector<size_t> rows;if(!audio_page)for(size_t i=0;i<catalog.presets().size();++i)if(category_==0||catalog.presets()[i].category==categories[category_])rows.push_back(i);
-  if(selection_>=rows.size())selection_=rows.empty()?0:rows.size()-1;
-  pixels_.assign(240*160,background);box(pixels_,0,0,240,20,accent);text(pixels_,7,6,audio_page?"AUDIO":"CHEATS");
-  if(!audio_page)text(pixels_,151,6,std::to_string(catalog.enabled_count()+custom.enabled())+" ENABLED",ink,14);
-  text(pixels_,7,25,"< "+categories[category_]+" >",gold,27);text(pixels_,177,25,"Q/W PAGE",muted,10);
-  if(audio_page){
+  const bool graphics_page=category_==graphics_index;
+  const bool settings_page=audio_page||graphics_page;
+  std::vector<size_t> rows;if(!settings_page)for(size_t i=0;i<catalog.presets().size();++i)if(category_==0||catalog.presets()[i].category==categories[category_])rows.push_back(i);
+  const auto row_count=graphics_page?size_t{3}:rows.size();
+  if(selection_>=row_count)selection_=row_count?row_count-1:0;
+  pixels_.assign(240*160,background);box(pixels_,0,0,240,20,accent);text(pixels_,7,6,graphics_page?"GRAPHICS":audio_page?"AUDIO":"CHEATS");
+  if(!settings_page)text(pixels_,151,6,std::to_string(catalog.enabled_count()+custom.enabled())+" ENABLED",ink,14);
+  text(pixels_,7,25,"< "+categories[category_]+" >",gold,27);
+  if(!settings_page)text(pixels_,177,25,"Q/W PAGE",muted,10);
+  if(graphics_page){
+   const auto graphics=display.graphics();
+   constexpr std::string_view scaling_names[]{"ORIGINAL","SHARP","SMOOTH"};
+   constexpr std::string_view labels[]{"SCALING","COLORS","FULLSCREEN"};
+   const std::string_view values[]{scaling_names[static_cast<size_t>(graphics.scaling)],
+                                  graphics.colors==gba_video::Colors::Soft?"SOFT":"ORIGINAL",
+                                  display.fullscreen()?"ON":"OFF"};
+   for(size_t i=0;i<3;++i){
+    const int y=42+int(i)*16;
+    if(selection_==i)box(pixels_,4,y-2,232,12,selected);
+    text(pixels_,8,y,labels[i]);text(pixels_,175,y,values[i],gold);
+   }
+   if(selection_==0)wrap(pixels_,8,103,"Original fits the window. Sharp uses whole pixels. Smooth softens pixel edges.",37,3);
+   if(selection_==1)wrap(pixels_,8,103,"Soft reduces saturation. Return to the game to see the result.",37,3);
+   if(selection_==2)wrap(pixels_,8,103,"Switch between fullscreen and windowed. F11 also works during play.",37,3);
+  }else if(audio_page){
    box(pixels_,4,38,232,11,selected);text(pixels_,8,40,"ENHANCED AUDIO");text(pixels_,204,40,audio_->enhanced?"ON":"OFF",gold);
    wrap(pixels_,8,60,"Band-limited DirectSound. Original songs and instruments; cleaner sample playback.",37,4);
    wrap(pixels_,8,111,"OFF restores original playback. Saved separately from your game save.",37,3);
@@ -86,10 +108,10 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
    text(pixels_,204,y,!p.unavailable.empty()?"N/A":catalog.enabled(p.id)?"ON":"OFF",catalog.enabled(p.id)?gold:muted,5);
   }
   if(!rows.empty()){const auto& p=catalog.presets()[rows[selection_]];wrap(pixels_,8,122,p.name+(p.note.empty()?"":". "+p.note),37,2);text(pixels_,194,143,std::to_string(selection_+1)+"/"+std::to_string(rows.size()),muted,8);}
-  else if(!audio_page)wrap(pixels_,8,122,status,37,2);
-  box(pixels_,0,149,240,11,panel);text(pixels_,5,151,audio_page?"X:TOGGLE Z:BACK LEFT/RIGHT:CATEGORY":"X:TOGGLE Z:BACK BS:OFF F2:CODES",ink,39);
-  if(!message.empty()){box(pixels_,9,43,222,99,panel);box(pixels_,9,43,222,2,gold);text(pixels_,17,51,"CHEAT INFO",gold);wrap(pixels_,17,65,message,34,6,ink);text(pixels_,17,131,"X/Z RETURN",gold);}
-  display.present_pixels(pixels_);++presented_frames_;if(script_.empty())display.pace();
+  else if(!settings_page)wrap(pixels_,8,122,status,37,2);
+  box(pixels_,0,149,240,11,panel);text(pixels_,5,151,settings_page?"X:CHANGE Z:BACK LEFT/RIGHT:CATEGORY":"X:TOGGLE Z:BACK BS:OFF F2:CODES",ink,39);
+  if(!message.empty()){box(pixels_,9,43,222,99,panel);box(pixels_,9,43,222,2,gold);text(pixels_,17,51,settings_page?"SETTINGS INFO":"CHEAT INFO",gold);wrap(pixels_,17,65,message,34,6,ink);text(pixels_,17,131,"X/Z RETURN",gold);}
+  display.present_pixels(pixels_,false);++presented_frames_;if(script_.empty())display.pace();
   uint16_t keys=0;bool close=false,advanced=false;
   if(!display.poll(keys,&close,nullptr,&advanced)){held_=keys;return false;}
   if(!script_.empty()){
@@ -108,14 +130,26 @@ bool CheatBrowser::show(gba_video::Display& display,CheatCatalog& catalog,Cheats
   const auto action=uint16_t(down|((hold>=20&&hold%4==0)?direction:0));
   if(action&16){category_=(category_+1)%categories.size();selection_=0;}
   else if(action&32){category_=(category_+categories.size()-1)%categories.size();selection_=0;}
-  else if(audio_page){
+  else if(graphics_page){
+   if(action&128)selection_=(selection_+1)%3;
+   else if(action&64)selection_=(selection_+2)%3;
+   if(down&1)try{
+    auto graphics=display.graphics();
+    if(selection_==2)display.toggle_fullscreen();
+    else {
+     if(selection_==0)graphics.scaling=static_cast<gba_video::Scaling>((static_cast<int>(graphics.scaling)+1)%3);
+     else graphics.colors=graphics.colors==gba_video::Colors::Original?gba_video::Colors::Soft:gba_video::Colors::Original;
+     display.set_graphics(graphics);
+    }
+   }catch(const std::exception& e){message=e.what();}
+  }else if(audio_page){
    if(down&1)try{audio_->set(!audio_->enhanced,true);}catch(const std::exception& e){message=e.what();}
   }else if(!rows.empty()){
    if(action&128)selection_=(selection_+1)%rows.size();else if(action&64)selection_=(selection_+rows.size()-1)%rows.size();
    else if(action&256)selection_=std::min(selection_+8,rows.size()-1);else if(action&512)selection_=selection_>=8?selection_-8:0;
    if(down&1){const auto& p=catalog.presets()[rows[selection_]];if(auto e=catalog.set_enabled(p.id,!catalog.enabled(p.id)))message=*e;}
   }
-  if((down&4)&&!audio_page){
+  if((down&4)&&!settings_page){
    auto manual=custom.list();for(size_t i=0;i<manual.cheats().size();++i)manual.set_enabled(i,false);
    if(auto e=custom.commit(std::move(manual)))message=*e;
    else if(auto e=catalog.all_off())message=*e;

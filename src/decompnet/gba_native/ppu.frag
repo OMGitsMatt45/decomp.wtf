@@ -3,6 +3,7 @@
 uniform usampler2D memory_image;
 uniform vec2 viewport_size;
 uniform vec2 viewport_origin;
+uniform bool soft_colors;
 out vec4 output_color;
 const int ROW_WORDS=902;
 const int META_WORDS=160*ROW_WORDS;
@@ -171,5 +172,10 @@ void main() {
     if((reg(0)&128)==0&&(reg(2)&1)!=0)color=(color&~992)|(pixel(p.x^1,p.y)&992);
     ivec3 rgb=ivec3(color&31,(color>>5)&31,(color>>10)&31);
     rgb=(rgb<<3)|(rgb>>2);
+    if(soft_colors) {
+        int r=rgb.r,g=rgb.g,b=rgb.b;
+        rgb=ivec3(12*r+3*g+b,2*r+13*g+b,2*r+3*g+11*b);
+        rgb=(rgb+ivec3(8))/16;
+    }
     output_color=vec4(vec3(rgb)/255.0,1.0);
 }

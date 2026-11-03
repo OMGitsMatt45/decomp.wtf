@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <string>
@@ -16,10 +17,19 @@ struct Scene {
     void capture(anygba::System& system,unsigned line);
     void bitmap(std::span<const uint16_t> pixels);
 };
+enum class Scaling { Original, Sharp, Smooth };
+enum class Colors { Original, Soft };
+
+struct Graphics {
+    Scaling scaling=Scaling::Original;
+    Colors colors=Colors::Original;
+};
+
 struct Options {
     std::string renderer="auto";
     int width=0,height=0;
     bool fullscreen=false,readback=false,hidden=false;
+    std::filesystem::path graphics_path;
 };
 class Display {
 public:
@@ -29,7 +39,11 @@ public:
     void* native_window() const;
     void pause(bool paused);
     void present(const Scene& scene,std::span<const uint16_t> software_frame);
-    void present_pixels(std::span<const uint16_t> pixels);
+    void present_pixels(std::span<const uint16_t> pixels, bool game_image=true);
+    Graphics graphics() const;
+    void set_graphics(Graphics graphics);
+    bool fullscreen() const;
+    void toggle_fullscreen();
     void audio(std::span<const int16_t> samples,bool unpaced=false);
     void resize(int width,int height);
     void pace();
@@ -40,6 +54,7 @@ public:
     int height() const;
     const std::vector<uint8_t>& pixels() const;
 private:
+    void present_frame(const Scene& scene, std::span<const uint16_t> frame, bool game_image);
     struct Impl;
     std::unique_ptr<Impl> p;
 };
