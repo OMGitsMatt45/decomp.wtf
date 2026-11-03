@@ -119,6 +119,10 @@ direct path for comparison. The run report records `gs_worker`. The native
 `ps2_gs_worker_probe released` check exercises prompt frame-reference release
 while later queue work is blocked.
 
+Drained GIF packets can reuse one buffer of up to 64 KiB per submitting
+thread. Queued packets still own their bytes. The GS worker grows its pending
+storage in batches, keeping the same command byte limit and processing order.
+
 On x86, whole-program VU conversions, min/max, absolute value and CLIP use
 SSE2 while retaining the original normalization, saturation and flag timing.
 The vector optimization setting uses the compiler's frontend syntax, including
