@@ -1,35 +1,38 @@
-"""Specialize contiguous, unmasked V2/V3 byte and halfword unpacking."""
+"""Specialize unmasked VIF1 byte and halfword unpacking."""
 from pathlib import Path
 
 
 HELPERS = '''namespace
 {
-    // V2 and V3 update only their defined lanes in the normal unmasked path.
-    // Load each packed vector before the writes and preserve the other lanes.
     template <size_t Components, class Component>
-    void copyPartialVif1(uint8_t *memory, const uint8_t *source, uint32_t address, uint32_t count)
+    void copyVif1Vectors(uint8_t *memory, const uint8_t *source, uint32_t address,
+                         uint32_t count, uint32_t stride)
     {
-        static_assert(Components == 2u || Components == 3u);
+        constexpr size_t Dest = Components == 1u ? 4u : Components;
         for (uint32_t index = 0; index < count; ++index)
         {
             Component packed[Components];
-            uint32_t expanded[Components];
+            uint32_t expanded[Dest];
             std::memcpy(packed, source, sizeof(packed));
-            for (size_t lane = 0; lane < Components; ++lane)
-                expanded[lane] = static_cast<uint32_t>(packed[lane]);
+            for (size_t lane = 0; lane < Dest; ++lane)
+                expanded[lane] = static_cast<uint32_t>(packed[Components == 1u ? 0u : lane]);
             std::memcpy(memory + address*16u, expanded, sizeof(expanded));
             source += sizeof(packed);
-            address = (address + 1u) & 0x3FFu;
+            address = (address + stride) & 0x3FFu;
         }
     }
 
-    template <size_t Components, class Signed, class Unsigned>
-    void copyPartialVif1Width(uint8_t *memory, const uint8_t *source, uint32_t address, uint32_t count, bool zeroExtend)
+    template <class Component>
+    void dispatchVif1Vectors(uint8_t *memory, const uint8_t *source, uint32_t address,
+                             uint32_t count, uint32_t stride, uint32_t vn)
     {
-        if (zeroExtend)
-            copyPartialVif1<Components, Unsigned>(memory, source, address, count);
-        else
-            copyPartialVif1<Components, Signed>(memory, source, address, count);
+        switch (vn)
+        {
+        case 0u: copyVif1Vectors<1u, Component>(memory, source, address, count, stride); break;
+        case 1u: copyVif1Vectors<2u, Component>(memory, source, address, count, stride); break;
+        case 2u: copyVif1Vectors<3u, Component>(memory, source, address, count, stride); break;
+        case 3u: copyVif1Vectors<4u, Component>(memory, source, address, count, stride); break;
+        }
     }
 }
 
@@ -55,17 +58,18 @@ def patch(root):
             {
                 const uint8_t *srcBase = data + pos;
                 const uint32_t unpackMode = vif1_regs.mode & 3u;
-                if (!maskEnable && cl == wl && (unpackMode == 0u || unpackMode == 3u) &&
-                    (vn == 1u || vn == 2u) && (vl == 1u || vl == 2u))
+                if (!maskEnable && (cl == wl || wl == 1u) && (unpackMode == 0u || unpackMode == 3u) &&
+                    (vl == 1u || vl == 2u))
                 {
-                    if (vn == 1u && vl == 1u)
-                        copyPartialVif1Width<2u, int16_t, uint16_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, zeroExtend);
-                    else if (vn == 1u)
-                        copyPartialVif1Width<2u, int8_t, uint8_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, zeroExtend);
+                    const uint32_t stride = cl == wl ? 1u : cl;
+                    if (vl == 1u && zeroExtend)
+                        dispatchVif1Vectors<uint16_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, stride, vn);
                     else if (vl == 1u)
-                        copyPartialVif1Width<3u, int16_t, uint16_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, zeroExtend);
+                        dispatchVif1Vectors<int16_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, stride, vn);
+                    else if (zeroExtend)
+                        dispatchVif1Vectors<uint8_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, stride, vn);
                     else
-                        copyPartialVif1Width<3u, int8_t, uint8_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, zeroExtend);
+                        dispatchVif1Vectors<int8_t>(m_vu1Data, srcBase, vuAddr, writeVectorCount, stride, vn);
                     pos += totalBytes;
                     continue;
                 }

@@ -1,4 +1,4 @@
-"""Check that the contiguous VIF1 path preserves all untouched lanes."""
+"""Check narrow VIF1 formats, one-write strides, and untouched lanes."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,6 +18,7 @@ uint32_t randomWord(uint32_t &state) {
 template <size_t Lanes, typename Signed, typename Unsigned>
 bool verify(bool zeroExtend) {
     constexpr size_t Width = sizeof(Signed);
+    constexpr size_t Dest = Lanes == 1u ? 4u : Lanes;
     std::array<uint8_t, 16384> actual, expected;
     std::array<uint8_t, 256 * Lanes * Width> packed;
     uint32_t random = 0x357089DFu;
@@ -30,20 +31,24 @@ bool verify(bool zeroExtend) {
 
         const uint32_t address = (1023u - trial * 73u) & 1023u;
         const uint32_t count = 1u + (trial & 255u);
+        const uint32_t stride = (trial & 3u) == 0u ? 1u : 1u + ((trial * 37u) & 255u);
         for (uint32_t row = 0; row < count; ++row) {
-            for (uint32_t lane = 0; lane < Lanes; ++lane) {
-                const uint8_t *input = packed.data() + (row * Lanes + lane) * Width;
+            for (uint32_t lane = 0; lane < Dest; ++lane) {
+                const uint8_t *input = packed.data() + (row * Lanes + (Lanes == 1u ? 0u : lane)) * Width;
                 uint32_t value = input[0];
                 if constexpr (Width == 2u)
                     value |= uint32_t(input[1]) << 8u;
                 constexpr uint32_t sign = 1u << (Width * 8u - 1u);
                 if (!zeroExtend && (value & sign))
                     value -= sign * 2u;
-                uint8_t *output = expected.data() + ((address + row) & 1023u) * 16u + lane * 4u;
+                uint8_t *output = expected.data() + ((address + row * stride) & 1023u) * 16u + lane * 4u;
                 std::memcpy(output, &value, sizeof(value));
             }
         }
-        copyPartialVif1Width<Lanes, Signed, Unsigned>(actual.data(), packed.data(), address, count, zeroExtend);
+        if (zeroExtend)
+            dispatchVif1Vectors<Unsigned>(actual.data(), packed.data(), address, count, stride, Lanes - 1u);
+        else
+            dispatchVif1Vectors<Signed>(actual.data(), packed.data(), address, count, stride, Lanes - 1u);
         if (actual != expected) {
             std::fprintf(stderr, "VIF1 unpack mismatch lanes=%zu width=%zu trial=%u unsigned=%d\n",
                          Lanes, Width, trial, zeroExtend);
@@ -55,15 +60,17 @@ bool verify(bool zeroExtend) {
 
 int main() {
     for (bool zeroExtend : {false, true}) {
-        if (!verify<2, int8_t, uint8_t>(zeroExtend) || !verify<2, int16_t, uint16_t>(zeroExtend) ||
-            !verify<3, int8_t, uint8_t>(zeroExtend) || !verify<3, int16_t, uint16_t>(zeroExtend))
+        if (!verify<1, int8_t, uint8_t>(zeroExtend) || !verify<1, int16_t, uint16_t>(zeroExtend) ||
+            !verify<2, int8_t, uint8_t>(zeroExtend) || !verify<2, int16_t, uint16_t>(zeroExtend) ||
+            !verify<3, int8_t, uint8_t>(zeroExtend) || !verify<3, int16_t, uint16_t>(zeroExtend) ||
+            !verify<4, int8_t, uint8_t>(zeroExtend) || !verify<4, int16_t, uint16_t>(zeroExtend))
             return 1;
     }
 }
 """
 
 
-def test_partial_vif1_formats_preserve_untouched_lanes_and_wrap(tmp_path: Path):
+def test_vif1_formats_broadcast_preserve_lanes_and_wrap(tmp_path: Path):
     if not shutil.which('cmake'):
         pytest.skip('CMake is required for the portable unpack fixture')
     (tmp_path/'main.cpp').write_text(
