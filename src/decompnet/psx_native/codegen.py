@@ -64,6 +64,15 @@ def emit(recompiler,exe,seed,folder,run,sdk,label):
 
 _SYSCALL=re.compile(r'(?m)^([ \t]*)psx_syscall\(cpu, (\d+)\);  /\* syscall (\d+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
 _GTE=re.compile(r'(?m)^[ \t]*gte_execute\(cpu, 0x([0-9A-Fa-f]+)\);  /\* gte cmd 0x([0-9A-Fa-f]+) \*/  /\* 0x([0-9A-Fa-f]{8}): 0x([0-9A-Fa-f]{8}) \*/$')
+_ZERO_ASSIGNMENT = re.compile(r'\bcpu->gpr\[0\]\s*=(?!=)\s*([^;\r\n]+);')
+
+
+def discard_zero_writes(text):
+    """Keep the R3000A zero register immutable in the pinned emitter's C."""
+    # Legacy delay-slot emission can assign to $zero even when the strict
+    # instruction translator discards the destination. Keep RHS evaluation
+    # (including any memory access or timing side effects) and discard its value.
+    return _ZERO_ASSIGNMENT.sub(r'(void)(\1);', text)
 
 
 def native_traps(text):
@@ -122,7 +131,8 @@ def emit_native(recompiler,exe,seed,folder,run,sdk,label):
         missing=continuations-emitted
         pending={target for target in missing-roots if load<=target<load+len(image)-2048 and not target&3}
         if not pending:
-            for path,text in rewritten:path.write_text(text,encoding='utf-8')
+            for path,text in rewritten:
+                path.write_text(discard_zero_writes(text), encoding='utf-8')
             # Data-like CFG paths can end in an unsupported instruction. Keep
             # those addresses out of native dispatch and report the candidates;
             # executing one still produces a strict runtime coverage failure.
