@@ -22,6 +22,58 @@ def _body(text,name):
     raise PCError('unterminated pinned VU execution body')
 
 
+def _terminal_path1(core):
+    replace(core, '''void VU1Interpreter::flushPipelines()
+{
+    while (pipelinesPending())
+        advanceOneCycle();
+}''', '''void VU1Interpreter::flushPipelines()
+{
+    while (pipelinesPending())
+    {
+#ifdef DECOMP_PS2_NATIVE_VU
+        auto &kick = m_xgkick;
+        // Retire any other pipeline work before batching PATH1 reads.
+        const bool onlyPath1 = kick.active && !m_fdiv.valid && !m_efu[0].valid && !m_efu[1].valid &&
+            !(m_activeFlags | m_activeStores | m_activeVfWrites | m_activeViWrites | m_activeAccWrites);
+        if (onlyPath1 && m_unit == Unit::VU1 && m_activeMemory &&
+            m_activeVuData && m_activeVuData == m_activeMemory->getVU1Data() &&
+            m_activeVuDataSize == PS2_VU1_DATA_SIZE && kick.sourceAddress < PS2_VU1_DATA_SIZE &&
+            kick.currentTagEnd <= kick.packet.size() && kick.copiedBytes < kick.currentTagEnd &&
+            ((kick.sourceAddress | kick.copiedBytes | kick.currentTagEnd) & 15u) == 0u &&
+            kick.cycleCredit < 2u)
+        {
+            const uint32_t remaining = kick.currentTagEnd - kick.copiedBytes;
+            if (remaining >= 48u)
+            {
+                // The ordinary path reads the final qword, including tag
+                // transition or packet publication at the original PC and cycle.
+                const uint32_t bytes = remaining - 16u;
+                const uint32_t cycles = (bytes / 16u) * 2u - kick.cycleCredit;
+                if (cycles <= UINT64_MAX - m_cycle)
+                {
+                    uint32_t offset = (kick.sourceAddress + kick.copiedBytes) % PS2_VU1_DATA_SIZE;
+                    for (uint32_t copied = 0u; copied < bytes;)
+                    {
+                        const uint32_t span = std::min(bytes - copied, PS2_VU1_DATA_SIZE - offset);
+                        std::memcpy(kick.packet.data() + kick.copiedBytes + copied,
+                                    m_activeVuData + offset, span);
+                        copied += span;
+                        offset = 0u;
+                    }
+                    kick.copiedBytes += bytes;
+                    kick.cycleCredit = 0u;
+                    m_cycle += cycles;
+                    m_state.cycles = m_cycle;
+                }
+            }
+        }
+#endif
+        advanceOneCycle();
+    }
+}''')
+
+
 NATIVE_BODY=r'''
     m_activeVuData=vuData;m_activeVuDataSize=dataSize;m_activeGs=&gs;m_activeMemory=memory;
     const int previous=std::fegetround();const bool rounded=std::fesetround(FE_TOWARDZERO)==0;
@@ -238,6 +290,7 @@ def patch(root):
     text=text[:opening+1]+accounting+'\n#ifdef DECOMP_PS2_NATIVE_VU\n'+NATIVE_BODY+'\n#else\n'+original+'\n#endif\n'+text[closing:]
     text='#include "decomp_vu_catalog.hpp"\n#include "decomp_vu_execution.hpp"\n'+text
     core.write_text(text)
+    _terminal_path1(core)
     replace(core,'    if (m_unit == Unit::VU1)\n        ps2_vu_program::forgetRoutines();',
         '#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n    if (m_unit == Unit::VU1)\n        ps2_vu_program::forgetRoutines();\n#endif')
     replace(core,'void VU1Interpreter::reportReservedInstruction(bool upper, uint32_t instruction)\n{',

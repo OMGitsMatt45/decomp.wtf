@@ -114,8 +114,13 @@ def qualification_inputs():
         (lower_nop,nop),((8<<25)|(3<<16)|99,nop),(lower_nop,nop|0x40000000),
         (lower_nop,nop),((8<<25)|(3<<16)|7,nop),(lower_nop,nop),
         (lower_nop,nop|0x40000000),(lower_nop,nop)]
+    # XGKICK starts six qwords before the wrap. The E-bit delay slot stores
+    # into the first tag's payload while the packet is still in flight.
+    terminal=[((8<<25)|(1<<16)|1017,nop),(lower_nop,nop),
+        (0x800006fc|(1<<11),nop),(lower_nop,nop|0x40000000),
+        ((1<<25)|(15<<21)|(1<<11)|1022,nop)]
     return {name:b''.join(struct.pack('<II',low,high) for low,high in pairs)
-            for name,pairs in [('long-loop',loop),('register-jump',jump)]}
+            for name,pairs in [('long-loop',loop),('register-jump',jump),('terminal-path1',terminal)]}
 
 
 def fixtures(runtime,output,programs,known_words):

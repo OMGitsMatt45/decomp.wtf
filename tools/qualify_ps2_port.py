@@ -49,6 +49,17 @@ def qualify_static_execution(project,build,reference_build,out):
                     if outputs[0].read_bytes()!=outputs[1].read_bytes():
                         raise ValueError('native vector state differs from the reference: '+case)
                     count+=1
+    terminal_path1=project/'tests/vu_programs/terminal-path1.bin'
+    terminal_budgets=(1,4096)
+    for budget in terminal_budgets:
+        outputs=[]
+        for role,folder in (('native',build),('reference',reference_build)):
+            name=f'vu-terminal-path1-{role}-{budget}'
+            result=out/f'{name}.bin';outputs.append(result)
+            run([executable(folder,'ps2_vu_probe'),1,0,budget,terminal_path1,result,'terminal-path1'],
+                out,out/f'{name}.log',timeout=30)
+        if outputs[0].read_bytes()!=outputs[1].read_bytes():
+            raise ValueError(f'Terminal PATH1 state, packet, or callback timing differs at budget {budget}')
     for unit in (0,1):
         run([executable(build,'ps2_vu_probe'),unit,0,4096,project/'tests/vu/program0.bin',
              out/f'vu-changed-{unit}.bin','changed'],out,out/f'vu-changed-{unit}.log',timeout=30)
@@ -57,7 +68,7 @@ def qualify_static_execution(project,build,reference_build,out):
         for forbidden in ('VU1Interpreter::execUpper(unsigned int)','VU1Interpreter::execLower(unsigned int',
                           'ps2_vu_program::Run::exactUpper(unsigned int)'):
             if forbidden in symbols:raise ValueError('dynamic vector instruction engine is linked: '+forbidden)
-    return dict(vector_cases=count,changed_pair_rejections=2,iop_contexts_match=True,
+    return dict(vector_cases=count,terminal_path1_cases=len(terminal_budgets),changed_pair_rejections=2,iop_contexts_match=True,
                 native_iop_changed_code_rejected=True,instruction_engine_fallback=False)
 
 
