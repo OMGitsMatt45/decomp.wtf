@@ -253,6 +253,13 @@ mod tests {
         system.memory.read_bytes(config, &mut result);
         assert_eq!(result, [0; 0x200]);
 
+        buffer.set(&mut system.memory, 0, 0x0027_0002);
+        buffer.set(&mut system.memory, 1, descriptor);
+        buffer.set(&mut system.memory, 2, config);
+        handle_request(&mut system, service.clone());
+        assert_eq!(buffer.get(&mut system.memory, 1), 0);
+        assert_eq!(buffer.get(&mut system.memory, 2), 0);
+
         let (event, handle) = system.kernel.create_event(ResetType::OneShot, "offline connect");
         let words = [0x0004_0006, 0x20, 0, Descriptor::handles(1), handle,
             Descriptor::static_buffer(0x200, 1), config];

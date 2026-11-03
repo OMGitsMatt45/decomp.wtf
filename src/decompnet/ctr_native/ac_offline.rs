@@ -53,6 +53,8 @@ pub fn handle(system: &mut System, buffer: &CommandBuffer, header: Header) -> bo
         }
         0x0005_0002 => buffer.reply_error(&mut system.memory, command, errors::NOT_CONNECTED.0),
         0x0009_0002 => buffer.reply(&mut system.memory, command, &[]),
+        // GetInfraPriority for the default profile.
+        0x0027_0002 => buffer.reply(&mut system.memory, command, &[0]),
         _ => return false,
     }
     true
