@@ -140,6 +140,39 @@ def _program_support(folder):
     opening=text.index('void Run::exactUpper(uint32_t upper)');closing=text.index('\n}\n',opening)+3
     text=text[:opening]+'#ifndef DECOMP_PS2_NATIVE_VU\n'+text[opening:closing]+'\n#endif\n'+text[closing:]
     implementation.write_text(text)
+    reduce_clip_flag_batches(implementation)
+
+
+def reduce_clip_flag_batches(implementation):
+    marker='    // Usually every one is an FMAC result:'
+    replace(implementation,marker,'''    // A CLIP at the end of an FMAC batch would send the batch through both
+    // reduction loops. Fold the FMAC prefix first and publish the last CLIP
+    // separately. They update disjoint parts of the guest state.
+    if (end[-1].writes == 8u)
+    {
+        PendingFlags *clipStart = end - 1;
+        while (clipStart != head && clipStart[-1].writes == 8u)
+            --clipStart;
+        uint32_t conditions = 0u, other = 0u;
+        for (const PendingFlags *entry = head; entry != clipStart; ++entry)
+        {
+            conditions |= entry->value | entry->sticky;
+            other |= entry->writes ^ 3u;
+        }
+        if (other == 0u)
+        {
+            if (head != clipStart)
+            {
+                m_state.mac = clipStart[-1].value;
+                const uint32_t now = statusOf(m_state.mac);
+                m_state.status = (m_state.status & 0xFF0u) | now | ((now | statusOf(conditions)) << 6u);
+            }
+            m_state.clip = end[-1].value;
+            return end;
+        }
+    }
+
+'''+marker)
 
 
 def patch(root):
