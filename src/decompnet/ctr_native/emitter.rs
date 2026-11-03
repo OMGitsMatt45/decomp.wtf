@@ -33,8 +33,18 @@ fn interworking(program:&mut discover::Program) {
     }
 }
 
+/// Accept only unconditional data processing instructions that leave the
+/// table base intact while the caller prepares the index or return address.
+fn preserves_arm_table_base(word: u32, base: u32) -> bool {
+    let destination = (word >> 12) & 15;
+    word & 0xfc100000 == 0xe0000000
+        && (word & (1 << 25) != 0 || word & 16 == 0)
+        && matches!((word >> 21) & 15, 0 | 2 | 4 | 13)
+        && destination != base && destination != 15
+}
+
 /// Read a backward ARM jump table addressed by ADR, LDR (scaled index),
-/// and ADD PC. The epilogue can restore a different register before branching.
+/// and ADD PC. The index calculation can separate ADR from the load.
 fn arm_relative_targets(text: &image::Segment, function: &discover::Function, pc: u32) -> Option<Vec<u32>> {
     let branch = text.read32(pc)?;
     if branch & 0xfff0fff0 != 0xe080f000 { return None; }
@@ -57,7 +67,11 @@ fn arm_relative_targets(text: &image::Segment, function: &discover::Function, pc
         || !((left == base && right == offset) || (left == offset && right == base)) {
         return None;
     }
-    let (adr_pc, adr) = preceding(load_pc)?;
+    let (mut adr_pc, mut adr) = preceding(load_pc)?;
+    for _ in 0..12 {
+        if !preserves_arm_table_base(adr, base) { break; }
+        (adr_pc, adr) = preceding(adr_pc)?;
+    }
     if (adr >> 12) & 15 != base { return None; }
     let distance = (adr & 255).rotate_right(((adr >> 8) & 15) * 2);
     // A backward table has a structural upper bound at its ADR instruction.
