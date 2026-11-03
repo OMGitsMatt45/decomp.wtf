@@ -15,7 +15,11 @@ PLAIN_OPERATIONS = [(op, mask, fd, fs) for op in (0x28, 0x2C, 0x2A) for mask in 
                     for fd, fs in ((3, 1),)] + [(0x2C, 15, 1, 1), (0x28, 15, 0, 1), (0x2C, 15, 3, 0)]
 ACCUMULATOR = 32
 BROADCAST_OPERATIONS = [(0x09, 15, 3, 1), (0x09, 14, 1, 1), (0x09, 15, ACCUMULATOR, 1)]
-OPERATIONS = PLAIN_OPERATIONS + BROADCAST_OPERATIONS
+SELECT_OPERATIONS = [(op, 15, 3, 1) for op in (*range(0x10, 0x18), 0x1D, 0x1F, 0x2B, 0x2F)] + [
+    (0x2B, 0, 3, 1), (0x2F, 14, 1, 1), (0x2B, 1, 2, 1), (0x2F, 15, 3, 0), (0x2B, 15, 0, 1),
+]
+SELECT_FIRST = len(PLAIN_OPERATIONS) + len(BROADCAST_OPERATIONS)
+OPERATIONS = PLAIN_OPERATIONS + BROADCAST_OPERATIONS + SELECT_OPERATIONS
 SENTINEL = [0xDEADBEEF] * 4
 MAXIMUM = Fraction((1 << 24) - 1) * (1 << 104)
 MINIMUM = Fraction(1, 1 << 126)
@@ -73,6 +77,34 @@ def expected(operation, a, b, status):
         status=((status & ~15) | current | (current << 6)) if mask else status, rounding_restored=True)
 
 
+def expected_select(operation, a, b, status):
+    op, mask, fd, fs = operation
+    hardwired = [0, 0, 0, 0x3F800000]
+    left = a if fs == 1 else hardwired
+    right = b
+    if op < 0x18:
+        right = [b[op & 3]] * 4
+    elif op in (0x1D, 0x1F):
+        right = [b[0]] * 4
+    result = [hardwired, a, b, SENTINEL][fd].copy()
+    maximum = op <= 0x13 or op in (0x1D, 0x2B)
+    if fd:
+        for index, (lhs, rhs) in enumerate(zip(left, right)):
+            if not mask & (8 >> index):
+                continue
+            first, second = operand(lhs), operand(rhs)
+            take_left = first > second if maximum else first < second
+            selected = lhs if take_left else rhs
+            exponent = (selected >> 23) & 255
+            sign = selected & 0x80000000
+            if exponent == 0:
+                selected = sign
+            elif exponent == 255:
+                selected = sign | 0x7F7FFFFF
+            result[index] = selected
+    return dict(values=result, mac=0xA55A, status=status, rounding_restored=True, non_result_state_preserved=True)
+
+
 @pytest.fixture(scope='module',params=('template','emitted'))
 def vu_probe(tmp_path_factory,request):
     root = os.environ.get('DECOMP_PS2_PORT_SDK')
@@ -92,7 +124,9 @@ def vu_probe(tmp_path_factory,request):
         from tests.fixtures.ps2_native import program,r,BASE
         from decompnet.ps2_native.runtime_patch import install_vu_header
         from decompnet.ps2_native.reports import generation_report
-        extras = {f'vu_extra_{index}': [r(8, rs=31), 0] for index in range(len(BROADCAST_OPERATIONS))}
+        _, _, original_functions = program()
+        extra_count = len(OPERATIONS) - len(original_functions)
+        extras = {f'vu_extra_{index}': [r(8, rs=31), 0] for index in range(extra_count)}
         raw=bytearray(program(extra_functions=extras)[0]);table=struct.unpack_from('<I',raw,32)[0]
         symbols=struct.unpack_from('<I',raw,table+4*40+16)[0]
         for n,(op,mask,fd,fs) in enumerate(OPERATIONS):
@@ -133,14 +167,35 @@ int main(int argc,char **argv) {
     std::memcpy(&ctx.vu0_acc,acc,16);
  }
  ctx.vu0_status=std::strtoul(argv[2],nullptr,16); ctx.vu0_mac_flags=0xa55a;
- const int previous=std::fegetround();
+ std::memcpy(&ctx.vu0_i,b,4);
+ ctx.vu0_clip_flags=0x5a12b3;
+ const auto acc=ctx.vu0_acc;
  const unsigned index=std::strtoul(argv[1],nullptr,10);
+ const bool select=index>=''' + str(SELECT_FIRST) + ''';
+ if(select) {
+    std::memcpy(&ctx.vu0_vf[0],sentinel,16);
+    if(std::fesetround(index&1u ? FE_DOWNWARD : FE_UPWARD)!=0) return 3;
+ }
+ const int previous=std::fegetround();
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+ if(select) _mm_setcsr(_mm_getcsr() | 0x8065u);
+ const auto control=_mm_getcsr();
+#endif
  switch(index) {''' + '\n'.join(calls) + '''default:return 2;}
+ bool preserved=ctx.vu0_clip_flags==0x5a12b3 &&
+                std::memcmp(&ctx.vu0_acc,&acc,16)==0 && std::memcmp(&ctx.vu0_i,b,4)==0;
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+ preserved=preserved && control==_mm_getcsr();
+#endif
+ constexpr uint32_t hardwired[4]={0,0,0,0x3f800000};
+ preserved=preserved && std::memcmp(&ctx.vu0_vf[0],hardwired,16)==0;
  constexpr unsigned destinations[]={''' + ','.join(str(x[2]) for x in OPERATIONS) + '''};
  const unsigned fd=destinations[index];
  uint32_t words[4]; std::memcpy(words,fd==32 ? &ctx.vu0_acc : &ctx.vu0_vf[fd],16);
- std::printf("{\\"values\\":[%u,%u,%u,%u],\\"mac\\":%u,\\"status\\":%u,\\"rounding_restored\\":%s}\\n",
+ std::printf("{\\"values\\":[%u,%u,%u,%u],\\"mac\\":%u,\\"status\\":%u,\\"rounding_restored\\":%s",
  words[0],words[1],words[2],words[3],ctx.vu0_mac_flags,ctx.vu0_status,std::fegetround()==previous?"true":"false");
+ if(select) std::printf(",\\"non_result_state_preserved\\":%s",preserved?"true":"false");
+ std::puts("}");
 }
 ''', encoding='utf-8')
     runtime = Path(root) / 'thirdparty/PS2Recomp/ps2xRuntime'
@@ -189,3 +244,19 @@ def test_broadcast_madd_keeps_product_sticky_flags_and_masked_lanes(vu_probe):
                                 capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout) == dict(values=values, mac=mac, status=194, rounding_restored=True)
+
+
+def test_minmax_normalizes_and_preserves_second_operand_on_ties(vu_probe):
+    vectors = [
+        ([0, 0x80000000, 0, 0x80000000], [0x80000000, 0, 0x80000000, 0]),
+        ([1, 0x807FFFFF, 0x7FA00001, 0xFF800000], [0x80000001, 0x007FFFFF, 0x7F800000, 0xFFC00000]),
+        ([0x3F800000, 0xBF800000, 0x7F7FFFFF, 0x80800000], [0x40000000, 0xC0000000, 0x00800000, 0xFF7FFFFF]),
+    ]
+    status = 0xFF3
+    accumulator = [0x7FA00001, 0x80000000, 0x007FFFFF, 0x3F800000]
+    for index, operation in enumerate(SELECT_OPERATIONS, start=SELECT_FIRST):
+        for a, b in vectors:
+            result = subprocess.run([vu_probe, str(index), f'{status:x}', *[f'{v:x}' for v in a+b+accumulator]],
+                                    capture_output=True, text=True, timeout=10)
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout) == expected_select(operation, a, b, status), (operation, a, b, result.stdout)
