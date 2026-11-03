@@ -368,6 +368,7 @@ static void decomp_frame_end() {
        <<",\"audio_hq_enabled\":"<<(mixer.enabled?"true":"false")
        <<",\"audio_hq_verified\":"<<(mixer.proven?"true":"false")
        <<",\"audio_hq_fallbacks\":"<<mixer.pauses
+       <<",\"audio_hq_applied_frames\":"<<mixer.applied_frames
        <<",\"master_volume\":"<<host_volume_get()
        <<",\"texture_filter\":"<<g_video_texfilter<<",\"observed\":[";
     if(gl)rt_release();
