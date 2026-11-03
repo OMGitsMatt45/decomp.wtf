@@ -41,7 +41,7 @@ def _source(name):
 
 def revision():
     digest = hashlib.sha256(SDK_COMMIT.encode())
-    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','ar_program.hpp','ar_memory.hpp','settings.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','instruction_choices.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py','code_copies.py'):
+    for name in ('__init__.py','main.cpp','video.cpp','video.hpp','dynamic_layout.hpp','widescreen_patch.py','hash.hpp','save_lock.hpp','audio_queue.hpp','audio_patch.py','cheats.hpp','ar_program.hpp','ar_memory.hpp','settings.hpp','presentation.hpp','input.hpp','keyboard.hpp','project_hooks.hpp','Runtime.cmake','extract.py','emitter_patch.py','instruction_choices.py','wider_table.py','io_patch.py','abi_patch.py','callbacks.py','geometry_patch.py','capture_patch.py','capture_origin.h','foreground_patch.py','obj_capture_patch.py','scene_effects_patch.py','projection_patch.py','geometry_capacity_patch.py','guest_work_patch.py','raster_edge_patch.py','enhanced.py','arm_halfword_table.py','code_copies.py'):
         digest.update(name.encode()+b'\0'+_source(name).encode())
     digest.update(b'saved_lr.py\0'+_source('saved_lr.py').encode())
     digest.update(b'flash_ir.py\0'+_source('flash_ir.py').encode())
@@ -537,6 +537,7 @@ def generate(project,root):
                                ('ar_program.hpp','native/ar_program.hpp'),('ar_memory.hpp','native/ar_memory.hpp'),
                                ('input.hpp','native/input.hpp'),
                                ('project_hooks.hpp','native/project_hooks.hpp'),
+                               ('presentation.hpp','native/presentation.hpp'),
 
                                ('keyboard.hpp','native/keyboard.hpp'),
                                ('video.cpp','native/video.cpp'),('video.hpp','native/video.hpp'),

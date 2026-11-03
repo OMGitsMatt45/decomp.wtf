@@ -24,6 +24,7 @@
 #include "cheats.hpp"
 #include "input.hpp"
 #include "project_hooks.hpp"
+#include "presentation.hpp"
 #ifdef NDS_WITH_SDL
 #include "settings.hpp"
 #include "keyboard.hpp"
@@ -81,7 +82,16 @@ struct Display {
         video.reset();
         SDL_Quit();
     }
-    bool input(dsr::InputState& input,ds_host::Cheats& cheats) {
+    bool open_settings(dsr::Machine& machine,ds_host::Cheats& cheats,ds_host::Presentation& presentation,
+                       const std::filesystem::path& script={},const std::filesystem::path& capture={}) {
+        presentation.fullscreen=video->fullscreen();
+        if(!ds_host::settings(cheats,presentation,script,capture))return false;
+        presentation.apply_audio(machine.spu());
+        video->set_graphics(presentation.scaling,presentation.colors);
+        video->set_fullscreen(presentation.fullscreen);
+        return true;
+    }
+    bool input(dsr::InputState& input,ds_host::Cheats& cheats,dsr::Machine& machine,ds_host::Presentation& presentation) {
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
             if(!keyboard.event(event))return false;
@@ -93,9 +103,12 @@ struct Display {
                     // The modal event loop consumes releases and focus changes.
                     // Discard pre-menu input so it cannot remain held afterward.
                     keyboard = {};
-                    if(!ds_host::settings(cheats))return false;
+                    if(!open_settings(machine,cheats,presentation))return false;
                     keyboard.reset(); // The modal may have consumed key-up events.
-                } else video->key(event.key);
+                } else {
+                    video->key(event.key);
+                    presentation.fullscreen=video->fullscreen();
+                }
             }
         }
         keyboard.apply(input);
@@ -132,6 +145,7 @@ int main(int argc,char** argv) {
         std::vector<std::string> enabled_cheats;
         uint64_t frames=0,rtc_start=0;bool headless=false,diagnostics=false,rtc_fixed=false,open_settings=false;
         std::string renderer=profile::renderer;
+        std::string audio_mode,scaling,colors;
         unsigned width=0,height=0;bool fullscreen=false;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
@@ -157,6 +171,9 @@ int main(int argc,char** argv) {
             else if(option=="--enable-cheat")enabled_cheats.push_back(value);
             else if(option=="--menu-input-script")menu_script=value;
             else if(option=="--renderer")renderer=value;
+            else if(option=="--audio-mode")audio_mode=value;
+            else if(option=="--scaling")scaling=value;
+            else if(option=="--colors")colors=value;
             else if(option=="--resolution") {
                 const auto split=value.find('x');
                 if(split==std::string::npos)throw std::runtime_error("resolution must be WIDTHxHEIGHT");
@@ -186,8 +203,13 @@ int main(int argc,char** argv) {
         if(explicit_catalog||std::filesystem::exists(cheat_file))cheats.load(cheat_file,profile::asset_sha256,config);
         for(const auto& name:enabled_cheats)cheats.enable(name);
         ds_host::SaveLock save_lock(save);
+        ds_host::Presentation presentation(save,!headless);
+        if(!audio_mode.empty())presentation.override_audio(audio_mode);
+        if(!scaling.empty())presentation.scaling=ds_host::parse_scaling(scaling);
+        if(!colors.empty())presentation.colors=ds_host::parse_colors(colors);
         dsr::Session session(config);profile::initialize(session.machine());
         ds_project::Features features;features.start(session,config);
+        presentation.apply_audio(session.machine().spu());
         std::map<uint64_t,dsr::InputState> inputs;
         if(!script.empty()) {
             std::ifstream file(script);if(!file)throw std::runtime_error("could not read input script");
@@ -208,6 +230,8 @@ int main(int argc,char** argv) {
             video::Options options{renderer,int(width),int(height),fullscreen,!capture.empty()};
             ds_project::configure_video(features,options);
             display=std::make_unique<Display>(options);
+            display->video->set_graphics(presentation.scaling,presentation.colors);
+            presentation.fullscreen=display->video->fullscreen();
             if(display->video->renderer()=="opengl") {
                 session.machine().gpu3d().set_capture_opaque_only(true);
                 session.machine().gpu2d().set_capture_origin_tracking(true);
@@ -216,14 +240,14 @@ int main(int argc,char** argv) {
         }
         uint64_t deadline=SDL_GetPerformanceCounter();
         bool running=true;
-        if(display&&open_settings)running=ds_host::settings(cheats,menu_script,capture.empty()?std::filesystem::path{}:capture/"settings.png");
+        if(display&&open_settings)running=display->open_settings(session.machine(),cheats,presentation,menu_script,capture.empty()?std::filesystem::path{}:capture/"settings.png");
 #endif
         uint64_t audio_samples=0;
         for(uint64_t frame=0;!frames || frame<frames;++frame) {
             dsr::InputState input;
             if(const auto found=inputs.find(frame);found!=inputs.end())input=found->second;
 #ifdef NDS_WITH_SDL
-            if(!running||(display&&!display->input(input,cheats)))break;
+            if(!running||(display&&!display->input(input,cheats,session.machine(),presentation)))break;
             if(display)session.machine().gpu3d().set_host_widescreen(display->video->world_aspect(),display->expand_visibility);
 #endif
 #ifdef NDS_WITH_SDL
@@ -390,6 +414,7 @@ int main(int argc,char** argv) {
         }
 #endif
         features.report(std::cout);
+        presentation.report(std::cout);
         std::cout<<"}\n";
     } catch(const std::exception& error) {
         std::cerr<<"DS PC project: "<<error.what()<<'\n';return 1;
