@@ -141,6 +141,37 @@ def _program_support(folder):
     text=text[:opening]+'#ifndef DECOMP_PS2_NATIVE_VU\n'+text[opening:closing]+'\n#endif\n'+text[closing:]
     implementation.write_text(text)
     reduce_clip_flag_batches(implementation)
+    retire_saturated_fmac(implementation)
+
+
+def retire_saturated_fmac(implementation):
+    marker = '    // A CLIP at the end of an FMAC batch'
+    replace(implementation, marker, '''    // When Z/S/U/O are all sticky and FSSET is absent, earlier FMAC results
+    // cannot change status. Only the newest FMAC and CLIP are observable.
+    const uint32_t finalWrites = end[-1].writes;
+    if (m_fssetQueued == 0u && (m_state.status & 0x3C0u) == 0x3C0u &&
+        (finalWrites == 3u || finalWrites == 8u))
+    {
+        const auto previousWith = [&](uint32_t mask) -> const PendingFlags * {
+            for (auto *entry = end - 1; entry != head;)
+                if ((--entry)->writes & mask)
+                    return entry;
+            return nullptr;
+        };
+        const bool lastIsClip = finalWrites == 8u;
+        const auto *clip = lastIsClip ? end - 1 : previousWith(8u);
+        const auto *fmac = lastIsClip ? previousWith(1u) : end - 1;
+        if (clip)
+            m_state.clip = clip->value;
+        if (fmac)
+        {
+            m_state.mac = fmac->value;
+            m_state.status = (m_state.status & 0xFF0u) | statusOf(fmac->value);
+        }
+        return end;
+    }
+
+'''+marker)
 
 
 def reduce_clip_flag_batches(implementation):
