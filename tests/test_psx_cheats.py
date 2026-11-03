@@ -149,6 +149,8 @@ def test_native_variants_follow_matching_code_and_exclusive_groups(tmp_path):
 
 HARNESS=r'''
 #include "cheats.hpp"
+#include "host_overlay.h"
+#include "host_osd.h"
 #include "psx_runtime_menu.h"
 #include <array>
 #include <cassert>
@@ -156,6 +158,14 @@ HARNESS=r'''
 #include <iostream>
 static std::array<uint8_t,0x200000> ram{};
 static int started=0,mounted=1,cycles=0;
+static PsxHostVideoSettings video{1,0};
+static int volume=100,hq=0;
+extern "C" void psx_video_current(PsxHostVideoSettings* out){*out=video;}
+extern "C" unsigned psx_video_apply_live(const PsxHostVideoSettings* next){video=*next;return 0;}
+extern "C" int host_volume_get(){return volume;}
+extern "C" void host_volume_set(int value){volume=value;}
+extern "C" int decomp_audio_hq_enabled(){return hq;}
+extern "C" int decomp_audio_hq_set(int value){hq=value;return 1;}
 extern "C" uint32_t psx_read_word(uint32_t a){uint32_t v;std::memcpy(&v,ram.data()+(a&0x1fffff),4);return v;}
 extern "C" void psx_write_byte(uint32_t a,uint8_t v){ram[a&0x1fffff]=v;}
 extern "C" int psx_mod_game_started(){return started;}
@@ -186,6 +196,21 @@ int main(){
     psx_runtime_menu_input(PSX_MENU_ACCEPT,0);psx_runtime_menu_input(PSX_MENU_RIGHT,0);
     psx_runtime_menu_input(PSX_MENU_DOWN,0);psx_runtime_menu_input(PSX_MENU_ACCEPT,0);
     assert(!psx_runtime_menu_is_open()&&mounted==2&&cycles==1);
+    assert(psx_runtime_menu_open());
+    psx_runtime_menu_input(PSX_MENU_DOWN,0);
+    psx_runtime_menu_input(PSX_MENU_DOWN,0);
+    psx_runtime_menu_input(PSX_MENU_ACCEPT,0);
+    psx_runtime_menu_input(PSX_MENU_RIGHT,0);assert(video.internal_resolution==720);
+    psx_runtime_menu_input(PSX_MENU_DOWN,0);
+    psx_runtime_menu_input(PSX_MENU_LEFT,0);assert(video.texture_filter==PSX_TEXTURE_FILTER_XBR);
+    psx_runtime_menu_input(PSX_MENU_RIGHT,1);assert(video.texture_filter==PSX_TEXTURE_FILTER_XBR);
+    psx_runtime_menu_input(PSX_MENU_BACK,0);
+    psx_runtime_menu_input(PSX_MENU_DOWN,0);
+    psx_runtime_menu_input(PSX_MENU_ACCEPT,0);
+    psx_runtime_menu_input(PSX_MENU_LEFT,0);assert(volume==95);
+    psx_runtime_menu_input(PSX_MENU_DOWN,0);
+    psx_runtime_menu_input(PSX_MENU_ACCEPT,0);assert(hq==1);
+    psx_runtime_menu_input(PSX_MENU_RIGHT,1);assert(hq==1);
     std::cout<<"Data, conditional native restoration, exclusive wide patches, settings pixels and tray changes passed\n";
 }
 '''
@@ -210,6 +235,19 @@ def test_actual_cpp_effects_and_settings_menu(tmp_path):
     (tmp_path/'native/psx_disc_tray.h').write_text('#pragma once\nextern "C" {\n'
         'enum {PSX_DISC_TRAY_OK=0,PSX_DISC_TRAY_ORIGIN_MENU=1};\n'
         'int psx_disc_tray_mounted_disc();int psx_disc_tray_disc_count();int psx_disc_tray_cycle(int,int);\n}\n')
+    (tmp_path/'native/host_overlay.h').write_text('#pragma once\n'
+        '#define PSX_TEXTURE_FILTER_NEAREST 0\n#define PSX_TEXTURE_FILTER_BILINEAR 1\n#define PSX_TEXTURE_FILTER_XBR 3\n'
+        'struct PsxHostVideoSettings {int internal_resolution;int texture_filter;};\n'
+        'extern "C" void psx_video_current(PsxHostVideoSettings*);\n'
+        'extern "C" unsigned psx_video_apply_live(const PsxHostVideoSettings*);\n')
+    (tmp_path/'native/host_osd.h').write_text('#pragma once\n'
+        'extern "C" int host_volume_get();extern "C" void host_volume_set(int);\n')
+    (tmp_path/'native/internal_resolution.h').write_text('#pragma once\n'
+        'struct Preset {int value;const char* label;};\n'
+        'constexpr Preset k_psx_ir_presets[]={{1,"Native"},{720,"720p"},{-1,"Match display"}};\n'
+        'constexpr int PSX_IR_PRESET_COUNT=3;\n'
+        'inline const char* psx_ir_label_for(int value){for(auto preset:k_psx_ir_presets)'
+        'if(preset.value==value)return preset.label;return nullptr;}\n')
     (tmp_path/'checks.cpp').write_text(HARNESS)
     (tmp_path/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.24)\nproject(Ps1CheatChecks LANGUAGES CXX)\n'
         'set(CMAKE_CXX_STANDARD 17)\nadd_executable(checks checks.cpp native/menu.cpp)\n'
