@@ -45,6 +45,76 @@ namespace vu0_detail {
         void reserved(uint32_t) { throw std::runtime_error("unsupported static VU0 operation"); }
     };
 #if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+    PS2_VU_FORCE_INLINE __m128 normalizedLanes(__m128 value)
+    {
+        const auto bits = _mm_castps_si128(value);
+        const auto sign = _mm_and_si128(bits, _mm_set1_epi32(INT32_MIN));
+        const auto exponent = _mm_and_si128(bits, _mm_set1_epi32(0x7f800000));
+        const auto zero = _mm_cmpeq_epi32(exponent, _mm_setzero_si128());
+        const auto special = _mm_cmpeq_epi32(exponent, _mm_set1_epi32(0x7f800000));
+        const auto normal = _mm_andnot_si128(_mm_or_si128(zero, special), bits);
+        return _mm_castsi128_ps(_mm_or_si128(normal, _mm_or_si128(_mm_and_si128(zero, sign),
+            _mm_and_si128(special, _mm_or_si128(sign, _mm_set1_epi32(0x7f7fffff))))));
+    }
+
+    template <uint32_t Word>
+    PS2_VU_FORCE_INLINE bool tryBroadcastMadd(const Inputs &in, Sink &sink)
+    {
+        constexpr bool accumulator = (Word & 0x3fu) >= 0x3cu;
+        constexpr uint32_t op = accumulator ? (Word & 3u) | ((Word >> 4u) & 0x7cu) : Word & 0x3fu;
+        constexpr uint32_t dest = (Word >> 21u) & 15u;
+        if constexpr (op < 0x08u || op > 0x0bu || dest == 0u)
+            return false;
+        else
+        {
+            // Use the same conservative exponent bounds as the VU1 product-sum
+            // path. Ambiguous products and results go through the exact engine.
+            const auto left = normalizedLanes(_mm_loadu_ps(in.left));
+            const auto right = normalizedLanes(_mm_set1_ps(in.ft(op & 3u)));
+            const auto acc = normalizedLanes(_mm_loadu_ps(in.accumulator));
+            const auto product = _mm_mul_ps(left, right);
+            const auto result = _mm_add_ps(acc, product);
+            const auto none = _mm_setzero_si128();
+            const auto magnitude = _mm_set1_epi32(0x7fffffff);
+            const auto exponent = [](__m128 lanes) PS2_VU_INLINE_LAMBDA {
+                return _mm_and_si128(_mm_srli_epi32(_mm_castps_si128(lanes), 23), _mm_set1_epi32(255));
+            };
+            const auto leftExp = exponent(left);
+            const auto rightExp = exponent(right);
+            const auto resultExp = exponent(result);
+            const auto productBound = _mm_add_epi32(leftExp, rightExp);
+            const auto zeroProduct = _mm_or_si128(_mm_cmpeq_epi32(leftExp, none), _mm_cmpeq_epi32(rightExp, none));
+            const auto risky = _mm_andnot_si128(zeroProduct,
+                _mm_or_si128(_mm_cmpgt_epi32(productBound, _mm_set1_epi32(379)),
+                             _mm_cmpgt_epi32(productBound, _mm_add_epi32(resultExp, _mm_set1_epi32(146)))));
+            const auto normal = _mm_and_si128(_mm_cmpgt_epi32(resultExp, _mm_set1_epi32(1)),
+                                               _mm_cmplt_epi32(resultExp, _mm_set1_epi32(254)));
+            const auto zero = _mm_cmpeq_epi32(_mm_and_si128(_mm_castps_si128(result), magnitude), none);
+            const auto safe = _mm_or_si128(_mm_andnot_si128(risky, normal), _mm_and_si128(zero, zeroProduct));
+            const auto mask = [](__m128i lanes) PS2_VU_INLINE_LAMBDA { return _mm_movemask_ps(_mm_castsi128_ps(lanes)); };
+            constexpr uint8_t reverse[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+            constexpr int active = reverse[dest];
+            if ((mask(safe) & active) != active)
+                return false;
+
+            const auto tiny = _mm_cmplt_epi32(_mm_and_si128(_mm_castps_si128(product), magnitude), _mm_set1_epi32(0x00800000));
+            const uint32_t sticky = ((mask(tiny) & active) ? 1u : 0u) |
+                ((_mm_movemask_ps(_mm_xor_ps(left, right)) & active) ? 2u : 0u) |
+                ((mask(_mm_andnot_si128(zeroProduct, tiny)) & active) ? 4u : 0u);
+            const uint32_t zeros = reverse[mask(zero) & active];
+            const uint32_t signs = reverse[_mm_movemask_ps(result) & active];
+            const uint32_t current = (zeros != 0u) | ((signs != 0u) << 1u);
+            float values[4];
+            _mm_storeu_ps(values, result);
+            sink.fmac(zeros | (signs << 4u), current, sticky);
+            if constexpr (accumulator)
+                sink.acc(dest, values);
+            else
+                sink.vf((Word >> 6u) & 31u, dest, values);
+            return true;
+        }
+    }
+
     // This engine uses float and double SSE arithmetic on Windows x64.
     // Keep the host exception flags raised by the instruction.
     struct Rounding {
@@ -95,6 +165,10 @@ template<uint32_t Word> DECOMP_VU0_NOINLINE void vu_upper(R5900Context &ctx) {
     vu0_detail::Rounding rounding;
     // Word is fixed in generated C++; no guest instruction is fetched and no
     // guest-code compiler runs on this path.
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+    if (vu0_detail::tryBroadcastMadd<Word>(inputs, sink))
+        return;
+#endif
     ps2_vu_detail::upper::computeUpper(Word,inputs,sink);
 }
 #undef DECOMP_VU0_NOINLINE

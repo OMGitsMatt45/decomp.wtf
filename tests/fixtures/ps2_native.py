@@ -28,7 +28,7 @@ def packed(group, operation, rd=2):
     return 0x1C << 26 | 4 << 21 | 5 << 16 | rd << 11 | operation << 6 | group
 
 
-def program():
+def program(*, extra_functions=()):
     """A symbol-bearing ELF32 built directly from original instruction words."""
     ret = [r(8, rs=31), 0]
     functions = {
@@ -59,6 +59,7 @@ def program():
                           r(0x25, 8, 0, 31), *ret],
         'helper': [r(0x2D, 4, 5, 2), r(8, rs=31), i(0x19, 2, 2, 1)],
     }
+    functions.update(extra_functions)
     entries = {name: BASE + index * 0x100 for index, name in enumerate(functions)}
     functions['direct_call'] = [i(9, 29, 29, -16), i(0x3F, 29, 31, 0),
         3 << 26 | entries['helper'] >> 2, i(9, 4, 4, 1), i(0x37, 29, 31, 0),

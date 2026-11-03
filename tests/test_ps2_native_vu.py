@@ -11,11 +11,19 @@ import pytest
 
 from tools.qualify_ps2_runtime import executable
 
-OPERATIONS = [(op, mask, fd, fs) for op in (0x28, 0x2C, 0x2A) for mask in (0, 1, 8, 14, 15)
-              for fd, fs in ((3, 1),)] + [(0x2C, 15, 1, 1), (0x28, 15, 0, 1), (0x2C, 15, 3, 0)]
+PLAIN_OPERATIONS = [(op, mask, fd, fs) for op in (0x28, 0x2C, 0x2A) for mask in (0, 1, 8, 14, 15)
+                    for fd, fs in ((3, 1),)] + [(0x2C, 15, 1, 1), (0x28, 15, 0, 1), (0x2C, 15, 3, 0)]
+ACCUMULATOR = 32
+BROADCAST_OPERATIONS = [(0x09, 15, 3, 1), (0x09, 14, 1, 1), (0x09, 15, ACCUMULATOR, 1)]
+OPERATIONS = PLAIN_OPERATIONS + BROADCAST_OPERATIONS
 SENTINEL = [0xDEADBEEF] * 4
 MAXIMUM = Fraction((1 << 24) - 1) * (1 << 104)
 MINIMUM = Fraction(1, 1 << 126)
+
+
+def opcode_word(op, mask, fd, fs):
+    bits = (0x3C | (op & 3) | ((op & 0x7C) << 4)) if fd == ACCUMULATOR else (fd << 6) | op
+    return 0x4A000000 | (mask << 21) | (2 << 16) | (fs << 11) | bits
 
 
 def operand(bits):
@@ -84,10 +92,11 @@ def vu_probe(tmp_path_factory,request):
         from tests.fixtures.ps2_native import program,r,BASE
         from decompnet.ps2_native.runtime_patch import install_vu_header
         from decompnet.ps2_native.reports import generation_report
-        raw=bytearray(program()[0]);table=struct.unpack_from('<I',raw,32)[0]
+        extras = {f'vu_extra_{index}': [r(8, rs=31), 0] for index in range(len(BROADCAST_OPERATIONS))}
+        raw=bytearray(program(extra_functions=extras)[0]);table=struct.unpack_from('<I',raw,32)[0]
         symbols=struct.unpack_from('<I',raw,table+4*40+16)[0]
         for n,(op,mask,fd,fs) in enumerate(OPERATIONS):
-            word=0x4A000000 | (mask<<21) | (2<<16) | (fs<<11) | (fd<<6) | op
+            word=opcode_word(op,mask,fd,fs)
             struct.pack_into('<3I',raw,0x100+n*0x100,word,r(8,rs=31),0)
             struct.pack_into('<I',raw,symbols+(n+1)*16+8,12)
         struct.pack_into('<I',raw,table+4*40+20,(len(OPERATIONS)+1)*16)
@@ -107,23 +116,29 @@ def vu_probe(tmp_path_factory,request):
             generated.append(work/f'generated/{name}.cpp')
             calls.append(f'case {n}: {name}(nullptr,&ctx,nullptr); break;')
     for index, (op, mask, fd, fs) in enumerate(OPERATIONS):
-        raw = 0x4A000000 | (mask << 21) | (2 << 16) | (fs << 11) | (fd << 6) | op
+        raw = opcode_word(op, mask, fd, fs)
         if request.param=='template':calls.append(f'case {index}: decomp_ps2::vu_upper<0x{raw:08x}u>(ctx); break;')
     (work / 'main.cpp').write_text(('' if not generated else '#include "generated/ps2_recompiled_functions.h"\n')+'''#include "decomp_vu0.hpp"
 #include "second module/decomp_vu0.hpp"
 #include <cstdio>
 #include <cstdlib>
 int main(int argc,char **argv) {
- if(argc!=11) return 1;
+ if(argc!=11 && argc!=15) return 1;
  R5900Context ctx; uint32_t a[4],b[4],sentinel[4]={0xdeadbeef,0xdeadbeef,0xdeadbeef,0xdeadbeef};
  for(unsigned n=0;n<4;n++){a[n]=std::strtoul(argv[3+n],nullptr,16);b[n]=std::strtoul(argv[7+n],nullptr,16);}
  std::memcpy(&ctx.vu0_vf[1],a,16);std::memcpy(&ctx.vu0_vf[2],b,16);std::memcpy(&ctx.vu0_vf[3],sentinel,16);
+ if(argc==15) {
+    uint32_t acc[4];
+    for(unsigned n=0;n<4;n++) acc[n]=std::strtoul(argv[11+n],nullptr,16);
+    std::memcpy(&ctx.vu0_acc,acc,16);
+ }
  ctx.vu0_status=std::strtoul(argv[2],nullptr,16); ctx.vu0_mac_flags=0xa55a;
  const int previous=std::fegetround();
  const unsigned index=std::strtoul(argv[1],nullptr,10);
  switch(index) {''' + '\n'.join(calls) + '''default:return 2;}
  constexpr unsigned destinations[]={''' + ','.join(str(x[2]) for x in OPERATIONS) + '''};
- uint32_t words[4]; std::memcpy(words,&ctx.vu0_vf[destinations[index]],16);
+ const unsigned fd=destinations[index];
+ uint32_t words[4]; std::memcpy(words,fd==32 ? &ctx.vu0_acc : &ctx.vu0_vf[fd],16);
  std::printf("{\\"values\\":[%u,%u,%u,%u],\\"mac\\":%u,\\"status\\":%u,\\"rounding_restored\\":%s}\\n",
  words[0],words[1],words[2],words[3],ctx.vu0_mac_flags,ctx.vu0_status,std::fegetround()==previous?"true":"false");
 }
@@ -155,9 +170,22 @@ def test_static_vector_values_masked_lanes_and_current_sticky_flags(vu_probe):
                ([0x7F7FFFFF,0xFF7FFFFF,0x00800000,0x80800000],[0x7F7FFFFF,0x7F7FFFFF,0x3F000000,0xBF000000]),
                ([0x7FC00001,0xFF800000,1,0x80000001],[0x7F800000,0x7FC00000,0x00800000,0x00800000]),
                ([0x3F800001,0x3F800000,0x00800001,0x80000000],[0x33800000,0x3F7FFFFF,0x00800000,0x80000000])]
-    for index, operation in enumerate(OPERATIONS):
+    for index, operation in enumerate(PLAIN_OPERATIONS):
         for a,b in vectors:
             for status in (0, 0xFF0):
                 result = subprocess.run([vu_probe,str(index),f'{status:x}',*[f'{v:x}' for v in a+b]],capture_output=True,text=True,timeout=10)
                 assert result.returncode == 0, result.stderr
                 assert json.loads(result.stdout) == expected(operation,a,b,status), (operation,a,b,status,result.stdout)
+
+
+def test_broadcast_madd_keeps_product_sticky_flags_and_masked_lanes(vu_probe):
+    left = [0x3F800000, 0xC0000000, 0, 0x80000000]
+    right = [0, 0xC0000000, 0, 0]
+    accumulator = [0x40400000, 0xC0A00000, 0x3F800000, 0xBF800000]
+    for index, (_, mask, _, _) in enumerate(BROADCAST_OPERATIONS, start=len(PLAIN_OPERATIONS)):
+        values = [0x3F800000, 0xBF800000, 0x3F800000, 0xBF800000 if mask & 1 else left[3]]
+        mac = 0x50 if mask & 1 else 0x40
+        result = subprocess.run([vu_probe, str(index), '0', *[f'{v:x}' for v in left + right + accumulator]],
+                                capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == dict(values=values, mac=mac, status=194, rounding_restored=True)
