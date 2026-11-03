@@ -91,6 +91,14 @@ def apply(root):
     replace(root, 'runtime/crates/zakuro-core/src/services/mod.rs',
         '    buffer.reply(&mut system.memory, command, &[]);\n    for index in 2..8 {',
         '    buffer.reply_error(&mut system.memory, command, zakuro_common::result::errors::UNIMPLEMENTED.0);\n    for index in 2..8 {')
+    replace(root, 'runtime/crates/zakuro-core/src/room.rs',
+        '        let listener = TcpListener::bind(("0.0.0.0", port))?;',
+        '''        Self::bind(std::net::SocketAddr::from(([0, 0, 0, 0], port)), name, password, most)
+    }
+
+    /// Opens a room on a caller-selected interface, including loopback.
+    pub fn bind(address: std::net::SocketAddr, name: &str, password: &str, most: usize) -> std::io::Result<Server> {
+        let listener = TcpListener::bind(address)?;''')
     replace(root, 'runtime/crates/zakuro-core/src/services/uds.rs',
         '''    // with no room wireless is off, the way the offline answer has it,
     // unless a title already started on it in one
