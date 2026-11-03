@@ -118,3 +118,9 @@ presentation remains on the window thread. `DECOMP_PS2_GS_WORKER=0` selects the
 direct path for comparison. The run report records `gs_worker`. The native
 `ps2_gs_worker_probe released` check exercises prompt frame-reference release
 while later queue work is blocked.
+
+On x86, whole-program VU conversions, min/max, absolute value and CLIP use
+SSE2 while retaining the original normalization, saturation and flag timing.
+The vector optimization setting uses the compiler's frontend syntax, including
+MSVC-style flags for clang-cl; unsupported or ignored flags are rejected by
+the compiler-policy qualification.
