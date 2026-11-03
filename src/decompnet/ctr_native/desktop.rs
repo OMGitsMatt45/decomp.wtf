@@ -4,7 +4,7 @@ use winit::{application::ApplicationHandler, dpi::PhysicalSize,
     event::{ElementState, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop, ControlFlow},
     keyboard::{KeyCode, PhysicalKey}, window::{Fullscreen, Window, WindowId}};
 use zakuro_common::Screen;
-use zakuro_core::{System, services::hid::{InputState, PadState}};
+use zakuro_core::{System, cheats, services::hid::{self, InputState, PadState}};
 use zakuro_gpu::{backend::{vulkan::VulkanPresenter, layout}, Overlay, PresentError, Presenter,
     ScreenImage, ScreenLayout};
 
@@ -21,12 +21,32 @@ pub struct Outcome {
     pub renderer_error: Option<String>,
 }
 
+#[derive(Default)]
+struct KeyboardButtons {
+    held: PadState,
+    pressed: PadState,
+}
+
+impl KeyboardButtons {
+    fn update(&mut self, button: PadState, down: bool) {
+        if down {
+            self.pressed.insert(button - self.held);
+        }
+        self.held.set(button, down);
+    }
+
+    fn sample(&mut self) -> PadState {
+        self.held | std::mem::take(&mut self.pressed)
+    }
+}
+
 struct Host<'a> {
     system: &'a mut System,
     // Drop the swapchain before its window.
     presenter: Option<VulkanPresenter>,
     window: Option<Window>,
     input: InputState,
+    keyboard: KeyboardButtons,
     pointer: Option<(f64,f64)>,
     pressed: bool,
     circle: [bool;4],
@@ -68,9 +88,17 @@ impl Host<'_> {
     fn redraw(&mut self)->Result<Option<&'static str>,String> {
         let [w,h]=self.result.drawable;
         if w==0 || h==0 {return Ok(None);}
+        // Guest HID samples once per frame. Preserve a tap whose key-up
+        // arrived before this redraw, then return to the held state.
+        self.input.buttons=self.keyboard.sample();
         let input=self.gamepads.apply(self.input);
         self.result.controllers=self.gamepads.count();
-        self.system.set_input(if self.focused {input} else {InputState::default()});
+        let input=if self.focused {input} else {InputState::default()};
+        self.system.set_input(input);
+        // This host steps the CPU to detect strict-mode faults. The core's
+        // run_frame normally publishes input and runs active cheats here.
+        hid::update(self.system,input);
+        cheats::run(self.system);
         let deadline=self.system.cpu.cycles.saturating_add(zakuro_core::CYCLES_PER_FRAME)
             .min(self.limit.unwrap_or(u64::MAX));
         while self.system.cpu.cycles<deadline {
@@ -120,7 +148,7 @@ impl Host<'_> {
             KeyCode::ArrowLeft=>PadState::LEFT,KeyCode::ArrowRight=>PadState::RIGHT,
             _=>PadState::empty(),
         };
-        self.input.buttons.set(button,down);
+        self.keyboard.update(button,down);
         let axis=match key {KeyCode::KeyA=>Some(0),KeyCode::KeyD=>Some(1),KeyCode::KeyS=>Some(2),KeyCode::KeyW=>Some(3),_=>None};
         if let Some(i)=axis {self.circle[i]=down;}
         self.input.circle_x=self.circle[1] as u8 as f32-self.circle[0] as u8 as f32;
@@ -172,7 +200,10 @@ impl ApplicationHandler for Host<'_> {
             WindowEvent::ScaleFactorChanged {..}=>if let Err(error)=self.resize() {self.error=Some(error);events.exit();},
             WindowEvent::Focused(on)=>{
                 self.focused=on;
-                if !on {self.input=InputState::default();self.circle=[false;4];self.pressed=false;}
+                if !on {
+                    self.input=InputState::default();self.keyboard=KeyboardButtons::default();
+                    self.circle=[false;4];self.pressed=false;
+                }
             }
             WindowEvent::CursorMoved {position,..}=>{self.pointer=Some((position.x,position.y));self.touch();}
             WindowEvent::CursorLeft {..}=>{self.pointer=None;self.input.touch=None;}
@@ -220,7 +251,7 @@ pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,m
     let gamepads=super::gamepad::Gamepads::new();
     let controller_error=gamepads.error.clone();
     if let Some(error)=&controller_error {eprintln!("3DS controllers unavailable: {error}");}
-    let mut host=Host {system,presenter:None,window:None,input:InputState::default(),pointer:None,
+    let mut host=Host {system,presenter:None,window:None,input:InputState::default(),keyboard:KeyboardButtons::default(),pointer:None,
         pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,
         result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],
             audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error,device:None,renderer_error:None},
@@ -228,4 +259,23 @@ pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,m
     events.run_app(&mut host).map_err(|e|e.to_string())?;
     if let Some(error)=host.error.take() {return Err(error);}
     Ok(host.result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keyboard_samples_taps_and_held_buttons() {
+        let mut keys = KeyboardButtons::default();
+        keys.update(PadState::A, true);
+        keys.update(PadState::A, false);
+        keys.update(PadState::LEFT, true);
+        assert_eq!(keys.sample(), PadState::A | PadState::LEFT);
+        assert_eq!(keys.sample(), PadState::LEFT);
+
+        keys.update(PadState::LEFT, true); // OS key repeat while held.
+        keys.update(PadState::LEFT, false);
+        assert_eq!(keys.sample(), PadState::empty());
+    }
 }
