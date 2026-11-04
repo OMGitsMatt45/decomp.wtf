@@ -19,17 +19,20 @@ fn imported(modules:&[(cro::Module,Vec<u8>)], crs:Option<&cro::Module>, target:&
 }
 
 /// ARM linker veneers compute a Thumb entry without storing a pointer literal.
-/// Recognize the complete ADD Rd,pc,#1 / BX Rd pair; never scan arbitrary words
+/// Recognize the complete ADD Rd,pc,#odd / BX Rd pair; never scan arbitrary words
 /// as Thumb function pointers. Apply this to main text and relocated modules.
 fn interworking(program:&mut discover::Program) {
     let text=&program.text;
-    for offset in (0..text.bytes.len().saturating_sub(8)).step_by(4) {
+    for offset in (0..text.bytes.len().saturating_sub(7)).step_by(4) {
         let first=u32::from_le_bytes(text.bytes[offset..offset+4].try_into().unwrap());
         let second=u32::from_le_bytes(text.bytes[offset+4..offset+8].try_into().unwrap());
         let register=(first>>12)&15;
-        if first&0xffff0fff==0xe28f0001 && register!=15 && second==(0xe12fff10|register) {
-            if let Some(target)=text.base.checked_add((offset+8) as u32) {
-                program.seeds.push((target|1,discover::Source::Hint));
+        if first&0xffff0000==0xe28f0000 && register!=15 && second==(0xe12fff10|register) {
+            let immediate = (first & 255).rotate_right(((first >> 8) & 15) * 2);
+            if let Some(target) = text.base.checked_add((offset+8) as u32).and_then(|pc| pc.checked_add(immediate)) {
+                if target & 1 != 0 && text.read16(target & !1).is_some() {
+                    program.seeds.push((target,discover::Source::Hint));
+                }
             }
         }
     }
@@ -153,6 +156,40 @@ fn recover_arm_loop_edges(program: &discover::Program, analysis: &mut discover::
     }
 }
 
+/// Speculative Thumb literals can also split an ARM compare and forward
+/// conditional branch from the already decoded continuation. Both successors
+/// must be in the contiguous ARM fragment that follows the missing word.
+fn recover_arm_conditional_edges(program: &discover::Program, analysis: &mut discover::Analysis) {
+    use arm::{Flow, ALWAYS};
+    use discover::{Byte, Mode};
+
+    let text = &program.text;
+    let edges = analysis.functions.iter().filter_map(|(&entry, function)| {
+        if function.mode != Mode::Arm { return None; }
+        let compare = *function.instructions.last()?;
+        if text.read32(compare)? & 0xfff0_0000 != 0xe350_0000 { return None; }
+        let branch = compare + 4;
+        let offset = (branch - text.base) as usize;
+        if analysis.map.get(offset..offset + 4)? != [Byte::Literal; 4]
+            || program.slots.as_ref().is_some_and(|slots| slots.contains(&branch)) {
+            return None;
+        }
+        let fallthrough = branch + 4;
+        let continuation = analysis.functions.get(&fallthrough)?;
+        if continuation.mode != Mode::Arm || continuation.instructions.first() != Some(&fallthrough) {
+            return None;
+        }
+        let decoded = arm::decode(text.read32(branch)?, branch);
+        let Flow::Branch { target, link: false } = decoded.flow else { return None; };
+        (decoded.condition < ALWAYS && target > fallthrough
+            && continuation.instructions.binary_search(&target).is_ok()).then_some((entry, branch, offset))
+    }).collect::<Vec<_>>();
+    for (entry, branch, offset) in edges {
+        analysis.functions.get_mut(&entry).unwrap().instructions.push(branch);
+        analysis.map[offset..offset + 4].fill(Byte::Code);
+    }
+}
+
 /// Recover Thumb PIC callback pointers only from decoded instruction paths.
 /// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
 /// them. A branch, a write to Rt or an unknown gap ends the candidate.
@@ -200,6 +237,7 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
         }
         if found.is_empty() {
             recover_arm_loop_edges(program, &mut analysis);
+            recover_arm_conditional_edges(program, &mut analysis);
             return Ok(analysis);
         }
         program.seeds.extend(found.into_iter().map(|at|(at,discover::Source::Hint)));
@@ -384,5 +422,39 @@ mod tests {
         program.slots = Some([base + 24, base + 28].into_iter().collect());
         let relocated = analyze(&mut program).unwrap();
         assert_eq!(relocated.map[24..32], [Byte::Literal; 8]);
+    }
+
+    #[test]
+    fn forward_arm_conditional_edge_survives_a_competing_thumb_literal() {
+        use discover::{Byte, Source};
+
+        let base = 0x100000;
+        let words: [u32; 8] = [
+            0xe12fff1e, // ARM entry: bx lr
+            0x47704801, // Thumb guess: ldr r0, [pc, #4]; bx lr
+            0xe3500000, // cmp r0, #0
+            0x0a000001, // beq to the addition
+            0xe3a00029, // mov r0, #41
+            0xe320f000, // nop
+            0xe2800001, // add r0, r0, #1
+            0xe12fff1e, // bx lr
+        ];
+        let branch = base + 12;
+        let mut program = discover::Program {
+            text: image::Segment { base, bytes: words.into_iter().flat_map(u32::to_le_bytes).collect() },
+            seeds: vec![(base, Source::Entry), (base + 5, Source::Pointer),
+                (base + 8, Source::Pointer), (base + 16, Source::Pointer)],
+            slots: None,
+        };
+        let original = discover::analyze(&program);
+        assert_eq!(original.map[12], Byte::Literal);
+        assert!(!original.functions[&(base + 8)].instructions.contains(&branch));
+
+        let repaired = analyze(&mut program).unwrap();
+        assert!(repaired.functions[&(base + 8)].instructions.contains(&branch));
+        assert_eq!(repaired.map[12], Byte::Code);
+
+        program.slots = Some([branch].into_iter().collect());
+        assert_eq!(analyze(&mut program).unwrap().map[12], Byte::Literal);
     }
 }

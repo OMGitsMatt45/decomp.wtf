@@ -59,6 +59,20 @@ static inline unsigned ctr_clz(uint32_t x) { unsigned long at; return _BitScanRe
     entries.write_text(text, encoding='utf-8', newline='\n')
 
 
+def _relative_callback_run(targets, code, text_base):
+    if len(targets) >= 3:
+        return targets
+    # A two-slot Thumb table is also plausible when both distinct targets
+    # start with a Thumb PUSH including LR. The extra evidence keeps short
+    # packed-data runs out of the root set.
+    if len(targets) == 2 and targets[0] != targets[1] and all(
+        target & 1 and struct.unpack_from('<H', code, (target & ~1) - text_base)[0] & 0xff00 == 0xb500
+        for target in targets
+    ):
+        return targets
+    return ()
+
+
 def generate(project, root):
     path = Path(project['input']).resolve()
     input_source = project.get('_source',path)
@@ -92,18 +106,16 @@ def generate(project, root):
             if text['address'] <= (word & ~1) < text['address']+text['size']:
                 entries.add(word)
             # ARM constructor/callback arrays may store offsets from each
-            # slot instead of absolute pointers. Require a contiguous table
-            # of at least three plausible code pointers before treating it
-            # as a discovery hint. Retain the Thumb mode bit and sign wrapping;
-            # normal instruction and provenance checks still apply.
+            # slot instead of absolute pointers. Keep contiguous runs with
+            # corroborating targets and preserve mode bits and signed offsets.
             target = (segment['address']+index*4+word)&0xffffffff
             if (text['address'] <= (target & ~1) < text['address']+text['size']
                     and (target & 1 or target % 4 == 0)):
                 relative.append(target)
             else:
-                if len(relative)>=3:entries.update(relative)
+                entries.update(_relative_callback_run(relative, code, text['address']))
                 relative.clear()
-        if len(relative)>=3:entries.update(relative)
+        entries.update(_relative_callback_run(relative, code, text['address']))
     constructor_entries = constructors.entries(code, inspection['segments'])
     seeds.write_text('\n'.join([*map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]),
                               *('hint:'+str(at) for at in sorted(observed | constructor_entries))])+'\n')
