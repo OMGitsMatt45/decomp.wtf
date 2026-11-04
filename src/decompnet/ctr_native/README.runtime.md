@@ -40,9 +40,11 @@ build/host/debug/ctr_runtime PATH_TO_ORIGINAL_IMAGE --window
 ```
 
 The original two LCDs stay visible and retain their native aspect ratios.
-F11 toggles fullscreen on the window's monitor; Escape closes it. Touch mapping
-and geometry render resolution follow resize and high DPI. Game-specific camera
-merging can be added to this exported repository later.
+F11 toggles fullscreen on the window's monitor, and Escape closes the window.
+F6 cycles automatic and fixed 1× through 6× render resolution. Fixed presets
+persist through resize and fullscreen changes. F7 switches the display between
+smooth and sharp sampling. Set launch defaults with `--scale auto|1..6` and
+`--filter smooth|sharp`. Touch mapping follows the original stacked screens.
 
 `--renderer auto` tries Vulkan geometry and reports software geometry fallback.
 `vulkan` requires GPU geometry; `software` uses the native software geometry
@@ -50,11 +52,14 @@ renderer. The desktop presenter requires Vulkan in all three modes.
 
 J/K/U/I are A/B/X/Y, Q/E are L/R, arrows are the D-pad, WASD is the circle pad,
 and Enter/Backspace are Start/Select. Click the lower-screen picture for touch.
-DSP samples go to the selected host's default audio output, with resampling and
-a bounded queue. `--mute` disables it. Standard gamepads merge with keyboard and
+The original stereo DSP mix uses band-limited resampling at the host output rate.
+Choose `--audio-profile stable` for more buffering or `--audio-profile low-latency`
+for a smaller queue. Run the executable with `--list-audio-devices` to find an
+output index for `--audio-device N`. The system default is used by default.
+`--mute` disables output. Standard gamepads merge with keyboard and
 touch; left/right sticks drive the circle pad/C-stick. Reports say whether audio
-opened, how many frames were queued, how many controllers were seen and why a
-device failed. These observations do not claim physical device qualification.
+opened, how many frames were queued and played, audio underruns, missed redraw
+deadlines, how many controllers were seen and why a device failed.
 Use `--window-frames N` for bounded window checks.
 Without `--cycles`, a window runs until closed; the headless runner defaults to
 one million guest cycles. `--gpu` enables Vulkan geometry in the headless runner.

@@ -335,6 +335,11 @@ def apply_graphics(root):
         // Only the device's image limit caps the requested render resolution.
         let wanted = top.map_or(1, |v| (v.width / 400.0).ceil() as u32)
             .max(bottom.map_or(1, |v| (v.width / 320.0).ceil() as u32)).max(1);
+        self.set_render_scale(wanted)
+    }
+
+    pub fn set_render_scale(&mut self, wanted: u32) -> Result<u32, String> {
+        if wanted == self.gpu.scale() { return Ok(wanted); }
         let mut memory = GuestMemory { memory: &mut self.memory, linear_base: self.kernel.linear_base };
         let scale = self.gpu.retarget_scale(&mut memory, wanted,
             self.config.device.clone(), self.title.as_ref().map(|title| title.program_id()))?;

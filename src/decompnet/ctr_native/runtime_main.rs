@@ -10,6 +10,7 @@ use zakuro_core::{loader, Config, StepOutcome};
 include!("identity.rs");
 #[cfg(feature="desktop")]
 mod desktop;
+mod presentation;
 #[cfg(feature="desktop")]
 mod audio;
 #[cfg(feature="desktop")]
@@ -57,13 +58,19 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let Some(input) = args.next() else {
         return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--renderer auto|vulkan|software] [--mute] [--cycles N] [--data DIRECTORY] [--clock-ms N] [--capture-guest-screens NEW_DIRECTORY] [--allow-interpreter] [--gpu] [--texture-pack]".into());
     };
+    if input == "--list-audio-devices" {
+        #[cfg(feature="desktop")]
+        { audio::list_devices()?; return Ok(0); }
+        #[cfg(not(feature="desktop"))]
+        { return Err("audio device listing requires the desktop build".into()); }
+    }
     let input = PathBuf::from(input);
     let mut cycles: u64 = 1_000_000;
     let mut data = PathBuf::from("user");
     let mut fallback = false;
     let mut gpu = false;
     let mut use_texture_pack = false;
-    let mut scale = 1;
+    let mut presentation = presentation::Settings::default();
     let mut window = false;
     let mut frame_limit:Option<u64> = None;
     let mut explicit_cycles = false;
@@ -79,13 +86,14 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             "--gpu" => gpu = true,
             "--texture-pack" => use_texture_pack = true,
             "--renderer" => renderer=args.next().ok_or("--renderer needs auto, vulkan or software")?,
-            "--scale" => scale = args.next().ok_or("--scale needs a value")?.parse()?,
             "--window" => window = true,
             "--mute" => mute = true,
             "--clock-ms" => clock = Some(args.next().ok_or("--clock-ms needs a value")?.parse::<u64>()?),
             "--capture-guest-screens" => capture=Some(args.next().ok_or("--capture-guest-screens needs a new directory")?.into()),
             "--window-frames" => frame_limit=Some(args.next().ok_or("--window-frames needs a value")?.parse()?),
-            _ => return Err(format!("unknown option: {arg}").into()),
+            _ => if !presentation.option(&arg, &mut args)? {
+                return Err(format!("unknown option: {arg}").into());
+            },
         }
     }
     if !(1..=10_000_000_000).contains(&cycles) { return Err("cycle budget must be 1 through 10000000000".into()); }
@@ -93,7 +101,8 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if gpu && renderer=="software" {return Err("--gpu conflicts with --renderer software".into());}
     if use_texture_pack && renderer == "software" { return Err("--texture-pack needs Vulkan geometry".into()); }
     gpu = gpu || renderer == "vulkan" || use_texture_pack;
-    if scale==0 {return Err("render scale must be positive".into());}
+    let scale = presentation.scale.unwrap_or(1);
+    if window && scale > 6 { return Err("window render scale must be auto or 1 through 6".into()); }
     if frame_limit==Some(0) {return Err("window frame limit must be positive".into());}
     if clock.is_some_and(|value|value>u64::MAX-100_000) {return Err("clock leaves no room for the cycle budget".into());}
     if !window && frame_limit.is_some() {
@@ -139,7 +148,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if window {
         #[cfg(feature="desktop")]
         {
-            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,mute,&renderer,texture_pack)?;
+            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,mute,&renderer,texture_pack,presentation)?;
             stopped=outcome.stop;
             window_report=serde_json::json!({"presented_frames":outcome.presented,"drawable":outcome.drawable,
                 "screens":"stacked","physical_device_qualified":false,
@@ -147,7 +156,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 "audio_error":outcome.audio_error,"controllers":outcome.controllers,
                 "controller_error":outcome.controller_error,"physical_audio_qualified":false,
                 "physical_controller_qualified":false,"continuous_scene_qualified":false,"device":outcome.device,
-                "renderer_error":outcome.renderer_error});
+                "renderer_error":outcome.renderer_error,"presentation":outcome.presentation});
         }
     } else {
         if texture_pack.is_some() && !system.gpu.set_texture_pack(texture_pack) {

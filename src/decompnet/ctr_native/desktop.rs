@@ -1,6 +1,7 @@
 //! Independent Vulkan window. No library browser or runtime code compilation.
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use super::presentation::Settings;
 use winit::{application::ApplicationHandler, dpi::PhysicalSize,
     event::{ElementState, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop, ControlFlow},
     keyboard::{KeyCode, PhysicalKey}, window::{Fullscreen, Window, WindowId}};
@@ -20,6 +21,7 @@ pub struct Outcome {
     pub controller_error: Option<String>,
     pub device: Option<String>,
     pub renderer_error: Option<String>,
+    pub presentation: serde_json::Value,
 }
 
 #[derive(Default)]
@@ -60,6 +62,9 @@ struct Host<'a> {
     result: Outcome,
     error: Option<String>,
     renderer: &'a str,
+    settings: Settings,
+    late_frames: u64,
+    max_redraw_ms: f64,
     texture_pack: Option<Arc<zakuro_gpu::pack::Pack>>,
 }
 
@@ -71,8 +76,26 @@ impl Host<'_> {
         let presenter=self.presenter.as_mut().unwrap();
         presenter.set_layout(mode);
         if size.width>0 && size.height>0 {presenter.resize(size.width,size.height);}
-        if self.system.gpu.draws_on_gpu() {self.system.resize_drawable(size.width,size.height,mode)?;}
+        self.apply_quality()?;
         self.touch();
+        Ok(())
+    }
+
+    fn apply_quality(&mut self) -> Result<(), String> {
+        let [width, height] = self.result.drawable;
+        if width == 0 || height == 0 { return Ok(()); }
+        self.presenter.as_mut().unwrap().set_scaling(self.settings.filter, false);
+        if self.system.gpu.draws_on_gpu() {
+            if let Some(scale) = self.settings.scale {
+                self.system.set_render_scale(scale)?;
+            } else {
+                self.system.resize_drawable(width, height, ScreenLayout::Stacked)?;
+            }
+        }
+        let mode = if self.settings.scale.is_some() { "fixed" } else { "auto" };
+        self.window.as_ref().unwrap().set_title(&format!(
+            "3DS PC | {}x {mode}, {} | F6 resolution, F7 filter, F11 fullscreen",
+            self.system.gpu.scale(), self.settings.filter_name()));
         Ok(())
     }
 
@@ -90,6 +113,7 @@ impl Host<'_> {
     fn redraw(&mut self)->Result<Option<&'static str>,String> {
         let [w,h]=self.result.drawable;
         if w==0 || h==0 {return Ok(None);}
+        let started = Instant::now();
         // Guest HID samples once per frame. Preserve a tap whose key-up
         // arrived before this redraw, then return to the held state.
         self.input.buttons=self.keyboard.sample();
@@ -128,9 +152,12 @@ impl Host<'_> {
             audio.push(&samples);
             self.result.audio_frames+=samples.len() as u64;
         }
+        let finished = Instant::now();
+        let period=Duration::from_secs_f64(1.0/60.0);
+        self.max_redraw_ms = self.max_redraw_ms.max((finished - started).as_secs_f64() * 1000.0);
+        self.late_frames += u64::from(finished > self.next_frame + period);
         if self.limit.is_some_and(|n|self.system.cpu.cycles>=n) {return Ok(Some("budget"));}
         if self.frame_limit.is_some_and(|n|self.result.presented>=n) {return Ok(Some("window-frame-limit"));}
-        let period=Duration::from_secs_f64(1.0/60.0);
         self.next_frame+=period;
         // Rendering and swapchain waits count toward the frame interval.
         // After a long stall, resume rather than running a burst of old frames.
@@ -222,6 +249,20 @@ impl ApplicationHandler for Host<'_> {
                 if down && !event.repeat {
                     match code {
                         KeyCode::Escape=>{self.result.stop="window-closed";events.exit();}
+                        KeyCode::F6=>{
+                            let previous = self.settings.scale;
+                            self.settings.cycle_scale();
+                            if let Err(error) = self.apply_quality() {
+                                self.settings.scale = previous;
+                                eprintln!("3DS render scale: {error}");
+                            }
+                        }
+                        KeyCode::F7=>{
+                            self.settings.toggle_filter();
+                            if let Err(error) = self.apply_quality() {
+                                eprintln!("3DS screen filter: {error}");
+                            }
+                        }
                         KeyCode::F11=>{
                             let window=self.window.as_ref().unwrap();
                             window.set_fullscreen(if window.fullscreen().is_some() {None} else {Some(Fullscreen::Borderless(None))});
@@ -249,12 +290,14 @@ impl ApplicationHandler for Host<'_> {
 }
 
 pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,mute:bool,renderer:&'a str,
-    texture_pack: Option<Arc<zakuro_gpu::pack::Pack>>,
+    texture_pack: Option<Arc<zakuro_gpu::pack::Pack>>, settings: Settings,
 )->Result<Outcome,String> {
     let events=EventLoop::new().map_err(|e|e.to_string())?;
     let (audio,audio_error)=if mute {(None,None)} else {
-        match super::audio::Audio::open(zakuro_core::AUDIO_SAMPLE_RATE) {
-            Ok(audio)=>(Some(audio),None),Err(error)=>{
+        match super::audio::Audio::open_with(zakuro_core::AUDIO_SAMPLE_RATE, settings.audio_profile, settings.audio_device) {
+            Ok(audio)=>(Some(audio),None),
+            Err(error) if settings.audio_device.is_some()=>return Err(error),
+            Err(error)=>{
                 eprintln!("3DS sound output unavailable: {error}");(None,Some(error))
             }
         }
@@ -263,12 +306,18 @@ pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,m
     let controller_error=gamepads.error.clone();
     if let Some(error)=&controller_error {eprintln!("3DS controllers unavailable: {error}");}
     let mut host=Host {system,presenter:None,window:None,input:InputState::default(),keyboard:KeyboardButtons::default(),pointer:None,
-        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,texture_pack,
+        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,settings,late_frames:0,max_redraw_ms:0.0,texture_pack,
         result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],
-            audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error,device:None,renderer_error:None},
+            audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error,device:None,renderer_error:None,presentation:serde_json::Value::Null},
         audio,gamepads};
     events.run_app(&mut host).map_err(|e|e.to_string())?;
     if let Some(error)=host.error.take() {return Err(error);}
+    host.result.presentation = serde_json::json!({
+        "requested_scale":host.settings.scale,"filter":host.settings.filter_name(),
+        "audio_profile":host.settings.audio_profile.name(),
+        "audio":host.audio.as_ref().map(|audio|audio.report()),
+        "late_frames":host.late_frames,"max_redraw_ms":host.max_redraw_ms,
+    });
     Ok(host.result)
 }
 
