@@ -219,6 +219,7 @@ def generate_runtime(project, root):
                            (package/'runtime_build.rs',app/'build.rs'),
                            (package/'runtime_main.rs',app/'src/main.rs'),
                            (package/'desktop.rs',app/'src/desktop.rs'),
+                           (package/'presentation.rs',app/'src/presentation.rs'),
                            (package/'screens.rs',app/'src/screens.rs'),
                            (package/'gamepad.rs',app/'src/gamepad.rs'),
                            (package/'gpu_scenes.rs',app/'src/gpu_scenes.rs'),
