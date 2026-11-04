@@ -4,3 +4,6 @@
 site/public/Dockerfile text eol=lf
 # Windows' command interpreter expects CRLF, including in a checkout on Linux.
 *.cmd text eol=crlf
+
+# Switch vendor inventories verify the original bytes.
+src/decompnet/switch_native/vendor/** -text

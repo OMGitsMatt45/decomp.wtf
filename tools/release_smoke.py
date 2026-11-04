@@ -1,6 +1,7 @@
 """Run the installed wheel outside its checkout, including the real local web server."""
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -26,6 +27,13 @@ def main():
         assert b"\r\n" in command and b"\n" not in command.replace(b"\r\n", b""), "Windows launcher needs CRLF"
         assert archive.read(prefix + "site/public/install.ps1")
         assert archive.read(prefix + "src/decompnet/pc.py")
+        switch = prefix + "src/decompnet/switch_native/"
+        emitter = json.loads(archive.read(switch + "sources.json"))["vendored"]["files"]
+        runtime = json.loads(archive.read(switch + "desktop/runtime-sources.json"))["files"]
+        for vendor, files in (("nxport-lifter", emitter), ("kirikae-src", runtime)):
+            for name, expected in files.items():
+                path = f"{switch}vendor/{vendor}/{name}"
+                assert hashlib.sha256(archive.read(path)).hexdigest() == expected, path
     with tempfile.TemporaryDirectory(prefix="decomp-release-") as temporary:
         work = Path(temporary)
         environment = {**os.environ, "DECOMP_HOME": str(work / "home"), "DECOMP_UPDATES": "off", "DECOMP_RUNTIME": "native"}
@@ -34,6 +42,9 @@ def main():
         code = ("import decompnet; from decompnet import pc; "
                 f"assert decompnet.__version__ == {args.version!r}; "
                 "assert pc.status('nds')['first_platform'] == 'nds'; "
+                "assert 'switch-native' in pc.status('switch')['development']['commands']; "
+                "from decompnet.switch_native import provider; from decompnet.switch_native.desktop import sdk; "
+                "provider.verify_vendor(); sdk.verify(); "
                 "from decompnet.app import cli; from decompnet import toolchains; "
                 "assert toolchains.current_platform() in ('windows-x86_64','linux-x86_64'); print('installed package and native analyzer OK')")
         subprocess.run([python, "-I", "-c", code], cwd=work, env=environment, check=True, timeout=30)
