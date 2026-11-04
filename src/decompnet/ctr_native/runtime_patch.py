@@ -1,5 +1,6 @@
 """Small checked integration changes to the immutable upstream runtime copy."""
 from pathlib import Path
+import shutil
 
 from ..pc import PCError
 
@@ -12,8 +13,20 @@ def replace(root, name, before, after):
     path.write_text(text.replace(before, after), encoding='utf-8', newline='\n')
 
 
+def apply_handle_info(root):
+    kernel = Path(root) / 'runtime/crates/zakuro-core/src/kernel'
+    shutil.copyfile(Path(__file__).with_name('svc_handle_info.rs'), kernel / 'svc_handle_info.rs')
+    replace(kernel, 'svc.rs',
+        'use crate::System;\n',
+        'use crate::System;\n\n#[path = "svc_handle_info.rs"]\nmod svc_handle_info;\n')
+    replace(kernel, 'svc.rs',
+        '        0x28 => get_system_tick(system),',
+        '        0x28 => get_system_tick(system),\n        0x29 => svc_handle_info::get(system),')
+
+
 def apply(root):
     root = Path(root)
+    apply_handle_info(root)
     replace(root, 'runtime/Cargo.toml',
         'recomp-abi = { git = "https://github.com/fearkov/3dsrecomp" }',
         'recomp-abi = { path = "../recompiler/abi" }')
