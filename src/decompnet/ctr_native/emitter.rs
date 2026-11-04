@@ -226,6 +226,30 @@ fn recover_arm_vfp_gap(program: &discover::Program, analysis: &mut discover::Ana
     }
 }
 
+/// A decoded ARM call can distinguish a callee's stack prologue from a
+/// speculative literal when the rest of the callee already decoded as ARM.
+fn called_arm_prologue(program: &discover::Program, analysis: &discover::Analysis, pc: u32) -> Option<u32> {
+    let word = program.text.read32(pc)?;
+    if word >> 24 != 0xeb { return None; }
+    let call = arm::decode(word, pc);
+    let arm::Flow::Branch { target, link: true } = call.flow else { return None };
+    let word = program.text.read32(target)?;
+    // PUSH with LR and at least one general register, without SP or PC.
+    if word & 0xffff_e000 != 0xe92d_4000 || word & 0x1fff == 0 {
+        return None;
+    }
+    let offset = target.checked_sub(program.text.base)? as usize;
+    if analysis.map.get(offset..offset + 4)? != [discover::Byte::Literal; 4]
+        || program.slots.as_ref().is_some_and(|slots| slots.contains(&target))
+    {
+        return None;
+    }
+    let next = target.checked_add(4)?;
+    let continuation = analysis.functions.get(&next)?;
+    (continuation.mode == discover::Mode::Arm && continuation.instructions.first() == Some(&next))
+        .then_some(target)
+}
+
 /// Recover Thumb PIC callback pointers only from decoded instruction paths.
 /// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
 /// them. A branch, a write to Rt or an unknown gap ends the candidate.
@@ -239,6 +263,9 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
         let mut found=std::collections::BTreeSet::new();
         for function in analysis.functions.values().filter(|f| f.mode == discover::Mode::Arm) {
             for &pc in &function.instructions {
+                if let Some(target) = called_arm_prologue(program, &analysis, pc) {
+                    if !hints.contains(&target) { found.insert(target); }
+                }
                 if let Some(targets) = arm_relative_targets(text, function, pc) {
                     found.extend(targets.into_iter().filter(|at| !hints.contains(at)
                         && !analysis.functions.get(at).is_some_and(|f| f.mode == discover::Mode::Arm && !f.instructions.is_empty())));
@@ -394,6 +421,39 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn called_arm_prologue_survives_a_competing_thumb_literal() {
+        use discover::{Byte, Source};
+
+        let base = 0x100000;
+        let words: [u32; 8] = [
+            0xe12fff1e, // bx lr
+            0x47704803, // Thumb pointer guesses the callee's first word as data
+            0xe320f000, // nop
+            0xeb000000, // bl callee
+            0xe12fff1e, // bx lr
+            0xe92d4010, // push {r4, lr}
+            0xe1a04000, // mov r4, r0
+            0xe8bd8010, // pop {r4, pc}
+        ];
+        let mut program = discover::Program {
+            text: image::Segment { base, bytes: words.into_iter().flat_map(u32::to_le_bytes).collect() },
+            seeds: vec![(base, Source::Entry), (base + 5, Source::Pointer),
+                (base + 12, Source::Pointer), (base + 24, Source::Pointer)],
+            slots: None,
+        };
+        let target = base + 20;
+        let original = discover::analyze(&program);
+        assert_eq!(original.map[20..24], [Byte::Literal; 4]);
+        let repaired = analyze(&mut program).unwrap();
+        assert!(repaired.functions[&target].instructions.contains(&target));
+
+        program.seeds.retain(|(_, source)| *source != Source::Hint);
+        program.slots = Some([target].into_iter().collect());
+        let relocated = analyze(&mut program).unwrap();
+        assert_eq!(relocated.map[20..24], [Byte::Literal; 4]);
+    }
 
     #[test]
     fn arm_loop_edge_survives_a_competing_thumb_literal() {
