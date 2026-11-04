@@ -1,4 +1,5 @@
 //! Independent Vulkan window. No library browser or runtime code compilation.
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::{application::ApplicationHandler, dpi::PhysicalSize,
     event::{ElementState, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop, ControlFlow},
@@ -59,6 +60,7 @@ struct Host<'a> {
     result: Outcome,
     error: Option<String>,
     renderer: &'a str,
+    texture_pack: Option<Arc<zakuro_gpu::pack::Pack>>,
 }
 
 impl Host<'_> {
@@ -177,11 +179,18 @@ impl ApplicationHandler for Host<'_> {
                 if self.renderer!="software" {
                     match self.system.gpu.enable_hardware_renderer(1,device.clone(),title) {
                         Ok(_)=>self.result.device=self.system.gpu.hardware_device_name().map(str::to_owned),
-                        Err(error) if self.renderer=="auto"=>{
+                        Err(error) if self.renderer=="auto" && self.texture_pack.is_none()=>{
                             eprintln!("Vulkan geometry unavailable; using software geometry: {error}");
                             self.result.renderer_error=Some(error);
                         }
                         Err(error)=>{self.error=Some(error);events.exit();return;}
+                    }
+                }
+                if let Some(pack) = self.texture_pack.take() {
+                    if !self.system.gpu.set_texture_pack(Some(pack)) {
+                        self.error = Some("could not attach the texture pack to Vulkan geometry".into());
+                        events.exit();
+                        return;
                     }
                 }
                 self.system.config.device=device;
@@ -239,7 +248,9 @@ impl ApplicationHandler for Host<'_> {
     }
 }
 
-pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,mute:bool,renderer:&'a str)->Result<Outcome,String> {
+pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,mute:bool,renderer:&'a str,
+    texture_pack: Option<Arc<zakuro_gpu::pack::Pack>>,
+)->Result<Outcome,String> {
     let events=EventLoop::new().map_err(|e|e.to_string())?;
     let (audio,audio_error)=if mute {(None,None)} else {
         match super::audio::Audio::open(zakuro_core::AUDIO_SAMPLE_RATE) {
@@ -252,7 +263,7 @@ pub fn run<'a>(system:&'a mut System,limit:Option<u64>,frame_limit:Option<u64>,m
     let controller_error=gamepads.error.clone();
     if let Some(error)=&controller_error {eprintln!("3DS controllers unavailable: {error}");}
     let mut host=Host {system,presenter:None,window:None,input:InputState::default(),keyboard:KeyboardButtons::default(),pointer:None,
-        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,
+        pressed:false,circle:[false;4],focused:true,limit,frame_limit,next_frame:Instant::now(),error:None,renderer,texture_pack,
         result:Outcome {stop:"window-closed",presented:0,drawable:[0,0],
             audio_open:audio.is_some(),audio_frames:0,audio_error,controllers:gamepads.count(),controller_error,device:None,renderer_error:None},
         audio,gamepads};

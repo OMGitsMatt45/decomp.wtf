@@ -226,6 +226,20 @@ def test_guest_picture_capture_preserves_existing_output(original_runtime,tmp_pa
     assert failed.returncode==1 and sentinel.read_text()=='owner data'
 
 
+def test_texture_pack_request_fails_when_missing_or_using_software(original_runtime, tmp_path):
+    _project, image, binary, _scenes, _build, run = original_runtime
+    assert run('--cycles', '1000000')['texture_pack_enabled'] is False
+    for args, message in (
+        ((), 'no readable texture pack'),
+        (('--renderer', 'software'), '--texture-pack needs Vulkan geometry'),
+    ):
+        result = subprocess.run(
+            [str(binary), str(image), '--data', str(tmp_path), '--texture-pack', *args],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 1 and message in result.stderr
+
+
 def test_compatibility_run_reports_missing_region_entries_without_a_native_claim(original_runtime):
     project,_image,_binary,_scenes,build,run=original_runtime
     source=project/'game/code000.c';text=source.read_text()
