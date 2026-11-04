@@ -161,6 +161,12 @@ Encrypted inputs fail with a decrypted-dump message. CIA installation and 3DSX
 relocation are not implemented by this importer. Some retail services can need
 additional owner-provided files; no system/game data is downloaded automatically.
 
+Place a custom PNG texture pack under `mods/TITLE_ID/textures` inside the
+directory passed to `--data`, then run the exported host with `--texture-pack`.
+The option requests Vulkan geometry in both desktop and headless mode. The
+desktop attaches the pack after creating its shared Vulkan device. A missing
+pack or unavailable Vulkan geometry causes an explicit launch error.
+
 ## Bounded retail validation
 
 An owner-supplied decrypted DQVII USA image was exported through the normal

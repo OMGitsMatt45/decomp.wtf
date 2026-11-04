@@ -3,6 +3,7 @@ use std::ffi::c_void;
 use std::io::Read;
 use std::path::PathBuf;
 use std::ptr::addr_of;
+use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use zakuro_core::{loader, Config, StepOutcome};
 
@@ -54,13 +55,14 @@ fn identity(path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let Some(input) = args.next() else {
-        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--renderer auto|vulkan|software] [--mute] [--cycles N] [--data DIRECTORY] [--clock-ms N] [--capture-guest-screens NEW_DIRECTORY] [--allow-interpreter] [--gpu]".into());
+        return Err("usage: ctr_runtime ORIGINAL_IMAGE [--window] [--renderer auto|vulkan|software] [--mute] [--cycles N] [--data DIRECTORY] [--clock-ms N] [--capture-guest-screens NEW_DIRECTORY] [--allow-interpreter] [--gpu] [--texture-pack]".into());
     };
     let input = PathBuf::from(input);
     let mut cycles: u64 = 1_000_000;
     let mut data = PathBuf::from("user");
     let mut fallback = false;
     let mut gpu = false;
+    let mut use_texture_pack = false;
     let mut scale = 1;
     let mut window = false;
     let mut frame_limit:Option<u64> = None;
@@ -75,6 +77,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             "--data" => data = args.next().ok_or("--data needs a directory")?.into(),
             "--allow-interpreter" => fallback = true,
             "--gpu" => gpu = true,
+            "--texture-pack" => use_texture_pack = true,
             "--renderer" => renderer=args.next().ok_or("--renderer needs auto, vulkan or software")?,
             "--scale" => scale = args.next().ok_or("--scale needs a value")?.parse()?,
             "--window" => window = true,
@@ -88,7 +91,8 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if !(1..=10_000_000_000).contains(&cycles) { return Err("cycle budget must be 1 through 10000000000".into()); }
     if !matches!(renderer.as_str(),"auto"|"vulkan"|"software") {return Err("renderer must be auto, vulkan or software".into());}
     if gpu && renderer=="software" {return Err("--gpu conflicts with --renderer software".into());}
-    gpu=gpu || renderer=="vulkan";
+    if use_texture_pack && renderer == "software" { return Err("--texture-pack needs Vulkan geometry".into()); }
+    gpu = gpu || renderer == "vulkan" || use_texture_pack;
     if scale==0 {return Err("render scale must be positive".into());}
     if frame_limit==Some(0) {return Err("window frame limit must be positive".into());}
     if clock.is_some_and(|value|value>u64::MAX-100_000) {return Err("clock leaves no room for the cycle budget".into());}
@@ -97,6 +101,14 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     }
     if window && !cfg!(feature="desktop") {return Err("rebuild with CTR_DESKTOP=ON for --window".into());}
     if identity(&input)? != INPUT_SHA256 { return Err("original input SHA-256 differs; use the exported revision".into()); }
+    let texture_pack = if use_texture_pack {
+        let path = zakuro_core::mods::textures(&data, TITLE_ID);
+        let pack = zakuro_gpu::pack::Pack::open(&path)
+            .ok_or_else(|| format!("no readable texture pack in {}", path.display()))?;
+        Some(Arc::new(pack))
+    } else {
+        None
+    };
     if let Some(directory)=capture.as_ref() {std::fs::create_dir(directory)?;}
     // SAFETY: CMake links these exact C tables and their ABI. Code provenance
     // guards stay enabled for relocated or modified executable memory.
@@ -107,12 +119,13 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             .with_origins(recomp_generation, addr_of!(recomp_origins) as *const c_void)
     };
     let device = if gpu && !window {
-        Some(std::sync::Arc::new(zakuro_gpu::SharedDevice::new()
+        Some(Arc::new(zakuro_gpu::SharedDevice::new()
             .map_err(|error|format!("Vulkan geometry device: {error}"))?))
     } else { None };
     let mut system = loader::load(&input, Config {
         linked: Some(code), find_recompiled: false, strict_static: !fallback,
         data_dir: Some(data), hardware_renderer: gpu && !window, resolution: scale,
+        // The desktop creates its shared Vulkan device after loading the guest.
         texture_packs: false, clock, device, ..Config::default()
     })?;
     let library = system.recompiled.as_mut().ok_or("linked translated C was not accepted")?;
@@ -126,7 +139,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
     if window {
         #[cfg(feature="desktop")]
         {
-            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,mute,&renderer)?;
+            let outcome=desktop::run(&mut system,explicit_cycles.then_some(cycles),frame_limit,mute,&renderer,texture_pack)?;
             stopped=outcome.stop;
             window_report=serde_json::json!({"presented_frames":outcome.presented,"drawable":outcome.drawable,
                 "screens":"stacked","physical_device_qualified":false,
@@ -137,6 +150,9 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 "renderer_error":outcome.renderer_error});
         }
     } else {
+        if texture_pack.is_some() && !system.gpu.set_texture_pack(texture_pack) {
+            return Err("could not attach the texture pack to Vulkan geometry".into());
+        }
         while system.cpu.cycles < cycles {
             if let Some(stop)=advance(&mut system,cycles) {stopped=stop;break;}
         }
@@ -181,6 +197,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
         "gpu_rendering":system.gpu.draws_on_gpu(), "render_scale":system.gpu.scale(),
         "renderer":if system.gpu.draws_on_gpu() {"vulkan"} else {"software"},
         "gpu_device":system.gpu.hardware_device_name(),
+        "texture_pack_enabled":use_texture_pack,
         "gpu_draw_calls":system.gpu.draw_calls,"gpu_transfers":system.gpu.transfers,"gpu_fills":system.gpu.fills,
         "guest_pictures":pictures,
         "graphics_qualified":false, "retail_qualified":false,
