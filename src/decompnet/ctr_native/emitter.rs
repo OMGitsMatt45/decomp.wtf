@@ -190,6 +190,42 @@ fn recover_arm_conditional_edges(program: &discover::Program, analysis: &mut dis
     }
 }
 
+/// A speculative literal can cut a run of ARM VFP arithmetic in two. Recover
+/// one word between decoded instructions when the following fragment is ARM
+/// and all three words are unconditional VFP data operations.
+fn recover_arm_vfp_gap(program: &discover::Program, analysis: &mut discover::Analysis) {
+    use discover::{Byte, Mode};
+
+    let text = &program.text;
+    let is_vfp = |at| text.read32(at).is_some_and(|word| word & 0xff00_0e10 == 0xee00_0a00);
+    let mut recovered = std::collections::BTreeMap::<u32, Vec<u32>>::new();
+    for (&entry, function) in analysis.functions.iter().filter(|(_, function)| function.mode == Mode::Arm) {
+        for &previous in &function.instructions {
+            let at = previous + 4;
+            let offset = (at - text.base) as usize;
+            if analysis.map.get(offset..offset + 4) != Some(&[Byte::Literal; 4])
+                || program.slots.as_ref().is_some_and(|slots| slots.contains(&at)) {
+                continue;
+            }
+            let next = at + 4;
+            if analysis.functions.get(&next).is_some_and(|continuation|
+                continuation.mode == Mode::Arm && continuation.instructions.first() == Some(&next))
+                && [previous, at, next].into_iter().all(is_vfp) {
+                recovered.entry(entry).or_default().push(at);
+            }
+        }
+    }
+    for (entry, instructions) in recovered {
+        let function = analysis.functions.get_mut(&entry).unwrap();
+        for at in instructions {
+            let offset = (at - text.base) as usize;
+            analysis.map[offset..offset + 4].fill(Byte::Code);
+            function.instructions.push(at);
+        }
+        function.instructions.sort_unstable();
+    }
+}
+
 /// Recover Thumb PIC callback pointers only from decoded instruction paths.
 /// LDR Rt,[pc,#literal] followed by ADD Rt,pc may have preserving stores between
 /// them. A branch, a write to Rt or an unknown gap ends the candidate.
@@ -238,6 +274,7 @@ fn analyze(program:&mut discover::Program)->Result<discover::Analysis,&'static s
         if found.is_empty() {
             recover_arm_loop_edges(program, &mut analysis);
             recover_arm_conditional_edges(program, &mut analysis);
+            recover_arm_vfp_gap(program, &mut analysis);
             return Ok(analysis);
         }
         program.seeds.extend(found.into_iter().map(|at|(at,discover::Source::Hint)));
@@ -455,6 +492,34 @@ mod tests {
         assert_eq!(repaired.map[12], Byte::Code);
 
         program.slots = Some([branch].into_iter().collect());
+        assert_eq!(analyze(&mut program).unwrap().map[12], Byte::Literal);
+    }
+
+    #[test]
+    fn arm_vfp_arithmetic_survives_a_competing_thumb_literal() {
+        use discover::{Byte, Source};
+        let base = 0x100000;
+        let words: [u32; 6] = [
+            0xe12fff1e, // bx lr
+            0x47704801, // Thumb ldr reads the middle ARM VFP word as a literal
+            0xee222a82,
+            0xee621aa1,
+            0xee752a86,
+            0xe12fff1e, // bx lr
+        ];
+        let mut program = discover::Program {
+            text: image::Segment { base, bytes: words.into_iter().flat_map(u32::to_le_bytes).collect() },
+            seeds: vec![(base, Source::Entry), (base + 5, Source::Pointer),
+                (base + 8, Source::Pointer), (base + 16, Source::Pointer)],
+            slots: None,
+        };
+        let original = discover::analyze(&program);
+        assert_eq!(original.map[12], Byte::Literal);
+        let repaired = analyze(&mut program).unwrap();
+        assert_eq!(repaired.functions[&(base + 8)].instructions, [base + 8, base + 12]);
+        assert_eq!(repaired.map[12], Byte::Code);
+
+        program.slots = Some([base + 12].into_iter().collect());
         assert_eq!(analyze(&mut program).unwrap().map[12], Byte::Literal);
     }
 }
