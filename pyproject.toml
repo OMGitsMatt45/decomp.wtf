@@ -1,6 +1,6 @@
 [project]
 name = "decompnet"
-version = "0.22.0"
+version = "0.23.0"
 description = "decomp.wtf: local native PC source export for DS, PS1, PS2, GBA and 3DS."
 readme = "README.md"
 license = "MIT"
