@@ -115,29 +115,26 @@ fn recover_arm_loop_edges(program: &discover::Program, analysis: &mut discover::
     let mut recovered = Vec::new();
     for function in analysis.functions.values_mut().filter(|f| f.mode == Mode::Arm) {
         let mut edges = Vec::new();
-        for pair in function.instructions.windows(2) {
-            let previous = pair[0];
+        for &previous in &function.instructions {
             let at = previous + 4;
-            let branch_at = match pair[1] - at {
-                4 => at,
-                8 if text.read32(at).is_some_and(|word| {
-                    // MOV immediate, unconditional, leaving CPSR and PC intact.
-                    word & 0xffff_0000 == 0xe3a0_0000 && word & 0x0000_f000 != 0x0000_f000
-                }) => at + 4,
-                _ => continue,
-            };
-            if program.slots.as_ref().is_some_and(|slots| slots.contains(&at) || slots.contains(&branch_at)) {
+            let offset = (at - text.base) as usize;
+            if analysis.map.get(offset..offset + 4) != Some(&[Byte::Literal; 4]) {
                 continue;
             }
-            let offset = (at - text.base) as usize;
-            if analysis.map[offset..offset + 4] != [Byte::Literal; 4] {
+            let Some(word) = text.read32(at) else { continue; };
+            // MOV immediate, unconditional, leaving CPSR and PC intact.
+            let initializes_register = word & 0xffff_0000 == 0xe3a0_0000
+                && word & 0x0000_f000 != 0x0000_f000;
+            let branch_at = if initializes_register { at + 4 } else { at };
+            if program.slots.as_ref().is_some_and(|slots| slots.contains(&at) || slots.contains(&branch_at)) {
                 continue;
             }
             let before = arm::decode(text.read32(previous).unwrap(), previous);
             if before.flow != Flow::Other {
                 continue;
             }
-            let branch = arm::decode(text.read32(branch_at).unwrap(), branch_at);
+            let Some(word) = text.read32(branch_at) else { continue; };
+            let branch = arm::decode(word, branch_at);
             if let Flow::Branch { target, link: false } = branch.flow {
                 if branch.condition == ALWAYS && target <= previous && function.instructions.binary_search(&target).is_ok() {
                     edges.extend((at..=branch_at).step_by(4));
@@ -519,6 +516,36 @@ mod tests {
         program.slots = Some([base + 24, base + 28].into_iter().collect());
         let relocated = analyze(&mut program).unwrap();
         assert_eq!(relocated.map[24..32], [Byte::Literal; 8]);
+    }
+
+    #[test]
+    fn arm_loop_recovers_tail_after_last_decoded_instruction() {
+        use discover::{Byte, Source};
+        let base = 0x100000;
+        let words: [u32; 9] = [
+            0xe12fff1e, // bx lr
+            0x47704804, // Thumb ldr uses the ARM mov at +24 as its literal
+            0xe3500000, // cmp r0, #0
+            0xe2400001, // sub r0, r0, #1
+            0xe320f000, // nop
+            0xe320f000, // last decoded instruction
+            0xe3a03000, // mov r3, #0
+            0xeafffff9, // b loop
+            0xe12fff1e, // separate entry
+        ];
+        let mut program = discover::Program {
+            text: image::Segment { base, bytes: words.into_iter().flat_map(u32::to_le_bytes).collect() },
+            seeds: vec![(base, Source::Entry), (base + 5, Source::Pointer),
+                (base + 8, Source::Pointer), (base + 32, Source::Pointer)],
+            slots: None,
+        };
+        let original = discover::analyze(&program);
+        assert_eq!(original.map[24], Byte::Literal);
+        assert_eq!(original.functions[&(base + 8)].instructions.last(), Some(&(base + 20)));
+
+        let repaired = analyze(&mut program).unwrap();
+        assert!(repaired.functions[&(base + 8)].instructions.ends_with(&[base + 24, base + 28]));
+        assert_eq!(repaired.map[24..32], [Byte::Code; 8]);
     }
 
     #[test]
