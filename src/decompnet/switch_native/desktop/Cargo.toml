@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/a64","crates/loader","crates/maxwell","crates/rt","crates/testkit"]
+[workspace.package]
+version = "0.1.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Cor3Duo/kirikae"
+[workspace.dependencies]
+kirikae-a64 = { path = "crates/a64" }
+kirikae-loader = { path = "crates/loader" }
+kirikae-maxwell = { path = "crates/maxwell" }
+kirikae-rt = { path = "crates/rt", default-features = false }
+kirikae-testkit = { path = "crates/testkit" }
+[profile.release]
+opt-level = 3
+codegen-units = 8
+panic = "abort"
+
+# LLVM 22 recursively overflows while optimizing vp9dec 0.1.1 at level 3.
+# Keep the pinned decoder and build its bounded scalar loops at level 1.
+[profile.release.package.vp9dec]
+opt-level = 1

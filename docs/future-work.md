@@ -37,6 +37,12 @@ Full playthrough acceptance remains with the user.
 - Evaluate additional consoles when work on them is requested. The older
   [planning PRs](pr-scope-audit.md#deferred-console-proposals) retain those ideas;
   they are not current application support or active implementation blockers.
+- [Switch source export](future/switch.md) combines four pinned donor projects.
+  `switch-native` emits editable C and a source-shipped desktop runtime for
+  decrypted ExeFS, NSO and homebrew NRO. Original CPU, worker-thread, linked-module
+  and Maxwell/Vulkan scenes pass without CPU interpretation. Adaptive geometry,
+  Windows, physical devices and retail gameplay remain qualification work;
+  the explicit development export is separate from registered game backends.
 
 ## Preserved work and history
 

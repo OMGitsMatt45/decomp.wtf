@@ -190,14 +190,17 @@ async function showNativeProject(id) {
     const p = await api(`/api/pc-project?id=${encodeURIComponent(id)}`);
     if (location.hash !== `#/pc/${id}`) return;
     $('nativeTitle').textContent = p.title;
-    $('nativeSubtitle').textContent = `${p.platform_name} · ${p.output_kind === 'cpu-probe' ? 'Original CPU probe' : 'Editable source and runtime'}`;
+    const sourceKind = p.platform === 'switch' && p.build?.target === 'switch_native' ? 'Experimental source and desktop runtime'
+      : p.output_kind === 'cpu-probe' ? 'Original CPU probe' : 'Editable source and runtime';
+    $('nativeSubtitle').textContent = `${p.platform_name} · ${sourceKind}`;
     const verified = p.verification?.passed;
     const title = p.missing ? 'Project folder is missing' : verified ? 'Last source-integrity check passed' : p.verification ? 'Source differs from the export' : 'Source integrity has not been checked';
     const detail = p.missing ? 'Move the folder back, or add its new location. Removing this entry leaves the files alone.'
       : verified ? 'Files matched the generated manifest at the last check. Host builds and gameplay need their own checks.'
       : 'Edits are expected when customizing a port. This check compares against the original generated manifest; it does not judge your changes or gameplay.';
     const build = p.path + '/build';
-    const configure = hostCommand('cmake', ['-S',p.path,'-B',build,'-DCMAKE_BUILD_TYPE=Release']);
+    const configure = hostCommand('cmake', ['-S',p.path,'-B',build,'-DCMAKE_BUILD_TYPE=Release',
+      ...(p.platform === 'switch' ? ['-DCMAKE_C_COMPILER=clang'] : [])]);
     const compile = hostCommand('cmake', ['--build',build,'--config','Release','--target',p.build.target]);
     box.innerHTML = `<section class="panel"><div class="pad">
       <div class="row"><button class="primary" id="nativeOpen" type="button" ${p.missing ? 'disabled' : ''}>Open project folder</button><button class="ghost" id="nativeVerify" type="button" ${p.missing ? 'disabled' : ''}>Verify source integrity</button><button class="ghost" id="nativeAgent" type="button">Connect your agent</button></div>
@@ -358,7 +361,7 @@ function notSupported(head, file) {
   const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
   if (text(0, 2) === "MZ") return "That's a Windows program. decomp.wtf imports DS, PS1, PS2, GBA and decrypted 3DS games.";
   if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
-  if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
+  if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0x10, 0x14) === "NRO0" || text(0, 4) === "PFS0") return "Switch source export is experimental. Use decomp pc switch-native INPUT OUTPUT --experimental with decrypted ExeFS, NSO or homebrew NRO. Desktop gameplay is not qualified yet.";
   if (["3ds", "cci", "cxi", "cia", "3dsx"].includes(ext)) return "3DS PC source requires a decrypted NCCH/CXI or NCSD/CCI image. CIA installation and 3DSX relocation are not supported.";
   if (["gb", "gbc"].includes(ext) || (head.length >= 0x10c && Array.from(head.slice(0x104, 0x10c), n => n.toString(16).padStart(2, "0")).join("") === "ceed6666cc0d000b")) return "Game Boy and Game Boy Color support has been removed.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. Starting a SNES assembly or C project from a ROM isn't implemented yet.";

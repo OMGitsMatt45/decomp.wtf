@@ -1,0 +1,219 @@
+{
+  "schema": "decomp.wtf.switch-runtime-validation/v1",
+  "date_utc": "2026-11-04",
+  "scope": "host-linked original ExeFS modules and bounded single-thread service runtime",
+  "backend": {
+    "id": "switch-nxport-las-module-runtime",
+    "revision": "6356d000b561b11434eb8b8aff91fe8ccdaafdf613b0b8a98daa5d1f080620a9"
+  },
+  "runtime": {
+    "id": "switch-host-linked-service-development",
+    "revision": "6356d000b561b11434eb8b8aff91fe8ccdaafdf613b0b8a98daa5d1f080620a9"
+  },
+  "application_tests": {
+    "command": "python -m pytest -q tests/test_switch_exefs.py tests/test_switch_native.py tests/test_pc_output.py tests/test_platform_scope.py",
+    "tests": 168,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "host": {
+    "os": "Linux",
+    "architecture": "x86_64",
+    "rustc": "1.90.0",
+    "c_compiler": "Clang 22.1.8 via Zig 0.17.0",
+    "cxx_compiler": "GCC 14.2.0",
+    "cmake": "4.4.4"
+  },
+  "original_inputs": [
+    {
+      "name": "main",
+      "size": 3140,
+      "sha256": "beaa6122a326e7a04039d40d6557676830c221aa64ae8cda458a3a7e407d34ee"
+    },
+    {
+      "name": "sdk",
+      "size": 2616,
+      "sha256": "f9bbe737a835f44829bf106ab92afee2c5ba2bffef34ead4e024f919584570ac"
+    },
+    {
+      "name": "main.npdm",
+      "size": 128,
+      "sha256": "85265be0a3c7cf632d12b596010c9a8334af83374aa624d1dc5d35c0a1b34a69"
+    }
+  ],
+  "normal_run": {
+    "schema": "decomp.wtf.switch-runtime-run/v1",
+    "output_kind": "cpu-probe",
+    "startup_model": "host-linked-main",
+    "input_sha256": "11df99248823e14a571298acecb93531b31b2fff3bf3c1083c9c859cbfe60cdf",
+    "status": "passed",
+    "failure": "",
+    "miss_pc": 0,
+    "last_svc": 39,
+    "last_ipc": 0,
+    "native_function_entries": 4,
+    "initializers_run": 2,
+    "exited": false,
+    "interpreter_instructions": 0,
+    "runtime_compilation": false,
+    "graphics": false,
+    "retail": false,
+    "heap_size": 2097152,
+    "ipc_calls": 4,
+    "debug_bytes": 22,
+    "svc_counts": {
+      "1": 2,
+      "16": 1,
+      "22": 2,
+      "30": 1,
+      "31": 1,
+      "33": 4,
+      "34": 1,
+      "37": 1,
+      "39": 1
+    },
+    "x": [
+      42,
+      22,
+      257,
+      0,
+      0,
+      0,
+      0,
+      0,
+      485331312792,
+      9,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "modules": [
+      {
+        "name": "main",
+        "base": 485331304448,
+        "native_entries": 2,
+        "data_hex": "0c000000000000002a00000000000000000000007300000051000000000000000000000078563412656e2d555300000001e40000000000000820000071000000090000000000000001ca000000000000656e2d55530000007d89c48c570000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "sdk",
+        "base": 485331369984,
+        "native_entries": 2,
+        "data_hex": "00200000710000001401010071000000"
+      }
+    ]
+  },
+  "independent_reference": {
+    "engine": "Unicorn 2.1.4",
+    "linking": "fixture-specific explicit relocation addresses, separate from production linker",
+    "services": "independent fixture-specific Python SVC/CMIF replies",
+    "registers_x0_x30_equal": true,
+    "deterministic_module_data_equal": true,
+    "svc_counts_equal": true,
+    "excluded": "The live host-clock field at main data offset 88..95 is positive but not compared to the fixed reference tick."
+  },
+  "guarded_failures": {
+    "changed-code": {
+      "failure": "changed-code",
+      "miss_pc": 485331370260,
+      "initializers_run": 0,
+      "interpreter_instructions": 0
+    },
+    "missing-target": {
+      "failure": "missing-native-target",
+      "miss_pc": 140737488355327,
+      "initializers_run": 2,
+      "interpreter_instructions": 0
+    }
+  },
+  "unsupported_operations": [
+    {
+      "failure": "unsupported-svc",
+      "last_svc": 119,
+      "last_ipc": 0,
+      "initializers_run": 2,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false
+    },
+    {
+      "failure": "unsupported-ipc-command",
+      "last_svc": 33,
+      "last_ipc": 99,
+      "initializers_run": 2,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false
+    },
+    {
+      "failure": "unsupported-ipc-descriptors",
+      "last_svc": 33,
+      "last_ipc": 0,
+      "initializers_run": 2,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false
+    },
+    {
+      "failure": "malformed-ipc",
+      "last_svc": 33,
+      "last_ipc": 1,
+      "initializers_run": 2,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false
+    },
+    {
+      "failure": "invalid-guest-memory",
+      "last_svc": 39,
+      "last_ipc": 0,
+      "initializers_run": 2,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false
+    }
+  ],
+  "additional_original_variants": [
+    {
+      "exited": true,
+      "initializers_run": 2,
+      "last_ipc": 0,
+      "ipc_calls": 0
+    },
+    {
+      "exited": false,
+      "initializers_run": 2,
+      "last_ipc": 3,
+      "ipc_calls": 4
+    }
+  ],
+  "qualification": {
+    "original_multi_module_execution": true,
+    "bounded_kernel_services": true,
+    "retail": false,
+    "graphics": false,
+    "audio": false,
+    "filesystem": false,
+    "guest_thread_creation": false,
+    "windows": false
+  },
+  "limitations": [
+    "Host prelinking enters main instead of executing the guest rtld startup ABI.",
+    "TLS symbol relocations, symbol versions and IFUNC are rejected; per-thread C++ TLS initialization is unqualified.",
+    "Only the documented heap, identity, clock, debug, exit, handle and SM/settings CMIF subset is implemented.",
+    "Intra-function self-modification, runtime code loading and instruction fallback are unsupported."
+  ]
+}

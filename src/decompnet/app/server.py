@@ -512,6 +512,12 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                         raise NetworkError('Native PC output does not use a matching console compiler or reconstruction layout')
                     from .. import pc
                     target=q.get('pc_platform') or pc.input_platform(game)
+                    with game.open('rb') as stream:
+                        head=stream.read(0x20)
+                    if head[:4]==b'NSO0' or head[0x10:0x14]==b'NRO0':
+                        target='switch'
+                    if target=='switch':
+                        raise NetworkError(pc.status('switch')['reason'])
                     if target=='3ds':
                         return net.generate_ctr_pc(game,confirmed=True,renderer=q.get('renderer','auto'),
                             log=log)

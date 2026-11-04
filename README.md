@@ -70,6 +70,12 @@ A console matching percentage is not a PC-port readiness measure. The
 [PC-project contract](docs/pc-output.md) describes source integrity, execution
 reports and the boundary between the shared backend and game-specific work.
 
+Switch has an experimental [`switch-native` source exporter](docs/future/switch.md)
+for decrypted ExeFS, NSO and homebrew NRO. It combines editable C with pinned
+thread/service, Vulkan/Maxwell, audio, input and save runtime sources. Original
+native CPU and software Vulkan checks pass; adaptive game presentation, Windows
+and retail gameplay remain unqualified.
+
 ### Export from the command line
 
 Choose a new output directory for each export:

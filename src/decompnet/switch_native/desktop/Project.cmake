@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.20)
+project(SwitchNativeSource LANGUAGES C CXX)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
+if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+  message(FATAL_ERROR "The editable Switch C runtime needs Clang 18+ (musttail). Set CMAKE_C_COMPILER=clang.")
+endif()
+find_program(CARGO cargo REQUIRED)
+set(SWITCH_CARGO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo" CACHE PATH "Cargo build cache")
+set(SWITCH_RUST_LIBRARY "${SWITCH_CARGO_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}kirikae_rt${CMAKE_STATIC_LIBRARY_SUFFIX}")
+file(GLOB_RECURSE RUNTIME_SOURCE CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sdk/crates/*/src/*.rs")
+add_custom_command(OUTPUT "${SWITCH_RUST_LIBRARY}"
+  COMMAND "${CMAKE_COMMAND}" -E env "CARGO_TARGET_DIR=${SWITCH_CARGO_TARGET_DIR}"
+    "${CARGO}" build --locked --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/sdk/Cargo.toml"
+    --release -p kirikae-rt --no-default-features --features decomp-native,h264
+  DEPENDS ${RUNTIME_SOURCE} sdk/Cargo.toml sdk/Cargo.lock sdk/crates/rt/Cargo.toml
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  VERBATIM)
+add_custom_target(switch_host_runtime DEPENDS "${SWITCH_RUST_LIBRARY}")
+file(GLOB GAME_SOURCE CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/*.c")
+add_executable(switch_native runtime/main.c runtime/bridge.c runtime/modules.c runtime/integrity.cpp ${GAME_SOURCE})
+add_dependencies(switch_native switch_host_runtime)
+target_include_directories(switch_native PRIVATE game runtime)
+target_compile_options(switch_native PRIVATE $<$<COMPILE_LANGUAGE:C>:-fno-strict-aliasing;-ffp-contract=off>)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+  target_compile_options(switch_native PRIVATE $<$<COMPILE_LANGUAGE:C>:-mcx16>)
+endif()
+target_link_libraries(switch_native PRIVATE "${SWITCH_RUST_LIBRARY}")
+if(WIN32)
+  target_link_libraries(switch_native PRIVATE ws2_32 userenv bcrypt ntdll avrt ole32 oleaut32 uuid setupapi winmm shell32 advapi32 gdi32)
+elseif(UNIX)
+  find_package(Threads REQUIRED)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
+  pkg_check_modules(UDEV REQUIRED IMPORTED_TARGET libudev)
+  target_link_libraries(switch_native PRIVATE Threads::Threads PkgConfig::ALSA PkgConfig::UDEV dl m)
+endif()

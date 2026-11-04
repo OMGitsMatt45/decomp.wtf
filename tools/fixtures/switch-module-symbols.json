@@ -1,0 +1,25 @@
+{
+  "main": {
+    "sm_name": 5824,
+    "ipc_initialize": 5632,
+    "ipc_get_service": 5696,
+    "ipc_language": 5760,
+    "debug_message": 5828,
+    "_entry": 0,
+    "main_init": 656,
+    "_start": 256,
+    "results": 8200,
+    "got_sdk": 8320,
+    "relative_result": 8328,
+    "weak_slot": 8344,
+    "shared_counter": 8192,
+    "main_array": 8336
+  },
+  "sdk": {
+    "_entry": 0,
+    "fixture_add": 256,
+    "sdk_init": 276,
+    "counter_ptr": 8192,
+    "sdk_array": 8200
+  }
+}

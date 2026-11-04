@@ -13,6 +13,22 @@ def add_parser(sub):
     status.add_argument('--platform', default='')
     verify = actions.add_parser('verify', help='verify a PC project without claiming gameplay qualification')
     verify.add_argument('path', type=Path)
+    switch_inspect = actions.add_parser('switch-inspect', help='inspect a Switch NSO/NRO or link extracted ExeFS modules; development only')
+    switch_inspect.add_argument('input', type=Path)
+    switch_probe = actions.add_parser('switch-probe', help='Switch AArch64 C source CPU probe; no graphics or retail runtime')
+    switch_probe.add_argument('input', type=Path)
+    switch_probe.add_argument('output', type=Path)
+    switch_probe.add_argument('--experimental', action='store_true', required=True)
+    switch_runtime = actions.add_parser('switch-runtime', help='host-linked Switch ExeFS source and bounded services; no graphics or retail runtime')
+    switch_runtime.add_argument('input', type=Path)
+    switch_runtime.add_argument('output', type=Path)
+    switch_runtime.add_argument('--experimental', action='store_true', required=True)
+    switch_native = actions.add_parser('switch-native', help='experimental Switch editable C source with source-shipped desktop services and Vulkan runtime')
+    switch_native.add_argument('input', type=Path)
+    switch_native.add_argument('output', type=Path)
+    switch_native.add_argument('--experimental', action='store_true', required=True)
+    switch_native.add_argument('--romfs', type=Path, help='optional owner-extracted RomFS image')
+    switch_native.add_argument('--feedback', action='append', type=Path, default=[], help='exact-input missing-target report; repeat to combine coverage')
     ctr_inspect = actions.add_parser('ctr-inspect', help='validate a decrypted 3DS NCCH/NCSD executable without exporting or running it')
     ctr_inspect.add_argument('input', type=Path)
     ctr_probe = actions.add_parser('ctr-probe', help='3DS native C/C++ CPU development project; no graphics or retail game runtime yet')
@@ -86,7 +102,22 @@ def add_parser(sub):
 
 def run(args):
     try:
-        if args.pc_action == 'ctr-inspect':
+        if args.pc_action == 'switch-inspect':
+            if args.input.is_dir():
+                from .switch_native.exefs import load
+            else:
+                from .switch_native.media import load
+            result = load(args.input)
+        elif args.pc_action == 'switch-probe':
+            from .switch_native import export_probe
+            result = export_probe(args.input, args.output)
+        elif args.pc_action == 'switch-runtime':
+            from .switch_native.runtime_project import export
+            result = export(args.input, args.output)
+        elif args.pc_action == 'switch-native':
+            from .switch_native.desktop.project import export
+            result = export(args.input, args.output, romfs=args.romfs, feedback=args.feedback)
+        elif args.pc_action == 'ctr-inspect':
             from .ctr_native.media import load
             result = load(args.input)
         elif args.pc_action == 'ctr-probe':

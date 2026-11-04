@@ -48,6 +48,8 @@ def input_platform(path: Path) -> str:
         with path.open('rb') as stream:
             head=stream.read(0x440)
             platforms.require(platforms.removed_input(head,path.stat().st_size),PCError)
+            if head[:4] == b'NSO0' or head[0x10:0x14] == b'NRO0':
+                return 'switch'
             from .ctr_native.media import recognizable
             if recognizable(head):return '3ds'
     if path.suffix.lower() in ('.3ds','.cci','.cxi','.cia','.3dsx'):
@@ -88,11 +90,18 @@ def status(platform: str = '') -> dict:
     key = platforms.canonical(platform)
     available = [dict(id=b.id, platform=b.platform, revision=b.revision, experimental=b.experimental)
                  for b in _backends() if not key or b.platform == key]
+    development = dict(commands=['switch-inspect', 'switch-probe', 'switch-runtime', 'switch-native'],
+        inputs=['decrypted ExeFS', 'NSO', 'homebrew NRO'], host_qualified=['linux-x86_64'],
+        scope='experimental static C source and source-shipped desktop services; adaptive game presentation and retail gameplay unqualified') if key == 'switch' else None
+    reason = ('Switch source development is available through decomp pc switch-native --experimental. '
+              'Its desktop runtime is experimental; it is not a registered game-output backend.') if key == 'switch' else (
+              'No PC-project backend is installed for this platform. '
+              'Matching console exports remain separate from native PC projects.')
     return dict(platform=key or None, first_platform='nds', available=bool(available), backends=available,
+        development=development,
         experimental=bool(available) and all(b['experimental'] for b in available),
         console_reconstruction_is_pc_output=False,
-        reason='' if available else 'No PC-project backend is installed for this platform. '
-            'Matching console exports remain separate from native PC projects.')
+        reason='' if available else reason)
 
 
 def _file(root: Path, name: str) -> Path:

@@ -1,0 +1,192 @@
+{
+  "schema": "decomp.wtf.switch-foundation-validation/v1",
+  "date_utc": "2026-11-04",
+  "scope": "original single-module CPU source export and donor comparisons",
+  "backend_revision": "7be2e79f565f7ef6263d2a4b778008585260a224c8f4cc3169c9686d0f39acfc",
+  "host": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "rustc": "1.90.0",
+    "c_compiler": "Clang 22.1.8 via Zig 0.17.0",
+    "cxx_compiler": "GCC 14.2.0",
+    "cmake": "4.4.4"
+  },
+  "application_tests": {
+    "command": "python -m pytest -q tests/test_switch_native.py tests/test_pc_output.py tests/test_platform_scope.py",
+    "tests": 121,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "native_runs": [
+    {
+      "input_format": "nso",
+      "input_sha256": "5b2b237c03ec101a59a177d870b2d6716f50b2736216e593226123b18afebe9f",
+      "status": "passed",
+      "compared": [
+        "x0-x30",
+        "v0-v31",
+        "NZCV",
+        "first 64 data bytes"
+      ],
+      "all_reference_values_equal": true,
+      "result_x0": 150,
+      "native_function_entries": 3,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false,
+      "negative_runs": {
+        "changed-code": {
+          "failure": "changed-code",
+          "interpreter_instructions": 0
+        },
+        "missing-native-target": {
+          "failure": "missing-native-target",
+          "interpreter_instructions": 0
+        },
+        "asset-failed": {
+          "failure": "asset-identity-mismatch",
+          "interpreter_instructions": 0
+        }
+      }
+    },
+    {
+      "input_format": "compressed-nso",
+      "input_sha256": "45d2744c39f0584c35da40b1006d76a977e4b922277dd9a5d0cec9258ea43cc4",
+      "status": "passed",
+      "compared": [
+        "x0-x30",
+        "v0-v31",
+        "NZCV",
+        "first 64 data bytes"
+      ],
+      "all_reference_values_equal": true,
+      "result_x0": 150,
+      "native_function_entries": 3,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false,
+      "negative_runs": {
+        "changed-code": {
+          "failure": "changed-code",
+          "interpreter_instructions": 0
+        },
+        "missing-native-target": {
+          "failure": "missing-native-target",
+          "interpreter_instructions": 0
+        },
+        "asset-failed": {
+          "failure": "asset-identity-mismatch",
+          "interpreter_instructions": 0
+        }
+      }
+    },
+    {
+      "input_format": "nro",
+      "input_sha256": "0aa33f08b6b0e0c50f591357b0eb38aa163135693b8b1e2dd0631aab1ef5f8f5",
+      "status": "passed",
+      "compared": [
+        "x0-x30",
+        "v0-v31",
+        "NZCV",
+        "first 64 data bytes"
+      ],
+      "all_reference_values_equal": true,
+      "result_x0": 150,
+      "native_function_entries": 3,
+      "interpreter_instructions": 0,
+      "runtime_compilation": false,
+      "negative_runs": {
+        "changed-code": {
+          "failure": "changed-code",
+          "interpreter_instructions": 0
+        },
+        "missing-native-target": {
+          "failure": "missing-native-target",
+          "interpreter_instructions": 0
+        },
+        "asset-failed": {
+          "failure": "asset-identity-mismatch",
+          "interpreter_instructions": 0
+        }
+      }
+    }
+  ],
+  "donor_validation": {
+    "schema": "decomp.wtf.switch-donor-validation/v1",
+    "scope": "pinned donor tests and original scalar translation comparisons",
+    "sources": [
+      {
+        "id": "lasrecomp",
+        "commit": "a6b4f03844ecfb4012f18deff96da8b410aeafcd",
+        "archive_sha256": "651895143dd76a2a18f873f5ef54609337c57348527c47ca87fd0b87041e78fc",
+        "verified": true
+      },
+      {
+        "id": "nxport",
+        "commit": "0b4c2daf5367dd3fbf29e988c8f584c4a94b52a4",
+        "archive_sha256": "c43db526975992c790ab40cc6b9f07d4b85abff36efe430c05a1d50b10837b35",
+        "verified": true
+      },
+      {
+        "id": "nxrecomp",
+        "commit": "de23ddc8e2447fe6b4ec626807a31dab7ab4b807",
+        "archive_sha256": "6e7ce09b0a91ebebcd921b583602e51d9f298de988fecf5243f91857d4aef062",
+        "verified": true
+      },
+      {
+        "id": "kirikae",
+        "commit": "726c4a1bc6fd9a52a22606894b80a903f4728e55",
+        "archive_sha256": "169526e2e2e673baf990a5704434aa2a173da79ae36016bdb71c8b231553dd1c",
+        "verified": true
+      }
+    ],
+    "unit_tests": [
+      {
+        "donor": "nxport",
+        "passed": 20,
+        "failed": 0
+      },
+      {
+        "donor": "kirikae",
+        "passed": 15,
+        "failed": 0
+      }
+    ],
+    "scalar_comparison": {
+      "status": "passed",
+      "instructions": [
+        "add64",
+        "sub64",
+        "mul64",
+        "xor64",
+        "and64",
+        "or64",
+        "add32",
+        "sub32",
+        "mul32"
+      ],
+      "input_pairs": 256,
+      "cases": 2304,
+      "references": [
+        "lasrecomp",
+        "nxrecomp",
+        "independent Python unsigned arithmetic"
+      ]
+    },
+    "retail": false,
+    "graphics": false
+  },
+  "qualification": {
+    "cpu_fixture": true,
+    "retail": false,
+    "graphics": false,
+    "audio": false,
+    "saves": false,
+    "windows": false
+  },
+  "limitations": [
+    "Only single extracted NSO/NRO modules; ExeFS linking and relocation startup not implemented.",
+    "No Horizon kernel, GPU, audio, input or save runtime is integrated.",
+    "Code is checked at function entry; intra-function self-modification is unsupported.",
+    "Scalar donor comparisons cover nine integer instruction forms, not the entire AArch64 ISA."
+  ]
+}

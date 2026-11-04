@@ -37,7 +37,10 @@ and Windows build are a concrete reference, not proof of a generic DS backend.
 GB/GBC, N64, GameCube and Wii are outside the current product scope. Their
 implementation history remains in Git; existing project files are preserved.
 Additional console proposals are [deferred planning references](pr-scope-audit.md#deferred-console-proposals),
-including Switch; they are not registered application backends.
+while [Switch](future/switch.md) now has explicit experimental source exports.
+Switch's source-shipped desktop runtime is checked on original CPU programs and
+a software Vulkan scene. It retains development manifests until adaptive game
+presentation and broader host/game qualification are complete.
 
 ## Generated repository acceptance target
 

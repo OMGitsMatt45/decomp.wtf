@@ -1,0 +1,1999 @@
+{
+  "schema": "decomp.wtf.switch-desktop-qualification/v1",
+  "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+  "host": "linux",
+  "guest_cpu": "static C, no interpreter or runtime compiler",
+  "runs": [
+    {
+      "name": "hello",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "187f3b34ca50076b47eff7bf7158917f740b62c85be0f1d53e673ee0852f59ad",
+      "source_manifest_sha256": "0ec0fbc536183b463f079c5f84fa163ea8c77989f20226806a36b1637def8d42",
+      "host_executable_sha256": "eb90af0a83764383143b664de10f71245eb3ccdaebea73ab61d10156f5caa3c4"
+    },
+    {
+      "name": "threads",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "197854665e84f2d58c05880fe0c89544eb21148ccfe92c4f3f9adac2582a635a",
+      "source_manifest_sha256": "bb8142403e834aecf3c2fed6e8ab52dd1ca14085010b4a85f004286fa7e529f4",
+      "host_executable_sha256": "a1fbd34e05555855ca62380a55f70a1315cbd566abf9c3e53662c1d1d5ebc19b"
+    },
+    {
+      "name": "parallel-threads",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "6eabe895e438a6e328ae6de4198282eb21d6fe62491ba7eb4e0d8f7ab1967847",
+      "source_manifest_sha256": "8f55824ed2a4474bc67b3f6129b5f3cbd2f65fbca93277655ea43c1a24a811fe",
+      "host_executable_sha256": "c2089339c4dc035d054de742fada479f0ce18339390e93d4966d36a46962a9a5"
+    },
+    {
+      "name": "exefs",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "004f5d82512582bf7d65675a40b6b118f5e4fbf516e513c2ab5ee3c4bdc70fb8",
+      "source_manifest_sha256": "9077c77bb465b70b24bb55756991a6a01b3b2327a40e1582f621cbe796e101af",
+      "host_executable_sha256": "1b6a84f0c291e3658b3d859d5b8bd4136cce6f7bbc22f19bf3ab3f103256722f"
+    },
+    {
+      "name": "cpu",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "df0f627dd5bc0933a01871cb63e53e2106c63ff5173f88a54d6d6e469162f5be",
+      "source_manifest_sha256": "a45267632c0956f1233d50162637ad470601fcfa25a0996bf48c614a9dcaf125",
+      "host_executable_sha256": "fc286419a26ccde955c9250105189f0b975e04d7d300b05b7b9cd0f6d5b9b9c9"
+    },
+    {
+      "name": "cpu-nso",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "01489948d7a358b91fd1e2c88595ffdef2ce0d54476f01e52788a512b9664582",
+      "source_manifest_sha256": "3ed4b3ce589707893543dd1854d62aff933fb80e963da4d1f2a35075937423bb",
+      "host_executable_sha256": "bf3fe52fc7f0d9320e52d24fc0650fafdecfded6db7622dee48eb924d11ff48b"
+    },
+    {
+      "name": "exclusive",
+      "status": "passed",
+      "expected_exit": 0,
+      "interpreter_instructions": 0,
+      "report_sha256": "5de67e1bad9490fe85df8a69a75f87607d707137774156b99c38aa315746b0b4",
+      "source_manifest_sha256": "3597e9cca12231f817814c6c479d14a4a26aaef64bd0a7f97b9f66fa13d29eab",
+      "host_executable_sha256": "7a0544fa2224c3480f782cf77d1a90baa04daca2afd091c02f4ef3a3a614cc10"
+    },
+    {
+      "name": "missing",
+      "status": "failed",
+      "expected_exit": 2,
+      "interpreter_instructions": 0,
+      "report_sha256": "93003a441bef1df23dddbb8a88d4685c0a2edb5d04a40aaab464e7fe2c91b4e2",
+      "source_manifest_sha256": "2a7257209f33ec06792d2b70a8e913a2803300e2c385f90e239509033dd0ea0e",
+      "host_executable_sha256": "bd925a9d074529481a4646f6a4455526a830b7a560f1d0599a75bc1dd3db7e3d"
+    },
+    {
+      "name": "svc",
+      "status": "failed",
+      "expected_exit": 2,
+      "interpreter_instructions": 0,
+      "report_sha256": "5999c9653c1ecad5db4111a8f0857c05aaa9655e144dfa37ece66b8e26496b97",
+      "source_manifest_sha256": "dee15c9c69598c4658b50ae5a28aab2fe9fa2ad03958c7a4c52f9d4216badf7a",
+      "host_executable_sha256": "74ab769b052755ca81582f7a201d8a991294ac76a5eb2f9ba1e803a24deeff48"
+    },
+    {
+      "name": "fault",
+      "status": "failed",
+      "expected_exit": 4,
+      "interpreter_instructions": 0,
+      "report_sha256": "d0c76dcc3e0e74afa4ca6c620c5f197d3a619c9cd60952057f6a34a7df8edec2",
+      "source_manifest_sha256": "6545ec289b463aa2f68063547d2b6808f5be63d657a6441744fdf4834ea25c87",
+      "host_executable_sha256": "2d92a6e83eefefd225721c53216370fabca7d78e3040ea122b671728a8fbca94"
+    }
+  ],
+  "changed_asset_rejected_before_execution": true,
+  "combined_interpreter_build_rejected": true,
+  "runtime_tests": 200,
+  "graphics": {
+    "cpu_path": "host qualification scene",
+    "draws": 2,
+    "frames": [
+      {
+        "expected_area": 3456.0,
+        "height": 96,
+        "red_pixels": 3456,
+        "width": 128
+      },
+      {
+        "expected_area": 13824.0,
+        "height": 192,
+        "red_pixels": 13824,
+        "width": 256
+      }
+    ],
+    "pushbuffer_submits": 2,
+    "renderer": {
+      "api": "vulkan",
+      "device": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "fallback_reason": "Vulkan CPU device",
+      "software": true,
+      "software_fallback_reported": true
+    },
+    "schema": "decomp.wtf.switch-graphics-probe/v1",
+    "skipped": 0,
+    "status": "passed"
+  },
+  "retail": false,
+  "windows_qualified": false,
+  "adaptive_geometry_qualified": false,
+  "audio_evidence": "upstream mixer/resampler/service unit tests; no physical playback qualification",
+  "input_evidence": "upstream keyboard/controller/HID unit tests; no physical controller qualification",
+  "saves_evidence": "upstream filesystem/RomFS/title-root unit tests",
+  "recorded_date": "2026-11-04",
+  "host_toolchains": {
+    "arch": "x86_64",
+    "rustc": "1.95.0",
+    "clang": "22.1.8 via Zig 0.17.0",
+    "cxx": "GCC 14.2.0",
+    "cmake": "4.4.4",
+    "vulkan": "Mesa 25.0.7 llvmpipe / LLVM 19.1.7"
+  },
+  "application_tests": {
+    "command": "python -m pytest -q tests/test_switch_desktop.py tests/test_switch_native.py tests/test_switch_exefs.py tests/test_switch_native_app.py tests/test_pc_output.py tests/test_platform_scope.py tests/test_pc_projects.py",
+    "passed": 201,
+    "failed": 0,
+    "skipped": 0,
+    "note": "The local ASGI tests need the execution sandbox to permit socket wakeups."
+  },
+  "qualification_tool": {
+    "path": "tools/qualify_switch_desktop.py",
+    "sha256": "7e9309e696fe36528844b7840df92fb8f3c6b4011c7ec670b937ab30146164c8",
+    "resumed_after": "Generated build caches exhausted disk during graphics linking; caches were cleared, sources reverified and every qualification step rerun successfully."
+  },
+  "source_pins": [
+    {
+      "id": "lasrecomp",
+      "commit": "a6b4f03844ecfb4012f18deff96da8b410aeafcd",
+      "archive_sha256": "651895143dd76a2a18f873f5ef54609337c57348527c47ca87fd0b87041e78fc"
+    },
+    {
+      "id": "nxport",
+      "commit": "0b4c2daf5367dd3fbf29e988c8f584c4a94b52a4",
+      "archive_sha256": "c43db526975992c790ab40cc6b9f07d4b85abff36efe430c05a1d50b10837b35"
+    },
+    {
+      "id": "nxrecomp",
+      "commit": "de23ddc8e2447fe6b4ec626807a31dab7ab4b807",
+      "archive_sha256": "6e7ce09b0a91ebebcd921b583602e51d9f298de988fecf5243f91857d4aef062"
+    },
+    {
+      "id": "kirikae",
+      "commit": "726c4a1bc6fd9a52a22606894b80a903f4728e55",
+      "archive_sha256": "169526e2e2e673baf990a5704434aa2a173da79ae36016bdb71c8b231553dd1c"
+    }
+  ],
+  "runtime_source_inventory_sha256": "2bf7bfa4e27c04cbcc5abb2c11a34b4625f946fb75c67c9fd847253c9cc05394",
+  "run_details": {
+    "hello": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "64000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 2147483648,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          0,
+          1,
+          134230045,
+          10,
+          0,
+          54,
+          0,
+          0,
+          0,
+          134218224,
+          18446744073709547904,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          144,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "51b6f08162f055db7a27ee7b7bf00447bab37d58403a6b5fa51c9b0eb8c0bc3b",
+      "interpreter_instructions": 0,
+      "native_function_entries": 1982,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "threads": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "00000000000000009001000000000000020000000000000001000200000000000200020000000000409c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 1610612736,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          0,
+          1,
+          134230043,
+          10,
+          0,
+          52,
+          0,
+          0,
+          0,
+          40000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          134225936,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "00832b71aa835a2e7e217d55eddfb23504187b8a2cb3b591a579ed6e6b258b35",
+      "interpreter_instructions": 0,
+      "native_function_entries": 4,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "parallel-threads": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "00000000000000009001000000000000020000000000000001000200000000000200020000000000409c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 1610612736,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          0,
+          1,
+          134230043,
+          10,
+          0,
+          52,
+          0,
+          0,
+          0,
+          40000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          134225936,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "b551d1140e55ae93fc24bc08c96cd5b65bdec363688dadf40936ae6dbdead671",
+      "interpreter_instructions": 0,
+      "native_function_entries": 4,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "exefs": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 485331312640,
+          "hex": "0c000000000000002a00000000000000000000000200000051000000000000000000000000000000656e2d555300000001e40000000000000820000071000000090000000000000001ca000000000000656e2d5553000000911b00000000000000000000000000000000000000000000000000000000000000000000000000000001010071000000082000007100000090020000710000000900000000000000",
+          "module": "main"
+        },
+        {
+          "address": 485331378176,
+          "hex": "00200000710000001401010071000000",
+          "module": "sdk"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 0,
+        "pc": 18446744073709486080,
+        "sp": 17179934720,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          42,
+          22,
+          131074,
+          0,
+          0,
+          0,
+          0,
+          0,
+          485331312792,
+          9,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 2,
+      "input_sha256": "11df99248823e14a571298acecb93531b31b2fff3bf3c1083c9c859cbfe60cdf",
+      "interpreter_instructions": 0,
+      "native_function_entries": 4,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "cpu": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "78000000000000000000000001000000000060400000000000000000000000001000000010000000100000001000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 1610612736,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            1069547520,
+            0
+          ],
+          [
+            1073741824,
+            0
+          ],
+          [
+            1080033280,
+            0
+          ],
+          [
+            30064771079,
+            30064771079
+          ],
+          [
+            38654705673,
+            38654705673
+          ],
+          [
+            68719476752,
+            68719476752
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          150,
+          120,
+          134225920,
+          4294967295,
+          0,
+          1,
+          134218100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "0aa33f08b6b0e0c50f591357b0eb38aa163135693b8b1e2dd0631aab1ef5f8f5",
+      "interpreter_instructions": 0,
+      "native_function_entries": 3,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "cpu-nso": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 485331312640,
+          "hex": "78000000000000000000000001000000000060400000000000000000000000001000000010000000100000001000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 1610612736,
+        "pc": 18446744073709486080,
+        "sp": 17179934720,
+        "v": [
+          [
+            1069547520,
+            0
+          ],
+          [
+            1073741824,
+            0
+          ],
+          [
+            1080033280,
+            0
+          ],
+          [
+            30064771079,
+            30064771079
+          ],
+          [
+            38654705673,
+            38654705673
+          ],
+          [
+            68719476752,
+            68719476752
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          150,
+          120,
+          485331312640,
+          4294967295,
+          0,
+          1,
+          485331304820,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "2ec75a4a70a634a5cdaca76dabe35b80075f897c41de2cf2f704d9f94c964d85",
+      "interpreter_instructions": 0,
+      "native_function_entries": 3,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "exclusive": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "13000000000000002400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 0,
+      "failures": [],
+      "final_cpu": {
+        "nzcv": 0,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          17,
+          34,
+          18,
+          35,
+          0,
+          19,
+          36,
+          0,
+          0,
+          134225920,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "e1d66f6f69b8a522643c66560270b6c5ef7b08475047e35e41f49d3811473e6b",
+      "interpreter_instructions": 0,
+      "native_function_entries": 1,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "passed"
+    },
+    "missing": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 2,
+      "failures": [
+        {
+          "kind": "missing-native-target",
+          "pc": 134250496,
+          "thread": 81
+        }
+      ],
+      "final_cpu": {
+        "nzcv": 0,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          0,
+          65537,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          134250496,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "8efb404bc0621d31aae428012ffa1c035c254e3d03a5250691e865be0e8cff7a",
+      "interpreter_instructions": 0,
+      "native_function_entries": 1,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "failed"
+    },
+    "svc": {
+      "audio": null,
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "data_samples": [
+        {
+          "address": 134225920,
+          "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "module": "main"
+        }
+      ],
+      "drawable": null,
+      "exit_code": 2,
+      "failures": [
+        {
+          "command": 127,
+          "interface": "Horizon",
+          "kind": "svc",
+          "note": "unimplemented SVC",
+          "pc": 134217860
+        }
+      ],
+      "final_cpu": {
+        "nzcv": 0,
+        "pc": 18446744073709486080,
+        "sp": 17180917760,
+        "v": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "x": [
+          16897,
+          65537,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18446744073709486080
+        ]
+      },
+      "frames": 0,
+      "graphics": null,
+      "headless": true,
+      "initializers_run": 0,
+      "input_sha256": "b225cc4064c09f964d10eabe1376eeb05b7fac708564c7a6c793c45ae4676c48",
+      "interpreter_instructions": 0,
+      "native_function_entries": 1,
+      "output_kind": "cpu-probe",
+      "platform": "switch",
+      "renderer_device": null,
+      "renderer_requested": "auto",
+      "retail_qualification": false,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "failed"
+    },
+    "fault": {
+      "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+      "exit_code": 4,
+      "failures": [
+        {
+          "address": 0,
+          "kind": "guest-memory-fault"
+        }
+      ],
+      "input_sha256": "2b2c73ef830dcedbad6ab7b3e6df029a9671f271ef65030cfdd45b287869c7dd",
+      "interpreter_instructions": 0,
+      "runtime_compilation": false,
+      "schema": "decomp.wtf.switch-native-run/v1",
+      "status": "failed"
+    }
+  },
+  "changed_asset_report": {
+    "backend_revision": "a44374fed34895a3830902cf04e5707c692b15ba439936571dcccc0c97ab78af",
+    "error": "asset identity differs: /workspace/scratch/switch-desktop-release-validation/hello-source/assets/main.bin",
+    "input_sha256": "51b6f08162f055db7a27ee7b7bf00447bab37d58403a6b5fa51c9b0eb8c0bc3b",
+    "interpreter_instructions": 0,
+    "native_function_entries": 0,
+    "runtime_compilation": false,
+    "schema": "decomp.wtf.switch-native-run/v1",
+    "status": "failed"
+  }
+}
