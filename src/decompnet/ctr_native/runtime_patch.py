@@ -24,6 +24,27 @@ def apply_handle_info(root):
         '        0x28 => get_system_tick(system),\n        0x29 => svc_handle_info::get(system),')
 
 
+def apply_local_friend_lookup(root):
+    services = Path(root) / 'runtime/crates/zakuro-core/src/services'
+    replace(services, 'uds.rs', '\nfn reply_static(', '\npub(super) fn reply_static(')
+    replace(services, 'frd.rs',
+        '        // GetLastResponseResult, what the last request to the servers got',
+        '''        // UnscrambleLocalFriendCode only returns codes from the console's
+        // friend list. The offline console has no friends, so all are zero.
+        0x001C => {
+            let count = buffer.get(memory, 1);
+            let input = buffer.get(memory, 2);
+            if header.0 != 0x001C_0042 || input & 0x3FFF != 0x402
+                || count.checked_mul(12) != Some(input >> 14)
+            {
+                buffer.reply_error(memory, command, errors::INVALID_COMBINATION.0);
+            } else {
+                super::uds::reply_static(system, buffer, command, &[], &[], count as usize * 8);
+            }
+        }
+        // GetLastResponseResult, what the last request to the servers got''')
+
+
 def apply(root):
     root = Path(root)
     apply_handle_info(root)
@@ -160,6 +181,7 @@ def apply(root):
 
     /// one console hosts a network, the other finds it scanning, reads its''')
     import shutil
+    apply_local_friend_lookup(root)
     shutil.copyfile(Path(__file__).with_name('ac_offline.rs'),root/'runtime/crates/zakuro-core/src/services/ac_offline.rs')
     shutil.copyfile(Path(__file__).with_name('cecd_empty.rs'),root/'runtime/crates/zakuro-core/src/services/cecd_empty.rs')
     replace(root,'runtime/crates/zakuro-core/src/services/cecd.rs',
