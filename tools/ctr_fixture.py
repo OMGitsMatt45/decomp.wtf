@@ -16,6 +16,9 @@ def fixture(kind='arm'):
         # float 1.0 -> s0; s0+s0 -> s0; return IEEE float bits for 2.0
         # An ARM linker veneer computes the Thumb target; there is no pointer literal.
         'veneer': struct.pack('<6I2H',0xeb000002,0xef000003,0,0,0xe28fc001,0xe12fff1c,0x202a,0x4770),
+        # The linked veneer can skip a different Thumb function in the same block.
+        'far-veneer': struct.pack('<6I6H',0xeb000002,0xef000003,0,0,0xe28fc009,0xe12fff1c,
+            0x2029,0x4770,0x202b,0x4770,0x202a,0x4770),
         # Thumb PIC loads a relative literal, preserves it across a stack store,
         # adds the instruction's PC and calls the resulting Thumb callback.
         'pic-callback': struct.pack('<6I12HI',0xeb000002,0xef000003,0,0,0xe28fc001,0xe12fff1c,
@@ -38,6 +41,9 @@ def fixture(kind='arm'):
         # pointer. The first reaches Thumb code, which ARM gap scanning misses.
         'relative-callbacks': struct.pack('<6I6H',0xe59f300c,0xe5930000,0xe0833000,
             0xe12fff33,0xef000003,BASE+0x1000,0x202a,0x4770,0x202b,0x4770,0x202c,0x4770),
+        # Two relative slots with distinct, well-formed Thumb prologues.
+        'relative-callback-pair': struct.pack('<6I6H',0xe59f300c,0xe5930000,0xe0833000,
+            0xe12fff33,0xef000003,BASE+0x1000,0xb500,0x202a,0xbd00,0xb500,0x202b,0xbd00),
         'unsupported-service': struct.pack('<II', 0xef000001, 0xef000003),
         'unknown-target': struct.pack('<II', 0xe3a03000, 0xe12fff13),
         'unsupported-opcode': struct.pack('<II', 0xee100f10, 0xef000003),
@@ -52,6 +58,8 @@ def fixture(kind='arm'):
     if kind in ('relative-callbacks','hidden-callback'):
         count=3 if kind=='relative-callbacks' else 1
         rodata=struct.pack('<'+'I'*count,*((BASE+0x19+4*i-(BASE+0x1000+4*i))&0xffffffff for i in range(count)))
+    if kind=='relative-callback-pair':
+        rodata=struct.pack('<II', (-0xfe7)&0xffffffff, (-0xfe5)&0xffffffff)
     code = text+bytes(0x1000-len(text))+rodata+bytes(0x1000-len(rodata))+data
     if kind=='blz-arm':
         code=bytes.fromhex(Path(__file__).with_name('fixtures').joinpath('ctr-arm-code.blz.hex').read_text())
