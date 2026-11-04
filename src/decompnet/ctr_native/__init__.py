@@ -78,7 +78,7 @@ def generate(project, root):
     input_source = project.get('_source',path)
     inspection = media.load_source(input_source, include_code=True)
     code = inspection.pop('code')
-    from . import coverage
+    from . import constructors, coverage
     observed, reports=coverage.load(project.get('feedback',()),inspection)
     rustc = os.environ.get('DECOMP_3DS_RUSTC') or shutil.which('rustc')
     if not rustc:
@@ -116,8 +116,9 @@ def generate(project, root):
                 entries.update(_relative_callback_run(relative, code, text['address']))
                 relative.clear()
         entries.update(_relative_callback_run(relative, code, text['address']))
+    constructor_entries = constructors.entries(code, inspection['segments'])
     seeds.write_text('\n'.join([*map(str,[inspection['entry'],*sorted(entries-{inspection['entry']})]),
-                              *('hint:'+str(at) for at in sorted(observed))])+'\n')
+                              *('hint:'+str(at) for at in sorted(observed | constructor_entries))])+'\n')
     if reports:
         inspection['coverage']=dict(input_sha256=inspection['input']['sha256'],entries=sorted(observed),reports=reports)
     if project.get('instruction_boundaries'):
