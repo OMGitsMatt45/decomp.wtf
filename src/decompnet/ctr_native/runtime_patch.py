@@ -163,6 +163,41 @@ def apply(root):
     apply_gsp_lifetime(root)
     apply_graphics(root)
     apply_microphone(root)
+    apply_cro_cheat_aliases(root)
+
+
+def apply_cro_cheat_aliases(root):
+    """Resolve cheat addresses through the 3DS loader's copied code ranges."""
+    import shutil
+
+    core = Path(root) / 'runtime/crates/zakuro-core/src'
+    shutil.copyfile(Path(__file__).with_name('cheat_cro.rs'), core/'cheat_cro.rs')
+    replace(core, 'cheats.rs', 'struct CodeRanges {',
+        'struct CodeRanges {\n    aliases: Vec<cro_alias::CodeAlias>,')
+    replace(core, 'cheats.rs', 'impl CodeRanges {\n    fn of(system: &System)',
+        '#[path = "cheat_cro.rs"]\nmod cro_alias;\n\nimpl CodeRanges {\n    fn of(system: &mut System)')
+    replace(core, 'cheats.rs', 'CodeRanges { text, modules, text_changed:',
+        'CodeRanges { aliases: cro_alias::code_aliases(system), text, modules, text_changed:')
+    replace(core, 'cheats.rs', '            write(system, ranges, addr, 1, original as u32);',
+        '            write_at(system, ranges, addr, 1, original as u32);')
+    replace(core, 'cheats.rs', 'fn write(system: &mut System, ranges: &mut CodeRanges, addr: u32, size: u32, value: u32) {',
+        '''fn read_cheat(system: &mut System, ranges: &CodeRanges, addr: u32, size: u32) -> u32 {
+    read(system, cro_alias::resolve(&ranges.aliases, addr, size), size)
+}
+
+fn write(system: &mut System, ranges: &mut CodeRanges, addr: u32, size: u32, value: u32) {
+    let target = cro_alias::resolve(&ranges.aliases, addr, size);
+    write_at(system, ranges, target, size, value);
+}
+
+fn write_at(system: &mut System, ranges: &mut CodeRanges, addr: u32, size: u32, value: u32) {''')
+    for expression in (
+        'holds(line.value, read(system, addr, 4))',
+        'read(system, addr, 2)',
+        's.offset = read(system, addr, 4)',
+        'read(system, line.value.wrapping_add(s.offset), size)',
+    ):
+        replace(core, 'cheats.rs', expression, expression.replace('read(system, ', 'read_cheat(system, ranges, '))
 
 
 def apply_microphone(root):
