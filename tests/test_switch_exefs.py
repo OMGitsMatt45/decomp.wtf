@@ -322,6 +322,10 @@ def test_setjmp_plt_return_site_is_a_native_entry(tmp_path, runtime_tools):
     assert main['returns_twice']['slots'] == [BASE + 0x2080]
     assert BASE + 0x188 in discovery.entries(main['image'], main)
     output, binary = build_runtime(tmp_path, *runtime_tools)
+    # A call's SPILL has already synchronized the Cpu field. Reading a
+    # promoted gsp after SPILL can use an uninitialized C local.
+    code = (output / 'game/guest0_000.c').read_text()
+    assert 'uint64_t rt_sp = (c)->sp;' in code and 'uint64_t rt_sp = gsp;' not in code
     result, actual = run_runtime(tmp_path, output, binary)
     assert result.returncode == 0 and actual['x'][0] == 42, actual
 

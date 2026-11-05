@@ -73,8 +73,10 @@ def build(*, desktop=False):
         module = patched / 'src/module.rs'
         for call in ('{}(c);', 'rt_dispatch(c);',
                      '{{ GuestFn rt_f = rt_hit(c->pc); if (rt_f) rt_f(c); else rt_dispatch(c); }}'):
+            # Read the spilled field. The parenthesized pointer prevents the
+            # lifter from substituting a local whose liveness ended at SPILL.
             replace_once(module, 'SPILL ' + call + ' RELOAD RT_RETURNED(c, {ra})',
-                         'SPILL {{ uint64_t rt_sp = c->sp; ' + call +
+                         'SPILL {{ uint64_t rt_sp = (c)->sp; ' + call +
                          ' RT_RETURNED(c, {ra}, rt_sp) }} RELOAD ')
         replace_once(patched / 'runtime/cpu.h', '#define RT_RETURNED(c, ra)', '#define RT_RETURNED(c, ra, sp_before_call)')
         replace_once(patched / 'runtime/cpu.h', '        __attribute__((musttail)) return rt_dispatch(c);',
