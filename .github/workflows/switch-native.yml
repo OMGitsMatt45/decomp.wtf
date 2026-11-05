@@ -86,7 +86,7 @@ jobs:
       - run: uv sync --locked --group dev --python 3.12
       - name: Export the verified runtime and exercise Maxwell winding on Vulkan
         run: |
-          uv run --no-sync python -c "from decompnet.switch_native.desktop import sdk; sdk.export('switch-graphics-sdk')"
+          uv run --no-sync python -c "from pathlib import Path; from decompnet.switch_native.desktop import sdk; sdk.export(Path('switch-graphics-sdk'))"
           cargo run --locked --manifest-path switch-graphics-sdk/Cargo.toml -p kirikae-rt --example decomp-graphics --no-default-features -- switch-graphics
       - uses: actions/upload-artifact@v4
         if: always()
