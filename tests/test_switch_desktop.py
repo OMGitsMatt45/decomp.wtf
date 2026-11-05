@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 import pytest
 
@@ -11,6 +12,23 @@ from decompnet import pc
 from decompnet.switch_native import provider
 from decompnet.switch_native.desktop import project, sdk
 from tools.switch_fixture import fixture
+
+
+def test_plain_entry_guard_preserves_guest_fp_and_callbacks_use_host_fp(tmp_path):
+    cc = os.environ.get('DECOMP_SWITCH_CC') or shutil.which('clang')
+    if not cc:
+        pytest.skip('original native entry guard check requires Clang')
+    root = sdk.ROOT.parent
+    source = Path(__file__).resolve().parents[1] / 'tools/fixtures/switch-entry-guard.c'
+    binary = tmp_path / ('entry-guard.exe' if os.name == 'nt' else 'entry-guard')
+    command = [cc, '-std=gnu11', '-O1', str(source), '-I', str(sdk.ROOT),
+               '-I', str(root / 'vendor/nxport-lifter/runtime'), '-o', str(binary)]
+    if os.name != 'nt': command.append('-lm')
+    built = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    assert built.returncode == 0, built.stdout + built.stderr
+    ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert 'plain entries: 10000; callbacks: 1; FP state preserved' in ran.stdout
 
 
 @pytest.fixture
