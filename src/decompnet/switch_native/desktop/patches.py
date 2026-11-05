@@ -207,7 +207,7 @@ pub(super) fn read_texture(gpu: &Gpu,''')
         (rt / 'src' / name).write_bytes((adapter / name).read_bytes())
     from .services import (account_availability, applet_controls, application_play_history,
                            parental_session, hid_activation, applet_audio, hid_vibration,
-                           hid_sensors, keyboard_edges)
+                           hid_idle_states, hid_sensors, keyboard_edges)
     account_availability(root)
     application_play_history(root)
     applet_controls(root, adapter)
@@ -216,6 +216,7 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     applet_audio(root)
     hid_vibration(root, adapter)
     hid_sensors(root, adapter)
+    hid_idle_states(root)
     keyboard_edges(root)
     services = rt / 'src/services/mod.rs'
     replace_once(services, 'pub mod stub;', 'pub mod stub;\nmod decomp_bsd;\nmod decomp_play_report;')
