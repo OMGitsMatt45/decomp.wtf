@@ -367,6 +367,37 @@ def hid_sensors(root, adapter):
                  '        if let Some(reply) = decomp_sensors::call(c, req) { return reply; }\n        if let Some(reply) = decomp_vibration::call(c, req) { return reply; }')
 
 
+def hid_idle_states(root):
+    from .patches import replace_once
+    path = Path(root) / 'crates/rt/src/services/hid.rs'
+    replace_once(path, '        let sampling = st.sampling;\n', '''        let sampling = st.sampling;
+        // Single-state SDK reads can leave the caller's output untouched for an
+        // empty LIFO. Give unused controller IDs one disconnected sample.
+        if sampling == 1 {
+            let idle = common_storage(sampling, &PadState::default(), 0);
+            for index in 0..st.tail.len() as u64 {
+                let base = NPAD + index * NPAD_ENTRY;
+                for lifo in 0..7 {
+                    let at = base + field::LIFOS + lifo * field::LIFO_SIZE;
+                    write(at + 0x20, &idle);
+                    write(at, &lifo_header(0, 1));
+                }
+            }
+        }
+''')
+    replace_once(path, '        let e = NPAD;\n', '''        let e = NPAD;
+        let inactive = e + NPAD_ENTRY;
+        assert_eq!(u32_at(&mem.borrow(), inactive + field::STYLE_SET), 0);
+        for lifo in 0..7 {
+            let at = inactive + field::LIFOS + lifo * field::LIFO_SIZE;
+            assert_eq!(u64_at(&mem.borrow(), at + 0x10), 0);
+            assert_eq!(u64_at(&mem.borrow(), at + 0x18), 1);
+            assert_eq!(u64_at(&mem.borrow(), at + 0x28), 1);
+            assert_eq!(&mem.borrow()[(at + 0x30) as usize..(at + 0x50) as usize], &[0; 32]);
+        }
+''')
+
+
 def keyboard_edges(root):
     from .patches import replace_once
     path = Path(root) / 'crates/rt/src/input.rs'
