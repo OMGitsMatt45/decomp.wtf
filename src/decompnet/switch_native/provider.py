@@ -48,7 +48,7 @@ def build(*, desktop=False):
     adapter = ROOT / 'emitter.rs'
     patch_source = (ROOT / 'desktop/patches.py').read_bytes() if desktop else b''
     key = hashlib.sha256((json.dumps(sources()['vendored'], sort_keys=True) + version).encode()
-                         + adapter.read_bytes() + patch_source).hexdigest()
+                         + adapter.read_bytes() + Path(__file__).read_bytes() + patch_source).hexdigest()
     cache = Path(os.environ.get('DECOMP_SWITCH_BUILD_CACHE') or toolchains.root() / 'switch-emitter')
     destination = cache / key
     binary = destination / ('switch-emitter.exe' if os.name == 'nt' else 'switch-emitter')
@@ -61,12 +61,18 @@ def build(*, desktop=False):
     cache.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.switch-build-', dir=cache) as temp:
         work = Path(temp)
+        # A computed branch may enter the fallthrough of a conditional branch.
+        # Such an address must survive partitioning into dispatchable blocks.
+        from .desktop.patches import replace_once
+        patched = work / 'lifter'
+        shutil.copytree(vendor, patched)
+        replace_once(patched / 'src/module.rs',
+                     '            if l.at(a).ends_block() {\n                s.external.insert(a + 4);',
+                     '            if l.at(a).ends_block() || matches!(l.at(a), Insn::BCond(_, _)) {\n                s.external.insert(a + 4);')
         if desktop:
             from .desktop.patches import lifter
-            patched = work / 'lifter'
-            shutil.copytree(vendor, patched)
             lifter(patched)
-            vendor = patched
+        vendor = patched
         _run([rustc, '--edition=2021', '--crate-type=rlib', '--crate-name', 'nxport_lifter',
               vendor / 'src/lib.rs', '-O', '-o', work / 'libnxport_lifter.rlib'])
         _run([rustc, '--edition=2021', adapter, '--extern',

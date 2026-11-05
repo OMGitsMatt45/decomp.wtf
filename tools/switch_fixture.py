@@ -45,6 +45,21 @@ def fixture(*, nro=False, compressed=False):
     return bytes(raw)
 
 
+def conditional_target_fixture():
+    """An indirect computed branch enters a conditional branch's fallthrough."""
+    raw = bytearray(fixture(nro=True))
+    struct.pack_into('<I', raw, 0, 0x14000020)  # b entry at 0x80
+    text_size = struct.unpack_from('<I', raw, 0x24)[0]
+    for offset in range(0x80, text_size, 4):
+        struct.pack_into('<I', raw, offset, 0xd503201f)  # nop
+    # adr x9, entry; mov x10, #16; add x9, x9, x10; cbz xzr, dispatch;
+    # fallthrough: mov x0, #42; ret; dispatch: br x9.
+    words = (0x10000009, 0xd280020a, 0x8b0a0129, 0xb400007f,
+             0xd2800540, 0xd65f03c0, 0xd61f0120)
+    struct.pack_into('<7I', raw, 0x80, *words)
+    return bytes(raw)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
