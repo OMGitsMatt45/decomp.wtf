@@ -146,7 +146,20 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     replace_once(display, '        let attrs = Window::default_attributes().with_title(&self.title).with_inner_size(LogicalSize::new(1280.0, 720.0));',
                  '        let mut attrs = Window::default_attributes().with_title(&self.title).with_inner_size(LogicalSize::new(1280.0, 720.0));\n        if let Some(monitor) = el.primary_monitor().or_else(|| el.available_monitors().next()) {\n            let size = monitor.size();\n            attrs = attrs.with_inner_size(size).with_position(monitor.position());\n        }')
     replace_once(display, '                    crate::input::key(code, event.state.is_pressed());',
-                 '                    if code == winit::keyboard::KeyCode::F11 && event.state.is_pressed() && !event.repeat {\n                        if let Some(w) = &self.window {\n                            let mode = if w.fullscreen().is_some() { None } else { Some(winit::window::Fullscreen::Borderless(w.current_monitor())) };\n                            w.set_fullscreen(mode);\n                        }\n                    } else { crate::input::key(code, event.state.is_pressed()); }')
+                 '''                    if code == winit::keyboard::KeyCode::F10 && event.state.is_pressed() && !event.repeat {
+                        if crate::decomp_host_menu::confirm() {
+                            self.p.terminate(0);
+                            self.p.gpu.shutdown();
+                            el.exit();
+                        }
+                    } else if code == winit::keyboard::KeyCode::F11 && event.state.is_pressed() && !event.repeat {
+                        if let Some(w) = &self.window {
+                            let mode = if w.fullscreen().is_some() { None } else { Some(winit::window::Fullscreen::Borderless(w.current_monitor())) };
+                            w.set_fullscreen(mode);
+                        }
+                    } else { crate::input::key(code, event.state.is_pressed()); }''')
+    replace_once(rt / 'src/lib.rs', 'pub mod display;', 'pub mod display;\nmod decomp_host_menu;')
+    (rt / 'src/decomp_host_menu.rs').write_bytes((adapter / 'host_menu.rs').read_bytes())
     replace_once(rt / 'src/process.rs', 'while s.live.load(Ordering::Relaxed) > 0 && !s.exiting.load(Ordering::Relaxed) {',
                  'while s.live.load(Ordering::Relaxed) > 0 {')
     replace_once(rt / 'src/services/fs.rs', 'base.join("kirikae").join("saves")',
