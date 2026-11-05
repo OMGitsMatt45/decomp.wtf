@@ -227,3 +227,5 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     software_keyboard(root, adapter)
     (rt / 'examples').mkdir(exist_ok=True)
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
+    from .graphics import integer_textures
+    integer_textures(root)
