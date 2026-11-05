@@ -124,6 +124,38 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '            let front = if regs[0x647] != 0x900 { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE };',
                  '''            let clockwise = (regs[0x647] == 0x900) ^ (regs[0x4eb] & 1 == 0);
             let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
+    # Maxwell's A1B5G5R5 (TIC 0x14) has red in the low five bits.
+    # Keep the Vulkan A1R5G5B5 image and translate the guest's component selectors.
+    replace_once(rt / 'src/gpu/vulkan/textures.rs',
+                 '''    header.swizzle.map(|s| match s {
+        0 => vk::ComponentSwizzle::ZERO,
+        2 => vk::ComponentSwizzle::R,
+        3 => vk::ComponentSwizzle::G,
+        4 => vk::ComponentSwizzle::B,''',
+                 '''    use vk::ComponentSwizzle as S;
+    let (red, blue) = if header.components == 0x14 { (S::B, S::R) } else { (S::R, S::B) };
+    header.swizzle.map(|s| match s {
+        0 => S::ZERO,
+        2 => red,
+        3 => S::G,
+        4 => blue,''')
+    replace_once(rt / 'src/gpu/vulkan/textures.rs',
+                 'pub(super) fn read_texture(gpu: &Gpu,',
+                 '''#[cfg(test)]
+#[test]
+fn a1b5g5r5_translates_component_selectors() {
+    use vk::ComponentSwizzle as S;
+    let mut words = [0; 8];
+    words[0] = 0x14 | 2 << 19 | 3 << 22 | 4 << 25 | 5 << 28;
+    let mut header = crate::gpu::tic::texture_header(&words);
+    assert_eq!(swizzle(&header), [S::B, S::G, S::R, S::A]);
+    header.swizzle = [4, 0, 2, 7];
+    assert_eq!(swizzle(&header), [S::R, S::ZERO, S::B, S::ONE]);
+    header.components = 0x08;
+    assert_eq!(swizzle(&header), [S::B, S::ZERO, S::R, S::ONE]);
+}
+
+pub(super) fn read_texture(gpu: &Gpu,''')
     # Native exports must preserve every draw, including transient targets on
     # the first use of a shader pair. Pending compilation is not a failed draw.
     replace_once(rt / 'src/gpu/vulkan/pipeline.rs',
