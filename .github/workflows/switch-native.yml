@@ -1,0 +1,73 @@
+name: Switch native source and desktop runtime
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/decompnet/switch_native/**'
+      - 'src/decompnet/nds_native/hash.hpp'
+      - 'tests/test_switch*.py'
+      - 'tools/switch*'
+      - 'tools/fixtures/switch*'
+      - 'tools/qualify_switch_desktop.py'
+      - '.github/workflows/switch-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/decompnet/switch_native/**'
+      - 'tests/test_switch*.py'
+      - '.github/workflows/switch-native.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-source:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      DECOMP_UPDATES: 'off'
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Configure the GNU Clang driver and Windows SDK
+        shell: pwsh
+        run: |
+          $clang = (Get-Command clang.exe -ErrorAction Stop).Source
+          "DECOMP_SWITCH_CC=$clang" >> $env:GITHUB_ENV
+          "DECOMP_SWITCH_CXX=$clang" >> $env:GITHUB_ENV
+          "DECOMP_SWITCH_RUSTC=$((Get-Command rustc.exe -ErrorAction Stop).Source)" >> $env:GITHUB_ENV
+          "DECOMP_SWITCH_CMAKE=$((Get-Command cmake.exe -ErrorAction Stop).Source)" >> $env:GITHUB_ENV
+      - name: Execute original CPU/module fixtures and verify source contracts
+        # Unicorn 2.1.4 uses a VEH to commit its code buffer. Python's Windows
+        # faulthandler logs those handled exceptions as fatal; disabling that
+        # diagnostic plugin leaves native execution and comparisons unchanged.
+        # https://github.com/unicorn-engine/unicorn/issues/2264
+        run: >-
+          uv run --no-sync python -m pytest -p no:faulthandler -q
+          tests/test_switch_native.py tests/test_switch_exefs.py
+          tests/test_switch_desktop.py tests/test_switch_discovery.py
+          tests/test_switch_integrity.py tests/test_switch_applet.py
+          --junitxml=switch-native-results.xml
+      - name: Require native coverage with only the Windows symlink privilege exception
+        run: >-
+          uv run --no-sync python -c "import xml.etree.ElementTree as E;
+          skipped=[c.get('name','') for c in E.parse('switch-native-results.xml').iter('testcase') if c.find('skipped') is not None];
+          assert all('[symlink]' in name for name in skipped), skipped"
+      - name: Build and execute independent desktop source fixtures
+        run: uv run --no-sync python -m tools.qualify_switch_desktop --work switch-qualification
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: switch-native-windows
+          path: |
+            switch-native-results.xml
+            switch-qualification/validation.json
+            switch-qualification/*-run.json
+            switch-qualification/*.log

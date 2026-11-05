@@ -280,7 +280,7 @@ native C with zero interpreted instructions. Negative runs cover
 untranslated targets, unsupported SVCs, guest memory faults and changed assets
 before native execution. A combined native/interpreter feature build is rejected.
 
-The source runtime passes 200 unit tests, including audio mixing/resampling,
+The source runtime passes 213 unit tests, including audio mixing/resampling,
 input/HID, synchronization and filesystem/RomFS behavior. A separate host GPU
 qualification submits real Maxwell pushbuffers and vertex/fragment shader code
 through the game's Vulkan path. Readback contains exactly 3,456 red pixels at
@@ -297,3 +297,23 @@ unsupported instructions, dynamically loaded code, additional Horizon/NVN
 services and shader coverage remain per-title development work. These limits
 are explicit in source manifests and do not prevent building or editing the
 qualified source exports.
+
+## Desktop application sessions
+
+The exported runtime retains foreground applet focus/capture/suspension policy,
+expected applet audio volumes, and the initialized game-facing parental-control
+session. No console parental-control database is imported or host policy changed.
+HID activation and disconnects update controller publication, assignment policy
+is retained, and virtual handheld activation uses the SDK's aruid-first ABI.
+Idle peripheral samples, vibration request/readback and stationary IMU lifecycle
+are implemented for virtual controllers; physical rumble and motion are not
+qualified. Unsupported requests continue to stop strict native runs.
+Short keyboard taps are held for at least 50 ms so a 30 Hz game can observe
+them. Longer holds release immediately; focus loss clears all input. Set
+`KIRIKAE_INPUT_TRACE=1` to log key events and sampled button transitions.
+
+Native builds compile missing graphics pipelines synchronously before drawing.
+This prevents the asynchronous compiler's pending state from discarding draws
+on transient targets. Compilation errors and unsupported shaders remain fatal.
+The Windows Switch workflow executes native CPU/module comparisons, original
+desktop programs and runtime regressions without retail game inputs.

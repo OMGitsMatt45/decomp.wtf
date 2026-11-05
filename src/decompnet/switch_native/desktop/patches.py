@@ -118,6 +118,11 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '        if let Err(why) = &ok {\n            crate::decomp::gpu_failure(0, why);\n            self.stats.skipped += 1;')
     replace_once(rt / 'src/gpu/vulkan/draw.rs', '                self.stats.skipped_dispatches += 1;',
                  '                crate::decomp::gpu_failure(0, why);\n                self.stats.skipped_dispatches += 1;')
+    # Native exports must preserve every draw, including transient targets on
+    # the first use of a shader pair. Pending compilation is not a failed draw.
+    replace_once(rt / 'src/gpu/vulkan/pipeline.rs',
+                 '    pub(super) fn pipeline(&mut self, key: &PipelineKey, now: bool) -> Result<vk::Pipeline, String> {',
+                 '    pub(super) fn pipeline(&mut self, key: &PipelineKey, now: bool) -> Result<vk::Pipeline, String> {\n        let now = now || cfg!(feature = "decomp-native");')
     replace_once(rt / 'src/fault.rs', '    std::process::exit(4);',
                  '    #[cfg(feature = "decomp-native")]\n    crate::decomp_native::fatal_fault(guest);\n    std::process::exit(4);')
     vk = rt / 'src/gpu/vulkan/mod.rs'
@@ -140,9 +145,19 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  'while s.live.load(Ordering::Relaxed) > 0 {')
     replace_once(rt / 'src/services/fs.rs', 'base.join("kirikae").join("saves")',
                  'base.join("decomp.wtf").join("switch").join("saves")')
+    replace_once(rt / 'src/input.rs', 'pub fn key(code: KeyCode, pressed: bool) {',
+                 'pub fn key(code: KeyCode, pressed: bool) {\n    if crate::env_var!("KIRIKAE_INPUT_TRACE").is_some() { eprintln!("kirikae: input key {code:?} pressed={pressed}"); }')
     replace_once(rt / 'src/sched.rs', '        if d.is_zero() { std::thread::yield_now() } else { std::thread::sleep(d) }',
                  '        if d.is_zero() { std::thread::yield_now() } else {\n            let start = std::time::Instant::now();\n            while start.elapsed() < d && !c.process().sched.exiting.load(Ordering::Relaxed) {\n                std::thread::sleep((d - start.elapsed().min(d)).min(Duration::from_millis(10)));\n            }\n        }')
     for name in ('decomp.rs', 'decomp_native.rs'):
         (rt / 'src' / name).write_bytes((adapter / name).read_bytes())
+    from .services import applet_controls, parental_session, hid_activation, applet_audio, hid_vibration, hid_sensors, keyboard_edges
+    applet_controls(root, adapter)
+    parental_session(root)
+    hid_activation(root)
+    applet_audio(root)
+    hid_vibration(root, adapter)
+    hid_sensors(root, adapter)
+    keyboard_edges(root)
     (rt / 'examples').mkdir(exist_ok=True)
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
