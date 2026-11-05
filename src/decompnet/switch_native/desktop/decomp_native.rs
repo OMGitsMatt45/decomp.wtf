@@ -7,7 +7,7 @@ use crate::{Cpu, Entry, HALT_PC};
 pub struct NativeCpu {
     x: [u64; 32], sp: u64, pc: u64, nzcv: u64, tpidr: u64, tpidrro: u64,
     excl_addr: u64, excl_lo: u64, owner: *mut c_void, fpcr: u64, fpsr: u64,
-    excl_hi: u64, pad: [u8; 168], v: [u128; 32],
+    excl_hi: u64, pending_entries: u64, pad: [u8; 160], v: [u128; 32],
 }
 const _: () = assert!(std::mem::size_of::<NativeCpu>() == 1024);
 const _: () = assert!(std::mem::offset_of!(NativeCpu, v) == 512);
@@ -49,6 +49,12 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 static REPORT: OnceLock<PathBuf> = OnceLock::new();
 const STARTUP: u64 = 0x7f_fe00_0000;
 
+fn flush_entry_count(n: &mut NativeCpu) {
+    if n.pending_entries != 0 {
+        crate::decomp::NATIVE.fetch_add(std::mem::take(&mut n.pending_entries), Ordering::Relaxed);
+    }
+}
+
 fn copy_from_native(n: &NativeCpu, c: &mut Cpu) {
     c.x.copy_from_slice(&n.x[..31]); c.sp = n.sp; c.pc = n.pc; c.nzcv = n.nzcv;
     c.tpidr_el0 = n.tpidr; c.tpidrro_el0 = n.tpidrro; c.fpcr = n.fpcr; c.fpsr = n.fpsr;
@@ -65,6 +71,7 @@ fn callback(n: &mut NativeCpu, f: impl FnOnce(&mut Cpu)) -> i32 {
     // The C scope owns n; owner is the distinct live guest-thread Cpu. All
     // Rust frames return before the C scope performs its nonlocal exit.
     let c = unsafe { &mut *n.owner.cast::<Cpu>() };
+    flush_entry_count(n);
     copy_from_native(n, c);
     f(c);
     if c.process().sched.exiting.load(Ordering::Relaxed) { c.halt(); }
@@ -73,9 +80,11 @@ fn callback(n: &mut NativeCpu, f: impl FnOnce(&mut Cpu)) -> i32 {
 }
 fn enter(c: &mut Cpu, skip_hook: bool) {
     let mut n = NativeCpu { x: [0; 32], sp: 0, pc: 0, nzcv: 0, tpidr: 0, tpidrro: 0,
-        excl_addr: 0, excl_lo: 0, owner: (c as *mut Cpu).cast(), fpcr: 0, fpsr: 0, excl_hi: 0, pad: [0; 168], v: [0; 32] };
+        excl_addr: 0, excl_lo: 0, owner: (c as *mut Cpu).cast(), fpcr: 0, fpsr: 0,
+        excl_hi: 0, pending_entries: 0, pad: [0; 160], v: [0; 32] };
     copy_to_native(c, &mut n);
     unsafe { sw_enter(&mut n, c.process().memory.base() as usize, if skip_hook { c.pc } else { u64::MAX }); }
+    flush_entry_count(&mut n);
     copy_from_native(&n, c);
 }
 pub extern "C" fn entry(c: &mut Cpu) { enter(c, false); }
@@ -85,7 +94,7 @@ pub extern "C" fn unhooked(c: &mut Cpu) { enter(c, true); }
 // formatting, service calls, register synchronization or floating-point work.
 // A rejected guard takes the existing full callback for hooks and diagnostics.
 #[unsafe(no_mangle)]
-pub extern "C" fn sw_host_entry_is_plain(n: &NativeCpu, address: u64, skip: i32) -> i32 {
+pub extern "C" fn sw_host_entry_is_plain(n: &mut NativeCpu, address: u64, skip: i32) -> i32 {
     let c = unsafe { &*n.owner.cast::<Cpu>() };
     let p = c.process();
     if p.sched.exiting.load(Ordering::Relaxed) || (skip == 0 && p.hle.owns(address)) { return 0; }
@@ -97,7 +106,9 @@ pub extern "C" fn sw_host_entry_is_plain(n: &NativeCpu, address: u64, skip: i32)
     let size = (end - address) as usize;
     let bytes = unsafe { std::slice::from_raw_parts(p.memory.base().add(address as usize), size) };
     if bytes != &code.text[offset..offset + size] { return 0; }
-    crate::decomp::NATIVE.fetch_add(1, Ordering::Relaxed);
+    // Each running guest thread owns this counter. Batch the global update at
+    // polls and other host boundaries to avoid sharing a cache line per entry.
+    n.pending_entries += 1;
     1
 }
 
