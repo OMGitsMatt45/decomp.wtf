@@ -19,6 +19,7 @@ ALIGNMENT = 0x10000
 MAX_TOTAL = 512 * 1024 * 1024
 MAX_RECORDS = 1 << 20
 U64 = (1 << 64) - 1
+RETURNS_TWICE = frozenset(('setjmp', '_setjmp', 'sigsetjmp', '__sigsetjmp'))
 
 
 def module_alias(name):
@@ -303,12 +304,16 @@ def load(path, *, include_images=False, single=False):
         meta = module['_dynamic']
         roots = {module['base']}
         imports = []
+        returns_twice = []
+        return_slots = []
         for symbol in meta['symbols']:
             if symbol['section'] and symbol['kind'] == 2:
                 value = address(module, symbol)
                 if code_module(value) is not module:
                     raise PCError(module['name'] + ': function symbol outside executable text')
                 roots.add(value)
+                if symbol['name'] in RETURNS_TWICE:
+                    returns_twice.append(value)
         module['_roots'] = roots
         module['dynamic'] = dict(symbols=len(meta['symbols']), relocations=len(meta['relocs']),
                                  needed=meta['needed'], soname=meta['soname'], imports=imports)
@@ -331,6 +336,8 @@ def load(path, *, include_images=False, single=False):
                 else:
                     raise PCError(f"{module['name']}: unresolved Switch import {symbol['name']}")
                 value = (address(owner, found) if found else 0) + reloc['addend']
+                if reloc['kind'] == 1026 and symbol['name'] in RETURNS_TWICE and code_module(value):
+                    return_slots.append(module['base'] + reloc['offset'])
                 if not symbol['section']:
                     binding = dict(name=symbol['name'], address=value & U64, module=owner['name'] if owner else None)
                     if binding not in imports:
@@ -339,6 +346,8 @@ def load(path, *, include_images=False, single=False):
             target = code_module(value & U64)
             if target:
                 target.setdefault('_extra_roots', set()).add(value & U64)
+        if returns_twice or return_slots:
+            module['returns_twice'] = dict(functions=sorted(set(returns_twice)), slots=sorted(return_slots))
     initializers, visiting, initialized = [], set(), set()
 
     def array(module, tag, size_tag):
