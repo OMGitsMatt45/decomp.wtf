@@ -90,6 +90,43 @@ mod decomp_pctl_tests {
 ''')
 
 
+def account_availability(root):
+    from .patches import replace_once
+    path = Path(root) / 'crates/rt/src/services/acc.rs'
+    replace_once(path, 'Arc::new(crate::services::stub::Stub::new("acc/IManagerForApplication"))',
+                 'Arc::new(ApplicationAccountManager)')
+    replace_once(path, 'struct Profile;', '''struct ApplicationAccountManager;
+
+impl Service for ApplicationAccountManager {
+    fn name(&self) -> String { "acc/IManagerForApplication".into() }
+
+    fn call(&self, c: &mut Cpu, req: &Request) -> Reply {
+        match req.cmd {
+            // The local profile has no linked Nintendo account.
+            0 => Reply::ok().u8(0),
+            _ => unimplemented("acc/IManagerForApplication", c, req),
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn local_application_account_reports_offline() {
+    use crate::{abi::Entry, services::harness};
+    extern "C" fn probe(c: &mut Cpu) {
+        let account = Account { name: "acc:u0" };
+        let session = account.call(c, &Request { cmd: 101, data: USER_ID.to_vec(), ..Default::default() });
+        let reply = session.objects[0].call(c, &Request::default());
+        harness::record("acc/availability", &[reply.result as u64, reply.data.len() as u64, reply.data[0] as u64]);
+        c.halt();
+    }
+    harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
+    assert_eq!(harness::observed("acc/availability"), vec![0, 1, 0]);
+}
+
+struct Profile;''')
+
+
 def hid_activation(root):
     from .patches import replace_once
     path = Path(root) / 'crates/rt/src/services/hid.rs'

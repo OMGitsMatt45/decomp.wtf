@@ -205,7 +205,8 @@ pub(super) fn read_texture(gpu: &Gpu,''')
                  '        if d.is_zero() { std::thread::yield_now() } else {\n            let start = std::time::Instant::now();\n            while start.elapsed() < d && !c.process().sched.exiting.load(Ordering::Relaxed) {\n                std::thread::sleep((d - start.elapsed().min(d)).min(Duration::from_millis(10)));\n            }\n        }')
     for name in ('decomp.rs', 'decomp_native.rs'):
         (rt / 'src' / name).write_bytes((adapter / name).read_bytes())
-    from .services import applet_controls, parental_session, hid_activation, applet_audio, hid_vibration, hid_sensors, keyboard_edges
+    from .services import account_availability, applet_controls, parental_session, hid_activation, applet_audio, hid_vibration, hid_sensors, keyboard_edges
+    account_availability(root)
     applet_controls(root, adapter)
     parental_session(root)
     hid_activation(root)
