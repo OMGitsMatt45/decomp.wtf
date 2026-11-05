@@ -2,7 +2,7 @@
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
 use crate::{Cpu, horizon::{RESULT_INVALID_HANDLE, RESULT_INVALID_SIZE, RESULT_INVALID_STATE},
-    kernel::KObject, services::{Reply, Request, Service, stub::unimplemented}, threads::PROCESS_ID};
+    kernel::KObject, services::{Reply, Request, Service, stub::unimplemented}};
 
 const ENETDOWN: u32 = 100;
 
@@ -26,7 +26,8 @@ impl Service for OfflineBsd {
                     return Reply::err(RESULT_INVALID_SIZE as u32);
                 }
                 registered.store(true, Relaxed);
-                Reply::ok().u64(PROCESS_ID)
+                // The SDK checks the inline registration status as an s32.
+                Reply::ok().u64(0)
             }
             1 if registered.load(Relaxed) && req.pid.is_some() && req.data.len() >= 8 => Reply::ok(),
             2 | 3 if registered.load(Relaxed) && req.data.len() >= 12 => Reply::ok().u32(u32::MAX).u32(ENETDOWN),
@@ -44,10 +45,10 @@ fn bsd_registration_can_be_monitored_while_offline() {
         let handle = c.process().handles.lock().unwrap().insert(KObject::TransferMemory { addr: 0, size: 4096 });
         let mut data = vec![0; 40];
         data.extend_from_slice(&4096u64.to_le_bytes());
-        let registered = OfflineBsd.call(c, &Request { cmd: 0, pid: Some(PROCESS_ID), data,
+        let registered = OfflineBsd.call(c, &Request { cmd: 0, pid: Some(0), data,
             copy_handles: vec![handle], ..Default::default() });
-        let monitored = OfflineBsd.call(c, &Request { cmd: 1, pid: Some(PROCESS_ID),
-            data: PROCESS_ID.to_le_bytes().to_vec(), ..Default::default() });
+        let monitored = OfflineBsd.call(c, &Request { cmd: 1, pid: Some(0),
+            data: vec![0; 8], ..Default::default() });
         let socket = OfflineBsd.call(c, &Request { cmd: 2, data: vec![0; 12], ..Default::default() });
         harness::record("bsd/offline", &[registered.result as u64,
             u64::from_le_bytes(registered.data.try_into().unwrap()), monitored.result as u64,
@@ -55,5 +56,5 @@ fn bsd_registration_can_be_monitored_while_offline() {
         c.halt();
     }
     harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
-    assert_eq!(harness::observed("bsd/offline"), vec![0, PROCESS_ID, 0, 0, (ENETDOWN as u64) << 32 | u32::MAX as u64]);
+    assert_eq!(harness::observed("bsd/offline"), vec![0, 0, 0, 0, (ENETDOWN as u64) << 32 | u32::MAX as u64]);
 }
