@@ -24,6 +24,9 @@ unsafe extern "C" {
     fn sw_module_count() -> usize;
     fn sw_module_at(index: usize) -> *const ModuleInfo;
     fn sw_initializers(count: *mut usize) -> *const u64;
+    fn sw_sdk_initializers(count: *mut usize) -> *const u64;
+    fn sw_main_initializers(count: *mut usize) -> *const u64;
+    fn sw_sdk_startup() -> u64;
     fn sw_entry() -> u64;
     fn sw_stack_size() -> u64;
     fn sw_title_id() -> u64;
@@ -38,7 +41,10 @@ unsafe extern "C" {
 struct Code {
     base: u64, text: Vec<u8>, entries: Vec<u64>,
 }
-struct Config { code: Vec<Code>, initializers: Vec<u64>, entry: u64, samples: Vec<(String, u64, u64)> }
+struct Config {
+    code: Vec<Code>, initializers: Vec<u64>, entry: u64, samples: Vec<(String, u64, u64)>,
+    sdk_startup: u64, sdk_initializers: Vec<u64>, main_initializers: Vec<u64>,
+}
 static CONFIG: OnceLock<Config> = OnceLock::new();
 static REPORT: OnceLock<PathBuf> = OnceLock::new();
 const STARTUP: u64 = 0x7f_fe00_0000;
@@ -123,6 +129,18 @@ pub extern "C" fn sw_host_hle(n: &NativeCpu, pc: u64) -> i32 { unsafe { (*n.owne
 
 extern "C" fn startup(c: &mut Cpu) {
     let config = CONFIG.get().unwrap();
+    if config.sdk_startup != 0 {
+        // nn::init::Start initializes the OS thread before the SDK DSOs, then
+        // initializes the application's heap before the main DSO and nnMain.
+        let p = c.process();
+        let sdk = p.hle.add("<native-sdk-initializers>", std::sync::Arc::new(|c| sdk_initializers(c, false)));
+        let main = p.hle.add("<native-main-initializers>", std::sync::Arc::new(|c| sdk_initializers(c, true)));
+        c.x[0] = crate::horizon::MAIN_THREAD_HANDLE; c.x[1] = 0; c.x[2] = sdk; c.x[3] = main;
+        c.x[30] = HALT_PC; c.pc = config.sdk_startup;
+        crate::process::call_indirect(c, HALT_PC);
+        *crate::decomp::FINAL_CPU.lock().unwrap() = Some(json!({"x":c.x, "v":c.v,"nzcv":c.nzcv,"sp":c.sp,"pc":c.pc}));
+        return;
+    }
     for &address in &config.initializers {
         c.x[30] = HALT_PC; c.pc = address;
         crate::process::call_indirect(c, HALT_PC);
@@ -133,6 +151,17 @@ extern "C" fn startup(c: &mut Cpu) {
     c.x[30] = HALT_PC; c.pc = config.entry;
     crate::process::call_indirect(c, HALT_PC);
     *crate::decomp::FINAL_CPU.lock().unwrap() = Some(json!({"x":c.x, "v":c.v,"nzcv":c.nzcv,"sp":c.sp,"pc":c.pc}));
+}
+
+fn sdk_initializers(c: &mut Cpu, main: bool) {
+    let config = CONFIG.get().unwrap();
+    let addresses = if main { &config.main_initializers } else { &config.sdk_initializers };
+    for &address in addresses {
+        crate::hle::call_guest(c, address, false);
+        if c.halted { return; }
+        crate::decomp::INITIALIZERS.fetch_add(1, Ordering::Relaxed);
+    }
+    c.pc = c.x[30];
 }
 
 unsafe fn text(pointer: *const c_char) -> String { unsafe { CStr::from_ptr(pointer) }.to_string_lossy().into_owned() }
@@ -161,7 +190,11 @@ fn load(assets: &std::path::Path) -> Result<(kirikae_loader::Executable, &'stati
     }
     let mut n = 0;
     let initializers = unsafe { std::slice::from_raw_parts(sw_initializers(&mut n), n) }.to_vec();
-    let config = Config { code, initializers, entry: unsafe { sw_entry() }, samples };
+    let mut n = 0;
+    let sdk_initializers = unsafe { std::slice::from_raw_parts(sw_sdk_initializers(&mut n), n) }.to_vec();
+    let main_initializers = unsafe { std::slice::from_raw_parts(sw_main_initializers(&mut n), n) }.to_vec();
+    let config = Config { code, initializers, entry: unsafe { sw_entry() }, samples,
+        sdk_startup: unsafe { sw_sdk_startup() }, sdk_initializers, main_initializers };
     CONFIG.set(config).map_err(|_| "one game per native process".to_string())?;
     entries.push(Entry { addr: STARTUP, func: startup }); entries.sort_by_key(|e| e.addr);
     if !entries.windows(2).all(|p| p[0].addr < p[1].addr) { return Err("overlapping native entry addresses".into()); }

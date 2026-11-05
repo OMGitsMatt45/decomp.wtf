@@ -48,6 +48,7 @@ def fixtures(work, rustc):
         for i, word in enumerate(words): struct.pack_into('<I', raw, 0x80 + i * 4, word)
         (inputs / (name + '.nro')).write_bytes(raw)
     exefs_fixture(inputs / 'exefs')
+    exefs_fixture(inputs / 'sdk-startup', sdk_startup=True)
     (inputs / 'cpu.nro').write_bytes(cpu_fixture(nro=True))
     (inputs / 'cpu-nso.nso').write_bytes(cpu_fixture(compressed=True))
     raw = bytearray((inputs / 'hello.nro').read_bytes())
@@ -66,11 +67,11 @@ def qualify(args):
     work.mkdir(parents=True, exist_ok=True)
     os.environ['DECOMP_SWITCH_RUSTC'] = args.rustc
     inputs = work / 'inputs' if args.resume else fixtures(work, args.rustc)
-    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'cpu', 'cpu-nso', 'exclusive', 'missing', 'svc', 'fault']
+    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'exclusive', 'missing', 'svc', 'fault']
     sources = {}
     for name in names:
         source = work / (name + '-source')
-        original = inputs / (name if name == 'exefs' else name + ('.nso' if name == 'cpu-nso' else '.nro'))
+        original = inputs / (name if name in ('exefs', 'sdk-startup') else name + ('.nso' if name == 'cpu-nso' else '.nro'))
         if args.resume:
             verified = pc.verify(source)['manifest']
             if verified['backend']['revision'] != revision():
@@ -100,7 +101,7 @@ def qualify(args):
         assert data['status'] == ('passed' if expected == 0 else 'failed'), data
         if name == 'hello': assert output == 'Hello from kirikae!\nsum(1..100) = 5050\nsquare(12) = 144\nswitch: abcd\nfib(15) = 610\n'
         if name in ('threads', 'parallel-threads'): assert output == 'threads: 40400\n'
-        if name == 'exefs':
+        if name in ('exefs', 'sdk-startup'):
             assert data['initializers_run'] == 2 and data['final_cpu']['x'][0] == 42
         if name in ('cpu', 'cpu-nso'):
             assert data['final_cpu']['x'][0] == 150

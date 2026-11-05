@@ -85,6 +85,14 @@ def generate(project, root):
     registry.append('const SwModule *sw_module_at(size_t i){return &modules[i];}\n')
     registry.append('static const uint64_t initializers[]={' + ','.join(str(p) + 'ull' for p in inspection['initializers'] or [0]) + '};\n')
     registry.append('const uint64_t *sw_initializers(size_t *n){*n=' + str(len(inspection['initializers'])) + ';return initializers;}\n')
+    startup = inspection.get('startup') or {}
+    registry.append(f'uint64_t sw_sdk_startup(void){{return {startup.get("entry", 0)}ull;}}\n')
+    for phase in ('sdk', 'main'):
+        values = startup.get(phase + '_initializers', [])
+        registry.append('static const uint64_t ' + phase + '_initializers[]={' +
+                        ','.join(str(p) + 'ull' for p in values or [0]) + '};\n')
+        registry.append('const uint64_t *sw_' + phase + '_initializers(size_t *n){*n=' +
+                        str(len(values)) + ';return ' + phase + '_initializers;}\n')
     title = int(inspection['input']['sha256'][:16], 16)
     if path.is_dir():
         _, _, npdm = exefs.files(path)
