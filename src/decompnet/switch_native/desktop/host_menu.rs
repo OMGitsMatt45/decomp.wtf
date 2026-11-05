@@ -21,7 +21,7 @@ pub fn confirm() -> bool {
 #[cfg(windows)]
 fn dialog() -> bool {
     #[link(name = "user32")]
-    unsafe extern "system" { fn MessageBoxW(window: isize, text: *const u16, caption: *const u16, kind: u32) -> i32; }
+    unsafe extern "system" { fn MessageBoxW(window: *mut std::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32; }
     let parent = match crate::display::window_handle() {
         Some(crate::display::WindowHandle::Win32 { hwnd, .. }) => hwnd,
         _ => 0,
@@ -30,7 +30,7 @@ fn dialog() -> bool {
     let title = wide("PC settings");
     let text = wide("Close the game and return to PC settings?\n\nSave from the game's menu first. Unsaved progress will be lost.\nChoose No to continue playing.");
     // MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2: continuing is the default.
-    unsafe { MessageBoxW(parent, text.as_ptr(), title.as_ptr(), 0x124) == 6 }
+    unsafe { MessageBoxW(parent as *mut _, text.as_ptr(), title.as_ptr(), 0x124) == 6 }
 }
 
 #[cfg(not(windows))]
