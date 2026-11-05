@@ -91,6 +91,9 @@ def entries(image, inspection):
     text = inspection['segments'][0]
     lo, hi = base + text['offset'], base + text['offset'] + text['size']
     roots = {inspection['entry'], *unwind_entries(image, inspection)}
+    returns_twice = inspection.get('returns_twice', {})
+    return_targets = set(returns_twice.get('functions', ()))
+    return_slots = set(returns_twice.get('slots', ()))
 
     def add(target):
         if lo <= target < hi and target % 4 == 0:
@@ -109,8 +112,24 @@ def entries(image, inspection):
             add(pc + immediate)
         elif i + 1 < len(words):
             following = words[i + 1][0]
+            page = (pc & ~0xfff) + (immediate << 12)
             # Adjacent ADD Xd, Xn, #imm, where Xn is this ADRP's destination.
             if following & 0xff800000 == 0x91000000 and following >> 5 & 31 == word & 31:
                 delta = (following >> 10 & 0xfff) << (12 if following & (1 << 22) else 0)
-                add((pc & ~0xfff) + (immediate << 12) + delta)
+                add(page + delta)
+            # AArch64 PLT entries load an identified JUMP_SLOT and branch to it.
+            if return_slots and word & 31 == 16 and following & 0xffc003ff == 0xf9400211 and i + 3 < len(words):
+                offset = (following >> 10 & 0xfff) * 8
+                if (offset < 0x1000 and page + offset in return_slots
+                        and words[i + 2][0] == (0x91000210 | offset << 10) and words[i + 3][0] == 0xd61f0220):
+                    return_targets.add(pc)
+
+    if return_targets:
+        for i, (word,) in enumerate(words):
+            if word >> 26 == 0x25:  # BL imm26
+                pc = lo + i * 4
+                immediate = ((word & 0x3ffffff) ^ 0x2000000) - 0x2000000
+                if pc + (immediate << 2) in return_targets:
+                    # longjmp can re-enter immediately after the original call.
+                    add(pc + 4)
     return sorted(roots)
