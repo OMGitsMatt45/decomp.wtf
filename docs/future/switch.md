@@ -96,6 +96,13 @@ relocations, symbol versions, TLS/indirect-function bindings, unresolved strong
 imports and missing `DT_NEEDED` dependencies are errors. Undefined weak symbols
 resolve to zero before their relocation addends are applied.
 
+Static function discovery also reads MOD0's `.eh_frame_hdr` search table. This
+recovers stripped function entries that symbols, relocations and address
+materialization miss. Header ranges, DWARF pointer encodings, entry counts,
+executable addresses and FDE pointers are checked before translation. Tables
+use each module's linked base; addresses from another game's symbol map or
+another build must not be reused without verification.
+
 The host applies relocations before translating code and bypasses guest `rtld`
 execution, then enters `main` with a main-thread handle and TLS. This startup
 model is explicitly recorded as `host-linked-main`; it does not establish full
