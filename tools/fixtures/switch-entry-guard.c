@@ -14,7 +14,7 @@ int sw_host_trap(Cpu *c, uint32_t k, uint32_t i, uint64_t pc) { return 0; }
 int sw_host_poll(Cpu *c) { return 0; }
 uint64_t sw_host_ticks(Cpu *c) { return 0; }
 int sw_host_hle(Cpu *c, uint64_t pc) { return 0; }
-int sw_host_entry_is_plain(const Cpu *c, uint64_t pc, int skip) {
+int sw_host_entry_is_plain(Cpu *c, uint64_t pc, int skip) {
     assert(__builtin_ia32_stmxcsr() == guest_csr);
     ++checks;
     return !needs_host;

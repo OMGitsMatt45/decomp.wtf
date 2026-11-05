@@ -29,7 +29,7 @@ int sw_function_enter(Cpu *c, uint64_t address);
 void sw_poll(Cpu *c);
 
 int sw_host_enter(Cpu *, uint64_t, int);
-int sw_host_entry_is_plain(const Cpu *, uint64_t, int);
+int sw_host_entry_is_plain(Cpu *, uint64_t, int);
 int sw_host_call(Cpu *);
 int sw_host_svc(Cpu *, uint32_t, uint64_t);
 int sw_host_trap(Cpu *, uint32_t, uint32_t, uint64_t);

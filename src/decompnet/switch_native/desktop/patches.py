@@ -144,7 +144,8 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     replace_once(display, '    note_frame();\n    if n == 1 {\n        p.warn_once(format!("display: first frame presented ({}x{})"',
                  '    note_frame();\n    crate::decomp::presented(p);\n    if n == 1 {\n        p.warn_once(format!("display: first frame presented ({}x{})"')
     replace_once(display, '        let attrs = Window::default_attributes().with_title(&self.title).with_inner_size(LogicalSize::new(1280.0, 720.0));',
-                 '        let mut attrs = Window::default_attributes().with_title(&self.title).with_inner_size(LogicalSize::new(1280.0, 720.0));\n        if let Some(monitor) = el.primary_monitor().or_else(|| el.available_monitors().next()) {\n            let size = monitor.size();\n            attrs = attrs.with_inner_size(size).with_position(monitor.position());\n        }')
+                 '        let attrs = crate::decomp_host_window::attributes(el, &self.title);')
+    replace_once(display, 'use winit::dpi::LogicalSize;\n', '')
     replace_once(display, '                    crate::input::key(code, event.state.is_pressed());',
                  '''                    if code == winit::keyboard::KeyCode::F10 && event.state.is_pressed() && !event.repeat {
                         if crate::decomp_host_menu::confirm() {
@@ -160,6 +161,8 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                     } else { crate::input::key(code, event.state.is_pressed()); }''')
     replace_once(rt / 'src/lib.rs', 'pub mod display;', 'pub mod display;\nmod decomp_host_menu;')
     (rt / 'src/decomp_host_menu.rs').write_bytes((adapter / 'host_menu.rs').read_bytes())
+    replace_once(rt / 'src/lib.rs', 'mod decomp_host_menu;', 'mod decomp_host_menu;\nmod decomp_host_window;')
+    (rt / 'src/decomp_host_window.rs').write_bytes((adapter / 'host_window.rs').read_bytes())
     replace_once(rt / 'src/process.rs', 'while s.live.load(Ordering::Relaxed) > 0 && !s.exiting.load(Ordering::Relaxed) {',
                  'while s.live.load(Ordering::Relaxed) > 0 {')
     replace_once(rt / 'src/services/fs.rs', 'base.join("kirikae").join("saves")',
