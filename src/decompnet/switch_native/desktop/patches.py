@@ -118,6 +118,12 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '        if let Err(why) = &ok {\n            crate::decomp::gpu_failure(0, why);\n            self.stats.skipped += 1;')
     replace_once(rt / 'src/gpu/vulkan/draw.rs', '                self.stats.skipped_dispatches += 1;',
                  '                crate::decomp::gpu_failure(0, why);\n                self.stats.skipped_dispatches += 1;')
+    # Maxwell's upper-left raster origin reverses its front-face convention
+    # (NV9097 SET_WINDOW_ORIGIN at 0x13ac, mode bit 0). FLIP_Y is separate.
+    replace_once(rt / 'src/gpu/vulkan/draw.rs',
+                 '            let front = if regs[0x647] != 0x900 { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE };',
+                 '''            let clockwise = (regs[0x647] == 0x900) ^ (regs[0x4eb] & 1 == 0);
+            let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
     # Native exports must preserve every draw, including transient targets on
     # the first use of a shader pair. Pending compilation is not a failed draw.
     replace_once(rt / 'src/gpu/vulkan/pipeline.rs',
@@ -159,5 +165,10 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     hid_vibration(root, adapter)
     hid_sensors(root, adapter)
     keyboard_edges(root)
+    services = rt / 'src/services/mod.rs'
+    replace_once(services, 'pub mod stub;', 'pub mod stub;\nmod decomp_play_report;')
+    replace_once(services, '        "lm" => Arc::new(lm::Lm),',
+                 '        "lm" => Arc::new(lm::Lm),\n        "prepo:u" => Arc::new(decomp_play_report::PlayReport),')
+    (rt / 'src/services/decomp_play_report.rs').write_bytes((adapter / 'play_report.rs').read_bytes())
     (rt / 'examples').mkdir(exist_ok=True)
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
