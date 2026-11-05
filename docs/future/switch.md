@@ -322,3 +322,18 @@ This prevents the asynchronous compiler's pending state from discarding draws
 on transient targets. Compilation errors and unsupported shaders remain fatal.
 The Windows Switch workflow executes native CPU/module comparisons, original
 desktop programs and runtime regressions without retail game inputs.
+
+Maxwell lower-left window origin reverses the front-face convention used by
+the Vulkan host. The runtime now accounts for mode bit 0 of `SET_WINDOW_ORIGIN`
+(`0x13ac`); its separate `FLIP_Y` field is not used as an origin flag. The
+original graphics probe checks both windings with both window origins, in
+addition to its two unculled triangle sizes, with six draws and zero skips.
+The new Linux CI job runs these readbacks on Mesa's CPU Vulkan driver. The same
+six cases also passed locally on an NVIDIA RTX 3070 Laptop GPU. Register
+definitions come from [NVIDIA's class header](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/cl9097.h).
+
+The original `prepo:u` play-report commands `10100` and `10101` copy guest report
+buffers into a bounded process-local queue. They do not contact Nintendo or
+claim successful uploads. The queue holds at most 16 reports and 1 MiB total;
+malformed or unmapped buffers are rejected. Unknown commands still take the
+strict unsupported-service path. These changes pass 215 runtime unit tests.

@@ -71,3 +71,25 @@ jobs:
             switch-qualification/validation.json
             switch-qualification/*-run.json
             switch-qualification/*.log
+
+  native-graphics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+      - name: Install the CPU Vulkan driver and native dependencies
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Export the verified runtime and exercise Maxwell winding on Vulkan
+        run: |
+          uv run --no-sync python -c "from decompnet.switch_native.desktop import sdk; sdk.export('switch-graphics-sdk')"
+          cargo run --locked --manifest-path switch-graphics-sdk/Cargo.toml -p kirikae-rt --example decomp-graphics --no-default-features -- switch-graphics
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: switch-native-graphics
+          path: switch-graphics/
