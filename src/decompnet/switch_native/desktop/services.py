@@ -292,3 +292,65 @@ def hid_sensors(root, adapter):
                  '                let on = style.is_some_and(|s| s.six_axis.contains(&lifo)) && st.sensors.running(i, lifo);')
     replace_once(folder / 'hid.rs', '        if let Some(reply) = decomp_vibration::call(c, req) { return reply; }',
                  '        if let Some(reply) = decomp_sensors::call(c, req) { return reply; }\n        if let Some(reply) = decomp_vibration::call(c, req) { return reply; }')
+
+
+def keyboard_edges(root):
+    from .patches import replace_once
+    path = Path(root) / 'crates/rt/src/input.rs'
+    replace_once(path, 'static KEYS: Mutex<Option<HashSet<KeyCode>>> = Mutex::new(None);', '''#[derive(Default)]
+struct Keys { held: HashSet<KeyCode>, taps: std::collections::HashMap<KeyCode, std::time::Instant> }
+impl Keys {
+    fn set(&mut self, code: KeyCode, pressed: bool, now: std::time::Instant) {
+        if pressed {
+            if self.held.insert(code) { self.taps.insert(code, now + std::time::Duration::from_millis(50)); }
+        }
+        else { self.held.remove(&code); }
+    }
+    fn sample(&mut self, now: std::time::Instant) -> HashSet<KeyCode> {
+        self.taps.retain(|_, until| *until > now);
+        let mut result = self.held.clone(); result.extend(self.taps.keys().copied()); result
+    }
+    fn clear(&mut self) { self.held.clear(); self.taps.clear(); }
+}
+static KEYS: Mutex<Option<Keys>> = Mutex::new(None);''')
+    replace_once(path, '''    let keys = keys.get_or_insert_with(HashSet::new);
+    if pressed {
+        keys.insert(code);
+    } else {
+        keys.remove(&code);
+    }''', '''    keys.get_or_insert_with(Keys::default).set(code, pressed, std::time::Instant::now());''')
+    replace_once(path, '''    let keys = KEYS.lock().unwrap();
+    let (mut buttons, mut l, mut r) = (0, (0, 0), (0, 0));
+    for c in keys.iter().flatten().filter_map(|&k| control(k)) {''', '''    let keys = KEYS.lock().unwrap().get_or_insert_with(Keys::default).sample(std::time::Instant::now());
+    let (mut buttons, mut l, mut r) = (0, (0, 0), (0, 0));
+    for c in keys.iter().filter_map(|&k| control(k)) {''')
+    replace_once(path, '    s.buttons |= stick_bits(s.left, button::STICK_L_LEFT) | stick_bits(s.right, button::STICK_R_LEFT);', '''    s.buttons |= stick_bits(s.left, button::STICK_L_LEFT) | stick_bits(s.right, button::STICK_R_LEFT);
+    if crate::env_var!("KIRIKAE_INPUT_TRACE").is_some() {
+        use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+        static LAST: AtomicU64 = AtomicU64::new(0);
+        if LAST.swap(s.buttons, Relaxed) != s.buttons { eprintln!("kirikae: sampled buttons {:#x}", s.buttons); }
+    }''')
+    with path.open('a', encoding='utf-8', newline='\n') as stream:
+        stream.write('''
+#[cfg(test)]
+mod decomp_key_tests {
+    use super::*;
+    #[test]
+    fn short_taps_span_a_thirty_hz_frame_and_then_expire() {
+        let mut keys = Keys::default();
+        let now = std::time::Instant::now(); let ms = std::time::Duration::from_millis;
+        keys.set(KeyCode::KeyZ, true, now); keys.set(KeyCode::KeyZ, false, now);
+        assert!(keys.sample(now).contains(&KeyCode::KeyZ));
+        assert!(keys.sample(now + ms(34)).contains(&KeyCode::KeyZ));
+        assert!(keys.sample(now + ms(50)).is_empty());
+    }
+    #[test]
+    fn held_keys_remain_down_and_focus_loss_clears_pending_edges() {
+        let mut keys = Keys::default(); let now = std::time::Instant::now();
+        let later = now + std::time::Duration::from_secs(1);
+        keys.set(KeyCode::KeyZ, true, now); assert!(keys.sample(later).contains(&KeyCode::KeyZ));
+        keys.set(KeyCode::KeyZ, false, later); assert!(keys.sample(later).is_empty());
+        keys.set(KeyCode::KeyX, true, later); keys.clear(); assert!(keys.sample(later).is_empty());
+    }
+}
+''')

@@ -280,7 +280,7 @@ native C with zero interpreted instructions. Negative runs cover
 untranslated targets, unsupported SVCs, guest memory faults and changed assets
 before native execution. A combined native/interpreter feature build is rejected.
 
-The source runtime passes 211 unit tests, including audio mixing/resampling,
+The source runtime passes 213 unit tests, including audio mixing/resampling,
 input/HID, synchronization and filesystem/RomFS behavior. A separate host GPU
 qualification submits real Maxwell pushbuffers and vertex/fragment shader code
 through the game's Vulkan path. Readback contains exactly 3,456 red pixels at
@@ -308,6 +308,9 @@ is retained, and virtual handheld activation uses the SDK's aruid-first ABI.
 Idle peripheral samples, vibration request/readback and stationary IMU lifecycle
 are implemented for virtual controllers; physical rumble and motion are not
 qualified. Unsupported requests continue to stop strict native runs.
+Short keyboard taps are held for at least 50 ms so a 30 Hz game can observe
+them. Longer holds release immediately; focus loss clears all input. Set
+`KIRIKAE_INPUT_TRACE=1` to log key events and sampled button transitions.
 
 Native builds compile missing graphics pipelines synchronously before drawing.
 This prevents the asynchronous compiler's pending state from discarding draws

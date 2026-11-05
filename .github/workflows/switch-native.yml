@@ -40,7 +40,6 @@ jobs:
         shell: pwsh
         run: |
           $clang = (Get-Command clang.exe -ErrorAction Stop).Source
-          "CXX=$clang" >> $env:GITHUB_ENV
           "DECOMP_SWITCH_CC=$clang" >> $env:GITHUB_ENV
           "DECOMP_SWITCH_CXX=$clang" >> $env:GITHUB_ENV
           "DECOMP_SWITCH_RUSTC=$((Get-Command rustc.exe -ErrorAction Stop).Source)" >> $env:GITHUB_ENV
