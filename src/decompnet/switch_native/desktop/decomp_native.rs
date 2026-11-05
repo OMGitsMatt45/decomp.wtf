@@ -81,6 +81,26 @@ fn enter(c: &mut Cpu, skip_hook: bool) {
 pub extern "C" fn entry(c: &mut Cpu) { enter(c, false); }
 pub extern "C" fn unhooked(c: &mut Cpu) { enter(c, true); }
 
+// This guard runs under the guest FP environment. Keep it integer-only: no
+// formatting, service calls, register synchronization or floating-point work.
+// A rejected guard takes the existing full callback for hooks and diagnostics.
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_host_entry_is_plain(n: &NativeCpu, address: u64, skip: i32) -> i32 {
+    let c = unsafe { &*n.owner.cast::<Cpu>() };
+    let p = c.process();
+    if p.sched.exiting.load(Ordering::Relaxed) || (skip == 0 && p.hle.owns(address)) { return 0; }
+    let Some(config) = CONFIG.get() else { return 0; };
+    let Some(code) = config.code.iter().find(|m| address >= m.base && address < m.base + m.text.len() as u64) else { return 0; };
+    let Ok(index) = code.entries.binary_search(&address) else { return 0; };
+    let offset = (address - code.base) as usize;
+    let end = code.entries.get(index + 1).copied().unwrap_or(code.base + code.text.len() as u64);
+    let size = (end - address) as usize;
+    let bytes = unsafe { std::slice::from_raw_parts(p.memory.base().add(address as usize), size) };
+    if bytes != &code.text[offset..offset + size] { return 0; }
+    crate::decomp::NATIVE.fetch_add(1, Ordering::Relaxed);
+    1
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn sw_host_enter(n: &mut NativeCpu, address: u64, skip: i32) -> i32 {
     let mut hooked = false;

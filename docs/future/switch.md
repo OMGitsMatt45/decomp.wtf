@@ -313,8 +313,10 @@ is retained, and virtual handheld activation uses the SDK's aruid-first ABI.
 Idle peripheral samples, vibration request/readback and stationary IMU lifecycle
 are implemented for virtual controllers; physical rumble and motion are not
 qualified. Unsupported requests continue to stop strict native runs.
-Short keyboard taps are held for at least 50 ms so a 30 Hz game can observe
-them. Longer holds release immediately; focus loss clears all input. Set
+Short keyboard taps span at least 50 ms and two presented frames so games
+can observe them during slow rendering. A 500 ms cap prevents a stalled display
+from retaining a tap. Holds that already span those frames release immediately;
+headless input keeps the 50 ms minimum. Focus loss clears all input. Set
 `KIRIKAE_INPUT_TRACE=1` to log key events and sampled button transitions.
 
 Native builds compile missing graphics pipelines synchronously before drawing.

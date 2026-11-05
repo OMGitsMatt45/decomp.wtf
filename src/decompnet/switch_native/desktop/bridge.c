@@ -50,6 +50,9 @@ int sw_function_enter(Cpu *c, uint64_t address) {
     c->pc = address;
     int skip = unhooked == address;
     if (skip) unhooked = 0;
+    // The integer-only guard preserves guest FP state and validates code on
+    // every entry. Real callbacks still cross the full host FP/register ABI.
+    if (sw_host_entry_is_plain(c, address, skip)) return 0;
     int result = HOST_RESULT(c, sw_host_enter(c, address, skip));
     halt_if(result == 2);
     return result == 1;

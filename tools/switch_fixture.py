@@ -60,6 +60,17 @@ def conditional_target_fixture():
     return bytes(raw)
 
 
+def changed_code_fixture():
+    """Overwrite a discovered entry in guest memory, then branch to it."""
+    raw = bytearray(conditional_target_fixture())
+    # adr x9, target (0xa0); str wzr, [x9]; br x9; padding;
+    # target: mov x0, #42; ret. The written word is not the translated code.
+    words = [0x10000109, 0xb900013f, 0xd61f0120] + [0xd503201f] * 5
+    words += [0xd2800540, 0xd65f03c0]
+    struct.pack_into('<10I', raw, 0x80, *words)
+    return bytes(raw)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)

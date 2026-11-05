@@ -52,6 +52,8 @@ def fixtures(work, rustc):
     (inputs / 'cpu.nro').write_bytes(cpu_fixture(nro=True))
     (inputs / 'cpu-nso.nso').write_bytes(cpu_fixture(compressed=True))
     (inputs / 'conditional-target.nro').write_bytes(conditional_target_fixture())
+    from tools.switch_fixture import changed_code_fixture
+    (inputs / 'changed-code.nro').write_bytes(changed_code_fixture())
     raw = bytearray((inputs / 'hello.nro').read_bytes())
     exclusive = bytes.fromhex((Path(__file__).parent / 'fixtures/switch-exclusive.hex').read_text())
     raw[0x80:0x80 + len(exclusive)] = exclusive
@@ -68,7 +70,7 @@ def qualify(args):
     work.mkdir(parents=True, exist_ok=True)
     os.environ['DECOMP_SWITCH_RUSTC'] = args.rustc
     inputs = work / 'inputs' if args.resume else fixtures(work, args.rustc)
-    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'missing', 'svc', 'fault']
+    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'changed-code', 'missing', 'svc', 'fault']
     sources = {}
     for name in names:
         source = work / (name + '-source')
@@ -95,7 +97,7 @@ def qualify(args):
         binary = build / 'switch_native'
         if os.name == 'nt': binary = next(build.rglob('switch_native.exe'))
         report = work / (name + '-run.json')
-        expected = 2 if name in ('missing', 'svc') else 4 if name == 'fault' else 0
+        expected = 2 if name in ('changed-code', 'missing', 'svc') else 4 if name == 'fault' else 0
         output = run([binary, '--assets', source / 'assets', '--headless', '--report', report], work / (name + '-run.log'), timeout=45, expect=expected, env=env)
         data = json.loads(report.read_text())
         assert data['interpreter_instructions'] == 0 and data['runtime_compilation'] is False
@@ -114,8 +116,8 @@ def qualify(args):
         if name == 'exclusive':
             assert data['final_cpu']['x'][4] == data['final_cpu']['x'][7] == 0
             assert struct.unpack_from('<2Q', bytes.fromhex(data['data_samples'][0]['hex'])) == (0x13, 0x24)
-        if name in ('missing', 'svc', 'fault'):
-            kind = {'missing':'missing-native-target', 'svc':'svc', 'fault':'guest-memory-fault'}[name]
+        if name in ('changed-code', 'missing', 'svc', 'fault'):
+            kind = {'changed-code':'changed-code', 'missing':'missing-native-target', 'svc':'svc', 'fault':'guest-memory-fault'}[name]
             assert any(e['kind'] == kind for e in data['failures']), data
         runs.append(dict(name=name, status=data['status'], expected_exit=expected, interpreter_instructions=0,
                          report_sha256=hashlib.sha256(report.read_bytes()).hexdigest()))
