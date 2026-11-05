@@ -1,5 +1,5 @@
 //! Desktop play-report service: bounded, process-local storage, no upload.
-//! 10100/10101 are the original SaveReport / SaveReportWithUser ABI.
+//! Supports the original and SDK 6–9 SaveReport / SaveReportWithUser commands.
 use std::{collections::VecDeque, sync::Mutex};
 use crate::{Cpu, services::{Buf, Reply, Request, Service}};
 
@@ -27,10 +27,11 @@ pub struct PlayReport;
 impl Service for PlayReport {
     fn name(&self) -> String { "prepo:u".into() }
     fn call(&self, c: &mut Cpu, req: &Request) -> Reply {
-        if !matches!(req.cmd, 10100 | 10101) {
-            return crate::services::stub::unimplemented("prepo:u", c, req);
-        }
-        let with_user = req.cmd == 10101;
+        let with_user = match req.cmd {
+            10100 | 10102 => false,
+            10101 | 10103 => true,
+            _ => return crate::services::stub::unimplemented("prepo:u", c, req),
+        };
         let pid_at = if with_user { 16 } else { 0 };
         if req.data.len() != pid_at + 8 || req.a.len() != 1 || req.x.len() != 1 {
             return Reply::err(INVALID);
@@ -63,10 +64,17 @@ mod tests {
             let mut req = Request { cmd: 10101, data: [vec![7;16], 42u64.to_le_bytes().to_vec()].concat(),
                 x: vec![Buf { addr: 0x300000, size: 5 }], a: vec![Buf { addr: 0x300005, size: 7 }], ..Default::default() };
             assert_eq!(super::super::open("prepo:u").call(c, &req).result, 0);
+            req.cmd = 10103;
+            assert_eq!(PlayReport.call(c, &req).result, 0);
+            let without_user = Request { cmd: 10102, data: 42u64.to_le_bytes().to_vec(),
+                x: req.x.clone(), a: req.a.clone(), ..Default::default() };
+            assert_eq!(PlayReport.call(c, &without_user).result, 0);
             assert!(c.process().memory.write(0x300000, &[0;12]));
             let state = c.process().service_state("prepo.reports", || Mutex::new(Reports::default()));
             let state = state.lock().unwrap();
             assert_eq!(state.queue[0], Report { user: Some([7;16]), pid:42, room:b"room\0".to_vec(), payload:b"payload".to_vec() });
+            assert_eq!(state.queue[1], state.queue[0]);
+            assert_eq!(state.queue[2], Report { user: None, pid:42, room:b"room\0".to_vec(), payload:b"payload".to_vec() });
             drop(state);
             req.a[0].size = MAX_BYTES as u64 + 1;
             assert_eq!(PlayReport.call(c, &req).result, INVALID);
