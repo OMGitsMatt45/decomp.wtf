@@ -104,9 +104,15 @@ use each module's linked base; addresses from another game's symbol map or
 another build must not be reused without verification.
 
 The host applies relocations before translating code and bypasses guest `rtld`
-execution, then enters `main` with a main-thread handle and TLS. This startup
-model is explicitly recorded as `host-linked-main`; it does not establish full
-Nintendo SDK process-startup compatibility. `main.npdm`, if supplied, is hashed
+execution. When a module exports `nn::init::Start`, the desktop runtime enters
+that SDK startup ABI with the main-thread handle and two constructor callbacks.
+The SDK initializes OS/thread state before the SDK DSOs, then initializes the
+application heap before the main DSO. Nintendo-style `DT_INIT` owns its
+`INIT_ARRAY`, so the callbacks do not invoke that array a second time. The
+selected `nn-sdk-start` plan is recorded in `analysis.json`. Inputs without
+that SDK export retain the bounded host-linked entry/constructor model. This
+does not establish complete Nintendo SDK process-startup compatibility.
+`main.npdm`, if supplied, is hashed
 and provides a bounded stack size. Each original module remains separately
 identified in the manifest; generated assets contain the linked memory images.
 
@@ -134,6 +140,10 @@ Every module asset is verified before constructors run, and each module's code
 is guarded at translated function entry. Reports include per-module native
 counts, constructor/SVC/IPC counts, registers and bounded data samples. Owner
 source changes during export prevent publication and remain intact.
+
+On Windows, full-file SHA-256 checks stream through the system CNG provider,
+including multi-gigabyte RomFS images. Read/provider errors reject the asset.
+The desktop link includes the windowing runtime's IME, DWM and theme libraries.
 
 ## Desktop source runtime
 
@@ -260,7 +270,9 @@ interrupted build in its existing work directory.
 The arithmetic fixture prints the expected sum, indirect square, branch-table
 result and recursive Fibonacci value. Both serialized and parallel worker
 fixtures print `threads: 40400`. The two-module fixture runs both constructors
-and returns `42`. Original FP/SIMD programs return `150`, store factorial `120`,
+and returns `42`. An original SDK-start ABI fixture checks deferred constructor
+callbacks and `DT_INIT` ownership of its array; it also returns `42` with exactly
+two constructor calls. Original FP/SIMD programs return `150`, store factorial `120`,
 float `3.5` and four vector lanes of `16`, from both NRO and compressed NSO.
 A separate original fixture checks LDXP/STXP and LDAXP/STLXP: both stores
 succeed and leave the expected 128-bit pair `(0x13, 0x24)`. All run through

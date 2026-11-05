@@ -12,7 +12,7 @@ BASE = 0x7100000000
 SDK_BASE = BASE + 0x10000
 
 
-def module(name, *, gnu_hash=False):
+def module(name, *, gnu_hash=False, sdk_startup=False):
     text, ro, data = [bytearray.fromhex((FIXTURES / ('switch-module-' + name + section + '.hex')).read_text())
                       for section in ('.text', '.rodata', '.data')]
     ro.extend(bytes(0x800 - len(ro)))
@@ -38,6 +38,20 @@ def module(name, *, gnu_hash=False):
         relocs = [(labels['counter_ptr'], (2 << 32) | 1025, 0),
                   (labels['sdk_array'], 1027, labels['sdk_init'])]
         tags = [(14, string('fixture-sdk')), (25, labels['sdk_array']), (27, 8)]
+    if sdk_startup:
+        if name == 'sdk':
+            # Original ABI fixture: call SDK callback, main callback, then
+            # return fixture_add(30). Constructors leave shared_counter=12.
+            # See fixtures/switch-sdk-start.s for the assembly.
+            text.extend(bytes(max(0, 0x1a0 - len(text))))
+            struct.pack_into('<8I', text, 0x180, 0xa9bf7bf3, 0xaa0303f3,
+                             0xd63f0040, 0xd63f0260, 0xd28003c0, 0x97ffffdb,
+                             0xa8c17bf3, 0xd65f03c0)
+            entries.append(('_ZN2nn4init5StartEmmPFvvES2_', 0x12, 1, 0x180, 32))
+        else:
+            # A Nintendo-style DT_INIT owns its init_array. Calling both would
+            # run this fixture's main constructor twice and return 47, not 42.
+            tags.append((12, labels['main_init']))
     symbol_bytes = bytearray(24)
     for sym_name, info, section, value, size in entries:
         symbol_bytes.extend(struct.pack('<IBBHQQ', string(sym_name), info, 0, section, value, size))
@@ -83,10 +97,10 @@ def segments(raw):
     return parts
 
 
-def fixture(root, *, gnu_hash=False):
+def fixture(root, *, gnu_hash=False, sdk_startup=False):
     root = Path(root); root.mkdir(parents=True)
     for name in ('main', 'sdk'):
-        (root / name).write_bytes(module(name, gnu_hash=gnu_hash))
+        (root / name).write_bytes(module(name, gnu_hash=gnu_hash, sdk_startup=sdk_startup))
     npdm = bytearray(0x80); npdm[:4] = b'META'
     struct.pack_into('<I', npdm, 0x1c, 0x10000)
     (root / 'main.npdm').write_bytes(npdm)

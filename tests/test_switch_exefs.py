@@ -160,6 +160,15 @@ def test_dt_init_and_array_constructors_share_dependency_order(tmp_path):
     assert exefs.load(root)['initializers'] == [SDK_BASE + 0x114, BASE + SYMBOLS['main']['main_init']]
 
 
+def test_sdk_startup_defers_constructors_and_selects_dt_init_once(tmp_path):
+    root = fixture(tmp_path / 'exefs', sdk_startup=True)
+    result = exefs.load(root)
+    assert result['startup'] == dict(model='nn-sdk-start', entry=SDK_BASE + 0x180,
+        sdk_initializers=[SDK_BASE + SYMBOLS['sdk']['sdk_init']],
+        main_initializers=[BASE + SYMBOLS['main']['main_init']])
+    assert SDK_BASE + 0x180 in result['modules'][1]['roots']
+
+
 @pytest.mark.parametrize('case', ['mod0', 'missing-dependency', 'missing-import', 'strong-optional',
     'hidden-export', 'rela-size', 'rela-kind', 'rela-symbol', 'rela-target', 'rela-overlap',
     'relative-symbol', 'relr-without-base', 'string-offset', 'hash-count', 'symbol-value',

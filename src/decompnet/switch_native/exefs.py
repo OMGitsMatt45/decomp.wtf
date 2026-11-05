@@ -377,6 +377,38 @@ def load(path, *, include_images=False, single=False):
 
     for module in modules:
         initialize(module)
+    sdk_start_name = '_ZN2nn4init5StartEmmPFvvES2_'
+    sdk_starts = [(m, s) for m, s in definitions.get(sdk_start_name, []) if s['kind'] == 2]
+    startup = None
+    if sdk_starts:
+        if len(sdk_starts) != 1:
+            raise PCError('ambiguous Nintendo SDK startup symbol')
+        owner, symbol = sdk_starts[0]
+        pointer = address(owner, symbol)
+        if code_module(pointer) is not owner:
+            raise PCError('Nintendo SDK startup is outside executable text')
+
+        def constructors(module):
+            tags = module['_dynamic']['tags']
+            # Nintendo's DT_INIT registers the DSO/TLS template and invokes
+            # its own init_array. Calling the array again initializes twice.
+            return [module['base'] + tags[12]] if tags.get(12) else array(module, 25, 27)
+
+        order, seen = [], set()
+
+        def sdk_order(module):
+            if module['name'] in seen or module['name'] in ('rtld', 'main'):
+                return
+            seen.add(module['name'])
+            for needed in module['_dynamic']['needed']:
+                sdk_order(aliases[module_alias(needed)])
+            order.extend(constructors(module))
+
+        sdk_order(owner)
+        for module in modules:
+            sdk_order(module)
+        startup = dict(model='nn-sdk-start', entry=pointer,
+                       sdk_initializers=order, main_initializers=constructors(main))
     for module in modules:
         module['roots'] = sorted(module.pop('_roots') | module.pop('_extra_roots', set()))
         module.pop('_dynamic')
@@ -387,4 +419,4 @@ def load(path, *, include_images=False, single=False):
     digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return dict(platform='switch', format='exefs', input=dict(name=root.name, sha256=digest), inputs=inputs,
                 entry=main['base'], stack_size=stack_size, modules=modules, initializers=initializers,
-                native_game_backend_available=False, scope='host-linked-module-runtime-development')
+                native_game_backend_available=False, scope='host-linked-module-runtime-development', startup=startup)
