@@ -54,7 +54,13 @@ def test_runtime_vendor_mutations_are_rejected_and_preserved(tmp_path, monkeypat
     elif change == 'extra':
         modified = source / 'crates/rt/build.rs'; modified.write_text('owner edits')
     else:
-        modified = source / 'linked'; modified.symlink_to(tmp_path, target_is_directory=True)
+        modified = source / 'linked'
+        try:
+            modified.symlink_to(tmp_path, target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) != 1314:
+                raise
+            pytest.skip('Windows account cannot create symlinks')
     with pytest.raises(pc.PCError, match='differs from its pin'):
         sdk.verify()
     assert modified.exists()
@@ -85,6 +91,27 @@ def test_nro_layout_is_rebased_without_changing_original_bytes(original):
     assert loaded['entry'] == 0x08000000
     assert loaded['modules'][0]['base'] == 0x08000000
     assert loaded['modules'][0]['input']['sha256'] == hashlib.sha256(original.read_bytes()).hexdigest()
+
+
+def test_stripped_unwind_callback_is_in_the_export_dispatch_table(tmp_path, emission_env):
+    import struct
+    from tests.test_switch_discovery import original as unwind_fixture
+
+    image, _ = unwind_fixture()
+    struct.pack_into('<I', image, 0, 0x140000c0)  # b 0x300, skipping metadata
+    struct.pack_into('<I', image, 0x300, 0xd65f03c0)  # ret
+    image[0x10:0x14] = b'NRO0'
+    struct.pack_into('<II', image, 0x18, len(image), 0)
+    for i, (offset, size) in enumerate(((0, 0x400), (0x1000, 0x200), (0x2000, 0x80))):
+        struct.pack_into('<II', image, 0x20 + 8 * i, offset, size)
+    path = tmp_path / 'stripped.nro'; path.write_bytes(image)
+    out = tmp_path / 'source'
+    project.export(path, out)
+    # Neither callback is called or address-materialized by the entry program.
+    entries = {int(v) for v in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x08000200, 0x08000240} <= entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert 'f_8000200' in table and 'f_8000240' in table
 
 
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
