@@ -218,9 +218,10 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     hid_sensors(root, adapter)
     keyboard_edges(root)
     services = rt / 'src/services/mod.rs'
-    replace_once(services, 'pub mod stub;', 'pub mod stub;\nmod decomp_play_report;')
+    replace_once(services, 'pub mod stub;', 'pub mod stub;\nmod decomp_bsd;\nmod decomp_play_report;')
     replace_once(services, '        "lm" => Arc::new(lm::Lm),',
-                 '        "lm" => Arc::new(lm::Lm),\n        "prepo:u" => Arc::new(decomp_play_report::PlayReport),')
+                 '        "lm" => Arc::new(lm::Lm),\n        "bsd:u" => Arc::new(decomp_bsd::OfflineBsd),\n        "prepo:u" => Arc::new(decomp_play_report::PlayReport),')
+    (rt / 'src/services/decomp_bsd.rs').write_bytes((adapter / 'bsd_offline.rs').read_bytes())
     (rt / 'src/services/decomp_play_report.rs').write_bytes((adapter / 'play_report.rs').read_bytes())
     from .keyboard import apply as software_keyboard
     software_keyboard(root, adapter)
