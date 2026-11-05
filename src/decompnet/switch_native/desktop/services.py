@@ -35,6 +35,38 @@ def applet_controls(root, adapter):
             let reply = service.call(''')
 
 
+def application_play_history(root):
+    from .patches import replace_once
+    path = Path(root) / 'crates/rt/src/services/am/applet.rs'
+    replace_once(path, '            50 => Reply::ok().bytes(&[0x44; 16]),',
+                 '''            50 => Reply::ok().bytes(&[0x44; 16]),
+            // QueryApplicationPlayStatisticsByUid. This host has no imported
+            // console play log, so there are zero entries in the output buffer.
+            111 if req.data.len() >= 16 && req.a.len() == 1 && req.b.len() == 1 => Reply::ok().u32(0),
+            111 => Reply::err(super::storage::RESULT_INVALID_PARAMETERS),''')
+    replace_once(path, '    #[test]\n    fn set_album_image_orientation_succeeds_with_no_output()', '''    #[test]
+    fn local_application_play_history_returns_an_empty_count() {
+        extern "C" fn probe(c: &mut Cpu) {
+            let proxy = AppletOe.call(c, &Request::default());
+            let functions = proxy.objects[0].call(c, &Request { cmd: 20, ..Default::default() });
+            let functions = &functions.objects[0];
+            let request = Request { cmd: 111, data: crate::services::acc::USER_ID.to_vec(),
+                a: vec![crate::services::Buf { addr: 0, size: 8 }],
+                b: vec![crate::services::Buf { addr: 0, size: 0x18 }], ..Default::default() };
+            let valid = functions.call(c, &request);
+            let invalid = functions.call(c, &Request { cmd: 111, ..Default::default() });
+            harness::record("am/play_history", &[valid.result as u64,
+                u32::from_le_bytes(valid.data.try_into().unwrap()) as u64, invalid.result as u64]);
+            c.halt();
+        }
+        harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
+        assert_eq!(harness::observed("am/play_history"), vec![0, 0, super::super::storage::RESULT_INVALID_PARAMETERS as u64]);
+    }
+
+    #[test]
+    fn set_album_image_orientation_succeeds_with_no_output()''')
+
+
 def parental_session(root):
     from .patches import replace_once
     path = Path(root) / 'crates/rt/src/services/pctl.rs'
@@ -104,6 +136,7 @@ impl Service for ApplicationAccountManager {
         match req.cmd {
             // The local profile has no linked Nintendo account.
             0 => Reply::ok().u8(0),
+            1 => Reply::ok().u64(0),
             _ => unimplemented("acc/IManagerForApplication", c, req),
         }
     }
@@ -116,12 +149,15 @@ fn local_application_account_reports_offline() {
     extern "C" fn probe(c: &mut Cpu) {
         let account = Account { name: "acc:u0" };
         let session = account.call(c, &Request { cmd: 101, data: USER_ID.to_vec(), ..Default::default() });
-        let reply = session.objects[0].call(c, &Request::default());
-        harness::record("acc/availability", &[reply.result as u64, reply.data.len() as u64, reply.data[0] as u64]);
+        let manager = &session.objects[0];
+        let availability = manager.call(c, &Request::default());
+        let id = manager.call(c, &Request { cmd: 1, ..Default::default() });
+        harness::record("acc/availability", &[availability.result as u64, availability.data.len() as u64,
+            availability.data[0] as u64, id.result as u64, u64::from_le_bytes(id.data.try_into().unwrap())]);
         c.halt();
     }
     harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
-    assert_eq!(harness::observed("acc/availability"), vec![0, 1, 0]);
+    assert_eq!(harness::observed("acc/availability"), vec![0, 1, 0, 0, 0]);
 }
 
 struct Profile;''')
