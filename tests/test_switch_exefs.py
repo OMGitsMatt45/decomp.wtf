@@ -300,22 +300,27 @@ def test_setjmp_plt_return_site_is_a_native_entry(tmp_path, runtime_tools):
 
     def caller(text, ro, data):
         rename_import(ro)
-        # Preserve the caller LR. The first setjmp return falls through to
-        # longjmp; the second skips it and returns 42 to the runtime.
-        struct.pack_into('<7I', text, 0x100, 0xa9bf7bfd, 0x9400002f, 0x35000040,
-                         0x94000021, 0x52800540, 0xa8c17bfd, 0xd65f03c0)
-        struct.pack_into('<2I', text, 0x190, 0x52800020, 0xd65f0260)  # mov w0, #1; ret x19
+        # The top-level caller adds 40 to the protected call's result. Its
+        # return site is an ordinary instruction in the middle of the function.
+        struct.pack_into('<5I', text, 0x100, 0xa9bf7bfd, 0x9400001f, 0x1100a000, 0xa8c17bfd, 0xd65f03c0)
+        # Save LR, call setjmp through PLT, then call a deeper frame on the
+        # first return. The second return skips that call and returns 2.
+        struct.pack_into('<7I', text, 0x180, 0xa9bf7bfd, 0x9400000f, 0x35000040,
+                         0x94000015, 0x52800040, 0xa8c17bfd, 0xd65f03c0)
         struct.pack_into('<4I', text, 0x1c0, 0xd0000010, 0xf9404211, 0x91020210, 0xd61f0220)
+        # Allocate a stack frame, call longjmp, and trap if it returns here.
+        struct.pack_into('<3I', text, 0x1e0, 0xd10043ff, 0x94000007, 0xd4200000)
+        struct.pack_into('<3I', text, 0x200, 0x9100029f, 0x52800020, 0xd65f0260)  # mov sp, x20; mov w0, #1; ret x19
 
     def callee(text, ro, data):
         rename_import(ro)
-        struct.pack_into('<3I', text, 0x100, 0xaa1e03f3, 0x52800000, 0xd65f03c0)
+        struct.pack_into('<4I', text, 0x100, 0xaa1e03f3, 0x910003f4, 0x52800000, 0xd65f03c0)
 
     change(root / 'main', caller)
     change(root / 'sdk', callee)
     main = exefs.load(root, include_images=True)['modules'][0]
     assert main['returns_twice']['slots'] == [BASE + 0x2080]
-    assert BASE + 0x108 in discovery.entries(main['image'], main)
+    assert BASE + 0x188 in discovery.entries(main['image'], main)
     output, binary = build_runtime(tmp_path, *runtime_tools)
     result, actual = run_runtime(tmp_path, output, binary)
     assert result.returncode == 0 and actual['x'][0] == 42, actual

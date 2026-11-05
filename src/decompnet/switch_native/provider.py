@@ -69,6 +69,17 @@ def build(*, desktop=False):
         replace_once(patched / 'src/module.rs',
                      '            if l.at(a).ends_block() {\n                s.external.insert(a + 4);',
                      '            if l.at(a).ends_block() || matches!(l.at(a), Insn::BCond(_, _)) {\n                s.external.insert(a + 4);')
+        # Propagate a restored guest stack through skipped native call frames.
+        module = patched / 'src/module.rs'
+        for call in ('{}(c);', 'rt_dispatch(c);',
+                     '{{ GuestFn rt_f = rt_hit(c->pc); if (rt_f) rt_f(c); else rt_dispatch(c); }}'):
+            replace_once(module, 'SPILL ' + call + ' RELOAD RT_RETURNED(c, {ra})',
+                         'SPILL {{ uint64_t rt_sp = c->sp; ' + call +
+                         ' RT_RETURNED(c, {ra}, rt_sp) }} RELOAD ')
+        replace_once(patched / 'runtime/cpu.h', '#define RT_RETURNED(c, ra)', '#define RT_RETURNED(c, ra, sp_before_call)')
+        replace_once(patched / 'runtime/cpu.h', '        __attribute__((musttail)) return rt_dispatch(c);',
+                     '        if ((c)->sp > (sp_before_call)) return;               \\\n'
+                     '        __attribute__((musttail)) return rt_dispatch(c);')
         if desktop:
             from .desktop.patches import lifter
             lifter(patched)
