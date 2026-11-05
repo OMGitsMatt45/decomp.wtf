@@ -118,12 +118,11 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '        if let Err(why) = &ok {\n            crate::decomp::gpu_failure(0, why);\n            self.stats.skipped += 1;')
     replace_once(rt / 'src/gpu/vulkan/draw.rs', '                self.stats.skipped_dispatches += 1;',
                  '                crate::decomp::gpu_failure(0, why);\n                self.stats.skipped_dispatches += 1;')
-    # The host uses Vulkan's upper-left framebuffer convention. Maxwell's
-    # lower-left window origin reverses the front-face convention (NV9097
-    # SET_WINDOW_ORIGIN at 0x13ac, mode bit 0); FLIP_Y is a separate field.
+    # Maxwell's upper-left raster origin reverses its front-face convention
+    # (NV9097 SET_WINDOW_ORIGIN at 0x13ac, mode bit 0). FLIP_Y is separate.
     replace_once(rt / 'src/gpu/vulkan/draw.rs',
                  '            let front = if regs[0x647] != 0x900 { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE };',
-                 '''            let clockwise = (regs[0x647] == 0x900) ^ (regs[0x4eb] & 1 != 0);
+                 '''            let clockwise = (regs[0x647] == 0x900) ^ (regs[0x4eb] & 1 == 0);
             let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
     # Native exports must preserve every draw, including transient targets on
     # the first use of a shader pair. Pending compilation is not a failed draw.

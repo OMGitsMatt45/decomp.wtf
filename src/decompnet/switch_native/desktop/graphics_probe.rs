@@ -38,13 +38,19 @@ fn main() {
     let vertices: [f32; 12] = [-0.75,-0.75,0.5,1.0, 0.75,-0.75,0.5,1.0, 0.0,0.75,0.5,1.0];
     assert!(mem.write(0x130000, &vertices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
     let mut frames = Vec::new();
-    // This triangle is clockwise in Vulkan framebuffer coordinates with a
-    // positive-height viewport. Lower-left Maxwell origin reverses winding.
-    for (width, height, cull, origin, clockwise, visible) in [
-        (128,96,false,0,false,true), (256,192,false,0,false,true),
-        (128,96,true,0,true,true), (128,96,true,0,false,false),
-        (128,96,true,1,false,true), (128,96,true,1,true,false),
-    ] {
+    // Counter-clockwise in guest clip coordinates; clockwise on a Vulkan
+    // positive-height viewport. Test the origin mode, the separate FLIP_Y bit,
+    // both guest front-face settings and both signs of viewport height.
+    let mut cases = vec![(128,96,false,0,false,false,true), (256,192,false,0,false,false,true)];
+    for origin in [0, 1, 0x10, 0x11] {
+        for clockwise in [false, true] {
+            for negative_height in [false, true] {
+                let visible = (clockwise == (origin & 1 != 0)) ^ negative_height;
+                cases.push((128,96,true,origin,clockwise,negative_height,visible));
+            }
+        }
+    }
+    for (width, height, cull, origin, clockwise, negative_height, visible) in cases {
         let mut cp = Vec::new();
         method(&mut cp, 0, &[CLASS_3D]);
         address(&mut cp, 0x200, 0x1_0010_0000);
@@ -53,6 +59,9 @@ fn main() {
         method(&mut cp, 0x680, &[0x1111]);
         method(&mut cp, 0x4eb, &[origin]);
         method(&mut cp, 0x646, &[u32::from(cull), if clockwise { 0x900 } else { 0x901 }, 0x405]);
+        let sx = width as f32 / 2.0; let sy = height as f32 / 2.0;
+        method(&mut cp, 0x280, &[sx.to_bits(), (if negative_height { -sy } else { sy }).to_bits(),
+            0.5f32.to_bits(), sx.to_bits(), sy.to_bits(), 0.5f32.to_bits()]);
         method(&mut cp, 0x363, &[1f32.to_bits()]);
         method(&mut cp, 0x674, &[0x3c]);
         address(&mut cp, 0x582, 0x1_0000_0000);
@@ -67,17 +76,17 @@ fn main() {
         let pixels = gpu.read_pixels(0x200000, width, height).expect("Vulkan image readback");
         let red = pixels.iter().filter(|&&p| p & 0xffffff == 0xff0000).count();
         assert_eq!(pixels[(height/2 * width + width/2) as usize] & 0xffffff,
-            if visible { 0xff0000 } else { 0 }, "triangle center: cull={cull} origin={origin} clockwise={clockwise}");
+            if visible { 0xff0000 } else { 0 }, "triangle center: cull={cull} origin={origin} clockwise={clockwise} negative_height={negative_height}");
         assert_eq!(pixels[0] & 0xffffff, 0, "clear outside geometry");
         let expected = if visible { (width * height) as f64 * 9.0/32.0 } else { 0.0 };
         assert!((red as f64 - expected).abs() < (width + height) as f64, "triangle area {red}, expected {expected}");
         let rgb: Vec<u8> = pixels.iter().flat_map(|p| [(p>>16) as u8,(p>>8) as u8,*p as u8]).collect();
-        std::fs::write(root.join(format!("triangle-{width}x{height}-cull{cull}-origin{origin}-cw{clockwise}.png")), kirikae_rt::usage::png(width, height, &rgb)).unwrap();
+        std::fs::write(root.join(format!("triangle-{width}x{height}-cull{cull}-origin{origin}-cw{clockwise}-negative{negative_height}.png")), kirikae_rt::usage::png(width, height, &rgb)).unwrap();
         frames.push(json!({"width":width,"height":height,"red_pixels":red,"expected_area":expected,
-            "cull":cull,"window_origin":origin,"clockwise":clockwise,"visible":visible}));
+            "cull":cull,"window_origin":origin,"clockwise":clockwise,"negative_viewport_height":negative_height,"visible":visible}));
     }
     let stats = gpu.render_stats().expect("Vulkan renderer");
-    assert_eq!(stats.draws, 6); assert_eq!(stats.skipped, 0); assert!(stats.skip_reasons.is_empty());
+    assert_eq!(stats.draws, 18); assert_eq!(stats.skipped, 0); assert!(stats.skip_reasons.is_empty());
     let report = json!({"schema":"decomp.wtf.switch-graphics-probe/v1", "status":"passed", "cpu_path":"host qualification scene",
         "renderer":kirikae_rt::decomp::RENDERER.lock().unwrap().clone(), "frames":frames,
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});

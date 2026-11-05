@@ -323,12 +323,12 @@ on transient targets. Compilation errors and unsupported shaders remain fatal.
 The Windows Switch workflow executes native CPU/module comparisons, original
 desktop programs and runtime regressions without retail game inputs.
 
-Maxwell lower-left window origin reverses the front-face convention used by
+Maxwell upper-left raster origin reverses the front-face convention used by
 the Vulkan host. The runtime now accounts for mode bit 0 of `SET_WINDOW_ORIGIN`
 (`0x13ac`); its separate `FLIP_Y` field is not used as an origin flag. The
-original graphics probe checks both windings with both window origins, in
-addition to its two unculled triangle sizes, with six draws and zero skips.
-These six cases passed locally on an NVIDIA RTX 3070 Laptop GPU. Register
+original graphics probe checks both windings with both window origins, the
+separate FLIP_Y flag and both viewport-height signs, in addition to its two
+unculled triangle sizes. Register
 definitions come from [NVIDIA's class header](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/cl9097.h).
 
 The original `prepo:u` play-report commands `10100` and `10101` copy guest report
