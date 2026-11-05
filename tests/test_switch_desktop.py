@@ -114,6 +114,17 @@ def test_stripped_unwind_callback_is_in_the_export_dispatch_table(tmp_path, emis
     assert 'f_8000200' in table and 'f_8000240' in table
 
 
+def test_computed_branch_can_enter_a_conditional_fallthrough(tmp_path, emission_env):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    path = tmp_path / 'conditional-target.nro'
+    path.write_bytes(conditional_target_fixture())
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    table = (out / 'game/guest0_table.c').read_text()
+    assert 'f_8000090' in table
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'

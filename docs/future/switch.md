@@ -280,6 +280,11 @@ native C with zero interpreted instructions. Negative runs cover
 untranslated targets, unsupported SVCs, guest memory faults and changed assets
 before native execution. A combined native/interpreter feature build is rejected.
 
+A computed-branch fixture also enters the block immediately after a conditional
+branch and returns `42`, matching independent Unicorn execution. Unresolved
+computed branches retain these fallthrough addresses as dispatchable block
+starts, in addition to their taken targets and unconditional block boundaries.
+
 The source runtime passes 213 unit tests, including audio mixing/resampling,
 input/HID, synchronization and filesystem/RomFS behavior. A separate host GPU
 qualification submits real Maxwell pushbuffers and vertex/fragment shader code

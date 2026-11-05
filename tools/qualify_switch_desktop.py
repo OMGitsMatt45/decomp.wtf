@@ -15,7 +15,7 @@ from decompnet import pc
 from decompnet.switch_native.desktop import sdk
 from decompnet.switch_native.desktop.project import export
 from tools.switch_exefs_fixture import fixture as exefs_fixture
-from tools.switch_fixture import fixture as cpu_fixture
+from tools.switch_fixture import fixture as cpu_fixture, conditional_target_fixture
 
 
 def run(command, log, *, timeout=900, expect=0, env=None):
@@ -51,6 +51,7 @@ def fixtures(work, rustc):
     exefs_fixture(inputs / 'sdk-startup', sdk_startup=True)
     (inputs / 'cpu.nro').write_bytes(cpu_fixture(nro=True))
     (inputs / 'cpu-nso.nso').write_bytes(cpu_fixture(compressed=True))
+    (inputs / 'conditional-target.nro').write_bytes(conditional_target_fixture())
     raw = bytearray((inputs / 'hello.nro').read_bytes())
     exclusive = bytes.fromhex((Path(__file__).parent / 'fixtures/switch-exclusive.hex').read_text())
     raw[0x80:0x80 + len(exclusive)] = exclusive
@@ -67,7 +68,7 @@ def qualify(args):
     work.mkdir(parents=True, exist_ok=True)
     os.environ['DECOMP_SWITCH_RUSTC'] = args.rustc
     inputs = work / 'inputs' if args.resume else fixtures(work, args.rustc)
-    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'exclusive', 'missing', 'svc', 'fault']
+    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'missing', 'svc', 'fault']
     sources = {}
     for name in names:
         source = work / (name + '-source')
@@ -109,6 +110,7 @@ def qualify(args):
             assert struct.unpack_from('<Q', memory)[0] == 120
             assert struct.unpack_from('<f', memory, 16)[0] == 3.5
             assert struct.unpack_from('<4I', memory, 32) == (16, 16, 16, 16)
+        if name == 'conditional-target': assert data['final_cpu']['x'][0] == 42
         if name == 'exclusive':
             assert data['final_cpu']['x'][4] == data['final_cpu']['x'][7] == 0
             assert struct.unpack_from('<2Q', bytes.fromhex(data['data_samples'][0]['hex'])) == (0x13, 0x24)
