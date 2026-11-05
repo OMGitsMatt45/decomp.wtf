@@ -336,3 +336,12 @@ buffers into a bounded process-local queue. They do not contact Nintendo or
 claim successful uploads. The queue holds at most 16 reports and 1 MiB total;
 malformed or unmapped buffers are rejected. Unknown commands still take the
 strict unsupported-service path. These changes pass 215 runtime unit tests.
+
+The normal software-keyboard applet now opens a Windows text-entry dialog.
+Guest storage objects resolve through both domain IDs and session handles;
+the keyboard reads the applet's prompt, initial UTF-16 text and length bounds.
+Its native output storage reports acceptance or cancellation instead of
+returning a fixed trainer name. Headless runs cancel unless explicitly supplied
+`DECOMP_SWITCH_KEYBOARD_TEXT`; supplied text must meet the guest's bounds.
+The original fixed string is retained only inside the synthetic unit fixture.
+ABI fields follow [libnx's software-keyboard definitions](https://github.com/switchbrew/libnx/blob/master/nx/include/switch/applets/swkbd.h).

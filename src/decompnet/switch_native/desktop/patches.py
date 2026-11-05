@@ -170,5 +170,7 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     replace_once(services, '        "lm" => Arc::new(lm::Lm),',
                  '        "lm" => Arc::new(lm::Lm),\n        "prepo:u" => Arc::new(decomp_play_report::PlayReport),')
     (rt / 'src/services/decomp_play_report.rs').write_bytes((adapter / 'play_report.rs').read_bytes())
+    from .keyboard import apply as software_keyboard
+    software_keyboard(root, adapter)
     (rt / 'examples').mkdir(exist_ok=True)
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
