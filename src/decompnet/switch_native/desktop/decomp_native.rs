@@ -255,6 +255,7 @@ fn run(args: &[String]) -> Result<(i32, Value), String> {
         "input_sha256":unsafe { text(sw_input_sha256()) }, "backend_revision":unsafe { text(sw_backend_revision()) },
         "status":if result.exit_code == 0 && failures.is_empty() { "passed" } else { "failed" },
         "exit_code":result.exit_code, "interpreter_instructions":result.interpreted, "runtime_compilation":false,
+        "host_action":if crate::decomp_host_menu::RETURNED_TO_SETTINGS.load(Ordering::Relaxed) { Some("settings") } else { None },
         "native_function_entries":crate::decomp::NATIVE.load(Ordering::Relaxed), "failures":failures,
         "final_cpu":crate::decomp::FINAL_CPU.lock().unwrap().clone(),"data_samples":samples,
         "graphics":crate::decomp::GPU.lock().unwrap().clone(),"audio":crate::decomp::AUDIO.lock().unwrap().clone(),

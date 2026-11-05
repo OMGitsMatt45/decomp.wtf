@@ -345,3 +345,11 @@ returning a fixed trainer name. Headless runs cancel unless explicitly supplied
 `DECOMP_SWITCH_KEYBOARD_TEXT`; supplied text must meet the guest's bounds.
 The original fixed string is retained only inside the synthetic unit fixture.
 ABI fields follow [libnx's software-keyboard definitions](https://github.com/switchbrew/libnx/blob/master/nx/include/switch/applets/swkbd.h).
+
+A launcher can opt into a PC settings handoff with
+`DECOMP_SWITCH_SETTINGS_MENU=1`. On Windows, F10 asks whether to close the game
+and return to the launcher, warns about unsaved progress and defaults to No.
+Acceptance follows the normal window-close shutdown path; the execution report
+records `host_action: "settings"`. Save editing belongs to the launcher after
+the process exits. No dialog is opened in headless runs, and strict failures
+still determine the run's status. The source runtime passes 219 unit tests.
