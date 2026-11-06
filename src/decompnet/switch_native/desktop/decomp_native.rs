@@ -7,7 +7,8 @@ use crate::{Cpu, Entry, HALT_PC};
 pub struct NativeCpu {
     x: [u64; 32], sp: u64, pc: u64, nzcv: u64, tpidr: u64, tpidrro: u64,
     excl_addr: u64, excl_lo: u64, owner: *mut c_void, fpcr: u64, fpsr: u64,
-    excl_hi: u64, pending_entries: u64, pad: [u8; 160], v: [u128; 32],
+    excl_hi: u64, pending_entries: u64, entry_address: u64, next_entry_address: u64, entry_index: u64,
+    pad: [u8; 136], v: [u128; 32],
 }
 const _: () = assert!(std::mem::size_of::<NativeCpu>() == 1024);
 const _: () = assert!(std::mem::offset_of!(NativeCpu, v) == 512);
@@ -84,7 +85,8 @@ fn callback(n: &mut NativeCpu, f: impl FnOnce(&mut Cpu)) -> i32 {
 fn enter(c: &mut Cpu, skip_hook: bool) {
     let mut n = NativeCpu { x: [0; 32], sp: 0, pc: 0, nzcv: 0, tpidr: 0, tpidrro: 0,
         excl_addr: 0, excl_lo: 0, owner: (c as *mut Cpu).cast(), fpcr: 0, fpsr: 0,
-        excl_hi: 0, pending_entries: 0, pad: [0; 160], v: [0; 32] };
+        excl_hi: 0, pending_entries: 0, entry_address: 0, next_entry_address: 0, entry_index: 0,
+        pad: [0; 136], v: [0; 32] };
     copy_to_native(c, &mut n);
     unsafe { sw_enter(&mut n, c.process().memory.base() as usize, if skip_hook { c.pc } else { u64::MAX }); }
     flush_entry_count(&mut n);
@@ -103,12 +105,26 @@ pub extern "C" fn sw_host_entry_is_plain(n: &mut NativeCpu, address: u64, skip: 
     if p.sched.exiting.load(Ordering::Relaxed) || (skip == 0 && p.hle.owns(address)) { return 0; }
     let Some(config) = CONFIG.get() else { return 0; };
     let Some(code) = config.code.iter().find(|m| address >= m.base && address < m.base + m.text.len() as u64) else { return 0; };
-    let Ok(index) = code.entries.binary_search(&address) else { return 0; };
+    // Reuse the last or next entry index for loops and fallthrough. Verify
+    // the exact address in the selected module before using either hint.
+    let is_next = n.next_entry_address == address;
+    let matches_hint = is_next | (n.entry_address == address);
+    let hint = n.entry_index as usize + usize::from(is_next);
+    let index = if matches_hint && code.entries.get(hint) == Some(&address) {
+        hint
+    } else if let Ok(index) = code.entries.binary_search(&address) {
+        index
+    } else {
+        return 0;
+    };
     let offset = (address - code.base) as usize;
     let end = code.entries.get(index + 1).copied().unwrap_or(code.base + code.text.len() as u64);
     let size = (end - address) as usize;
     let bytes = unsafe { std::slice::from_raw_parts(p.memory.base().add(address as usize), size) };
     if bytes != &code.text[offset..offset + size] { return 0; }
+    n.entry_address = address;
+    n.next_entry_address = end;
+    n.entry_index = index as u64;
     // Each running guest thread owns this counter. Batch the global update at
     // polls and other host boundaries to avoid sharing a cache line per entry.
     n.pending_entries += 1;
