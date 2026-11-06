@@ -142,8 +142,9 @@ pub fn resolve_with_recovery(
     None
 }
 
-fn prove_guarded_w_copy(l: &Lifted, entry: u64, compare: u64, index: u32, source: u32) -> Option<()> {
-    // The copy must have executed on every path to the comparison, and
+fn prove_guarded_alias(l: &Lifted, entry: u64, compare: u64, index: u32, source: u32,
+                       defines_alias: impl Fn(u32) -> bool) -> Option<()> {
+    // The alias must have been defined on every path to the comparison, and
     // neither register may have changed since. Check all direct entrances.
     let start = entry.max(compare.saturating_sub(jt::WINDOW * 4));
     let mut pending = vec![compare];
@@ -160,8 +161,7 @@ fn prove_guarded_w_copy(l: &Lifted, entry: u64, compare: u64, index: u32, source
             match l.at(p) {
                 Insn::Op(code) if !code.contains("rt_svc(c") => {
                     let word = jt::Memory::word(l.m, p)?;
-                    // mov Windex, Wsource (orr with WZR, unshifted)
-                    if word == (0x2a00_03e0 | (source << 16) | index) { continue; }
+                    if defines_alias(word) { continue; }
                     if jt::writes(word, index) || jt::writes(word, source) { return None; }
                 }
                 Insn::B(_) | Insn::BCond(_, _) => {}
@@ -182,7 +182,23 @@ fn fallthrough_alias_bound(l: &Lifted, entry: u64, load: u64, branch: u64, index
         let p = a - 4;
         let word = jt::Memory::word(l.m, p)?;
         match l.at(p) {
-            Insn::Op(code) if !code.contains("rt_svc(c") && !jt::writes(word, index) => a = p,
+            Insn::Op(code) if !code.contains("rt_svc(c") => {
+                if jt::writes(word, index) {
+                    let guard = jt::masked_alias_guard(l.m, entry, branch, p, word)?;
+                    // The checked fallthrough must be the only way into the
+                    // final branch and remask, even when the alias is older.
+                    if (guard.compare_at + 4..=p).step_by(4).any(|pc| {
+                        l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty()
+                    }) {
+                        return None;
+                    }
+                    prove_guarded_alias(l, entry, guard.compare_at, guard.checked, guard.source, |w| {
+                        bits(w, 0, 5) == guard.checked && jt::masked_index(w) == Some((guard.source, guard.mask))
+                    })?;
+                    return Some(guard.count);
+                }
+                a = p;
+            }
             Insn::BCond(_, target) if *target > branch && word & 0xff00_001f == 0x5400_0008 => {
                 if p <= entry || l.m.seeds.contains(&p) || !l.direct_predecessors(p).is_empty() { return None; }
                 let compare = p - 4;
@@ -191,7 +207,9 @@ fn fallthrough_alias_bound(l: &Lifted, entry: u64, load: u64, branch: u64, index
                 if word & 0xff80_001f != 0x7100_001f || source == index || source == 31 || index == 31 {
                     return None;
                 }
-                prove_guarded_w_copy(l, entry, compare, index, source)?;
+                // mov Windex, Wsource (orr with WZR, unshifted)
+                prove_guarded_alias(l, entry, compare, index, source,
+                                    |w| w == (0x2a00_03e0 | (source << 16) | index))?;
                 let limit = (bits(word, 10, 12) as u64) << (bits(word, 22, 1) * 12);
                 return Some(limit + 1);
             }
@@ -272,11 +290,28 @@ def build(*, desktop=False):
 // Require an exit past the load and identical masks and sources so that the
 // unsigned bound applies to the loaded index.
 fn masked_alias_bound(mem: &dyn Memory, entry: u64, load_pc: u64, at: u64, index: u32) -> Option<u64> {
+    let guard = masked_alias_guard(mem, entry, load_pc, at, index)?;
+    let alias_at = guard.compare_at.checked_sub(4).filter(|&addr| addr >= entry)?;
+    let alias = mem.word(alias_at)?;
+    (bits(alias, 0, 5) == guard.checked && masked_index(alias) == Some((guard.source, guard.mask)))
+        .then_some(guard.count)
+}
+
+pub(crate) struct MaskedAliasGuard {
+    pub compare_at: u64,
+    pub checked: u32,
+    pub source: u32,
+    pub mask: u64,
+    pub count: u64,
+}
+
+pub(crate) fn masked_alias_guard(mem: &dyn Memory, entry: u64, exit_after: u64, at: u64,
+                                 index: u32) -> Option<MaskedAliasGuard> {
     let (source, mask) = masked_index(index)?;
     let branch_pc = at.checked_sub(4).filter(|&addr| addr >= entry)?;
     let branch = mem.word(branch_pc)?;
     if branch & 0xff00_001f != 0x5400_0008
-        || branch_pc.wrapping_add_signed(sext(bits(branch, 5, 19) as u64, 19) * 4) <= load_pc
+        || branch_pc.wrapping_add_signed(sext(bits(branch, 5, 19) as u64, 19) * 4) <= exit_after
     {
         return None;
     }
@@ -288,19 +323,13 @@ fn masked_alias_bound(mem: &dyn Memory, entry: u64, load_pc: u64, at: u64, index
         // Scalar integer stores with an unsigned immediate offset preserve NZCV and registers.
         if word & 0x3fc0_0000 != 0x3900_0000 { break word; }
     };
-    let alias_at = compare_at.checked_sub(4).filter(|&addr| addr >= entry)?;
-    let alias = mem.word(alias_at)?;
-    let reg = bits(alias, 0, 5);
-    if source == 31 || reg == 31 || masked_index(alias) != Some((source, mask))
-        || compare & 0x7f80_001f != 0x7100_001f || bits(compare, 5, 5) != reg
-    {
-        return None;
-    }
+    let checked = bits(compare, 5, 5);
+    if source == 31 || checked == 31 || compare & 0x7f80_001f != 0x7100_001f { return None; }
     let limit = (bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12);
-    Some(limit.min(mask) + 1)
+    Some(MaskedAliasGuard { compare_at, checked, source, mask, count: limit.min(mask) + 1 })
 }
 
-fn masked_index(w: u32) -> Option<(u32, u64)> {
+pub(crate) fn masked_index(w: u32) -> Option<(u32, u64)> {
     let wide = bits(w, 31, 1);
     let n = bits(w, 22, 1);
     if w & 0x7f80_0000 != 0x1200_0000 || n > wide {

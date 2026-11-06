@@ -296,6 +296,34 @@ def test_halfword_table_requires_matching_masked_alias(tmp_path, emission_env, c
     assert translation['unresolved_computed'] == int(not resolved)
 
 
+@pytest.mark.parametrize(('entrance', 'between', 'resolved'), [
+    (0xd503201f, 0xd503201f, True),   # Both guards test the same masked alias.
+    (0xb40000df, 0xd503201f, False),  # A direct edge enters the second comparison.
+    (0xd503201f, 0x52800048, False),  # mov w8, #2 replaces the source.
+    (0xd503201f, 0x52800049, False),  # mov w9, #2 replaces the alias.
+])
+def test_halfword_table_proves_masked_alias_across_an_earlier_guard(tmp_path, emission_env,
+                                                                  entrance, between, resolved):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # The earlier guard allows 0..3, but the final guard only allows 0..2.
+    # The second case lies after the independently discovered ADR anchor.
+    words = (0xd10043ff, 0xd2800048, 0xf2a00028, entrance, 0x12003d09, 0x71000d3f,
+             0x390033e8, 0x540001e8, between, 0x7100093f, 0x54000188, 0x92403d08,
+             0xb000000b, 0x9100016b, 0x10000089, 0x7868796a, 0x8b0a0929, 0xd61f0120,
+             0xd2800020, 0xd65f03c0, 0xd2800540, 0xd65f03c0, 0xd2800060, 0xd65f03c0)
+    struct.pack_into('<24I', image, 0x80, *words)
+    struct.pack_into('<4H', image, 0x1000, 0, 4, 2, 3)
+    path = tmp_path / 'two-masked-guards.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000d0' in table) == resolved
+    assert 'f_80000d4' not in table
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'
