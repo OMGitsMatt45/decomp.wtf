@@ -425,6 +425,7 @@ def test_nested_halfword_table_requires_preserved_outer_selector(tmp_path, emiss
 @pytest.mark.parametrize('variant', [
     'closed', 'loop-clobber', 'guard-bypass', 'foreign-entry', 'mutable-table',
     'mixed', 'mixed-mask-bypass', 'mixed-sparse-mask',
+    'shared', 'shared-foreign-adr', 'shared-data-root',
 ])
 def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, emission_env, variant):
     from tools.switch_fixture import conditional_target_fixture, reference
@@ -453,6 +454,20 @@ def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, em
         struct.pack_into('<8I', image, 0xf0, mask, 0x10000089, 0x38686a6a, 0x8b0a0929,
                          0xd61f0120, 0x17ffffed, 0x17ffffec, 0xd65f03c0)
         fence = 0x10c
+    if variant.startswith('shared'):
+        # The inner loop can take either byte dispatch. The first has a
+        # distant anchor shared with the second dispatch immediately before it.
+        struct.pack_into('<I', image, 0x90, 0x1000048c)  # adr x12, new fence
+        struct.pack_into('<2I', image, 0xd8, 0x35000161, 0x14000005)
+        shared = (0x92400408, 0x10000129, 0x38686a6a, 0x8b0a0929, 0xd61f0120,
+                  0x92400408, 0x10000089, 0x38686a6a, 0x8b0a0929, 0xd61f0120,
+                  0x17ffffe8, 0x17ffffe7, 0xd65f03c0)
+        struct.pack_into(f'<{len(shared)}I', image, 0xf0, *shared)
+        if variant == 'shared-foreign-adr':
+            struct.pack_into('<I', image, 0x124, 0x10ffffad)  # adr x13, shared anchor
+        if variant == 'shared-data-root':
+            struct.pack_into('<Q', image, 0x1008, 0x08000118)
+        fence = 0x120
     struct.pack_into('<2H', image, 0x1000, 6 if variant == 'guard-bypass' else 0, 1)
     struct.pack_into('<2H', image, 0x2010 if variant == 'mutable-table' else 0x1010, 0, 2)
     path = tmp_path / 'linked-tables.nro'
@@ -463,7 +478,7 @@ def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, em
     entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
     assert {0x080000b4, 0x080000d8, 0x08000000 + fence} <= entries and 0x080000e0 not in entries
     table = (out / 'game/guest0_table.c').read_text()
-    assert ('f_80000e0' in table) == (variant in ('closed', 'mixed'))
+    assert ('f_80000e0' in table) == (variant in ('closed', 'mixed', 'shared'))
 
 
 @pytest.mark.parametrize('variant', ['full-width', 'narrow-alias', 'returning-wrapper'])
