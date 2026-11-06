@@ -15,7 +15,7 @@ from decompnet import pc
 from decompnet.switch_native.desktop import sdk
 from decompnet.switch_native.desktop.project import export
 from tools.switch_exefs_fixture import fixture as exefs_fixture
-from tools.switch_fixture import fixture as cpu_fixture, conditional_target_fixture
+from tools.switch_fixture import fixture as cpu_fixture, compact_table_partition_fixture, conditional_target_fixture
 
 
 def run(command, log, *, timeout=900, expect=0, env=None):
@@ -53,6 +53,7 @@ def fixtures(work, rustc):
     (inputs / 'cpu.nro').write_bytes(cpu_fixture(nro=True))
     (inputs / 'cpu-nso.nso').write_bytes(cpu_fixture(compressed=True))
     (inputs / 'conditional-target.nro').write_bytes(conditional_target_fixture())
+    (inputs / 'compact-table-partition.nro').write_bytes(compact_table_partition_fixture())
     from tools.switch_fixture import changed_code_fixture
     (inputs / 'changed-code.nro').write_bytes(changed_code_fixture())
     raw = bytearray((inputs / 'hello.nro').read_bytes())
@@ -72,7 +73,7 @@ def qualify(args):
     os.environ['DECOMP_SWITCH_RUSTC'] = args.rustc
     inputs = work / 'inputs' if args.resume else fixtures(work, args.rustc)
     names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'sdk-startup-with-fini',
-             'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'changed-code', 'missing', 'svc', 'fault']
+             'cpu', 'cpu-nso', 'conditional-target', 'compact-table-partition', 'exclusive', 'changed-code', 'missing', 'svc', 'fault']
     sources = {}
     for name in names:
         source = work / (name + '-source')
@@ -119,7 +120,7 @@ def qualify(args):
             assert struct.unpack_from('<Q', memory)[0] == 120
             assert struct.unpack_from('<f', memory, 16)[0] == 3.5
             assert struct.unpack_from('<4I', memory, 32) == (16, 16, 16, 16)
-        if name == 'conditional-target': assert data['final_cpu']['x'][0] == 42
+        if name in ('conditional-target', 'compact-table-partition'): assert data['final_cpu']['x'][0] == 42
         if name == 'exclusive':
             assert data['final_cpu']['x'][4] == data['final_cpu']['x'][7] == 0
             assert struct.unpack_from('<2Q', bytes.fromhex(data['data_samples'][0]['hex'])) == (0x13, 0x24)
