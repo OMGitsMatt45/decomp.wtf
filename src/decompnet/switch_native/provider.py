@@ -275,18 +275,25 @@ fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: boo
                 };
                 if bits(compare, 31, 1) == 0 {
                     // CMP Widx only constrains the low half of Xidx. Require a
-                    // preceding zero-extending definition and no way to skip it.
-                    let producer_at = compare_at.checked_sub(4)?;
-                    if producer_at < l.m.text.start || l.m.seeds.contains(&compare_at)
-                        || !l.direct_predecessors(compare_at).is_empty()
-                    {
-                        return None;
-                    }
-                    let producer = jt::Memory::word(l.m, producer_at)?;
-                    if producer & 0xffc0_001f != (0xb940_0000 | idx) // ldr Widx, [Xn, #imm]
-                        && producer & 0xff80_001f != (0x5100_0000 | idx) // sub Widx, Wn, #imm
-                    {
-                        return None;
+                    // zero-extending definition before any scheduled MOVs,
+                    // with no entrance that can skip the definition.
+                    let mut producer_at = compare_at;
+                    loop {
+                        if l.m.seeds.contains(&producer_at) || !l.direct_predecessors(producer_at).is_empty() {
+                            return None;
+                        }
+                        producer_at = producer_at.checked_sub(4).filter(|&pc| {
+                            pc >= l.m.text.start && compare_at - pc <= jt::WINDOW * 4
+                        })?;
+                        let producer = jt::Memory::word(l.m, producer_at)?;
+                        if producer & 0xffc0_001f == (0xb940_0000 | idx) // ldr Widx, [Xn, #imm]
+                            || producer & 0xff80_001f == (0x5100_0000 | idx) // sub Widx, Wn, #imm
+                        {
+                            break;
+                        }
+                        if producer & 0x7fe0_ffe0 != 0x2a00_03e0 || bits(producer, 0, 5) == idx {
+                            return None; // mov Wd/Xd, Wn/Xn that preserves the index
+                        }
                     }
                 }
                 let limit = (bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12);
@@ -556,9 +563,13 @@ fn linked_table_operands(l: &Lifted, branch: u64) -> Option<jt::TableDispatch> {
 }
 
 fn linked_table_anchor(l: &Lifted, seed: u64) -> bool {
-    seed.checked_sub(4).filter(|&pc| l.in_text(pc) && matches!(l.at(pc), Insn::Br(_)))
-        .and_then(|branch| linked_table_operands(l, branch))
-        .is_some_and(|d| d.anchor == seed && l.anchor_origins.get(&seed).is_some_and(|origins| origins.contains(&d.adr)))
+    l.anchor_origins.get(&seed).is_some_and(|origins| origins.iter().any(|&adr| {
+        let end = seed.min(adr.saturating_add((jt::WINDOW + 1) * 4));
+        (adr + 4..end).step_by(4).any(|branch| {
+            matches!(l.at(branch), Insn::Br(_)) && linked_table_operands(l, branch)
+                .is_some_and(|d| d.anchor == seed && d.adr == adr)
+        })
+    }))
 }
 
 fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
@@ -581,14 +592,14 @@ fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedT
     let base_register = bits(word(load)?, 5, 5);
     let local_start = start.max(load.saturating_sub(jt::WINDOW * 4));
     let last_index_write = |before| (local_start..before).step_by(4).filter(|&pc| nested_writes(l, pc, idx)).last();
-    let (producer, guard, count) = if size == 1 {
+    let masked = (size == 1).then(|| {
         // A mask of contiguous low bits bounds the full X index even when
         // the input is otherwise unknown. A W result is zero-extended.
         let producer = last_index_write(load)?;
         let (source, mask) = jt::masked_index(word(producer)?)?;
-        if source == 31 { return None; }
-        (producer, None, mask + 1)
-    } else {
+        (source != 31).then_some((producer, None, mask + 1))
+    }).flatten();
+    let (producer, guard, count) = if let Some(masked) = masked { masked } else {
         let mut guard = load - 4;
         while guard > local_start && matches!(l.at(guard), Insn::Op(_)) { guard -= 4; }
         if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008
