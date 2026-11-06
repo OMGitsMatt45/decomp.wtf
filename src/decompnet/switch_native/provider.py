@@ -1,6 +1,7 @@
 """Offline, dependency-free build of the pinned nxport/LASRecomp source emitter."""
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -248,6 +249,13 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
 /// How the `br` at `br_pc` is emitted,''')
 
 
+def _cached_binary(binary, marker, key):
+    if binary.is_file() and marker.is_file() and json.loads(marker.read_text()) == dict(
+            key=key, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest()):
+        return binary
+    raise pc.PCError('Switch emitter cache differs; preserve edits and choose a new cache.')
+
+
 def build(*, desktop=False):
     vendor = verify_vendor()
     rustc = os.environ.get('DECOMP_SWITCH_RUSTC') or shutil.which('rustc')
@@ -263,10 +271,7 @@ def build(*, desktop=False):
     binary = destination / ('switch-emitter.exe' if os.name == 'nt' else 'switch-emitter')
     marker = destination / 'build.json'
     if destination.exists():
-        if binary.is_file() and marker.is_file() and json.loads(marker.read_text()) == dict(
-                key=key, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest()):
-            return binary
-        raise pc.PCError('Switch emitter cache differs; preserve edits and choose a new cache.')
+        return _cached_binary(binary, marker, key)
     cache.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.switch-build-', dir=cache) as temp:
         work = Path(temp)
@@ -382,5 +387,10 @@ pub(crate) fn masked_index(w: u32) -> Option<(u32, u64)> {
               'nxport_lifter=' + str(work / 'libnxport_lifter.rlib'), '-O', '-o', work / binary.name])
         (work / marker.name).write_text(json.dumps(dict(key=key,
             binary_sha256=hashlib.sha256((work / binary.name).read_bytes()).hexdigest())) + '\n')
-        work.rename(destination)
+        try:
+            work.rename(destination)
+        except OSError as error:
+            if error.errno not in (errno.EEXIST, errno.ENOTEMPTY) or not destination.exists():
+                raise
+            return _cached_binary(binary, marker, key)
     return binary
