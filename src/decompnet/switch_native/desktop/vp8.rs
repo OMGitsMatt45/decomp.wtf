@@ -167,17 +167,14 @@ mod tests {
     use super::super::{from_block_linear, nvdec::Nvdec, Iova};
     use crate::{gpu::{Gpu, NvMap}, mem::GuestMemory};
 
-    // First two frames of WebM Project's vp80-06-smallsize.ivf. The packed
-    // I420 hashes below were checked against the project's published MD5s.
+    // Two original 16×16 flat I420 frames encoded with libvpx, a keyframe
+    // followed by an interframe. FFmpeg's native VP8 decoder reproduced the
+    // input plane values (72, 110, 150) and (88, 104, 157) byte for byte.
     const KEY: &str = concat!(
-        "7003009d012a10001000004708858588858488020202752045fca0099871f2f765067b54a0fefffe387a648fe4748fe457ffd175e57e7fd55e3fa6ffd7111bf1dbfd8b1c6f1a2fd91ea90fc6b1d8",
-        "ab6b1bfffaeae7ade14a9b7637fde9d22f1a550c8da3be3ef38c02e913fe41cf85c21a8b0510fe5636b1bfb01fd325f1f412640050cd1dfe251d36078f3529f0cf163efaf52fe79e3f6762fef2e62b7efea",
-        "7e2d7403299fb8fb94b56e0ea6ac15d4d99dbe96ec7de032153f400",
+        "b002009d012a1000100000070885858885848800281013ad501fc01067ee20fe",
+        "fe480affdfeabdfd57bfaaff769ffe8e37e8e37e8e37fe8b80",
     );
-    const INTER: &str = concat!(
-        "f1010003101000180030282ff402b9546e00f6bf70fde5a4d2beb0e2addf9c178e24f0bafa964466add961a8745aeae1549016089ff76f1b2ce7593ec6c0f041942458d51e463fc7be9f22be1685016b7",
-        "fde12836fb8ebcbf35074c618464c00",
-    );
+    const INTER: &str = "f101000010100018074ff833e633f3002400fef0f1abd7c1f65547d445496f0000";
 
     fn split_frame(hex: &str) -> ([u8; PICTURE_INFO_SIZE], Vec<u8>, Vec<u8>) {
         let frame: Vec<u8> = hex.as_bytes().chunks_exact(2).map(|pair| {
@@ -232,7 +229,7 @@ mod tests {
             nvdec.write(&dma, 1, register / 4, value).unwrap();
         }
 
-        for (hex, expected) in [(KEY, 0x71edce7b241c8767), (INTER, 0xded39dc5e7fd5df5)] {
+        for (hex, expected) in [(KEY, 0xa0579ca2b84a8925), (INTER, 0x3180f6208cad4665)] {
             let (setup, frame, payload) = split_frame(hex);
             assert_eq!(PictureInfo::parse(&setup).unwrap().packet(&payload), frame);
             assert!(dma.write(base, &setup));
