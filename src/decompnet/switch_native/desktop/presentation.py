@@ -42,7 +42,50 @@ impl BufferCrop {
     }
 }
 
+// Fit the visible guest frame into the host drawable using physical pixels.
+pub(crate) fn fit_frame(source: [u32; 2], destination: [u32; 2]) -> [u32; 4] {
+    let [sw, sh] = source.map(u64::from);
+    let [dw, dh] = destination.map(u64::from);
+    let (w, h) = if sw * dh > sh * dw {
+        (dw, (dw * sh / sw).max(1))
+    } else {
+        ((dh * sw / sh).max(1), dh)
+    };
+    [(dw - w) as u32 / 2, (dh - h) as u32 / 2, w as u32, h as u32]
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::fit_frame;
+
+    #[test]
+    fn centers_the_visible_frame_without_stretching() {
+        assert_eq!(fit_frame([1280, 720], [1920, 1080]), [0, 0, 1920, 1080]);
+        assert_eq!(fit_frame([1280, 720], [1920, 1200]), [0, 60, 1920, 1080]);
+        assert_eq!(fit_frame([1280, 720], [3440, 1440]), [440, 0, 2560, 1440]);
+        assert_eq!(fit_frame([1280, 720], [1, 1]), [0, 0, 1, 1]);
+    }
+}
+
 pub static FRAMES: AtomicU64''')
+
+    replace_once(rt / 'display.rs', '''                for y in 0..dh {
+                    let row = &f.pixels[(y * sh / dh) * sw..][..sw];
+                    let out = &mut buf[y * dw..][..dw];
+                    for (x, px) in out.iter_mut().enumerate() {
+                        *px = row[x * sw / dw];
+                    }
+                }''', '''                let [left, top, width, height] = fit_frame([f.width, f.height], [size.width, size.height]).map(|n| n as usize);
+                if width != dw || height != dh {
+                    buf.fill(0);
+                }
+                for y in 0..height {
+                    let row = &f.pixels[(y * sh / height) * sw..][..sw];
+                    let out = &mut buf[(y + top) * dw + left..][..width];
+                    for (x, px) in out.iter_mut().enumerate() {
+                        *px = row[x * sw / width];
+                    }
+                }''')
 
     vi = rt / 'services/vi.rs'
     replace_once(vi, 'use crate::display::{self, Frame};', 'use crate::display::{self, BufferCrop, Frame};')
@@ -75,20 +118,40 @@ fn present(p: &Process, s: &Slot, rect: [i32; 4], transform: u32) {
     replace_once(gpu, 'r.present(cpu, width, height, flip_h, flip_v)', 'r.present(cpu, width, height, crop, flip_h, flip_v)')
 
     present = rt / 'gpu/vulkan/present.rs'
-    replace_once(present, 'use ash::vk;', 'use ash::vk;\n\nuse crate::display::BufferCrop;')
+    replace_once(present, 'use ash::vk;', 'use ash::vk;\n\nuse crate::display::{BufferCrop, fit_frame};')
     replace_once(present, 'pub fn present(&mut self, cpu: u64, width: u32, height: u32, flip_h: bool, flip_v: bool)',
                  'pub fn present(&mut self, cpu: u64, width: u32, height: u32, crop: BufferCrop, flip_h: bool, flip_v: bool)')
     replace_once(present, 'self.present_image(key, width, height, flip_h, flip_v)', 'self.present_image(key, crop, flip_h, flip_v)')
     replace_once(present, 'self.present_image(key, width, height, false, false)',
                  'self.present_image(key, BufferCrop::full(width, height), false, false)')
-    replace_once(present, 'fn present_image(&mut self, key: ImageKey, width: u32, height: u32, flip_h: bool, flip_v: bool)',
-                 'fn present_image(&mut self, key: ImageKey, crop: BufferCrop, flip_h: bool, flip_v: bool)')
+    replace_once(present, 'fn present_image(&mut self, key: ImageKey, width: u32, height: u32, flip_h: bool, flip_v: bool) -> Presented {',
+                 '''fn present_image(&mut self, key: ImageKey, crop: BufferCrop, flip_h: bool, flip_v: bool) -> Presented {
+        if crop.left >= crop.right || crop.top >= crop.bottom {
+            return Presented::NoImage;
+        }''')
     replace_once(present, '        let (w, h) = (width.min(key.width) as i32, height.min(key.height) as i32);\n', '')
     replace_once(present, '.src_offsets([vk::Offset3D { x: 0, y: 0, z: 0 }, vk::Offset3D { x: w, y: h, z: 1 }])',
                  '''.src_offsets([
                 vk::Offset3D { x: crop.left as i32, y: crop.top as i32, z: 0 },
                 vk::Offset3D { x: crop.right as i32, y: crop.bottom as i32, z: 1 },
             ])''')
+    replace_once(present, '''        let (x0, x1) = if flip_h { (extent.width as i32, 0) } else { (0, extent.width as i32) };
+        let (y0, y1) = if flip_v { (extent.height as i32, 0) } else { (0, extent.height as i32) };''', '''        let [left, top, width, height] = fit_frame(
+            [crop.right - crop.left, crop.bottom - crop.top],
+            [extent.width, extent.height],
+        );
+        let (left, top, right, bottom) = (left as i32, top as i32, (left + width) as i32, (top + height) as i32);
+        let (x0, x1) = if flip_h { (right, left) } else { (left, right) };
+        let (y0, y1) = if flip_v { (bottom, top) } else { (top, bottom) };''')
+    replace_once(present, '            d.cmd_blit_image(self.cmd, source,', '''            if width != extent.width || height != extent.height {
+                let black = vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] };
+                d.cmd_clear_color_image(self.cmd, target, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &black, &[range]);
+                let written = [to_dst[0]
+                    .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)];
+                d.cmd_pipeline_barrier(self.cmd, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &written);
+            }
+            d.cmd_blit_image(self.cmd, source,''')
 
     replace_once(vi, '    #[test]\n    fn parcel_round_trip()', '''    #[test]
     fn queue_crop_uses_flattened_rect_and_precedes_flips() {
