@@ -143,7 +143,8 @@ pub fn resolve_with_recovery(
 
 fn recover_table(l: &Lifted, entry: u64, pc: u64, r: u32) -> Vec<u64> {
     jt::resolve_with_recovery(l.m, entry, pc, r, |load, reg| {
-        if !jt::callee_saved(reg) { return None; }
+        // The reaching-definition walk rejects paths that cross a call
+        // without first finding a definition of a caller-saved base.
         // Include earlier partitions and local backward edges from later
         // case bodies, with the walk limited to this instruction window.
         let start = l.m.text.start.max(load.saturating_sub(0x800));
