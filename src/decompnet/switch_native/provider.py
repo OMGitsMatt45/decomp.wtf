@@ -128,6 +128,50 @@ def build(*, desktop=False):
         from .desktop.patches import replace_once
         patched = work / 'lifter'
         shutil.copytree(vendor, patched)
+        jt = patched / 'src/jt.rs'
+        replace_once(jt, '''            match mov_reg(w).or_else(|| zero_extend(w)) {
+                Some(src) => idx = src,
+                None => return None,
+            }''',
+                     '''            match mov_reg(w).or_else(|| zero_extend(w)) {
+                Some(src) => idx = src,
+                None if limit_cond.is_none() => return masked_alias_bound(mem, entry, load_pc, a, w),
+                None => return None,
+            }''')
+        replace_once(jt, '/// The source register of `mov wd/xd, ws/xs`', '''// Clang may test a masked W alias, then separately mask the X index:
+// and w9, w8, #mask; cmp w9, #limit; b.hi default; and x8, x8, #mask.
+// Require adjacent instructions, an exit past the load, and identical masks
+// and sources so that the unsigned bound applies to the loaded index.
+fn masked_alias_bound(mem: &dyn Memory, entry: u64, load_pc: u64, at: u64, index: u32) -> Option<u64> {
+    let (source, mask) = masked_index(index)?;
+    let alias_at = at.checked_sub(12).filter(|&addr| addr >= entry)?;
+    let alias = mem.word(alias_at)?;
+    let compare = mem.word(alias_at + 4)?;
+    let branch_pc = alias_at + 8;
+    let branch = mem.word(branch_pc)?;
+    let reg = bits(alias, 0, 5);
+    if source == 31 || reg == 31 || masked_index(alias) != Some((source, mask))
+        || compare & 0x7f80_001f != 0x7100_001f || bits(compare, 5, 5) != reg
+        || branch & 0xff00_001f != 0x5400_0008
+        || branch_pc.wrapping_add_signed(sext(bits(branch, 5, 19) as u64, 19) * 4) <= load_pc
+    {
+        return None;
+    }
+    let limit = (bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12);
+    Some(limit.min(mask) + 1)
+}
+
+fn masked_index(w: u32) -> Option<(u32, u64)> {
+    let wide = bits(w, 31, 1);
+    let n = bits(w, 22, 1);
+    if w & 0x7f80_0000 != 0x1200_0000 || n > wide {
+        return None;
+    }
+    let (mask, _) = crate::bits::decode_bit_masks(n, bits(w, 10, 6), bits(w, 16, 6), 32 << wide, true)?;
+    (mask <= u32::MAX as u64 && mask & (mask + 1) == 0).then_some((bits(w, 5, 5), mask))
+}
+
+/// The source register of `mov wd/xd, ws/xs`''')
         replace_once(patched / 'src/module.rs',
                      '            if l.at(a).ends_block() {\n                s.external.insert(a + 4);',
                      '            if l.at(a).ends_block() || matches!(l.at(a), Insn::BCond(_, _)) {\n                s.external.insert(a + 4);')

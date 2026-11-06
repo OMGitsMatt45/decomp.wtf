@@ -185,6 +185,32 @@ def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, e
     assert 'f_80000bc' in table and 'f_80000c0' not in table
 
 
+@pytest.mark.parametrize(('checked_index', 'resolved'), [
+    (0x12003d09, True),   # and w9, w8, #0xffff
+    (0x12003909, False),  # and w9, w8, #0x7fff
+    (0x12003c09, False),  # and w9, w0, #0xffff
+])
+def test_halfword_table_requires_matching_masked_alias(tmp_path, emission_env, checked_index, resolved):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # x8 = 0x10002; cmp (w8 & 0xffff), #2; b.hi default; and x8, x8, #0xffff;
+    # load an unsigned halfword from 0x1000 and branch to 0xb0 plus its scaled offset.
+    words = (0xd2800048, 0xf2a00028, checked_index, 0x7100093f, 0x54000188,
+             0x92403d08, 0xb000000b, 0x9100016b, 0x10000089, 0x7868796a,
+             0x8b0a0929, 0xd61f0120, 0xd2800020, 0xd65f03c0, 0xd2800540,
+             0xd65f03c0, 0xd2800060, 0xd65f03c0)
+    struct.pack_into('<18I', image, 0x80, *words)
+    struct.pack_into('<3H', image, 0x1000, 0, 4, 2)
+    path = tmp_path / 'masked-index.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    translation = json.loads((out / 'main-translation.json').read_text())
+    assert translation['jump_tables'] == int(resolved)
+    assert translation['unresolved_computed'] == int(not resolved)
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'
