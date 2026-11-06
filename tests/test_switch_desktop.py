@@ -159,6 +159,19 @@ def test_computed_branch_can_enter_a_conditional_fallthrough(tmp_path, emission_
     assert 'f_8000090' in table
 
 
+def test_compact_jump_table_can_enter_a_later_partition(tmp_path, emission_env):
+    from tools.switch_fixture import compact_table_partition_fixture, reference
+    path = tmp_path / 'compact-target.nro'
+    path.write_bytes(compact_table_partition_fixture())
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert 0x080000A0 in entries and 0x080000A4 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert 'f_80000a4' in table
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'

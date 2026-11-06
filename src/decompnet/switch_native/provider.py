@@ -69,6 +69,21 @@ def build(*, desktop=False):
         replace_once(patched / 'src/module.rs',
                      '            if l.at(a).ends_block() {\n                s.external.insert(a + 4);',
                      '            if l.at(a).ends_block() || matches!(l.at(a), Insn::BCond(_, _)) {\n                s.external.insert(a + 4);')
+        replace_once(patched / 'src/module.rs', '''    for t in s.tables.values() {
+        if let Table::All { known, reach, blocks } = t {
+            s.external.extend(known);
+            for r in reach {
+                let (lo, hi) = ((*r.start()).max(entry), (*r.end()).min(end - 4));''',
+                     '''    for (&branch, t) in &s.tables {
+        if let Table::All { known, reach, blocks } = t {
+            s.external.extend(known);
+            for r in reach {
+                // A scaled byte table can start at an adjacent ADR seed just
+                // beyond this partition. Keep its at most 256 targets in text.
+                let crosses_anchor = *r.start() == end && end == branch + 4
+                    && r.start().checked_add(255 * 4) == Some(*r.end());
+                let limit = if crosses_anchor { l.m.text.end } else { end };
+                let (lo, hi) = ((*r.start()).max(entry), (*r.end()).min(limit - 4));''')
         # Propagate a restored guest stack through skipped native call frames.
         module = patched / 'src/module.rs'
         for call in ('{}(c);', 'rt_dispatch(c);',

@@ -60,6 +60,20 @@ def conditional_target_fixture():
     return bytes(raw)
 
 
+def compact_table_partition_fixture():
+    """An offset byte enters a case beyond a separately seeded ADR anchor."""
+    raw = bytearray(conditional_target_fixture())
+    # adr x1, table; mov x0, #0; b dispatch; nop;
+    # dispatch: adr x9, anchor; ldrb w10, [x1, x0]; add x9, x9, x10, lsl #2; br x9;
+    # anchor: mov x0, #1; case: mov x0, #42; ret.
+    words = (0x10007c01, 0xd2800000, 0x14000002, 0xd503201f,
+             0x10000089, 0x3860682a, 0x8b0a0929, 0xd61f0120,
+             0xd2800020, 0xd2800540, 0xd65f03c0)
+    struct.pack_into('<11I', raw, 0x80, *words)
+    raw[0x1000] = 1
+    return bytes(raw)
+
+
 def changed_code_fixture():
     """Overwrite a discovered entry in guest memory, then branch to it."""
     raw = bytearray(conditional_target_fixture())
