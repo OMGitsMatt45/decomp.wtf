@@ -289,6 +289,24 @@ def test_halfword_table_requires_a_unique_proven_taken_guard(tmp_path, emission_
     assert ('f_8000120' in table) == resolved
 
 
+@pytest.mark.parametrize(('scheduled', 'alternate', 'resolved'), [
+    (0x390000df, 0xd503201f, True),   # strb wzr, [x6] preserves NZCV and W8
+    (0x7200011f, 0xd503201f, False),  # tst w8, #1 sets NZCV
+    (0xd2800028, 0xd503201f, False),  # mov x8, #1 overwrites the checked index
+    (0x390000df, 0xb4ffffc8, False),  # cbz x8, 0x8c can bypass CMP
+])
+def test_halfword_table_accepts_scheduled_byte_store_after_taken_guard_compare(
+        tmp_path, emission_env, scheduled, alternate, resolved):
+    from tools.switch_fixture import reference, scheduled_taken_guard_table_fixture
+    path = tmp_path / 'scheduled-taken-guard-target.nro'
+    path.write_bytes(scheduled_taken_guard_table_fixture(scheduled=scheduled, alternate=alternate))
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_8000120' in table) == resolved
+
+
 @pytest.mark.parametrize(('entrance', 'copy', 'between', 'resolved'), [
     (0xd503201f, 0x2a1503e9, 0xd503201f, True),   # Both paths preserve mov w9, w21.
     (0xb50000e0, 0x2a1503e9, 0xd503201f, False),  # A direct edge bypasses the copy.
