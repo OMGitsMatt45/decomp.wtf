@@ -90,6 +90,25 @@ def halfword_table_partition_fixture():
     return bytes(raw)
 
 
+def backward_byte_table_fixture(*, unknown_base):
+    """A byte table reaches a case in an earlier partition."""
+    raw = bytearray(conditional_target_fixture())
+    # adrp/add x24, table; mov w8, #1; cbz x8, alternate; adr x12, dispatch; b dispatch.
+    struct.pack_into('<6I', raw, 0x80, 0xb0000018, 0x91002318, 0x52800028,
+                     0xb4000128, 0x1000018c, 0x1400000b)
+    # anchor: mov x0, #1; ret; case: mov x0, #42; ret.
+    struct.pack_into('<4I', raw, 0xa0, 0xd2800020, 0xd65f03c0, 0xd2800540, 0xd65f03c0)
+    # alternate: nop or mov x24, x0; b dispatch.
+    struct.pack_into('<2I', raw, 0xb0, 0xaa0003f8 if unknown_base else 0xd503201f, 0x14000003)
+    # dispatch: cmp w8, #2; b.hi default; adr x9, anchor; ldrb w10, [x24, x8];
+    # add x9, x9, x10, lsl #2; br x9.
+    struct.pack_into('<6I', raw, 0xc0, 0x7100091f, 0x540000e8, 0x10fffec9,
+                     0x38686b0a, 0x8b0a0929, 0xd61f0120)
+    struct.pack_into('<2I', raw, 0xe0, 0xd2800000, 0xd65f03c0)
+    raw[0x1008:0x100b] = bytes([0, 2, 16])
+    return bytes(raw)
+
+
 def changed_code_fixture():
     """Overwrite a discovered entry in guest memory, then branch to it."""
     raw = bytearray(conditional_target_fixture())
