@@ -234,3 +234,5 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     static_bindless_textures(root)
     from .presentation import buffer_crop
     buffer_crop(root)
+    from .sample_grid import apply as maxwell_sample_grid
+    maxwell_sample_grid(root)
