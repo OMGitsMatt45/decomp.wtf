@@ -185,6 +185,20 @@ def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, e
     assert 'f_80000bc' in table and 'f_80000c0' not in table
 
 
+@pytest.mark.parametrize('call_after_base', [False, True])
+def test_halfword_table_caller_saved_base_must_be_defined_after_the_call(tmp_path, emission_env, call_after_base):
+    from tools.switch_fixture import caller_saved_halfword_table_fixture, reference
+    path = tmp_path / 'caller-saved-table-target.nro'
+    path.write_bytes(caller_saved_halfword_table_fixture(call_after_base=call_after_base))
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000A0, 0x080000BC} <= entries and 0x080000C0 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000c0' in table) == (not call_after_base)
+
+
 @pytest.mark.parametrize('unknown_base', [False, True])
 def test_backward_byte_table_requires_a_constant_base_on_each_path(tmp_path, emission_env, unknown_base):
     from tools.switch_fixture import backward_byte_table_fixture, reference
