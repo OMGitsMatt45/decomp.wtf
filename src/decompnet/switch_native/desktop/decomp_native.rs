@@ -26,6 +26,7 @@ unsafe extern "C" {
     fn sw_initializers(count: *mut usize) -> *const u64;
     fn sw_sdk_initializers(count: *mut usize) -> *const u64;
     fn sw_main_initializers(count: *mut usize) -> *const u64;
+    fn sw_sdk_finalizers(count: *mut usize) -> *const u64;
     fn sw_sdk_startup() -> u64;
     fn sw_entry() -> u64;
     fn sw_stack_size() -> u64;
@@ -45,6 +46,7 @@ struct Code {
 struct Config {
     code: Vec<Code>, initializers: Vec<u64>, entry: u64, samples: Vec<(String, u64, u64)>,
     sdk_startup: u64, sdk_initializers: Vec<u64>, main_initializers: Vec<u64>,
+    sdk_finalizers: Option<Vec<u64>>,
 }
 static CONFIG: OnceLock<Config> = OnceLock::new();
 static REPORT: OnceLock<PathBuf> = OnceLock::new();
@@ -165,8 +167,11 @@ extern "C" fn startup(c: &mut Cpu) {
         // nn::init::Start initializes the OS thread before the SDK DSOs, then
         // initializes the application's heap before the main DSO and nnMain.
         let p = c.process();
-        let sdk = p.hle.add("<native-sdk-initializers>", std::sync::Arc::new(|c| sdk_initializers(c, false)));
-        let main = p.hle.add("<native-main-initializers>", std::sync::Arc::new(|c| sdk_initializers(c, true)));
+        let sdk = p.hle.add("<native-sdk-initializers>", std::sync::Arc::new(move |c| run_module_hooks(c, &config.sdk_initializers, true)));
+        let main = p.hle.add("<native-main-initializers>", std::sync::Arc::new(move |c| run_module_hooks(c, &config.main_initializers, true)));
+        if let Some(finalizers) = &config.sdk_finalizers {
+            c.x[4] = p.hle.add("<native-sdk-finalizers>", std::sync::Arc::new(move |c| run_module_hooks(c, finalizers, false)));
+        }
         c.x[0] = crate::horizon::MAIN_THREAD_HANDLE; c.x[1] = 0; c.x[2] = sdk; c.x[3] = main;
         c.x[30] = HALT_PC; c.pc = config.sdk_startup;
         crate::process::call_indirect(c, HALT_PC);
@@ -185,13 +190,11 @@ extern "C" fn startup(c: &mut Cpu) {
     *crate::decomp::FINAL_CPU.lock().unwrap() = Some(json!({"x":c.x, "v":c.v,"nzcv":c.nzcv,"sp":c.sp,"pc":c.pc}));
 }
 
-fn sdk_initializers(c: &mut Cpu, main: bool) {
-    let config = CONFIG.get().unwrap();
-    let addresses = if main { &config.main_initializers } else { &config.sdk_initializers };
+fn run_module_hooks(c: &mut Cpu, addresses: &[u64], count_initializers: bool) {
     for &address in addresses {
         crate::hle::call_guest(c, address, false);
         if c.halted { return; }
-        crate::decomp::INITIALIZERS.fetch_add(1, Ordering::Relaxed);
+        if count_initializers { crate::decomp::INITIALIZERS.fetch_add(1, Ordering::Relaxed); }
     }
     c.pc = c.x[30];
 }
@@ -225,8 +228,11 @@ fn load(assets: &std::path::Path) -> Result<(kirikae_loader::Executable, &'stati
     let mut n = 0;
     let sdk_initializers = unsafe { std::slice::from_raw_parts(sw_sdk_initializers(&mut n), n) }.to_vec();
     let main_initializers = unsafe { std::slice::from_raw_parts(sw_main_initializers(&mut n), n) }.to_vec();
+    let mut n = 0;
+    let finalizers = unsafe { sw_sdk_finalizers(&mut n) };
+    let sdk_finalizers = (!finalizers.is_null()).then(|| unsafe { std::slice::from_raw_parts(finalizers, n) }.to_vec());
     let config = Config { code, initializers, entry: unsafe { sw_entry() }, samples,
-        sdk_startup: unsafe { sw_sdk_startup() }, sdk_initializers, main_initializers };
+        sdk_startup: unsafe { sw_sdk_startup() }, sdk_initializers, main_initializers, sdk_finalizers };
     CONFIG.set(config).map_err(|_| "one game per native process".to_string())?;
     entries.push(Entry { addr: STARTUP, func: startup }); entries.sort_by_key(|e| e.addr);
     if !entries.windows(2).all(|p| p[0].addr < p[1].addr) { return Err("overlapping native entry addresses".into()); }

@@ -15,6 +15,7 @@ const SwModule *sw_module_at(size_t index);
 const uint64_t *sw_initializers(size_t *count);
 const uint64_t *sw_sdk_initializers(size_t *count);
 const uint64_t *sw_main_initializers(size_t *count);
+const uint64_t *sw_sdk_finalizers(size_t *count);
 uint64_t sw_sdk_startup(void);
 uint64_t sw_entry(void);
 uint64_t sw_stack_size(void);
