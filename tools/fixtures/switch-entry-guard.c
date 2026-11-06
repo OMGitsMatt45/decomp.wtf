@@ -34,6 +34,15 @@ void RT_CC rt_dispatch(Cpu *c) {
     for (unsigned i = 0; i < 10000; ++i) assert(sw_function_enter(c, 0x8000) == 0);
     assert(checks == 10000 && callbacks == 0);
     assert(__builtin_ia32_stmxcsr() == guest_csr && c->fpsr == 0x77);
+    uint64_t frame[4];
+    c->pc = 0x8020;
+    c->x[30] = 0x8120;
+    c->sp = 0x9000;
+    c->x[29] = 0x9010;
+    sw_poll(c);
+    assert(sw_fault_frame(frame));
+    assert(frame[0] == 0x8020 && frame[1] == 0x8120);
+    assert(frame[2] == 0x9000 && frame[3] == 0x9010);
     needs_host = 1;
     assert(sw_function_enter(c, 0x8080) == 0);
     assert(checks == 10001 && callbacks == 1 && c->x[0] == 42);
@@ -43,7 +52,10 @@ int main(void) {
     __builtin_ia32_ldmxcsr(__builtin_ia32_stmxcsr() & ~0x807fu);
     host_csr = __builtin_ia32_stmxcsr();
     Cpu c = {0}; c.fpcr = 1u << 24; c.fpsr = 0x77;
+    uint64_t frame[4];
+    assert(!sw_fault_frame(frame));
     sw_enter(&c, 0, UINT64_MAX);
+    assert(!sw_fault_frame(frame));
     assert(__builtin_ia32_stmxcsr() == host_csr);
     puts("plain entries: 10000; callbacks: 1; FP state preserved");
     return 0;

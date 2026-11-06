@@ -21,6 +21,15 @@ static __thread uint64_t unhooked;
 static __thread unsigned poll_budget;
 static __thread const fenv_t *host_environment;
 
+int sw_fault_frame(uint64_t frame[4]) {
+    if (!active) return 0;
+    frame[0] = active->pc;
+    frame[1] = active->x[30];
+    frame[2] = active->sp;
+    frame[3] = active->x[29];
+    return 1;
+}
+
 // Host services use the host FP state. Restore guest FP state after a callback,
 // including nested host-to-guest calls from NVN hooks.
 #define HOST_RESULT(c, expression) ({ \

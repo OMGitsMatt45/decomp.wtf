@@ -38,6 +38,7 @@ unsafe extern "C" {
     fn sw_romfs_sha256() -> *const c_char;
     fn sw_initialize();
     fn sw_enter(c: *mut NativeCpu, memory_base: usize, unhooked: u64);
+    fn sw_fault_frame(frame: *mut u64) -> i32;
     fn switch_asset_matches_expected(path: *const c_char, expected: *const c_char) -> i32;
 }
 
@@ -340,13 +341,23 @@ pub unsafe extern "C" fn switch_native_main(argc: i32, argv: *const *const c_cha
     code
 }
 
+pub fn fault_frame() -> Option<[u64; 4]> {
+    let mut frame = [0; 4];
+    (unsafe { sw_fault_frame(frame.as_mut_ptr()) } != 0).then_some(frame)
+}
+
 // Preserve a report when the donor's guest-fault handler exits the process.
-pub fn fatal_fault(address: u64) {
+pub fn fatal_fault(address: u64, location: Option<(u64, u64)>) {
     if let Some(path) = REPORT.get() {
+        let mut failure = json!({"kind":"guest-memory-fault","address":address});
+        if let Some((pc, thread)) = location {
+            failure["pc"] = pc.into();
+            failure["thread"] = thread.into();
+        }
         let report = json!({"schema":"decomp.wtf.switch-native-run/v1", "status":"failed", "exit_code":4,
             "input_sha256":unsafe { text(sw_input_sha256()) }, "backend_revision":unsafe { text(sw_backend_revision()) },
             "interpreter_instructions":0, "runtime_compilation":false,
-            "failures":[{"kind":"guest-memory-fault","address":address}]});
+            "failures":[failure]});
         let _ = std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap());
     }
 }
