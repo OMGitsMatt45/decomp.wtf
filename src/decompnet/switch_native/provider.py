@@ -222,21 +222,25 @@ fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: boo
                 a = previous;
             }
             &[(_, branch)] if matches!(l.at(previous), Insn::B(_) | Insn::Br(_) | Insn::Ret(_)) => {
-                if l.m.seeds.contains(&branch) || !l.direct_predecessors(branch).is_empty() {
-                    return None;
-                }
                 let guard = jt::Memory::word(l.m, branch)?;
-                let compare_at = branch.checked_sub(4)?;
-                let compare = jt::Memory::word(l.m, compare_at)?;
-                if guard & 0xff00_001f != 0x5400_0009 // b.ls, taken into the table block
-                    || compare & 0x7f80_001f != 0x7100_001f // cmp Widx or Xidx, #imm
-                    || bits(compare, 5, 5) != idx || idx == 31
-                {
-                    return None;
-                }
+                if guard & 0xff00_001f != 0x5400_0009 || idx == 31 { return None; } // b.ls
+                let mut compare_at = branch;
+                let compare = loop {
+                    if l.m.seeds.contains(&compare_at) || !l.direct_predecessors(compare_at).is_empty() {
+                        return None;
+                    }
+                    compare_at = compare_at.checked_sub(4)?;
+                    let w = jt::Memory::word(l.m, compare_at)?;
+                    if w & 0x7f80_03ff == (0x7100_001f | idx << 5) { break w; } // cmp Widx/Xidx, #imm
+                    // A scheduled STRB with an unsigned offset preserves NZCV
+                    // and the index. Check each store for an alternate entrance.
+                    if w & 0xffc0_0000 != 0x3900_0000 || branch - compare_at >= jt::WINDOW * 4 {
+                        return None;
+                    }
+                };
                 if bits(compare, 31, 1) == 0 {
                     // CMP Widx only constrains the low half of Xidx. Require a
-                    // preceding zero-extending load and no way to skip it.
+                    // preceding zero-extending definition and no way to skip it.
                     let producer_at = compare_at.checked_sub(4)?;
                     if producer_at < l.m.text.start || l.m.seeds.contains(&compare_at)
                         || !l.direct_predecessors(compare_at).is_empty()
@@ -244,7 +248,9 @@ fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: boo
                         return None;
                     }
                     let producer = jt::Memory::word(l.m, producer_at)?;
-                    if producer & 0xffc0_001f != (0xb940_0000 | idx) { // ldr Widx, [Xn, #imm]
+                    if producer & 0xffc0_001f != (0xb940_0000 | idx) // ldr Widx, [Xn, #imm]
+                        && producer & 0xff80_001f != (0x5100_0000 | idx) // sub Widx, Wn, #imm
+                    {
                         return None;
                     }
                 }

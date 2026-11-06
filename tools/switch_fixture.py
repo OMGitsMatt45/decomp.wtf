@@ -146,6 +146,18 @@ def distant_guard_table_fixture(*, compare, alternate, producer=0xd2800028):
     return bytes(raw)
 
 
+def scheduled_taken_guard_table_fixture(*, scheduled, alternate):
+    """A B.LS table checked after a W subtraction and a scheduled store."""
+    raw = bytearray(distant_guard_table_fixture(compare=0x7100091f, alternate=alternate))
+    struct.pack_into('<I', raw, 0, 0x1400001e)  # b 0x78
+    struct.pack_into('<I', raw, 0x78, 0x1000fc46)  # adr x6, writable data at 0x2000
+    struct.pack_into('<Q', raw, 0x1010, 2)
+    # ldr w8, [x7]; sub w8, w8, #1; cmp w8, #2; scheduled; b.ls dispatch.
+    struct.pack_into('<7I', raw, 0x80, 0xb94000e8, 0x51000508, 0x7100091f,
+                     scheduled, 0x54000389, alternate, 0xd65f03c0)
+    return bytes(raw)
+
+
 def changed_code_fixture():
     """Overwrite a discovered entry in guest memory, then branch to it."""
     raw = bytearray(conditional_target_fixture())
