@@ -232,3 +232,5 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     integer_textures(root)
     from .bindless import apply as static_bindless_textures
     static_bindless_textures(root)
+    from .sample_grid import apply as maxwell_sample_grid
+    maxwell_sample_grid(root)
