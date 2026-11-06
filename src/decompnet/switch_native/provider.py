@@ -43,6 +43,12 @@ def _run(command, *, cwd=None):
 def _recover_jump_tables(lifter, replace_once):
     jt = lifter / 'src/jt.rs'
     replace_once(jt, 'const WINDOW: u64 = 24;', 'pub(crate) const WINDOW: u64 = 24;')
+    replace_once(jt, '''        // floating point and SIMD: only conversions to and from integers (fmov w, s; fcvtzs ..) and umov / smov /
+        // dup (general) have a general register as Rd
+        let to_general = w & 0x7f20_fc00 == 0x1e20_0000 || w & 0xbfe0_8400 == 0x0e00_0400;''',
+                 '''        // Of the SIMD copy encodings, only SMOV and UMOV write a GPR.
+        let lane_to_general = w & 0xbfe0_8400 == 0x0e00_0400 && matches!(bits(w, 11, 4), 5 | 7);
+        let to_general = w & 0x7f20_fc00 == 0x1e20_0000 || lane_to_general;''')
     replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     resolve_with_recovery(mem, entry, pc, pc, r, |_, _| None, |_, _| None)
