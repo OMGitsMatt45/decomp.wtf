@@ -75,3 +75,69 @@ def test_absolute_relocated_table_is_rebased_once():
     struct.pack_into('<QQQQ', image, 0x100c, BASE + 0x200, BASE + 0x1100,
                      BASE + 0x240, BASE + 0x1108)
     assert discovery.unwind_entries(image, inspection) == [BASE + 0x200, BASE + 0x240]
+
+
+def landing_pad_fixture(*, site_encoding=1, explicit_lp_start=False, dwarf64=False):
+    image, inspection = original()
+    cie, fde, lsda = 0x1080, 0x1100, 0x1160
+    function = 0x200
+    struct.pack_into('<II', image, 0x220, 0x52800580, 0xd65f03c0)  # mov w0,44; ret
+    struct.pack_into('<II', image, 0x228, 0x528005a0, 0xd65f03c0)  # mov w0,45; ret
+
+    def record(offset, body):
+        prefix = struct.pack('<IQ', 0xffffffff, len(body)) if dwarf64 else struct.pack('<I', len(body))
+        image[offset:offset + len(prefix) + len(body)] = prefix + body
+
+    id_format, prefix_size = ('<Q', 12) if dwarf64 else ('<I', 4)
+    width = struct.calcsize(id_format)
+    # zPLR with an indirect personality, signed eight-byte PC-relative LSDA
+    # pointer, and signed four-byte PC-relative function address.
+    aug = b'\x9c' + bytes(8) + b'\x1c\x1b'
+    record(cie, bytes(width) + b'\x01zPLR\0\x01\x7c\x1e' + bytes((len(aug),)) + aug)
+    body = fde + prefix_size
+    frame = struct.pack(id_format, body - cie)
+    frame += struct.pack('<ii', function - (body + width), 0x40)
+    frame += b'\x08' + struct.pack('<q', lsda - (body + width + 9))
+    record(fde, frame)
+    # Keep the other function's search-table entry but move its empty FDE
+    # beyond the first record.
+    struct.pack_into('<i', image, 0x1018, 0x11c0 - 0x1000)
+
+    lp_start = function - 4 if explicit_lp_start else function
+    lp = b'\x1b' + struct.pack('<i', lp_start - (lsda + 1)) if explicit_lp_start else b'\xff'
+    sites = b''
+    for row in ((0, 4, 0, 0), (4, 4, 0x220 - lp_start, 0), (8, 4, 0x228 - lp_start, 3)):
+        start, length, pad, action = row
+        fmt = {1: '<BBB', 3: '<III', 11: '<iii'}[site_encoding]
+        sites += struct.pack(fmt, start, length, pad) + bytes((action,))
+    table = bytes((site_encoding, len(sites))) + sites
+    # There is a type table, but its entries are opaque to entry discovery.
+    value = lp + bytes((0x9c, len(table))) + table
+    image[lsda:lsda + len(value)] = value
+    return image, inspection
+
+
+@pytest.mark.parametrize('site_encoding', [1, 3, 11])
+@pytest.mark.parametrize('explicit_lp_start', [False, True])
+@pytest.mark.parametrize('dwarf64', [False, True])
+def test_unwind_exception_pads_are_rebased_native_entries(site_encoding, explicit_lp_start, dwarf64):
+    image, inspection = landing_pad_fixture(
+        site_encoding=site_encoding, explicit_lp_start=explicit_lp_start, dwarf64=dwarf64)
+    assert discovery.entries(image, inspection) == [BASE, BASE + 0x200, BASE + 0x220, BASE + 0x228, BASE + 0x240]
+
+
+@pytest.mark.parametrize('change', ['bad-fde-size', 'bad-cie-offset', 'wrong-function',
+                                    'bad-lsda-pointer', 'bad-type-table', 'truncated-call-site',
+                                    'unaligned-pad', 'outside-frame'])
+def test_malformed_landing_pad_metadata_fails_before_translation(change):
+    image, inspection = landing_pad_fixture()
+    if change == 'bad-fde-size': struct.pack_into('<I', image, 0x1100, 0x10000)
+    elif change == 'bad-cie-offset': struct.pack_into('<I', image, 0x1104, 0x4000)
+    elif change == 'wrong-function': struct.pack_into('<i', image, 0x1108, 0x204 - 0x1108)
+    elif change == 'bad-lsda-pointer': struct.pack_into('<q', image, 0x1111, 0x2500 - 0x1111)
+    elif change == 'bad-type-table': image[0x1162] = 2
+    elif change == 'truncated-call-site': image[0x1164] = 11
+    elif change == 'unaligned-pad': image[0x116b] += 1
+    elif change == 'outside-frame': image[0x116a] = 0x7f
+    with pytest.raises(PCError, match='Switch unwind'):
+        discovery.entries(image, inspection)
