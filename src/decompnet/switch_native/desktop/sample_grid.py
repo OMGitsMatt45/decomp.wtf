@@ -69,8 +69,8 @@ pub(super) type TargetAsk''')
     pipeline = gpu / 'vulkan/pipeline.rs'
     replace_once(pipeline, '    pub(super) types: u64,', '''    pub(super) types: u64,
     pub(super) fragment_sample_grid: [u32; 2],''')
-    replace_once(pipeline, '        let key = ShaderKey { va, hash: head, stage: stage as u8, types };', '''        let fragment_sample_grid = if stage == Stage::Fragment { crate::gpu::threed::sample_grid(regs) } else { [1, 1] };
-        let key = ShaderKey { va, hash: head, stage: stage as u8, types, fragment_sample_grid };''')
+    replace_once(pipeline, '        let key = ShaderKey { va, hash: head, stage: stage as u8, types, xfb: xfb.cloned().map(Box::new) };', '''        let fragment_sample_grid = if stage == Stage::Fragment { crate::gpu::threed::sample_grid(regs) } else { [1, 1] };
+        let key = ShaderKey { va, hash: head, stage: stage as u8, types, fragment_sample_grid, xfb: xfb.cloned().map(Box::new) };''')
     replace_once(pipeline, '            depth_unorm16,\n            alpha_test,', '            depth_unorm16,\n            fragment_sample_grid,\n            alpha_test,')
 
     maxwell = root / 'crates/maxwell/src/translate.rs'

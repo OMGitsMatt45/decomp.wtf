@@ -1,4 +1,4 @@
-use kirikae_maxwell::{Options, Stage, translate};
+use kirikae_maxwell::{Options, Stage, XfbBuffer, translate};
 
 const PT: u64 = 7 << 16;
 
@@ -101,6 +101,53 @@ fn variables_first(spirv: &[u32]) {
             let late = block.instructions.iter().skip(if k == 0 { leading } else { 0 }).any(is_var);
             assert!(!late, "OpVariable after other instructions in block {k}\n{}", disassemble(spirv));
         }
+    }
+}
+
+#[test]
+fn vertex_transform_feedback_preserves_layout_and_normal_varyings() {
+    use rspirv::{dr::Operand, spirv::{Decoration, Op}};
+    let code = program(vertex_header(), &[ast(0, 0x80, 3), ast(3, 0x90, 1), ast(4, 0xa0, 1), EXIT]);
+    let opts = Options {
+        xfb: Some(Box::new([
+            Some(XfbBuffer { stride: 16, attributes: vec![34, 32, 33] }),
+            Some(XfbBuffer { stride: 4, attributes: vec![36] }),
+            Some(XfbBuffer { stride: 4, attributes: vec![40] }),
+            None,
+        ])),
+        ..options(Stage::Vertex)
+    };
+    let shader = translate(&code, &opts, &kirikae_maxwell::NoEnv).unwrap();
+    assert!(shader.unsupported.is_empty());
+    assert_eq!(shader.outputs, 0b111);
+    let assembly = disassemble(&shader.spirv);
+    assert!(assembly.contains("OpCapability TransformFeedback"));
+    assert!(assembly.contains(" Xfb\n"));
+    let mut loader = rspirv::dr::Loader::new();
+    rspirv::binary::parse_words(&shader.spirv, &mut loader).unwrap();
+    let module = loader.module();
+    let mut capture = std::collections::BTreeMap::new();
+    for inst in &module.annotations {
+        if inst.class.opcode == Op::Decorate
+            && let [Operand::IdRef(id), Operand::Decoration(decoration), Operand::LiteralBit32(value)] = inst.operands.as_slice()
+        {
+            capture.entry(*id).or_insert_with(std::collections::BTreeMap::new).insert(*decoration as u32, *value);
+        }
+    }
+    let layouts: Vec<_> = capture.values().filter(|d| d.contains_key(&(Decoration::XfbBuffer as u32))).map(|d| {
+        [Decoration::XfbBuffer, Decoration::XfbStride, Decoration::Offset, Decoration::Location, Decoration::Component].map(|k| d[&(k as u32)])
+    }).collect();
+    assert_eq!(layouts, [[0, 16, 0, 3, 0], [0, 16, 4, 3, 1], [0, 16, 8, 3, 2], [1, 4, 0, 3, 3], [2, 4, 0, 4, 0]]);
+    let normal = translate(&code, &options(Stage::Vertex), &kirikae_maxwell::NoEnv).unwrap();
+    assert!(!disassemble(&normal.spirv).contains("TransformFeedback"));
+}
+
+#[test]
+fn invalid_vertex_transform_feedback_is_rejected() {
+    let code = program(vertex_header(), &[ast(0, 0x80, 1), EXIT]);
+    for buffer in [XfbBuffer { stride: 4, attributes: vec![32, 33] }, XfbBuffer { stride: 4, attributes: vec![36] }] {
+        let opts = Options { xfb: Some(Box::new([Some(buffer), None, None, None])), ..options(Stage::Vertex) };
+        assert!(matches!(translate(&code, &opts, &kirikae_maxwell::NoEnv), Err(kirikae_maxwell::translate::Error::TransformFeedback(_))));
     }
 }
 
