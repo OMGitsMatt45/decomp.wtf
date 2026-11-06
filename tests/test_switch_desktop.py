@@ -128,10 +128,11 @@ def test_desktop_export_preserves_npdm_system_resource_size(tmp_path, emission_e
     assert 'sw_system_resource_size(void){return 16777216ull;}' in (out / 'runtime/modules.c').read_text()
 
 
-def test_stripped_unwind_callback_is_in_the_export_dispatch_table(tmp_path, emission_env):
-    from tests.test_switch_discovery import original as unwind_fixture
+@pytest.mark.parametrize('landing_pads', [False, True])
+def test_stripped_unwind_entries_are_in_the_export_dispatch_table(tmp_path, emission_env, landing_pads):
+    from tests.test_switch_discovery import landing_pad_fixture, original as unwind_fixture
 
-    image, _ = unwind_fixture()
+    image, _ = landing_pad_fixture() if landing_pads else unwind_fixture()
     struct.pack_into('<I', image, 0, 0x140000c0)  # b 0x300, skipping metadata
     struct.pack_into('<I', image, 0x300, 0xd65f03c0)  # ret
     image[0x10:0x14] = b'NRO0'
@@ -141,11 +142,14 @@ def test_stripped_unwind_callback_is_in_the_export_dispatch_table(tmp_path, emis
     path = tmp_path / 'stripped.nro'; path.write_bytes(image)
     out = tmp_path / 'source'
     project.export(path, out)
-    # Neither callback is called or address-materialized by the entry program.
+    # These roots are neither called nor address-materialized by the program.
+    expected = {0x08000200, 0x08000240}
+    if landing_pads:
+        expected.update((0x08000220, 0x08000228))
     entries = {int(v) for v in (out / 'main-entries.txt').read_text().splitlines()}
-    assert {0x08000200, 0x08000240} <= entries
+    assert expected <= entries
     table = (out / 'game/guest0_table.c').read_text()
-    assert 'f_8000200' in table and 'f_8000240' in table
+    assert all(f'f_{address:x}' in table for address in expected)
 
 
 def test_computed_branch_can_enter_a_conditional_fallthrough(tmp_path, emission_env):
