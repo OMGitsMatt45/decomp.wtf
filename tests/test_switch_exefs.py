@@ -90,6 +90,82 @@ def test_linked_images_match_independent_relocations_and_constructor_order(tmp_p
     assert not result['native_game_backend_available']
 
 
+def write_link_profile(root, **changes):
+    inputs = {row['name']: row['sha256'] for row in exefs.identify_inputs(root)}
+    profile = dict(schema='decomp.wtf.switch-link/v1', alignment=4096, inputs=inputs)
+    profile.update(changes)
+    path = root / 'switch-link.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    return path
+
+
+def test_link_profile_uses_page_layout_and_is_part_of_desktop_input_identity(tmp_path):
+    from decompnet.switch_native.desktop import project
+
+    root = fixture(tmp_path / 'exefs')
+    romfs = tmp_path / 'romfs.bin'
+    romfs.write_bytes(bytes(0x50))
+    stock = project.snapshot(root, romfs)
+    assert stock['modules'][1]['base'] == SDK_BASE
+    path = write_link_profile(root, imports={'fixture_add': dict(module='main', offset=0x104)},
+                              entries={'main': [0x104]})
+
+    linked = project.snapshot(root, romfs, images=True)
+    main, sdk = linked['modules']
+    assert main['base'] == BASE and sdk['base'] == BASE + 0x3000
+    assert BASE + 0x104 in main['roots']
+    assert main['dynamic']['imports'][0] == dict(name='fixture_add', address=sdk['base'] + 0x100, module='sdk')
+    assert linked['inputs'][:-1] == exefs.identify_inputs(root)
+    assert [row['name'] for row in linked['inputs'][-2:]] == ['switch-link.json', 'romfs.bin']
+    assert linked['input']['sha256'] != stock['input']['sha256']
+    path.write_bytes(path.read_bytes() + b'\n')
+    assert project.snapshot(root, romfs)['input']['sha256'] != linked['input']['sha256']
+
+
+def test_link_profile_resolves_missing_strong_text_and_data_imports(tmp_path):
+    root = fixture(tmp_path / 'exefs')
+
+    def remove_sdk_export(text, ro, data):
+        at = ro.index(b'fixture_add\0')
+        ro[at:at + 11] = b'missing_add'
+
+    change(root / 'sdk', remove_sdk_export)
+    change(root / 'main', lambda text, ro, data: struct.pack_into('<B', ro, 0x340 + 3 * 24 + 4, 0x11))
+    with pytest.raises(pc.PCError, match='unresolved Switch import fixture_add'):
+        exefs.load(root)
+
+    write_link_profile(root, imports={'fixture_add': dict(module='main', offset=0x104),
+                                      'optional': dict(module='sdk', offset=0x2000)})
+    main, sdk = exefs.load(root, include_images=True)['modules']
+    assert main['dynamic']['imports'] == [dict(name='fixture_add', address=BASE + 0x104, module='main'),
+                                          dict(name='optional', address=sdk['base'] + 0x2009, module='sdk')]
+    assert struct.unpack_from('<Q', main['image'], 0x2080)[0] == BASE + 0x104
+    assert struct.unpack_from('<Q', main['image'], 0x2098)[0] == sdk['base'] + 0x2009
+    assert BASE + 0x104 in main['roots']
+
+
+@pytest.mark.parametrize(('changes', 'error'), [
+    ({'alignment': 8192}, 'schema or alignment'),
+    ({'inputs': {'main': 'wrong'}}, 'exact ExeFS inputs'),
+    ({'imports': {'fixture_add': dict(module='absent', offset=0x100)}}, 'Invalid Switch link profile import'),
+    ({'imports': {'fixture_add': dict(module='main', offset=0x104000)}}, 'outside a segment'),
+    ({'entries': {'main': [0x2000]}}, 'outside executable text'),
+    ({'entries': {'main': [0x105]}}, 'unaligned'),
+])
+def test_invalid_link_profile_is_rejected(tmp_path, changes, error):
+    root = fixture(tmp_path / 'exefs')
+    write_link_profile(root, **changes)
+    with pytest.raises(pc.PCError, match=error):
+        exefs.load(root)
+
+
+def test_link_profile_does_not_bind_missing_weak_imports(tmp_path):
+    root = fixture(tmp_path / 'exefs')
+    write_link_profile(root, imports={'optional': dict(module='main', offset=0x2000)})
+    main = exefs.load(root, include_images=True)['modules'][0]
+    assert main['dynamic']['imports'][-1] == dict(name='optional', address=9, module=None)
+
+
 def test_relr_bitmap_relocates_bss_and_preserves_other_pointers(tmp_path):
     root = fixture(tmp_path / 'exefs')
     def edit(text, ro, data):
