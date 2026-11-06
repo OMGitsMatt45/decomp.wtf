@@ -256,7 +256,7 @@ def entries(image, inspection, *, anchor_origins=None):
                     hard_roots.add(target)
                 elif (target not in hard_roots and target > lo
                       and words[(target - lo) // 4 - 1][0] & 0xfffffc1f == 0xd61f0000):
-                    anchor_origins[target] = None if target in anchor_origins else origin
+                    anchor_origins.setdefault(target, []).append(origin)
 
     words = list(struct.iter_unpack('<I', image[text['offset']:text['offset'] + text['size']]))
     for i, (word,) in enumerate(words):
@@ -275,7 +275,7 @@ def entries(image, inspection, *, anchor_origins=None):
             # Adjacent ADD Xd, Xn, #imm, where Xn is this ADRP's destination.
             if following & 0xff800000 == 0x91000000 and following >> 5 & 31 == word & 31:
                 delta = (following >> 10 & 0xfff) << (12 if following & (1 << 22) else 0)
-                add(page + delta, pc)
+                add(page + delta)
             # AArch64 PLT entries load an identified JUMP_SLOT and branch to it.
             if return_slots and word & 31 == 16 and following & 0xffc003ff == 0xf9400211 and i + 3 < len(words):
                 offset = (following >> 10 & 0xfff) * 8
@@ -292,9 +292,8 @@ def entries(image, inspection, *, anchor_origins=None):
                     # longjmp can re-enter immediately after the original call.
                     add(pc + 4)
     if anchor_origins is not None:
-        # Only the sole address reference to a nearby dispatch's first case
-        # can be the table's own anchor. The emitter checks the exact ADR.
-        for target, origin in list(anchor_origins.items()):
-            if origin is None or target in hard_roots:
-                del anchor_origins[target]
+        # The emitter must account for every ADR to a candidate anchor.
+        # Entry, unwind, ADRP+ADD and returns-twice roots stay independent.
+        for target in hard_roots:
+            anchor_origins.pop(target, None)
     return sorted(roots)

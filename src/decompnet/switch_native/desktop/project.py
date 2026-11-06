@@ -56,7 +56,8 @@ def module_entries(image, module, feedback):
     hard_roots.update(p for p in feedback if lo <= p < hi)
     anchor_origins = {}
     roots = hard_roots.union(discovery.entries(image, module, anchor_origins=anchor_origins))
-    return sorted(roots), sorted(pc for target, pc in anchor_origins.items() if target not in hard_roots)
+    return sorted(roots), sorted(pc for target, origins in anchor_origins.items()
+                                 if target not in hard_roots for pc in origins)
 
 
 def generate(project, root):

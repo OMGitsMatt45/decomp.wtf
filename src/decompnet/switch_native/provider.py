@@ -107,7 +107,7 @@ pub(crate) fn ordered_halfword_cases(
     if base != branch + 4 { return None; }
     let (count, checked_start) = prove_bound(load.at, load.idx, anchor)?;
     if local_halfword_load(mem, checked_start, branch, r, &writes_register)? != (load, anchor, base) { return None; }
-    adjacent_table_targets(mem, branch, load.table?, 2, count)
+    unsigned_table_targets(mem, base, load.table?, 2, count)
 }
 
 pub(crate) fn backward_halfword_cases(
@@ -168,14 +168,23 @@ fn local_table_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
     Some((load, anchor, base))
 }
 
-pub(crate) fn adjacent_table_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
-                                       writes_register: impl Fn(u64, u32) -> bool) -> Option<(u64, u64, u32)> {
-    let (load, anchor, base) = local_table_operands(mem, start, branch, reg, &writes_register)?;
-    (base == branch + 4).then_some((load.at, anchor, load.size))
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct TableDispatch {
+    pub load: u64,
+    pub adr: u64,
+    pub anchor: u64,
+    pub size: u32,
 }
 
-pub(crate) fn adjacent_table_targets(mem: &dyn Memory, branch: u64, table: u64, size: u32, count: u64) -> Option<Vec<u64>> {
-    table_targets(mem, branch + 4, table, size, false, 2, count)
+pub(crate) fn forward_table_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                                      writes_register: impl Fn(u64, u32) -> bool) -> Option<TableDispatch> {
+    let (load, adr, anchor) = local_table_operands(mem, start, branch, reg, &writes_register)?;
+    if anchor <= branch || (load.size == 2 && anchor != branch + 4) { return None; }
+    Some(TableDispatch { load: load.at, adr, anchor, size: load.size })
+}
+
+pub(crate) fn unsigned_table_targets(mem: &dyn Memory, anchor: u64, table: u64, size: u32, count: u64) -> Option<Vec<u64>> {
+    table_targets(mem, anchor, table, size, false, 2, count)
 }
 
 fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: bool, shift: u32, count: u64) -> Option<Vec<u64>> {
@@ -190,18 +199,27 @@ fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: boo
     Some(out)''')
     module = lifter / 'src/module.rs'
     replace_once(module, '    pub chunk_instructions: usize,', '''    pub chunk_instructions: usize,
-    /// Sole address-taking references used as local switch anchors.
+    /// All ADR origins of candidate local switch anchors.
     pub anchor_origins: BTreeSet<u64>,
     pub rodata: Option<(u64, u64)>,''')
     replace_once(module, 'Options { chunk_instructions: 40_000 }',
                  'Options { chunk_instructions: 40_000, anchor_origins: BTreeSet::new(), rodata: None }')
-    replace_once(module, "    m: &'m Module<'a>,", "    m: &'m Module<'a>,\n    options: &'m Options,")
+    replace_once(module, "    m: &'m Module<'a>,", "    m: &'m Module<'a>,\n    options: &'m Options,\n    anchor_origins: BTreeMap<u64, Vec<u64>>,")
     replace_once(module, "    fn new(m: &'m Module<'a>) -> Self {",
                  "    fn new(m: &'m Module<'a>, options: &'m Options) -> Self {")
     replace_once(module, 'let l = Lifted::new(m);', 'let l = Lifted::new(m, opts);')
     replace_once(module, '    insns: Vec<Insn>,', '    insns: Vec<Insn>,\n    direct_edges: Vec<(u64, u64)>,')
-    replace_once(module, '        let mut a = m.text.start;',
-                 '        let mut direct_edges = Vec::new();\n        let mut a = m.text.start;')
+    replace_once(module, '        let mut a = m.text.start;', '''        let mut anchor_origins = BTreeMap::<u64, Vec<u64>>::new();
+        for &origin in &options.anchor_origins {
+            let Some(w) = jt::Memory::word(m, origin) else { continue };
+            if w & 0x9f00_0000 == 0x1000_0000 {
+                if let Some(anchor) = jt::constant_at(m, origin, origin, bits(w, 0, 5)) {
+                    anchor_origins.entry(anchor).or_default().push(origin);
+                }
+            }
+        }
+        let mut direct_edges = Vec::new();
+        let mut a = m.text.start;''')
     replace_once(module, '''                Ok(i) => i,''', '''                Ok(i) => {
                     if let Insn::B(target) | Insn::BCond(_, target) | Insn::Bl(target) = &i {
                         if m.text.contains(target) {
@@ -211,7 +229,7 @@ fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: boo
                     i
                 },''')
     replace_once(module, '        Lifted { m, insns, unsupported }', '''        direct_edges.sort_unstable();
-        Lifted { m, options, insns, direct_edges, unsupported }''')
+        Lifted { m, options, anchor_origins, insns, direct_edges, unsupported }''')
     replace_once(module, '    fn at(&self, a: u64) -> &Insn {', '''    fn direct_predecessors(&self, a: u64) -> &[(u64, u64)] {
         let start = self.direct_edges.partition_point(|&(target, _)| target < a);
         let end = start + self.direct_edges[start..].partition_point(|&(target, _)| target == a);
@@ -504,7 +522,9 @@ fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u
     let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
     let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
     let targets = jt::ordered_halfword_cases(l.m, start, branch, r, writes_register, |load, index, anchor| {
-        if l.m.seeds.contains(&case) && !l.options.anchor_origins.contains(&anchor) { return None; }
+        if l.m.seeds.contains(&case) && l.anchor_origins.get(&case).map(Vec::as_slice) != Some(&[anchor][..]) {
+            return None;
+        }
         nested_outer_bound(l, branch, load, index, selector)
     })?;
     if targets.iter().any(|&target| (case + 4..=inner_branch).contains(&target)) { return None; }
@@ -516,23 +536,23 @@ fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u
 
 struct LinkedTable {
     branch: u64,
-    load: u64,
+    dispatch: jt::TableDispatch,
     producer: u64,
     base_register: u32,
     table: u64,
     targets: Vec<u64>,
 }
 
-fn linked_table_operands(l: &Lifted, branch: u64) -> Option<(u64, u64, u32)> {
+fn linked_table_operands(l: &Lifted, branch: u64) -> Option<jt::TableDispatch> {
     let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
     let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
-    jt::adjacent_table_dispatch(l.m, start, branch, r, |pc, reg| nested_writes(l, pc, reg))
+    jt::forward_table_dispatch(l.m, start, branch, r, |pc, reg| nested_writes(l, pc, reg))
 }
 
 fn linked_table_anchor(l: &Lifted, seed: u64) -> bool {
     seed.checked_sub(4).filter(|&pc| l.in_text(pc) && matches!(l.at(pc), Insn::Br(_)))
         .and_then(|branch| linked_table_operands(l, branch))
-        .is_some_and(|(_, adr, _)| l.options.anchor_origins.contains(&adr))
+        .is_some_and(|d| d.anchor == seed && l.anchor_origins.get(&seed).is_some_and(|origins| origins.contains(&d.adr)))
 }
 
 fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
@@ -549,7 +569,8 @@ fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
 
 fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedTable> {
     let word = |pc| jt::Memory::word(l.m, pc);
-    let (load, anchor, size) = linked_table_operands(l, branch)?;
+    let dispatch = linked_table_operands(l, branch)?;
+    let (load, size) = (dispatch.load, dispatch.size);
     let idx = bits(word(load)?, 16, 5);
     let base_register = bits(word(load)?, 5, 5);
     let local_start = start.max(load.saturating_sub(jt::WINDOW * 4));
@@ -578,9 +599,7 @@ fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedT
     };
     let r = bits(word(branch)?, 5, 5);
     let checked_start = guard.unwrap_or(producer) + 4;
-    if jt::adjacent_table_dispatch(l.m, checked_start, branch, r, |pc, reg| nested_writes(l, pc, reg))?
-        != (load, anchor, size)
-    {
+    if jt::forward_table_dispatch(l.m, checked_start, branch, r, |pc, reg| nested_writes(l, pc, reg))? != dispatch {
         return None;
     }
     // Check the corridor from the index proof to the BR. The graph proof
@@ -601,9 +620,9 @@ fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedT
     if table < ro_start || table.checked_add(count * u64::from(size))? > ro_end || candidates.any(|other| other != table) {
         return None;
     }
-    let targets = jt::adjacent_table_targets(l.m, branch, table, size, count)?;
+    let targets = jt::unsigned_table_targets(l.m, dispatch.anchor, table, size, count)?;
     if targets.iter().any(|target| !(start..end).contains(target)) { return None; }
-    Some(LinkedTable { branch, load, producer, base_register, table, targets })
+    Some(LinkedTable { branch, dispatch, producer, base_register, table, targets })
 }
 
 fn udf_return_wrapper(l: &Lifted, target: u64) -> bool {
@@ -619,7 +638,7 @@ fn prove_linked_table(l: &Lifted, start: u64, table: &LinkedTable,
                       cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
     let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty() || cases.contains_key(&pc);
     if (table.producer + 4..=table.branch).step_by(4).any(has_entry) { return None; }
-    let mut pending = vec![(table.load, table.base_register)];
+    let mut pending = vec![(table.dispatch.load, table.base_register)];
     let mut seen = BTreeSet::new();
     let mut proved_definition = false;
     while let Some((pc, reg)) = pending.pop() {
@@ -668,6 +687,14 @@ fn recover_linked_table(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
     let branches: Vec<_> = (start..end).step_by(4).filter(|&pc| matches!(l.at(pc), Insn::Br(_))).collect();
     if !(1..=8).contains(&branches.len()) { return None; }
     let tables = branches.into_iter().map(|br| linked_table(l, start, end, br)).collect::<Option<Vec<_>>>()?;
+    // An anchor can be shared by several BRs. Each address-taking reference
+    // must be the reached ADR of one of the dispatches in this same graph.
+    for seed in l.m.seeds.range(start + 4..end) {
+        let origins = l.anchor_origins.get(seed)?;
+        if origins.iter().any(|adr| !tables.iter().any(|table| table.dispatch.anchor == *seed && table.dispatch.adr == *adr)) {
+            return None;
+        }
+    }
     // Any independently reachable interior instruction invalidates the closed
     // function graph, including internal call entries with unmodeled returns.
     for pc in (start + 4..end).step_by(4) {
