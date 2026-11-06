@@ -230,3 +230,5 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
     from .graphics import integer_textures
     integer_textures(root)
+    from .bindless import apply as static_bindless_textures
+    static_bindless_textures(root)
