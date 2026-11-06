@@ -98,7 +98,12 @@ def caller_saved_halfword_table_fixture(*, call_after_base):
     struct.pack_into('<8I', raw, 0x80, 0xaa1e03ed, nop if call_after_base else 0x94000017,
                      0xb000000e, 0x910021ce, 0x94000014 if call_after_base else nop,
                      0xaa0d03fe, 0xd2800028, 0x1000002c)
-    struct.pack_into('<I', raw, 0xac, 0x786879ca)  # ldrh w10, [x14, x8, lsl #1]
+    # The unrelated MOV schedules one instruction between the target ADD and BR.
+    # b.hi default; adr x9, anchor; ldrh w10, [x14, x8, lsl #1]; add x9, x9, x10, lsl #2;
+    # mov x11, #1; br x9; anchor: mov x0, #1; case: mov x0, #42; ret; default: mov x0, #0; ret.
+    struct.pack_into('<11I', raw, 0xa4, 0x54000128, 0x100000a9, 0x786879ca,
+                     0x8b0a0929, 0xd280002b, 0xd61f0120, 0xd2800020, 0xd2800540,
+                     0xd65f03c0, 0xd2800000, 0xd65f03c0)
     struct.pack_into('<I', raw, 0xe0, 0xd65f03c0)  # called leaf preserves X14 in this fixture
     return bytes(raw)
 

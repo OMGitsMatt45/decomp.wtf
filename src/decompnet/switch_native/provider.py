@@ -44,7 +44,7 @@ def _recover_jump_tables(lifter, replace_once):
     replace_once(jt, 'const WINDOW: u64 = 24;', 'pub(crate) const WINDOW: u64 = 24;')
     replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
-    resolve_with_recovery(mem, entry, pc, r, |_, _| None, |_, _| None)
+    resolve_with_recovery(mem, entry, pc, pc, r, |_, _| None, |_, _| None)
 }
 
 pub fn constant_at(mem: &dyn Memory, entry: u64, definition: u64, r: u32) -> Option<u64> {
@@ -55,12 +55,13 @@ pub fn constant_at(mem: &dyn Memory, entry: u64, definition: u64, r: u32) -> Opt
 }
 
 pub fn resolve_with_recovery(
-    mem: &dyn Memory, entry: u64, pc: u64, r: u32,
+    mem: &dyn Memory, entry: u64, pc: u64, branch: u64, r: u32,
     recover_base: impl FnOnce(u64, u32) -> Option<u64>,
     recover_bound: impl FnOnce(u64, u32) -> Option<u64>,
 ) -> Option<Vec<u64>> {
     let Sym::Target''')
-    replace_once(jt, '    let count = bound(mem, entry, at, idx)?;', '''    let adjacent_halfword = size == 2 && !signed && shift == 2 && base == pc + 4;
+    replace_once(jt, '    let count = bound(mem, entry, at, idx)?;', '''    // The value may have been formed before a later scheduled instruction.
+    let adjacent_halfword = size == 2 && !signed && shift == 2 && base == branch + 4;
     let count = bound(mem, entry, at, idx).or_else(|| {
         // Only an unextended X index with a locally resolved table base.
         if adjacent_halfword && table.is_some() && bits(mem.word(at)?, 13, 3) == 3 {
@@ -71,7 +72,7 @@ pub fn resolve_with_recovery(
     })?;''')
     replace_once(jt, '    let raw = mem.bytes(table?, (count as usize) * size as usize)?;', '''    // A byte-offset table can reuse a base register from an earlier block
     // and branch back to cases near the dispatch.
-    let nearby_backward = size == 1 && base < pc && pc - base <= u8::MAX as u64 * 4;
+    let nearby_backward = size == 1 && base < branch && branch - base <= u8::MAX as u64 * 4;
     let table = match table {
         Some(table) => table,
         None if adjacent_halfword || (!signed && shift == 2 && nearby_backward) => {
@@ -106,9 +107,9 @@ pub fn resolve_with_recovery(
                  'pc: u64, r: u32, limit: usize) -> Option<Vec<u64>> {\n    let (mut defs, mut seen, mut work)')
     replace_once(module, 'if seen.len() > 512 {', 'if seen.len() > limit {')
     replace_once(module, 'Some(Table::All { known: Vec::new(), reach: vec![range], blocks: false })',
-                 'Some(Table::All { known: recover_table(l, entry, br_pc, r), reach: vec![range], blocks: false })')
+                 'Some(Table::All { known: recover_table(l, entry, br_pc, br_pc, r), reach: vec![range], blocks: false })')
     replace_once(module, '            reach.push(range);',
-                 '            known.extend(recover_table(l, entry, d + 4, r));\n            reach.push(range);')
+                 '            known.extend(recover_table(l, entry, d + 4, br_pc, r));\n            reach.push(range);')
     replace_once(module, '/// How the `br` at `br_pc` is emitted,', '''fn guarded_table_bound(l: &Lifted, mut a: u64, idx: u32) -> Option<u64> {
     // The table block is locally straight-line. Its guard can be far away
     // but must be the only direct incoming edge into the table block.
@@ -141,8 +142,8 @@ pub fn resolve_with_recovery(
     None
 }
 
-fn recover_table(l: &Lifted, entry: u64, pc: u64, r: u32) -> Vec<u64> {
-    jt::resolve_with_recovery(l.m, entry, pc, r, |load, reg| {
+fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u64> {
+    jt::resolve_with_recovery(l.m, entry, pc, branch, r, |load, reg| {
         // The reaching-definition walk rejects paths that cross a call
         // without first finding a definition of a caller-saved base.
         // Include earlier partitions and local backward edges from later

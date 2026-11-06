@@ -194,9 +194,9 @@ def test_halfword_table_caller_saved_base_must_be_defined_after_the_call(tmp_pat
     out = tmp_path / 'source'
     project.export(path, out)
     entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
-    assert {0x080000A0, 0x080000B8} <= entries and 0x080000BC not in entries
+    assert {0x080000A0, 0x080000BC} <= entries and 0x080000C0 not in entries
     table = (out / 'game/guest0_table.c').read_text()
-    assert ('f_80000bc' in table) == (not call_after_base)
+    assert ('f_80000c0' in table) == (not call_after_base)
 
 
 @pytest.mark.parametrize('unknown_base', [False, True])
