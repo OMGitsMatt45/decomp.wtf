@@ -268,21 +268,31 @@ def build(*, desktop=False):
                 None => return None,
             }''')
         replace_once(jt, '/// The source register of `mov wd/xd, ws/xs`', '''// Clang may test a masked W alias, then separately mask the X index:
-// and w9, w8, #mask; cmp w9, #limit; b.hi default; and x8, x8, #mask.
-// Require adjacent instructions, an exit past the load, and identical masks
-// and sources so that the unsigned bound applies to the loaded index.
+// and w9, w8, #mask; cmp w9, #limit; [stores]; b.hi default; and x8, x8, #mask.
+// Require an exit past the load and identical masks and sources so that the
+// unsigned bound applies to the loaded index.
 fn masked_alias_bound(mem: &dyn Memory, entry: u64, load_pc: u64, at: u64, index: u32) -> Option<u64> {
     let (source, mask) = masked_index(index)?;
-    let alias_at = at.checked_sub(12).filter(|&addr| addr >= entry)?;
-    let alias = mem.word(alias_at)?;
-    let compare = mem.word(alias_at + 4)?;
-    let branch_pc = alias_at + 8;
+    let branch_pc = at.checked_sub(4).filter(|&addr| addr >= entry)?;
     let branch = mem.word(branch_pc)?;
+    if branch & 0xff00_001f != 0x5400_0008
+        || branch_pc.wrapping_add_signed(sext(bits(branch, 5, 19) as u64, 19) * 4) <= load_pc
+    {
+        return None;
+    }
+    let mut compare_at = branch_pc;
+    let compare = loop {
+        compare_at = compare_at.checked_sub(4)
+            .filter(|&addr| addr >= entry && branch_pc - addr <= WINDOW * 4)?;
+        let word = mem.word(compare_at)?;
+        // Scalar integer stores with an unsigned immediate offset preserve NZCV and registers.
+        if word & 0x3fc0_0000 != 0x3900_0000 { break word; }
+    };
+    let alias_at = compare_at.checked_sub(4).filter(|&addr| addr >= entry)?;
+    let alias = mem.word(alias_at)?;
     let reg = bits(alias, 0, 5);
     if source == 31 || reg == 31 || masked_index(alias) != Some((source, mask))
         || compare & 0x7f80_001f != 0x7100_001f || bits(compare, 5, 5) != reg
-        || branch & 0xff00_001f != 0x5400_0008
-        || branch_pc.wrapping_add_signed(sext(bits(branch, 5, 19) as u64, 19) * 4) <= load_pc
     {
         return None;
     }
