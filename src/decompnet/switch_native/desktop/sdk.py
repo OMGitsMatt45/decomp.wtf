@@ -25,6 +25,6 @@ def verify():
 
 def export(destination):
     shutil.copytree(verify(), destination)
-    for name in ('Cargo.toml', 'Cargo.lock'):
+    for name in ('Cargo.toml', 'Cargo.lock', 'LICENSE-oxideav-vp8.txt'):
         shutil.copyfile(ROOT / name, destination / name)
     patches.runtime(destination, ROOT)

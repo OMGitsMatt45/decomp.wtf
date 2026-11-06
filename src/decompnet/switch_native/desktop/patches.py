@@ -49,6 +49,10 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     text = manifest.read_text() + '\n[lib]\ncrate-type = ["rlib", "staticlib"]\n'
     text = text.replace('[features]', '[features]\ndecomp-native = []\ndiagnostic-interpreter = []')
     manifest.write_text(text)
+    replace_once(manifest, 'vp9dec = "=0.1.1"',
+                 'oxideav-vp8 = { version = "=0.2.7", default-features = false }\nvp9dec = "=0.1.1"')
+    from .video import vp8
+    vp8(rt, adapter)
     replace_once(rt / 'src/process.rs', '''                entering = false;
                 crate::interp::step(c);
                 if c.pc <= pc && c.poll() {

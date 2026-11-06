@@ -851,6 +851,7 @@ dependencies = [
  "libc",
  "miniz_oxide",
  "openh264",
+ "oxideav-vp8",
  "serde_json",
  "softbuffer",
  "vp9dec",
@@ -1476,6 +1477,12 @@ checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
 dependencies = [
  "ttf-parser",
 ]
+
+[[package]]
+name = "oxideav-vp8"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "506f2495a728488c2fee1ee54bc7f819ca934dc3246369b4100c83848f057852"
 
 [[package]]
 name = "percent-encoding"
