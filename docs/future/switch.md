@@ -170,10 +170,23 @@ parallel compilation to fit available memory; an unoptimized retail build can
 expand these helpers enough to exhaust it.
 
 `--romfs /path/to/romfs.bin` during export includes an owner-extracted RomFS image.
-The image's hash participates in the input identity and is checked before guest
-execution. `--feedback run-report.json` adds missing targets in the exact input's
-code to the next static export; foreign inputs and targets outside its executable
-modules are rejected. Re-export to a new directory to preserve source edits.
+For an updated title, pair the updated ExeFS with the merged RomFS from the same
+build. Package decryption and BKTR merging happen in a separate extraction tool
+before export. The RomFS hash participates in the input identity and is checked
+before guest execution.
+
+When merging a BKTR patch with hactool `--baseromfs`, first extract the decrypted
+base RomFS section with `--raw --romfs=base-section.bin`. This also works for a
+rights-managed base that you decrypt separately. BKTR offsets refer to the
+entire base section, including the IVFC hash levels. Pass that raw section as
+`--baseromfs=base-section.bin` and save the merged patch section with
+`--sectionN=romfs.bin`, where `N` is the reported BKTR section number. Omit
+`--raw` on this second command to produce the plain image for `--romfs`.
+[hactool's BKTR extraction notes](https://github.com/SciresM/hactool/issues/50)
+
+`--feedback run-report.json` adds missing targets in the exact input's code to the
+next static export. Foreign inputs and targets outside its executable modules
+are rejected. Re-export to a new directory to preserve source edits.
 
 The player accepts `--renderer auto|vulkan|software`, `--saves PATH`, `--headless`
 and the development bound `--frames N`. Software selects a Vulkan CPU device and
