@@ -305,6 +305,8 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     from .graphics import integer_textures, maxwell_integer_saturation
     integer_textures(root)
     maxwell_integer_saturation(root)
+    from .twod import point_copy
+    point_copy(root)
     from .bindless import apply as static_bindless_textures
     static_bindless_textures(root)
     from .presentation import buffer_crop
