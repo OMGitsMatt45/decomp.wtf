@@ -244,8 +244,9 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     software_keyboard(root, adapter)
     (rt / 'examples').mkdir(exist_ok=True)
     (rt / 'examples/decomp-graphics.rs').write_bytes((adapter / 'graphics_probe.rs').read_bytes())
-    from .graphics import integer_textures
+    from .graphics import integer_textures, maxwell_integer_saturation
     integer_textures(root)
+    maxwell_integer_saturation(root)
     from .bindless import apply as static_bindless_textures
     static_bindless_textures(root)
     from .presentation import buffer_crop
