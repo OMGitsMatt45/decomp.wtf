@@ -16,6 +16,9 @@ from . import media
 
 ORDER = ('rtld', 'main', *(f'subsdk{i}' for i in range(10)), 'sdk')
 ALIGNMENT = 0x10000
+PAGE_ALIGNMENT = 0x1000
+LINK_PROFILE = 'switch-link.json'
+MAX_LINK_PROFILE = 1 << 20
 MAX_TOTAL = 512 * 1024 * 1024
 MAX_RECORDS = 1 << 20
 U64 = (1 << 64) - 1
@@ -60,15 +63,89 @@ def files(path):
     return root, selected, names.get('main.npdm')
 
 
+def read_link_profile(root):
+    path = root / LINK_PROFILE
+    if path.is_symlink():
+        raise PCError('Switch link profile must be a regular file')
+    if not path.exists():
+        return None, None
+    if not path.is_file():
+        raise PCError('Switch link profile must be a regular file')
+    with path.open('rb') as stream:
+        raw = stream.read(MAX_LINK_PROFILE + 1)
+    if len(raw) > MAX_LINK_PROFILE:
+        raise PCError('Switch link profile exceeds 1 MiB')
+
+    def unique_fields(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError('duplicate profile field')
+        return value
+
+    try:
+        profile = json.loads(raw, object_pairs_hook=unique_fields)
+    except (ValueError, RecursionError) as error:
+        raise PCError('Invalid Switch link profile JSON') from error
+    if (not isinstance(profile, dict)
+            or set(profile) - {'schema', 'alignment', 'inputs', 'imports', 'entries'}
+            or profile.get('schema') != 'decomp.wtf.switch-link/v1'
+            or type(profile.get('alignment')) is not int or profile['alignment'] != PAGE_ALIGNMENT
+            or any(not isinstance(profile.get(key, {}), dict) for key in ('inputs', 'imports', 'entries'))):
+        raise PCError('Invalid Switch link profile schema or alignment')
+    return profile, dict(name=LINK_PROFILE, size=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def bind_link_profile(inputs, profile, identity):
+    if profile is None:
+        return
+    if profile.get('inputs') != {item['name']: item['sha256'] for item in inputs}:
+        raise PCError('Switch link profile does not match the exact ExeFS inputs')
+    inputs.append(identity)
+
+
 def identify_inputs(path):
-    _, selected, npdm = files(path)
+    root, selected, npdm = files(path)
+    profile, identity = read_link_profile(root)
     paths = [file for _, file in selected] + ([npdm] if npdm else [])
     result = []
     for file in paths:
         with file.open('rb') as stream:
             result.append(dict(name=file.name, size=file.stat().st_size,
                                sha256=hashlib.file_digest(stream, 'sha256').hexdigest()))
+    bind_link_profile(result, profile, identity)
     return result
+
+
+def valid_link_profile_offset(owner, offset):
+    text, rodata, data = owner['segments']
+    return (0 <= offset < text['size'] and offset % 4 == 0
+            or rodata['offset'] <= offset < rodata['offset'] + rodata['size']
+            or data['offset'] <= offset < data['offset'] + data['size'] + owner['bss_size'])
+
+
+def link_profile_targets(profile, modules):
+    if profile is None:
+        return {}
+    by_name = {module['name']: module for module in modules}
+    imports = {}
+    for name, target in profile.get('imports', {}).items():
+        if (not name or '\0' in name or not isinstance(target, dict) or set(target) != {'module', 'offset'}
+                or not isinstance(target['module'], str) or target['module'] not in by_name
+                or type(target['offset']) is not int):
+            raise PCError('Invalid Switch link profile import: ' + name)
+        owner, offset = by_name[target['module']], target['offset']
+        if not valid_link_profile_offset(owner, offset):
+            raise PCError('Switch link profile import offset is outside a segment or unaligned: ' + name)
+        imports[name] = owner, offset
+    for name, offsets in profile.get('entries', {}).items():
+        if name not in by_name or not isinstance(offsets, list):
+            raise PCError('Invalid Switch link profile entries for ' + name)
+        owner = by_name[name]
+        text_size = owner['segments'][0]['size']
+        if any(type(offset) is not int or not 0 <= offset < text_size or offset % 4 for offset in offsets):
+            raise PCError('Switch link profile entry is outside executable text or unaligned: ' + name)
+        owner.setdefault('_extra_roots', set()).update(owner['base'] + offset for offset in offsets)
+    return imports
 
 
 class View:
@@ -246,12 +323,15 @@ def dynamic(module):
 def load(path, *, include_images=False, single=False):
     if single and Path(path).is_file():
         root, paths, npdm = Path(path).parent, [('main', Path(path))], None
+        profile, identity = None, None
     else:
         root, paths, npdm = files(path)
+        profile, identity = read_link_profile(root)
     if sum(file.stat().st_size for _, file in paths) > 1024 * 1024 * 1024:
         raise PCError('Switch ExeFS inputs exceed 1 GiB')
     modules, inputs = [], []
     base = media.BASE
+    alignment = profile['alignment'] if profile else ALIGNMENT
     stack_size = 0x10000
     system_resource_size = 0
     for name, file in paths:
@@ -262,7 +342,7 @@ def load(path, *, include_images=False, single=False):
         module['_dynamic'] = dynamic(module)
         modules.append(module)
         inputs.append(module['input'])
-        base = (base + module['image_size'] + ALIGNMENT - 1) & ~(ALIGNMENT - 1)
+        base = (base + module['image_size'] + alignment - 1) & ~(alignment - 1)
         if sum(m['image_size'] for m in modules) > MAX_TOTAL:
             raise PCError('Switch linked images exceed 512 MiB')
     if npdm:
@@ -279,6 +359,8 @@ def load(path, *, include_images=False, single=False):
         if system_resource_size > 0x1fe00000 or system_resource_size % 0x1000:
             raise PCError('Switch NPDM system resource size is out of bounds or is unaligned')
         inputs.append(dict(name=npdm.name, size=len(raw), sha256=hashlib.sha256(raw).hexdigest()))
+    bind_link_profile(inputs, profile, identity)
+    fallback_imports = link_profile_targets(profile, modules)
     aliases = {}
     definitions = {}
 
@@ -337,6 +419,19 @@ def load(path, *, include_images=False, single=False):
                     owner, found = next(((m, s) for m, s in candidates if s['binding'] == 1), candidates[0])
                 elif symbol['binding'] == 2 and not symbol['section']:
                     owner, found = None, None
+                elif (not symbol['section'] and symbol['binding'] == 1 and symbol['visibility'] in (0, 3)
+                        and (fallback := fallback_imports.get(symbol['name'])) is not None):
+                    owner, offset = fallback
+                    target_offset = offset + reloc['addend']
+                    if reloc['kind'] == 1026 or symbol['kind'] == 2:
+                        if (code_module(owner['base'] + offset) is not owner
+                                or code_module(owner['base'] + target_offset) is not owner):
+                            raise PCError('Switch link profile function import requires aligned executable text: '
+                                          + symbol['name'])
+                    elif not valid_link_profile_offset(owner, target_offset):
+                        raise PCError('Switch link profile relocated import is outside an owning segment or unaligned: '
+                                      + symbol['name'])
+                    found = dict(symbol, section=1, value=offset)
                 else:
                     raise PCError(f"{module['name']}: unresolved Switch import {symbol['name']}")
                 value = (address(owner, found) if found else 0) + reloc['addend']

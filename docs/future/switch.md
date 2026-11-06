@@ -96,6 +96,18 @@ relocations, symbol versions, TLS/indirect-function bindings, unresolved strong
 imports and missing `DT_NEEDED` dependencies are errors. Undefined weak symbols
 resolve to zero before their relocation addends are applied.
 
+An extracted ExeFS can include `switch-link.json` for code mods that require
+4 KiB module packing and have reviewed symbols in stripped modules. Set
+`schema` to `decomp.wtf.switch-link/v1`, `alignment` to `4096`, and `inputs`
+to a map of every selected input filename to its SHA-256, including `main.npdm`
+if present. Optional `imports` maps a missing strong symbol to an object with
+`module` and module-relative `offset`. Optional `entries` maps module names to
+lists of module-relative executable entry offsets. Offsets are JSON integers.
+The loader checks both declared offsets and relocated addresses against the
+owning segments. Calls and function pointers require aligned executable text.
+ELF exports take precedence. The profile's bytes are included in the input identity.
+An ExeFS without a profile uses the existing 64 KiB alignment.
+
 Static function discovery also reads MOD0's `.eh_frame_hdr` search table. This
 recovers stripped function entries that symbols, relocations and address
 materialization miss. Header ranges, DWARF pointer encodings, entry counts,
