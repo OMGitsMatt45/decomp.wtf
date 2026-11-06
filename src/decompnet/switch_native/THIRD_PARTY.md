@@ -27,6 +27,8 @@ use different ABIs; components require explicit adapters.
   translator, Vulkan graphics, audio, input and save services. The normal desktop
   build excludes the guest CPU interpreter and refuses a combined native plus
   diagnostic-interpreter feature build. The Cranelift object generator is excluded.
+- **oxideav-vp8**, `OxideAV/oxideav-vp8`, MIT: the desktop runtime's VP8 software
+  decoder uses the Cargo-locked 0.2.7 release without framework dependencies.
 - **nxrecomp**, `drakolordx7/nxrecomp`, GPL-3.0-or-later: the pinned development
   checkout supplies an external comparison/oracle and runtime candidate. No
   nxrecomp implementation is embedded in the MIT adapter or generated CPU output.
