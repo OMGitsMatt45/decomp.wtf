@@ -12,6 +12,11 @@ def applet_controls(root, adapter):
                  'pub struct AmState {\n    pub(super) controls: Mutex<super::decomp_control::ControlState>,')
     replace_once(am / 'applet.rs', '                let state = Arc::new(AmState {',
                  '                let state = Arc::new(AmState {\n                    controls: Mutex::new(Default::default()),')
+    replace_once(am / 'applet.rs', '            300 => Reply::ok().u32(1),',
+                 '''            300 => Reply::ok().u32(1),
+            // SetRequestExitToLibraryAppletAtExecuteNextProgramEnabled.
+            // This desktop process hosts one title, so no transition can request an exit.
+            900 => Reply::ok(),''')
     replace_once(am / 'applet.rs', '            1 => Arc::new(SelfController),',
                  '            1 => Arc::new(SelfController { state: self.state.clone() }),')
     replace_once(am / 'applet.rs', 'struct SelfController;', 'struct SelfController { state: Arc<AmState> }')
@@ -33,6 +38,22 @@ def applet_controls(root, adapter):
                 message_event: c.process().create_event(false), user_popped: AtomicBool::new(false),
             }) };
             let reply = service.call(''')
+    replace_once(am / 'applet.rs', '    #[test]\n    fn set_album_image_orientation_succeeds_with_no_output()', '''    #[test]
+    fn desktop_applet_accepts_next_program_exit_registration() {
+        extern "C" fn probe(c: &mut Cpu) {
+            let proxy = AppletOe.call(c, &Request::default());
+            let common = proxy.objects[0].call(c, &Request::default());
+            let reply = common.objects[0].call(c, &Request { cmd: 900, ..Default::default() });
+            harness::record("am/next_program_exit", &[reply.result as u64, reply.data.len() as u64,
+                reply.copy_handles.len() as u64, reply.move_handles.len() as u64, reply.objects.len() as u64]);
+            c.halt();
+        }
+        harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
+        assert_eq!(harness::observed("am/next_program_exit"), vec![0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn set_album_image_orientation_succeeds_with_no_output()''')
 
 
 def application_play_history(root):
