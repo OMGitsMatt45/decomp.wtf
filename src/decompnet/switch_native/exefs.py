@@ -116,6 +116,13 @@ def identify_inputs(path):
     return result
 
 
+def valid_link_profile_offset(owner, offset):
+    text, rodata, data = owner['segments']
+    return (0 <= offset < text['size'] and offset % 4 == 0
+            or rodata['offset'] <= offset < rodata['offset'] + rodata['size']
+            or data['offset'] <= offset < data['offset'] + data['size'] + owner['bss_size'])
+
+
 def link_profile_targets(profile, modules):
     if profile is None:
         return {}
@@ -127,10 +134,7 @@ def link_profile_targets(profile, modules):
                 or type(target['offset']) is not int):
             raise PCError('Invalid Switch link profile import: ' + name)
         owner, offset = by_name[target['module']], target['offset']
-        text, rodata, data = owner['segments']
-        if not (0 <= offset < text['size'] and offset % 4 == 0
-                or rodata['offset'] <= offset < rodata['offset'] + rodata['size']
-                or data['offset'] <= offset < data['offset'] + data['size'] + owner['bss_size']):
+        if not valid_link_profile_offset(owner, offset):
             raise PCError('Switch link profile import offset is outside a segment or unaligned: ' + name)
         imports[name] = owner, offset
     for name, offsets in profile.get('entries', {}).items():
@@ -418,8 +422,15 @@ def load(path, *, include_images=False, single=False):
                 elif (not symbol['section'] and symbol['binding'] == 1 and symbol['visibility'] in (0, 3)
                         and (fallback := fallback_imports.get(symbol['name'])) is not None):
                     owner, offset = fallback
-                    if symbol['kind'] == 2 and code_module(owner['base'] + offset) is not owner:
-                        raise PCError('Switch link profile function import is outside executable text: ' + symbol['name'])
+                    target_offset = offset + reloc['addend']
+                    if reloc['kind'] == 1026 or symbol['kind'] == 2:
+                        if (code_module(owner['base'] + offset) is not owner
+                                or code_module(owner['base'] + target_offset) is not owner):
+                            raise PCError('Switch link profile function import requires aligned executable text: '
+                                          + symbol['name'])
+                    elif not valid_link_profile_offset(owner, target_offset):
+                        raise PCError('Switch link profile relocated import is outside an owning segment or unaligned: '
+                                      + symbol['name'])
                     found = dict(symbol, section=1, value=offset)
                 else:
                     raise PCError(f"{module['name']}: unresolved Switch import {symbol['name']}")

@@ -103,8 +103,9 @@ to a map of every selected input filename to its SHA-256, including `main.npdm`
 if present. Optional `imports` maps a missing strong symbol to an object with
 `module` and module-relative `offset`. Optional `entries` maps module names to
 lists of module-relative executable entry offsets. Offsets are JSON integers.
-The loader checks the offsets against the owning segments and gives ELF
-exports precedence. The profile's bytes are included in the input identity.
+The loader checks both declared offsets and relocated addresses against the
+owning segments. Calls and function pointers require aligned executable text.
+ELF exports take precedence. The profile's bytes are included in the input identity.
 An ExeFS without a profile uses the existing 64 KiB alignment.
 
 Static function discovery also reads MOD0's `.eh_frame_hdr` search table. This
