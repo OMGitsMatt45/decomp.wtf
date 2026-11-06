@@ -1,7 +1,7 @@
 //! Original MIT qualification scene. Real Maxwell pushbuffers and shaders are
 //! consumed by the same Vulkan path as a game; this is a host GPU test, not a
 //! claim that its draw commands came from translated guest CPU instructions.
-use kirikae_rt::{gpu::{Gpu, CLASS_3D}, mem::GuestMemory};
+use kirikae_rt::{gpu::{Gpu, CLASS_2D, CLASS_3D}, mem::GuestMemory};
 use serde_json::json;
 use std::{path::PathBuf, sync::atomic::Ordering};
 const PT: u64 = 7 << 16;
@@ -23,6 +23,52 @@ fn method(out: &mut Vec<u32>, m: u32, values: &[u32]) {
     out.push(1 << 29 | (values.len() as u32) << 16 | m); out.extend_from_slice(values);
 }
 fn address(out: &mut Vec<u32>, m: u32, addr: u64) { method(out, m, &[(addr >> 32) as u32, addr as u32]); }
+
+fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
+    let (width, height, pitch) = (16, 8, 64);
+    // The GPU mapping adds 0x100000 to these low address words to find CPU RAM.
+    let (source, destination, alternate) = (0x40000, 0x50000, 0x60000);
+    let cpu_address = |address| 0x100000 + u64::from(address);
+    let blit = |source, destination, destination_pitch| {
+        let mut cp = Vec::new();
+        method(&mut cp, 0, &[CLASS_2D]);
+        // R8_UNORM destination and source, then a full-surface point copy.
+        method(&mut cp, 0x80, &[
+            0xf3, u32::from(destination_pitch != 0), 0, 0, 0, destination_pitch, width, height, 1, destination,
+        ]);
+        method(&mut cp, 0x8c, &[0xf3, 1, 0, 0, 0, pitch, width, height, 1, source]);
+        method(&mut cp, 0x22c, &[0, 0, width, height, 0, 1, 0, 1, 0, 0, 0, 0]);
+        let bytes: Vec<u8> = cp.iter().flat_map(|v| v.to_le_bytes()).collect();
+        assert!(mem.write(0x300000, &bytes));
+        gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+    };
+    let write = |address, value| {
+        let mut rows = vec![0xff; (pitch * height) as usize];
+        for row in rows.chunks_exact_mut(pitch as usize) {
+            row[..width as usize].fill(value);
+        }
+        assert!(mem.write(cpu_address(address), &rows));
+    };
+    let check = |value| {
+        let pixels = gpu.read_pixels(cpu_address(destination), width, height).expect("Vulkan 2D blit readback");
+        assert!(pixels.iter().all(|&p| p == u32::from(value) * 0x010101),
+            "Pitch source value {value:#x}, first destination pixel {:#x}", pixels[0]);
+    };
+    for value in [0x32, 0xa4] {
+        write(source, value);
+        blit(source, destination, 0);
+        check(value);
+    }
+
+    // A GPU-produced version of the same pitched image takes priority over
+    // the old CPU bytes when used as the source of another blit.
+    write(alternate, 0x57);
+    blit(alternate, source, pitch);
+    assert_eq!(mem.read(cpu_address(source), 1).unwrap(), [0xa4]);
+    blit(source, destination, 0);
+    check(0x57);
+}
+
 fn main() {
     let root = PathBuf::from(std::env::args().nth(1).expect("output directory"));
     std::fs::create_dir_all(&root).unwrap();
@@ -86,6 +132,7 @@ fn main() {
         frames.push(json!({"width":width,"height":height,"red_pixels":red,"expected_area":expected,
             "cull":cull,"window_origin":origin,"clockwise":clockwise,"negative_viewport_height":negative_height,"visible":visible}));
     }
+    pitch_blit(&gpu, &mem);
     let stats = gpu.render_stats().expect("Vulkan renderer");
     assert_eq!(stats.draws, 18); assert_eq!(stats.skipped, 0); assert!(stats.skip_reasons.is_empty());
     let report = json!({"schema":"decomp.wtf.switch-graphics-probe/v1", "status":"passed", "cpu_path":"host qualification scene",

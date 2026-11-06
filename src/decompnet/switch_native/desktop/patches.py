@@ -129,6 +129,17 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '''            let origin = regs[0x4eb];
             let clockwise = (regs[0x647] == 0x900) ^ (origin & 1 == 0) ^ (origin & 0x10 != 0);
             let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
+    replace_once(rt / 'src/gpu/vulkan/images.rs',
+                 '                let Some((sk, _)) = self.surface_image(gpu, mem, src, true) else { return false };',
+                 '''                let pitched = src.pitch.is_some();
+                let Some((sk, fmt)) = self.surface_image(gpu, mem, src, !pitched) else { return false };
+                // Guest CPU copies can update pitch-linear sources between blits.
+                if pitched && !self.images[&sk].gpu_dirty
+                    && (sk.width, sk.height) == (src.width, src.height)
+                    && let Some(data) = read_surface(gpu, mem, src, fmt.bytes)
+                {
+                    self.upload(sk, &[(src.width, src.height, data)]);
+                }''')
     # Maxwell's A1B5G5R5 (TIC 0x14) has red in the low five bits.
     # Keep the Vulkan A1R5G5B5 image and translate the guest's component selectors.
     replace_once(rt / 'src/gpu/vulkan/textures.rs',
