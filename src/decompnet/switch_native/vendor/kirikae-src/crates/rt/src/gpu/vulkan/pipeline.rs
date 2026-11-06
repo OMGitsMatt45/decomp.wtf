@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ash::vk;
-use kirikae_maxwell::{Kind, Options, Shader, Stage};
+use kirikae_maxwell::{Kind, Options, Shader, Stage, XfbLayout};
 
 use crate::gpu::fxhash::FastMap as HashMap;
 use crate::gpu::fxhash::FastSet;
@@ -17,12 +17,13 @@ pub(super) const PIPELINE_CACHE_SAVE: std::time::Duration = std::time::Duration:
 
 pub(super) type LayoutKey = (Vec<(u32, vk::DescriptorType)>, u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash)]
 pub(super) struct ShaderKey {
     pub(super) va: u64,
     pub(super) hash: u64,
     pub(super) stage: u8,
     pub(super) types: u64,
+    xfb: Option<Box<XfbLayout>>,
 }
 
 pub(super) struct ShaderModule {
@@ -258,6 +259,7 @@ impl Renderer {
         attribute_types: [Kind; 32],
         output_types: [Kind; 8],
         compute: Option<&crate::gpu::compute::Qmd>,
+        xfb: Option<&XfbLayout>,
     ) -> Result<Arc<ShaderModule>, String> {
         let frame = crate::display::FRAMES.load(std::sync::atomic::Ordering::Relaxed);
         let head = match self.heads.get(&va) {
@@ -276,7 +278,7 @@ impl Renderer {
         let types = types.wrapping_mul(2).wrapping_add(alpha_test as u64);
         let depth_unorm16 = matches!(stage, Stage::Vertex | Stage::Fragment) && regs[0x54e] & 1 == 1 && regs[0x3fa] == 0x13;
         let types = types.wrapping_mul(2).wrapping_add(depth_unorm16 as u64);
-        let key = ShaderKey { va, hash: head, stage: stage as u8, types };
+        let key = ShaderKey { va, hash: head, stage: stage as u8, types, xfb: xfb.cloned().map(Box::new) };
         if let Some(s) = self.shaders.get(&key) {
             return Ok(s.clone());
         }
@@ -308,6 +310,8 @@ impl Renderer {
             depth_unorm16,
             alpha_test,
             exact_texel_rounding: crate::env_var!("KIRIKAE_NO_TEXEL_ROUNDING").is_some(),
+            xfb: key.xfb.clone(),
+            vertex_output_components: self.limits.max_vertex_output_components,
             ..Options::new(stage, base)
         };
         struct Env<'a> {

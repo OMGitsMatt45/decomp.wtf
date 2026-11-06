@@ -36,6 +36,14 @@ pub trait Env {
 pub struct NoEnv;
 impl Env for NoEnv {}
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct XfbBuffer {
+    pub stride: u32,
+    pub attributes: Vec<u8>,
+}
+
+pub type XfbLayout = [Option<XfbBuffer>; 4];
+
 pub const STORAGE_DESCRIPTORS: u32 = 0x110;
 pub const STORAGE_SLOTS: u32 = 16;
 
@@ -66,6 +74,8 @@ pub struct Options {
     pub depth_unorm16: bool,
     pub alpha_test: bool,
     pub exact_texel_rounding: bool,
+    pub xfb: Option<Box<XfbLayout>>,
+    pub vertex_output_components: u32,
 }
 
 impl Options {
@@ -88,6 +98,8 @@ impl Options {
             depth_unorm16: false,
             alpha_test: false,
             exact_texel_rounding: false,
+            xfb: None,
+            vertex_output_components: 64,
         }
     }
 }
@@ -143,6 +155,7 @@ pub struct Shader {
 pub enum Error {
     NoHeader,
     Spirv(String),
+    TransformFeedback(&'static str),
 }
 
 impl From<rspirv::dr::Error> for Error {
@@ -574,6 +587,10 @@ impl<'a> Translator<'a> {
         if self.opts.stage == Stage::Fragment {
             self.fragment_outputs()?;
         }
+        if let Some(layout) = self.opts.xfb.as_deref() {
+            self.transform_feedback_outputs(layout)?;
+            self.b.execution_mode(main, ExecutionMode::Xfb, []);
+        }
         if self.opts.stage == Stage::Vertex && (self.opts.depth_transform.is_some() || self.opts.depth_unorm16) {
             let v4f = self.t.v4f;
             let position = self.builtin(BuiltIn::Position, v4f, true);
@@ -613,6 +630,53 @@ impl<'a> Translator<'a> {
             self.b.execution_mode(main, ExecutionMode::OriginUpperLeft, []);
             if self.header.ps_writes_depth() {
                 self.b.execution_mode(main, ExecutionMode::DepthReplacing, []);
+            }
+        }
+        Ok(())
+    }
+
+    fn transform_feedback_outputs(&mut self, layout: &XfbLayout) -> R {
+        if self.opts.stage != Stage::Vertex || layout.iter().all(Option::is_none) {
+            return Err(Error::TransformFeedback("capture requires a vertex shader and an output buffer"));
+        }
+        self.b.capability(Capability::TransformFeedback);
+        let outputs = self.shader.outputs;
+        let mut locations = (0..self.opts.vertex_output_components / 4)
+            .filter(|&location| location >= 32 || outputs & (1 << location) == 0)
+            .flat_map(|location| (0..4).map(move |component| (location, component)));
+        let mut remaining = self.opts.vertex_output_components.saturating_sub(4 * (outputs.count_ones() + 1));
+        let scalar = self.t.f32;
+        let ptr = self.b.type_pointer(None, StorageClass::Output, scalar);
+        for (buffer, output) in layout.iter().enumerate().filter_map(|(i, output)| output.as_ref().map(|o| (i, o))) {
+            if output.attributes.is_empty() || output.stride % 4 != 0 || (output.attributes.len() as u32) * 4 > output.stride {
+                return Err(Error::TransformFeedback("invalid capture stride or component count"));
+            }
+            for (offset, &attribute) in output.attributes.iter().enumerate() {
+                remaining = remaining.checked_sub(1).ok_or(Error::TransformFeedback("capture exceeds vertex output components"))?;
+                let addr = u32::from(attribute) * 4;
+                let (source, component) = match addr {
+                    attr::POSITION..=0x7c => (self.builtin(BuiltIn::Position, self.t.v4f, true), (addr - attr::POSITION) / 4),
+                    attr::GENERIC..attr::GENERIC_END => {
+                        let generic = (addr - attr::GENERIC) / 16;
+                        let source = self.outputs.get(&generic).ok_or(Error::TransformFeedback("capture of undeclared vertex output"))?;
+                        (source.var, (addr % 16) / 4)
+                    }
+                    _ => return Err(Error::TransformFeedback("unsupported vertex output attribute")),
+                };
+                let (location, slot) = locations.next().ok_or(Error::TransformFeedback("capture exceeds vertex output locations"))?;
+                let var = self.global(ptr, StorageClass::Output);
+                for (decoration, value) in [
+                    (Decoration::Location, location), (Decoration::Component, slot),
+                    (Decoration::XfbBuffer, buffer as u32), (Decoration::XfbStride, output.stride),
+                    (Decoration::Offset, (offset as u32) * 4),
+                ] {
+                    self.b.decorate(var, decoration, [Operand::LiteralBit32(value)]);
+                }
+                self.interface.push(var);
+                let component = self.u(component);
+                let source = self.b.access_chain(ptr, None, source, [component])?;
+                let value = self.b.load(scalar, None, source, None, [])?;
+                self.b.store(var, value, None, [])?;
             }
         }
         Ok(())
