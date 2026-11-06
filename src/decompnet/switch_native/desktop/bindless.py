@@ -39,16 +39,49 @@ impl TextureHandle {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImageUse {''')
     replace_once(translate, '    textures: Vec<(TextureUse, Word)>,', '''    textures: Vec<(TextureUse, Word)>,
-    texture_handles: [Option<TextureHandle>; 256],''')
+    texture_handles: [Option<TextureHandle>; 256],
+    inherited_texture_handles: [Option<TextureHandle>; 256],
+    written_texture_regs: [bool; 256],
+    used_inherited_texture_regs: [bool; 256],''')
     replace_once(translate, '            textures: Vec::new(),', '''            textures: Vec::new(),
-            texture_handles: [None; 256],''')
-    # Keep provenance local to one block and invalidate on every actual register write.
+            texture_handles: [None; 256],
+            inherited_texture_handles: [None; 256],
+            written_texture_regs: [false; 256],
+            used_inherited_texture_regs: [false; 256],''')
     replace_once(translate, '            self.b.store(self.regs[reg as usize], v, None, [])?;', '''            self.texture_handles[reg as usize] = None;
+            self.written_texture_regs[reg as usize] = true;
             self.b.store(self.regs[reg as usize], v, None, [])?;''')
     replace_once(translate, '            for (_, block) in program.blocks() {', '''            for (_, block) in program.blocks() {
                 self.texture_handles.fill(None);''')
-    replace_once(translate, '    fn block(&mut self, pc_var: Word, merge: Word, insns: &[(u32, Insn)]) -> R {', '''    fn block(&mut self, pc_var: Word, merge: Word, insns: &[(u32, Insn)]) -> R {
-        self.texture_handles.fill(None);''')
+    # Only a unique fallthrough may provide the initial value for an optional self-loop.
+    replace_once(translate, '        let blocks = program.blocks();', '''        let blocks = program.blocks();
+        let mut inherit_texture_handles = vec![false; blocks.len()];
+        if !program.insns.values().any(|i| matches!(i.name(), "brx" | "sync" | "brk") || (i.name() == "bra" && i.bit(5))) {
+            let branch_entries: std::collections::BTreeSet<_> = blocks.iter().flat_map(|(leader, insns)| {
+                insns.iter().filter(|(_, i)| i.name() == "bra")
+                    .map(|(pc, i)| i.branch_target(*pc)).filter(move |target| target != leader)
+            }).collect();
+            for (k, pair) in blocks.windows(2).enumerate() {
+                let leader = pair[1].0;
+                let (pc, last) = pair[0].1.last().unwrap();
+                inherit_texture_handles[k + 1] = cfg::next(*pc) == leader
+                    && !matches!(last.name(), "bra" | "exit") && !branch_entries.contains(&leader);
+            }
+        }''')
+    for merge in ('skip', 'sw_merge'):
+        replace_once(translate, f'self.block(pc_var, {merge}, insns)?;',
+                     f'self.block(pc_var, {merge}, insns, inherit_texture_handles[k])?;')
+    replace_once(translate, '    fn block(&mut self, pc_var: Word, merge: Word, insns: &[(u32, Insn)]) -> R {', '''    fn block(&mut self, pc_var: Word, merge: Word, insns: &[(u32, Insn)], inherit_texture_handles: bool) -> R {
+        let previous = std::mem::replace(&mut self.texture_handles, [None; 256]);
+        self.inherited_texture_handles = if inherit_texture_handles { previous } else { [None; 256] };
+        self.written_texture_regs.fill(false);
+        self.used_inherited_texture_regs.fill(false);''')
+    replace_once(translate, '        if !self.ended {\n            let fall = self.block_number(cfg::next(last));', '''        // A write after a sample could reach that sample on the next loop iteration.
+        if self.used_inherited_texture_regs.iter().zip(&self.written_texture_regs).any(|(&used, &written)| used && written) {
+            self.unsupported.push("tex (bindless)");
+        }
+        if !self.ended {
+            let fall = self.block_number(cfg::next(last));''')
     replace_once(translate, '''            "mov" => {
                 let v = self.src_b(i)?;
                 self.set(i.rd(), v)
@@ -104,7 +137,16 @@ pub struct ImageUse {''')
         }
         let handle = i.bits(36, 13) as u32;''', '''        let bindless = i.op.value == 0xdeb8000000000000;
         let handle = if bindless {
-            let Some(handle) = self.texture_handles[i.rb() as usize] else {
+            let reg = i.rb() as usize;
+            let handle = self.texture_handles[reg].or_else(|| {
+                if self.written_texture_regs[reg] {
+                    return None;
+                }
+                let handle = self.inherited_texture_handles[reg]?;
+                self.used_inherited_texture_regs[reg] = true;
+                Some(handle)
+            });
+            let Some(handle) = handle else {
                 self.unsupported.push("tex (bindless)");
                 return Ok(());
             };
@@ -213,6 +255,31 @@ fn tex_b_rejects_a_clobbered_or_predicated_handle() {
         assert_eq!(shader.unsupported, ["tex (bindless)"]);
         assert!(shader.textures.is_empty());
     }
+}
+
+#[test]
+fn tex_b_keeps_only_a_loop_invariant_fallthrough_handle() {
+    const MOV: u64 = 0x4c98_0788_05a7_0003;
+    const OR: u64 = 0x4c47_0208_15a7_0303;
+    const TEX_B: u64 = 0xdeb8_0003_a037_0c0c;
+    let back_edge = bra(-0x18, 0);
+    let run = |first_branch, after_sample| {
+        let code = program(fragment_header(1), &[first_branch, MOV, OR, TEX_B, after_sample, back_edge, EXIT]);
+        translate(&code, &options(Stage::Fragment), &kirikae_maxwell::NoEnv).unwrap()
+    };
+
+    // The entry branch can skip the loop entirely. Its only way in is after MOV and LOP.OR.
+    let skip_loop = bra(0x38, 0);
+    let invariant = run(skip_loop, NOP);
+    assert!(invariant.unsupported.is_empty(), "{:?}", invariant.unsupported);
+    assert_eq!(invariant.textures.len(), 1);
+    assert_eq!(invariant.textures[0].or_cbuf, Some((2, 0x568)));
+    validate(&invariant.spirv);
+
+    let clobbered = run(skip_loop, mov32i(3, 0));
+    assert_eq!(clobbered.unsupported, ["tex (bindless)"]);
+    let bypass_definition = run(bra(0x18, 0), NOP);
+    assert_eq!(bypass_definition.unsupported, ["tex (bindless)"]);
 }
 
 #[test]
