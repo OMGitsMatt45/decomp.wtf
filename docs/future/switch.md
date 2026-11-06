@@ -196,6 +196,14 @@ entire base section, including the IVFC hash levels. Pass that raw section as
 `--raw` on this second command to produce the plain image for `--romfs`.
 [hactool's BKTR extraction notes](https://github.com/SciresM/hactool/issues/50)
 
+Some newer patch NCAs store filesystem metadata hashes after the BKTR subsection
+table. hactool 1.4.0 rejects that layout with `Invalid BKTR layout!`. Select the
+application and patch from their CNMT records. With LibHac 0.19.0, extract ExeFS
+using `OpenFileSystemWithPatch` with `NcaSectionType.Code` and stream the merged
+RomFS from `OpenStorageWithPatch` with `NcaSectionType.Data`. Use
+`IntegrityCheckLevel.ErrorOnInvalid` for both reads.
+[LibHac extraction example](https://github.com/seedds/nxnative/blob/b2d46b86d03f4b03afe11ea61c67cdf00d7a5345/dm/tools/nx_extract/Program.cs#L122-L148)
+
 `--feedback run-report.json` adds missing targets in the exact input's code to the
 next static export. Foreign inputs and targets outside its executable modules
 are rejected. Re-export to a new directory to preserve source edits.
