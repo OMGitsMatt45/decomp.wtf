@@ -39,7 +39,7 @@ def _run(command, *, cwd=None):
     return result.stdout
 
 
-def _recover_halfword_tables(lifter, replace_once):
+def _recover_table_bases(lifter, replace_once):
     jt = lifter / 'src/jt.rs'
     replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
@@ -58,9 +58,12 @@ pub fn resolve_with_base(
     recover: impl FnOnce(u64, u32) -> Option<u64>,
 ) -> Option<Vec<u64>> {
     let Sym::Target''')
-    replace_once(jt, '    let raw = mem.bytes(table?, (count as usize) * size as usize)?;', '''    let table = match table {
+    replace_once(jt, '    let raw = mem.bytes(table?, (count as usize) * size as usize)?;', '''    // A byte-offset table can reuse a base register from an earlier block
+    // and branch back to cases near the dispatch.
+    let nearby_backward = size == 1 && base < pc && pc - base <= u8::MAX as u64 * 4;
+    let table = match table {
         Some(table) => table,
-        None if size == 2 && !signed && shift == 2 && base == pc + 4 => {
+        None if !signed && shift == 2 && (nearby_backward || (size == 2 && base == pc + 4)) => {
             recover(at, bits(mem.word(at)?, 5, 5))?
         }
         None => return None,
@@ -190,7 +193,7 @@ fn masked_index(w: u32) -> Option<(u32, u64)> {
                     && r.start().checked_add(255 * 4) == Some(*r.end());
                 let limit = if crosses_anchor { l.m.text.end } else { end };
                 let (lo, hi) = ((*r.start()).max(entry), (*r.end()).min(limit - 4));''')
-        _recover_halfword_tables(patched, replace_once)
+        _recover_table_bases(patched, replace_once)
         # Propagate a restored guest stack through skipped native call frames.
         module = patched / 'src/module.rs'
         for call in ('{}(c);', 'rt_dispatch(c);',

@@ -185,6 +185,20 @@ def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, e
     assert 'f_80000bc' in table and 'f_80000c0' not in table
 
 
+@pytest.mark.parametrize('unknown_base', [False, True])
+def test_backward_byte_table_requires_a_constant_base_on_each_path(tmp_path, emission_env, unknown_base):
+    from tools.switch_fixture import backward_byte_table_fixture, reference
+    path = tmp_path / 'backward-byte-target.nro'
+    path.write_bytes(backward_byte_table_fixture(unknown_base=unknown_base))
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000A0, 0x080000C0} <= entries and 0x080000A8 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000a8' in table) == (not unknown_base)
+
+
 @pytest.mark.parametrize(('checked_index', 'resolved'), [
     (0x12003d09, True),   # and w9, w8, #0xffff
     (0x12003909, False),  # and w9, w8, #0x7fff
