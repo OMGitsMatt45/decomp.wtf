@@ -107,7 +107,7 @@ pub(crate) fn ordered_halfword_cases(
     if base != branch + 4 { return None; }
     let (count, checked_start) = prove_bound(load.at, load.idx, anchor)?;
     if local_halfword_load(mem, checked_start, branch, r, &writes_register)? != (load, anchor, base) { return None; }
-    halfword_targets(mem, branch, load.table?, count)
+    adjacent_table_targets(mem, branch, load.table?, 2, count)
 }
 
 pub(crate) fn backward_halfword_cases(
@@ -132,7 +132,8 @@ pub(crate) fn local_halfword_table(mem: &dyn Memory, start: u64, branch: u64, r:
 
 fn local_halfword_load(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
                        writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64, u64)> {
-    let (load, anchor, base) = local_halfword_operands(mem, start, branch, reg, writes_register)?;
+    let (load, anchor, base) = local_table_operands(mem, start, branch, reg, writes_register)?;
+    if load.size != 2 { return None; }
     load.table?;
     let ldrh = mem.word(load.at)?;
     let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
@@ -147,8 +148,8 @@ fn local_halfword_load(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
     Some((load, anchor, base))
 }
 
-fn local_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
-                           writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64, u64)> {
+fn local_table_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                        writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64, u64)> {
     let Sym::Target { base, load, .. } = value(mem, start, branch, reg, 0)? else { return None };
     if load.idx == 31 { return None; }
     let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
@@ -161,19 +162,20 @@ fn local_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
     {
         return None;
     }
-    let ldrh = mem.word(load.at)?;
-    if ldrh & 0xffe0_fc00 != 0x7860_7800 { return None; } // ldrh Wt, [Xn, Xm, lsl #1]
+    let load_word = mem.word(load.at)?;
+    // LDRB Wt, [Xn, Xm] or LDRH Wt, [Xn, Xm, LSL #1].
+    if !matches!(load_word & 0xffe0_fc00, 0x3860_6800 | 0x7860_7800) { return None; }
     Some((load, anchor, base))
 }
 
-pub(crate) fn halfword_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
-                                writes_register: impl Fn(u64, u32) -> bool) -> Option<(u64, u64)> {
-    let (load, anchor, base) = local_halfword_operands(mem, start, branch, reg, &writes_register)?;
-    (base == branch + 4).then_some((load.at, anchor))
+pub(crate) fn adjacent_table_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                                       writes_register: impl Fn(u64, u32) -> bool) -> Option<(u64, u64, u32)> {
+    let (load, anchor, base) = local_table_operands(mem, start, branch, reg, &writes_register)?;
+    (base == branch + 4).then_some((load.at, anchor, load.size))
 }
 
-pub(crate) fn halfword_targets(mem: &dyn Memory, branch: u64, table: u64, count: u64) -> Option<Vec<u64>> {
-    table_targets(mem, branch + 4, table, 2, false, 2, count)
+pub(crate) fn adjacent_table_targets(mem: &dyn Memory, branch: u64, table: u64, size: u32, count: u64) -> Option<Vec<u64>> {
+    table_targets(mem, branch + 4, table, size, false, 2, count)
 }
 
 fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: bool, shift: u32, count: u64) -> Option<Vec<u64>> {
@@ -512,7 +514,7 @@ fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u
         .then_some((last - first + 1) as u64)
 }
 
-struct LinkedHalfword {
+struct LinkedTable {
     branch: u64,
     load: u64,
     producer: u64,
@@ -521,16 +523,16 @@ struct LinkedHalfword {
     targets: Vec<u64>,
 }
 
-fn linked_halfword_operands(l: &Lifted, branch: u64) -> Option<(u64, u64)> {
+fn linked_table_operands(l: &Lifted, branch: u64) -> Option<(u64, u64, u32)> {
     let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
     let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
-    jt::halfword_dispatch(l.m, start, branch, r, |pc, reg| nested_writes(l, pc, reg))
+    jt::adjacent_table_dispatch(l.m, start, branch, r, |pc, reg| nested_writes(l, pc, reg))
 }
 
-fn linked_halfword_anchor(l: &Lifted, seed: u64) -> bool {
+fn linked_table_anchor(l: &Lifted, seed: u64) -> bool {
     seed.checked_sub(4).filter(|&pc| l.in_text(pc) && matches!(l.at(pc), Insn::Br(_)))
-        .and_then(|branch| linked_halfword_operands(l, branch))
-        .is_some_and(|(_, adr)| l.options.anchor_origins.contains(&adr))
+        .and_then(|branch| linked_table_operands(l, branch))
+        .is_some_and(|(_, adr, _)| l.options.anchor_origins.contains(&adr))
 }
 
 fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
@@ -545,49 +547,63 @@ fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
     jt::constant_at(l.m, pc - 4, pc, reg)
 }
 
-fn linked_halfword(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedHalfword> {
+fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedTable> {
     let word = |pc| jt::Memory::word(l.m, pc);
-    let (load, anchor) = linked_halfword_operands(l, branch)?;
+    let (load, anchor, size) = linked_table_operands(l, branch)?;
     let idx = bits(word(load)?, 16, 5);
     let base_register = bits(word(load)?, 5, 5);
     let local_start = start.max(load.saturating_sub(jt::WINDOW * 4));
-    let mut guard = load - 4;
-    while guard > local_start && matches!(l.at(guard), Insn::Op(_)) { guard -= 4; }
-    if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008
-        || !matches!(l.at(guard), Insn::BCond(_, target) if (branch + 4..end).contains(target))
+    let last_index_write = |before| (local_start..before).step_by(4).filter(|&pc| nested_writes(l, pc, idx)).last();
+    let (producer, guard, count) = if size == 1 {
+        // A mask of contiguous low bits bounds the full X index even when
+        // the input is otherwise unknown. A W result is zero-extended.
+        let producer = last_index_write(load)?;
+        let (source, mask) = jt::masked_index(word(producer)?)?;
+        if source == 31 { return None; }
+        (producer, None, mask + 1)
+    } else {
+        let mut guard = load - 4;
+        while guard > local_start && matches!(l.at(guard), Insn::Op(_)) { guard -= 4; }
+        if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008
+            || !matches!(l.at(guard), Insn::BCond(_, target) if (branch + 4..end).contains(target))
+        {
+            return None;
+        }
+        let compare = word(guard - 4)?;
+        if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != idx { return None; }
+        let producer = last_index_write(guard - 4)?;
+        if word(producer)? & 0xbfc0_001f != (0x1100_0000 | idx) { return None; } // add/sub Widx, Wn, #imm
+        let count = ((bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12)) + 1;
+        (producer, Some(guard), count)
+    };
+    let r = bits(word(branch)?, 5, 5);
+    let checked_start = guard.unwrap_or(producer) + 4;
+    if jt::adjacent_table_dispatch(l.m, checked_start, branch, r, |pc, reg| nested_writes(l, pc, reg))?
+        != (load, anchor, size)
     {
         return None;
     }
-    let r = bits(word(branch)?, 5, 5);
-    if jt::halfword_dispatch(l.m, guard + 4, branch, r, |pc, reg| nested_writes(l, pc, reg))? != (load, anchor) {
-        return None;
-    }
-    let compare = word(guard - 4)?;
-    if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != idx { return None; }
-    let producer = (local_start..guard - 4).step_by(4).filter(|&pc| nested_writes(l, pc, idx)).last()?;
-    if word(producer)? & 0xbfc0_001f != (0x1100_0000 | idx) { return None; } // add/sub Widx, Wn, #imm
-    // The guard observes the zero-extended index written by W arithmetic. Every path
-    // into this corridor will be checked against the proposed case edges.
-    for pc in (producer..branch).step_by(4).filter(|&pc| pc != guard) {
+    // Check the corridor from the index proof to the BR. The graph proof
+    // below rejects direct and computed entries after the producer.
+    for pc in (producer..branch).step_by(4).filter(|&pc| Some(pc) != guard) {
         if !matches!(l.at(pc), Insn::Op(code) if !code.contains("rt_svc(c"))
             || (producer < pc && pc < load && nested_writes(l, pc, idx))
         {
             return None;
         }
     }
-    let count = ((bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12)) + 1;
     if count > 256 { return None; }
     // These are candidates. The graph proof below must independently recover
     // the same address from every reaching definition of the base register.
     let mut candidates = (start + 4..end).step_by(4).filter_map(|pc| local_page_add(l, start, pc, base_register));
     let table = candidates.next()?;
     let (ro_start, ro_end) = l.options.rodata?;
-    if table < ro_start || table.checked_add(count * 2)? > ro_end || candidates.any(|other| other != table) {
+    if table < ro_start || table.checked_add(count * u64::from(size))? > ro_end || candidates.any(|other| other != table) {
         return None;
     }
-    let targets = jt::halfword_targets(l.m, branch, table, count)?;
+    let targets = jt::adjacent_table_targets(l.m, branch, table, size, count)?;
     if targets.iter().any(|target| !(start..end).contains(target)) { return None; }
-    Some(LinkedHalfword { branch, load, producer, base_register, table, targets })
+    Some(LinkedTable { branch, load, producer, base_register, table, targets })
 }
 
 fn udf_return_wrapper(l: &Lifted, target: u64) -> bool {
@@ -599,8 +615,8 @@ fn udf_return_wrapper(l: &Lifted, target: u64) -> bool {
         && matches!(l.at(target + 8), Insn::Bl(_)) && word(last).is_some_and(|w| w >> 16 == 0)
 }
 
-fn prove_linked_halfword(l: &Lifted, start: u64, table: &LinkedHalfword,
-                         cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
+fn prove_linked_table(l: &Lifted, start: u64, table: &LinkedTable,
+                      cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
     let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty() || cases.contains_key(&pc);
     if (table.producer + 4..=table.branch).step_by(4).any(has_entry) { return None; }
     let mut pending = vec![(table.load, table.base_register)];
@@ -642,16 +658,16 @@ fn prove_linked_halfword(l: &Lifted, start: u64, table: &LinkedHalfword,
     proved_definition.then_some(())
 }
 
-fn recover_linked_halfword(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
+fn recover_linked_table(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
     l.options.rodata?;
-    linked_halfword_operands(l, branch)?;
-    let hard_seed = |seed| !linked_halfword_anchor(l, seed);
+    linked_table_operands(l, branch)?;
+    let hard_seed = |seed| !linked_table_anchor(l, seed);
     let start = l.m.seeds.range(..=branch).rev().copied().find(|&seed| hard_seed(seed))?;
     let end = l.m.seeds.range(branch + 4..).copied().find(|&seed| hard_seed(seed))?;
     if end - start > 0x4000 { return None; }
     let branches: Vec<_> = (start..end).step_by(4).filter(|&pc| matches!(l.at(pc), Insn::Br(_))).collect();
     if !(1..=8).contains(&branches.len()) { return None; }
-    let tables = branches.into_iter().map(|br| linked_halfword(l, start, end, br)).collect::<Option<Vec<_>>>()?;
+    let tables = branches.into_iter().map(|br| linked_table(l, start, end, br)).collect::<Option<Vec<_>>>()?;
     // Any independently reachable interior instruction invalidates the closed
     // function graph, including internal call entries with unmodeled returns.
     for pc in (start + 4..end).step_by(4) {
@@ -663,7 +679,7 @@ fn recover_linked_halfword(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
     for table in &tables {
         for &target in &table.targets { cases.entry(target).or_default().push(table.branch); }
     }
-    for table in &tables { prove_linked_halfword(l, start, table, &cases)?; }
+    for table in &tables { prove_linked_table(l, start, table, &cases)?; }
     tables.into_iter().find(|table| table.branch == branch).map(|table| table.targets)
 }
 
@@ -693,7 +709,7 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
             .or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
             .or_else(|| nested_table_bound(l, load, branch, r, idx))
     }).or_else(|| recover_backward_halfword(l, branch, r))
-        .or_else(|| recover_linked_halfword(l, branch)).unwrap_or_default()
+        .or_else(|| recover_linked_table(l, branch)).unwrap_or_default()
 }
 
 /// How the `br` at `br_pc` is emitted,''')
