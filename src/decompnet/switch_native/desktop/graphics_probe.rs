@@ -29,7 +29,7 @@ fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
     // The GPU mapping adds 0x100000 to these low address words to find CPU RAM.
     let (source, destination, alternate) = (0x40000, 0x50000, 0x60000);
     let cpu_address = |address| 0x100000 + u64::from(address);
-    let blit = |source, destination, destination_pitch| {
+    let blit = |source, destination, destination_pitch, corner_origin| {
         let mut cp = Vec::new();
         method(&mut cp, 0, &[CLASS_2D]);
         // R8_UNORM destination and source, then a full-surface point copy.
@@ -37,7 +37,9 @@ fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
             0xf3, u32::from(destination_pitch != 0), 0, 0, 0, destination_pitch, width, height, 1, destination,
         ]);
         method(&mut cp, 0x8c, &[0xf3, 1, 0, 0, 0, pitch, width, height, 1, source]);
-        method(&mut cp, 0x22c, &[0, 0, width, height, 0, 1, 0, 1, 0, 0, 0, 0]);
+        method(&mut cp, 0x223, &[u32::from(corner_origin)]);
+        let phase = if corner_origin { 0x8000_0000 } else { 0 };
+        method(&mut cp, 0x22c, &[0, 0, width, height, 0, 1, 0, 1, phase, 0, phase, 0]);
         let bytes: Vec<u8> = cp.iter().flat_map(|v| v.to_le_bytes()).collect();
         assert!(mem.write(0x300000, &bytes));
         gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
@@ -56,17 +58,30 @@ fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
     };
     for value in [0x32, 0xa4] {
         write(source, value);
-        blit(source, destination, 0);
+        blit(source, destination, 0, false);
         check(value);
     }
 
     // A GPU-produced version of the same pitched image takes priority over
     // the old CPU bytes when used as the source of another blit.
     write(alternate, 0x57);
-    blit(alternate, source, pitch);
+    blit(alternate, source, pitch, false);
     assert_eq!(mem.read(cpu_address(source), 1).unwrap(), [0xa4]);
-    blit(source, destination, 0);
+    blit(source, destination, 0, false);
     check(0x57);
+
+    // A coordinate ramp exposes the shift and rescale caused by rounding
+    // half-texel positions before submitting the Vulkan point copy.
+    let mut rows = vec![0xff; (pitch * height) as usize];
+    let expected: Vec<_> = (0..height).flat_map(|y| (0..width).map(move |x| y * width + x)).collect();
+    for (index, &value) in expected.iter().enumerate() {
+        let index = index as u32;
+        rows[(index / width * pitch + index % width) as usize] = value as u8;
+    }
+    assert!(mem.write(cpu_address(alternate), &rows));
+    blit(alternate, destination, 0, true);
+    let pixels = gpu.read_pixels(cpu_address(destination), width, height).expect("Vulkan corner-origin point copy");
+    assert_eq!(pixels, expected.iter().map(|v| v * 0x010101).collect::<Vec<_>>());
 }
 
 fn main() {
