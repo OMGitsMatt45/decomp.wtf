@@ -507,8 +507,8 @@ fn linked_halfword(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<Link
     let compare = word(guard - 4)?;
     if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != idx { return None; }
     let producer = (local_start..guard - 4).step_by(4).filter(|&pc| nested_writes(l, pc, idx)).last()?;
-    if word(producer)? & 0xffc0_001f != (0x5100_0000 | idx) { return None; } // sub Widx, Wn, #imm
-    // The guard observes the zero-extended index written by SUB. Every path
+    if word(producer)? & 0xbfc0_001f != (0x1100_0000 | idx) { return None; } // add/sub Widx, Wn, #imm
+    // The guard observes the zero-extended index written by W arithmetic. Every path
     // into this corridor will be checked against the proposed case edges.
     for pc in (producer..branch).step_by(4).filter(|&pc| pc != guard) {
         if !matches!(l.at(pc), Insn::Op(code) if !code.contains("rt_svc(c"))
@@ -532,37 +532,53 @@ fn linked_halfword(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<Link
     Some(LinkedHalfword { branch, load, producer, base_register, table, targets })
 }
 
+fn udf_return_wrapper(l: &Lifted, target: u64) -> bool {
+    let Some(last) = target.checked_add(12).filter(|&pc| l.in_text(target) && l.in_text(pc)) else { return false };
+    let word = |pc| jt::Memory::word(l.m, pc);
+    // A frame-record prologue followed by a direct BL returning into UDF
+    // cannot fall through to its caller's return address on a normal return.
+    word(target) == Some(0xa9bf_7bfd) && word(target + 4) == Some(0x9100_03fd)
+        && matches!(l.at(target + 8), Insn::Bl(_)) && word(last).is_some_and(|w| w >> 16 == 0)
+}
+
 fn prove_linked_halfword(l: &Lifted, start: u64, table: &LinkedHalfword,
                          cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
     let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty() || cases.contains_key(&pc);
     if (table.producer + 4..=table.branch).step_by(4).any(has_entry) { return None; }
-    let mut pending = vec![table.load];
+    let mut pending = vec![(table.load, table.base_register)];
     let mut seen = BTreeSet::new();
     let mut proved_definition = false;
-    while let Some(pc) = pending.pop() {
-        if !seen.insert(pc) { continue; }
-        if pc <= start { return None; }
+    while let Some((pc, reg)) = pending.pop() {
+        if !seen.insert((pc, reg)) { continue; }
+        if pc <= start || seen.len() > 4096 { return None; }
         let previous = pc - 4;
         let preds = l.direct_predecessors(pc);
         let computed = cases.get(&pc).into_iter().flatten().copied();
-        let fallthrough = (!l.at(previous).ends_block()).then_some(previous);
-        if preds.is_empty() && !cases.contains_key(&pc) && fallthrough.is_none() { return None; }
+        let trapped = matches!(l.at(previous), Insn::Bl(target) if udf_return_wrapper(l, *target));
+        let fallthrough = (!trapped && !l.at(previous).ends_block()).then_some(previous);
+        if preds.is_empty() && !cases.contains_key(&pc) && fallthrough.is_none() && !trapped { return None; }
         for from in preds.iter().map(|&(_, from)| from).chain(computed).chain(fallthrough) {
             match l.at(from) {
                 Insn::Op(code) if !code.contains("rt_svc(c") => {
-                    if nested_writes(l, from, table.base_register) {
-                        if has_entry(from) || local_page_add(l, start, from, table.base_register) != Some(table.table) {
+                    if nested_writes(l, from, reg) {
+                        let w = jt::Memory::word(l.m, from)?;
+                        let source = bits(w, 16, 5);
+                        if w & 0xffe0_ffff == (0xaa00_03e0 | reg) && source != 31 { // mov Xreg, Xsource
+                            pending.push((from, source));
+                            continue;
+                        }
+                        if has_entry(from) || local_page_add(l, start, from, reg) != Some(table.table) {
                             return None;
                         }
                         proved_definition = true;
                         continue;
                     }
                 }
-                Insn::Bl(_) | Insn::Blr(_) if jt::callee_saved(table.base_register) => {}
+                Insn::Bl(_) | Insn::Blr(_) if jt::callee_saved(reg) => {}
                 Insn::B(_) | Insn::BCond(_, _) | Insn::Br(_) => {}
                 _ => return None,
             }
-            pending.push(from);
+            pending.push((from, reg));
         }
     }
     proved_definition.then_some(())
@@ -576,7 +592,7 @@ fn recover_linked_halfword(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
     let end = l.m.seeds.range(branch + 4..).copied().find(|&seed| hard_seed(seed))?;
     if end - start > 0x4000 { return None; }
     let branches: Vec<_> = (start..end).step_by(4).filter(|&pc| matches!(l.at(pc), Insn::Br(_))).collect();
-    if !(2..=8).contains(&branches.len()) { return None; }
+    if !(1..=8).contains(&branches.len()) { return None; }
     let tables = branches.into_iter().map(|br| linked_halfword(l, start, end, br)).collect::<Option<Vec<_>>>()?;
     // Any independently reachable interior instruction invalidates the closed
     // function graph, including internal call entries with unmodeled returns.

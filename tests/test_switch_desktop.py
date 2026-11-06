@@ -424,6 +424,42 @@ def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, em
     assert ('f_80000e0' in table) == (variant == 'closed')
 
 
+@pytest.mark.parametrize('variant', ['full-width', 'narrow-alias', 'returning-wrapper'])
+def test_halfword_table_preserves_base_through_full_width_aliases(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    struct.pack_into('<I', image, 0x24, 0x18c)
+    words = {
+        0x80: 0xb0000016, 0x84: 0x910002d6,  # adrp/add x22, table
+        0x100: 0x52800008, 0x104: 0x11000108, 0x108: 0x7100051f, 0x10c: 0x54000268,
+        0x110: 0x10000089, 0x114: 0x78687aca, 0x118: 0x8b0a0929, 0x11c: 0xd61f0120,
+        0x120: 0xaa1603f7, 0x124: 0x52800016,  # Save x22 in x23, then overwrite w22.
+        0x128: 0x2a1703f6 if variant == 'narrow-alias' else 0xaa1703f6,
+        0x12c: 0x52800028, 0x130: 0x17fffff5,  # Second slot via the loop.
+        0x134: 0xd503201f, 0x138: 0x52800540, 0x13c: 0xd65f03c0,
+        0x158: 0xaa0003f6, 0x15c: 0x94000003, 0x160: 0x17ffffe8, 0x164: 0xd65f03c0,
+        0x168: 0xa9bf7bfd, 0x16c: 0x910003fd, 0x170: 0x94000006,
+        0x174: 0xd503201f if variant == 'returning-wrapper' else 0,
+        0x178: 0xa8c17bfd, 0x17c: 0xd65f03c0, 0x188: 0xd65f03c0,
+    }
+    for offset in range(0x88, 0x100, 4):  # Keep the table base outside the local matcher window.
+        struct.pack_into('<I', image, offset, 0xd503201f)
+    for offset, word in words.items():
+        struct.pack_into('<I', image, offset, word)
+    struct.pack_into('<2H', image, 0x1000, 0, 6)
+    struct.pack_into('<Q', image, 0x1010, 0x08000168)  # A separately discovered wrapper entry.
+    path = tmp_path / 'aliased-table.nro'
+    path.write_bytes(image)
+    if variant == 'full-width':
+        assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert 0x08000138 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_8000138' in table) == (variant == 'full-width')
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'
