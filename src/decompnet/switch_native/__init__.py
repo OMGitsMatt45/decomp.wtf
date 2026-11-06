@@ -29,7 +29,10 @@ def emit(binary, image_path, inspection, entries_path, game, report, *, name='gu
     command = [str(binary), str(image_path), str(inspection['base']),
                str(text['offset']), str(text['size']), str(entries_path), str(game), str(report), name]
     if anchor_origins:
+        rodata = inspection['segments'][1]
         command.append('--anchor-origins')
+        if rodata['size']:
+            command.extend([str(rodata['offset']), str(rodata['size'])])
     try:
         result = subprocess.run(command, input=''.join(f'{pc}\n' for pc in anchor_origins) if anchor_origins else None,
                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)

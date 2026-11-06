@@ -5,8 +5,8 @@ use std::{collections::BTreeSet, env, fs, io::{self, BufRead}, path::PathBuf};
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = env::args().collect();
     let read_anchors = a.get(9).is_some_and(|arg| arg == "--anchor-origins");
-    if a.len() != 8 && a.len() != 9 && !(a.len() == 10 && read_anchors) {
-        return Err("usage: emitter image base text-offset text-size entries output report [module-name [--anchor-origins]]".into());
+    if a.len() != 8 && a.len() != 9 && !(matches!(a.len(), 10 | 12) && read_anchors) {
+        return Err("usage: emitter image base text-offset text-size entries output report [module-name [--anchor-origins [rodata-offset rodata-size]]]".into());
     }
     let image = fs::read(&a[1])?;
     let base: u64 = a[2].parse()?;
@@ -27,6 +27,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let module = Module { name: name.into(), base, image: &image,
         text: base + offset..base + offset + size, seeds };
     let mut options = Options::default();
+    if a.len() == 12 {
+        let ro_offset: u64 = a[10].parse()?;
+        let ro_size: u64 = a[11].parse()?;
+        let Some(end) = ro_offset.checked_add(ro_size).filter(|&end| end <= image.len() as u64) else {
+            return Err("invalid Switch read-only data range".into());
+        };
+        if ro_offset < offset + size {
+            return Err("invalid Switch read-only data range".into());
+        }
+        options.rodata = Some((base + ro_offset, base + end));
+    }
     if read_anchors {
         for line in io::stdin().lock().lines() {
             let address = line?.parse()?;

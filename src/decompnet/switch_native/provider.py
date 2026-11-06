@@ -46,9 +46,12 @@ def _recover_jump_tables(lifter, replace_once):
     replace_once(jt, '''        // floating point and SIMD: only conversions to and from integers (fmov w, s; fcvtzs ..) and umov / smov /
         // dup (general) have a general register as Rd
         let to_general = w & 0x7f20_fc00 == 0x1e20_0000 || w & 0xbfe0_8400 == 0x0e00_0400;''',
-                 '''        // Of the SIMD copy encodings, only SMOV and UMOV write a GPR.
+                 '''        // Use the conversion direction for scalar FP and the lane opcode for SIMD copies.
+        let opc = bits(w, 16, 3);
+        let fp_to_general = (w & 0x7f20_fc00 == 0x1e20_0000 && !matches!(opc, 2 | 3 | 7))
+            || (w & 0x7f20_0000 == 0x1e00_0000 && bits(w, 19, 2) == 3 && matches!(opc, 0 | 1));
         let lane_to_general = w & 0xbfe0_8400 == 0x0e00_0400 && matches!(bits(w, 11, 4), 5 | 7);
-        let to_general = w & 0x7f20_fc00 == 0x1e20_0000 || lane_to_general;''')
+        let to_general = fp_to_general || lane_to_general;''')
     replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     resolve_with_recovery(mem, entry, pc, pc, r, |_, _| None, |_, _| None)
@@ -87,8 +90,7 @@ pub fn resolve_with_recovery(
         }
         None => return None,
     };
-    let load = Load { table: Some(table), idx, size, signed, scale, at };
-    let mut targets = table_targets(mem, base, load, shift, count)?;
+    let mut targets = table_targets(mem, base, table, size, signed, shift, count)?;
     targets.sort_unstable();
     targets.dedup();
     Some(targets)
@@ -104,7 +106,7 @@ pub(crate) fn ordered_halfword_cases(
     let (load, anchor) = adjacent_halfword_table(mem, entry, branch, r, &writes_register)?;
     let (count, checked_start) = prove_bound(load.at, load.idx, anchor)?;
     if adjacent_halfword_table(mem, checked_start, branch, r, &writes_register)? != (load, anchor) { return None; }
-    table_targets(mem, branch + 4, load, 2, count)
+    halfword_targets(mem, branch, load.table?, count)
 }
 
 pub(crate) fn local_halfword_table(mem: &dyn Memory, start: u64, branch: u64, r: u32, at: u64,
@@ -115,8 +117,25 @@ pub(crate) fn local_halfword_table(mem: &dyn Memory, start: u64, branch: u64, r:
 
 fn adjacent_halfword_table(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
                            writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64)> {
+    let (load, anchor) = adjacent_halfword_operands(mem, start, branch, reg, writes_register)?;
+    load.table?;
+    let ldrh = mem.word(load.at)?;
+    let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
+    let table = last_writer(load.at, bits(ldrh, 5, 5))?;
+    let w = mem.word(table)?;
+    // Require an untruncated local table pointer, as well as the local anchor.
+    if w & 0x9f00_0000 != 0x1000_0000 {
+        if w & 0xff80_0000 != 0x9100_0000 { return None; } // add Xd, Xn, #imm
+        let page = last_writer(table, bits(w, 5, 5))?;
+        if mem.word(page)? & 0x9f00_0000 != 0x9000_0000 { return None; } // adrp Xn, table
+    }
+    Some((load, anchor))
+}
+
+fn adjacent_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                              writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64)> {
     let Sym::Target { base, load, .. } = value(mem, start, branch, reg, 0)? else { return None };
-    if base != branch + 4 || load.idx == 31 || load.table.is_none() { return None; }
+    if base != branch + 4 || load.idx == 31 { return None; }
     let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
     let add = last_writer(branch, reg)?;
     let w = mem.word(add)?;
@@ -129,21 +148,22 @@ fn adjacent_halfword_table(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
     }
     let ldrh = mem.word(load.at)?;
     if ldrh & 0xffe0_fc00 != 0x7860_7800 { return None; } // ldrh Wt, [Xn, Xm, lsl #1]
-    let table = last_writer(load.at, bits(ldrh, 5, 5))?;
-    let w = mem.word(table)?;
-    // Require an untruncated local table pointer, as well as the local anchor.
-    if w & 0x9f00_0000 != 0x1000_0000 {
-        if w & 0xff80_0000 != 0x9100_0000 { return None; } // add Xd, Xn, #imm
-        let page = last_writer(table, bits(w, 5, 5))?;
-        if mem.word(page)? & 0x9f00_0000 != 0x9000_0000 { return None; } // adrp Xn, table
-    }
     Some((load, anchor))
 }
 
-fn table_targets(mem: &dyn Memory, base: u64, load: Load, shift: u32, count: u64) -> Option<Vec<u64>> {
+pub(crate) fn halfword_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                                writes_register: impl Fn(u64, u32) -> bool) -> Option<(u64, u64)> {
+    let (load, anchor) = adjacent_halfword_operands(mem, start, branch, reg, &writes_register)?;
+    Some((load.at, anchor))
+}
+
+pub(crate) fn halfword_targets(mem: &dyn Memory, branch: u64, table: u64, count: u64) -> Option<Vec<u64>> {
+    table_targets(mem, branch + 4, table, 2, false, 2, count)
+}
+
+fn table_targets(mem: &dyn Memory, base: u64, table: u64, size: u32, signed: bool, shift: u32, count: u64) -> Option<Vec<u64>> {
     if count == 0 || count > MAX_ENTRIES { return None; }
-    let Load { table, size, signed, .. } = load;
-    let raw = mem.bytes(table?, (count as usize) * size as usize)?;''')
+    let raw = mem.bytes(table, (count as usize) * size as usize)?;''')
     replace_once(jt, '''        out.push(target);
     }
     out.sort_unstable();
@@ -154,13 +174,14 @@ fn table_targets(mem: &dyn Memory, base: u64, load: Load, shift: u32, count: u64
     module = lifter / 'src/module.rs'
     replace_once(module, '    pub chunk_instructions: usize,', '''    pub chunk_instructions: usize,
     /// Sole address-taking references used as local switch anchors.
-    pub anchor_origins: BTreeSet<u64>,''')
+    pub anchor_origins: BTreeSet<u64>,
+    pub rodata: Option<(u64, u64)>,''')
     replace_once(module, 'Options { chunk_instructions: 40_000 }',
-                 'Options { chunk_instructions: 40_000, anchor_origins: BTreeSet::new() }')
-    replace_once(module, "    m: &'m Module<'a>,", "    m: &'m Module<'a>,\n    anchor_origins: &'m BTreeSet<u64>,")
+                 'Options { chunk_instructions: 40_000, anchor_origins: BTreeSet::new(), rodata: None }')
+    replace_once(module, "    m: &'m Module<'a>,", "    m: &'m Module<'a>,\n    options: &'m Options,")
     replace_once(module, "    fn new(m: &'m Module<'a>) -> Self {",
-                 "    fn new(m: &'m Module<'a>, anchor_origins: &'m BTreeSet<u64>) -> Self {")
-    replace_once(module, 'let l = Lifted::new(m);', 'let l = Lifted::new(m, &opts.anchor_origins);')
+                 "    fn new(m: &'m Module<'a>, options: &'m Options) -> Self {")
+    replace_once(module, 'let l = Lifted::new(m);', 'let l = Lifted::new(m, opts);')
     replace_once(module, '    insns: Vec<Insn>,', '    insns: Vec<Insn>,\n    direct_edges: Vec<(u64, u64)>,')
     replace_once(module, '        let mut a = m.text.start;',
                  '        let mut direct_edges = Vec::new();\n        let mut a = m.text.start;')
@@ -173,7 +194,7 @@ fn table_targets(mem: &dyn Memory, base: u64, load: Load, shift: u32, count: u64
                     i
                 },''')
     replace_once(module, '        Lifted { m, insns, unsupported }', '''        direct_edges.sort_unstable();
-        Lifted { m, anchor_origins, insns, direct_edges, unsupported }''')
+        Lifted { m, options, insns, direct_edges, unsupported }''')
     replace_once(module, '    fn at(&self, a: u64) -> &Insn {', '''    fn direct_predecessors(&self, a: u64) -> &[(u64, u64)] {
         let start = self.direct_edges.partition_point(|&(target, _)| target < a);
         let end = start + self.direct_edges[start..].partition_point(|&(target, _)| target == a);
@@ -423,7 +444,7 @@ fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u
     let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
     let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
     let targets = jt::ordered_halfword_cases(l.m, start, branch, r, writes_register, |load, index, anchor| {
-        if l.m.seeds.contains(&case) && !l.anchor_origins.contains(&anchor) { return None; }
+        if l.m.seeds.contains(&case) && !l.options.anchor_origins.contains(&anchor) { return None; }
         nested_outer_bound(l, branch, load, index, selector)
     })?;
     if targets.iter().any(|&target| (case + 4..=inner_branch).contains(&target)) { return None; }
@@ -431,6 +452,145 @@ fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u
     let last = targets.iter().rposition(|&target| target == case)?;
     (first == offset && targets[first..=last].iter().all(|&target| target == case))
         .then_some((last - first + 1) as u64)
+}
+
+struct LinkedHalfword {
+    branch: u64,
+    load: u64,
+    producer: u64,
+    base_register: u32,
+    table: u64,
+    targets: Vec<u64>,
+}
+
+fn linked_halfword_operands(l: &Lifted, branch: u64) -> Option<(u64, u64)> {
+    let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
+    let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
+    jt::halfword_dispatch(l.m, start, branch, r, |pc, reg| nested_writes(l, pc, reg))
+}
+
+fn linked_halfword_anchor(l: &Lifted, seed: u64) -> bool {
+    seed.checked_sub(4).filter(|&pc| l.in_text(pc) && matches!(l.at(pc), Insn::Br(_)))
+        .and_then(|branch| linked_halfword_operands(l, branch))
+        .is_some_and(|(_, adr)| l.options.anchor_origins.contains(&adr))
+}
+
+fn local_page_add(l: &Lifted, start: u64, pc: u64, reg: u32) -> Option<u64> {
+    if pc <= start || reg == 31 { return None; }
+    let add = jt::Memory::word(l.m, pc)?;
+    let page = jt::Memory::word(l.m, pc - 4)?;
+    if add & 0xff80_03ff != (0x9100_0000 | reg << 5 | reg)
+        || page & 0x9f00_001f != (0x9000_0000 | reg)
+    {
+        return None;
+    }
+    jt::constant_at(l.m, pc - 4, pc, reg)
+}
+
+fn linked_halfword(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedHalfword> {
+    let word = |pc| jt::Memory::word(l.m, pc);
+    let (load, anchor) = linked_halfword_operands(l, branch)?;
+    let idx = bits(word(load)?, 16, 5);
+    let base_register = bits(word(load)?, 5, 5);
+    let local_start = start.max(load.saturating_sub(jt::WINDOW * 4));
+    let mut guard = load - 4;
+    while guard > local_start && matches!(l.at(guard), Insn::Op(_)) { guard -= 4; }
+    if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008
+        || !matches!(l.at(guard), Insn::BCond(_, target) if (branch + 4..end).contains(target))
+    {
+        return None;
+    }
+    let r = bits(word(branch)?, 5, 5);
+    if jt::halfword_dispatch(l.m, guard + 4, branch, r, |pc, reg| nested_writes(l, pc, reg))? != (load, anchor) {
+        return None;
+    }
+    let compare = word(guard - 4)?;
+    if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != idx { return None; }
+    let producer = (local_start..guard - 4).step_by(4).filter(|&pc| nested_writes(l, pc, idx)).last()?;
+    if word(producer)? & 0xffc0_001f != (0x5100_0000 | idx) { return None; } // sub Widx, Wn, #imm
+    // The guard observes the zero-extended index written by SUB. Every path
+    // into this corridor will be checked against the proposed case edges.
+    for pc in (producer..branch).step_by(4).filter(|&pc| pc != guard) {
+        if !matches!(l.at(pc), Insn::Op(code) if !code.contains("rt_svc(c"))
+            || (producer < pc && pc < load && nested_writes(l, pc, idx))
+        {
+            return None;
+        }
+    }
+    let count = ((bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12)) + 1;
+    if count > 256 { return None; }
+    // These are candidates. The graph proof below must independently recover
+    // the same address from every reaching definition of the base register.
+    let mut candidates = (start + 4..end).step_by(4).filter_map(|pc| local_page_add(l, start, pc, base_register));
+    let table = candidates.next()?;
+    let (ro_start, ro_end) = l.options.rodata?;
+    if table < ro_start || table.checked_add(count * 2)? > ro_end || candidates.any(|other| other != table) {
+        return None;
+    }
+    let targets = jt::halfword_targets(l.m, branch, table, count)?;
+    if targets.iter().any(|target| !(start..end).contains(target)) { return None; }
+    Some(LinkedHalfword { branch, load, producer, base_register, table, targets })
+}
+
+fn prove_linked_halfword(l: &Lifted, start: u64, table: &LinkedHalfword,
+                         cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
+    let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty() || cases.contains_key(&pc);
+    if (table.producer + 4..=table.branch).step_by(4).any(has_entry) { return None; }
+    let mut pending = vec![table.load];
+    let mut seen = BTreeSet::new();
+    let mut proved_definition = false;
+    while let Some(pc) = pending.pop() {
+        if !seen.insert(pc) { continue; }
+        if pc <= start { return None; }
+        let previous = pc - 4;
+        let preds = l.direct_predecessors(pc);
+        let computed = cases.get(&pc).into_iter().flatten().copied();
+        let fallthrough = (!l.at(previous).ends_block()).then_some(previous);
+        if preds.is_empty() && !cases.contains_key(&pc) && fallthrough.is_none() { return None; }
+        for from in preds.iter().map(|&(_, from)| from).chain(computed).chain(fallthrough) {
+            match l.at(from) {
+                Insn::Op(code) if !code.contains("rt_svc(c") => {
+                    if nested_writes(l, from, table.base_register) {
+                        if has_entry(from) || local_page_add(l, start, from, table.base_register) != Some(table.table) {
+                            return None;
+                        }
+                        proved_definition = true;
+                        continue;
+                    }
+                }
+                Insn::Bl(_) | Insn::Blr(_) if jt::callee_saved(table.base_register) => {}
+                Insn::B(_) | Insn::BCond(_, _) | Insn::Br(_) => {}
+                _ => return None,
+            }
+            pending.push(from);
+        }
+    }
+    proved_definition.then_some(())
+}
+
+fn recover_linked_halfword(l: &Lifted, branch: u64) -> Option<Vec<u64>> {
+    l.options.rodata?;
+    linked_halfword_operands(l, branch)?;
+    let hard_seed = |seed| !linked_halfword_anchor(l, seed);
+    let start = l.m.seeds.range(..=branch).rev().copied().find(|&seed| hard_seed(seed))?;
+    let end = l.m.seeds.range(branch + 4..).copied().find(|&seed| hard_seed(seed))?;
+    if end - start > 0x4000 { return None; }
+    let branches: Vec<_> = (start..end).step_by(4).filter(|&pc| matches!(l.at(pc), Insn::Br(_))).collect();
+    if !(2..=8).contains(&branches.len()) { return None; }
+    let tables = branches.into_iter().map(|br| linked_halfword(l, start, end, br)).collect::<Option<Vec<_>>>()?;
+    // Any independently reachable interior instruction invalidates the closed
+    // function graph, including internal call entries with unmodeled returns.
+    for pc in (start + 4..end).step_by(4) {
+        if l.direct_predecessors(pc).iter().any(|&(_, from)| {
+            !(start..end).contains(&from) || matches!(l.at(from), Insn::Bl(_))
+        }) { return None; }
+    }
+    let mut cases = BTreeMap::<u64, Vec<u64>>::new();
+    for table in &tables {
+        for &target in &table.targets { cases.entry(target).or_default().push(table.branch); }
+    }
+    for table in &tables { prove_linked_halfword(l, start, table, &cases)?; }
+    tables.into_iter().find(|table| table.branch == branch).map(|table| table.targets)
 }
 
 fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u64> {
@@ -458,7 +618,7 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
         guarded_table_bound(l, load, idx)
             .or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
             .or_else(|| nested_table_bound(l, load, branch, r, idx))
-    }).unwrap_or_default()
+    }).or_else(|| recover_linked_halfword(l, branch)).unwrap_or_default()
 }
 
 /// How the `br` at `br_pc` is emitted,''')
