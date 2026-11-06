@@ -81,8 +81,80 @@ pub fn resolve_with_recovery(
         }
         None => return None,
     };
-    let raw = mem.bytes(table, (count as usize) * size as usize)?;''')
+    let load = Load { table: Some(table), idx, size, signed, scale, at };
+    let mut targets = table_targets(mem, base, load, shift, count)?;
+    targets.sort_unstable();
+    targets.dedup();
+    Some(targets)
+}
+
+// Retain order and duplicate case destinations so a nested switch can
+// recover which selectors enter its parent case.
+pub(crate) fn ordered_halfword_cases(
+    mem: &dyn Memory, entry: u64, branch: u64, r: u32,
+    writes_register: impl Fn(u64, u32) -> bool,
+    prove_bound: impl FnOnce(u64, u32, u64) -> Option<(u64, u64)>,
+) -> Option<Vec<u64>> {
+    let (load, anchor) = adjacent_halfword_table(mem, entry, branch, r, &writes_register)?;
+    let (count, checked_start) = prove_bound(load.at, load.idx, anchor)?;
+    if adjacent_halfword_table(mem, checked_start, branch, r, &writes_register)? != (load, anchor) { return None; }
+    table_targets(mem, branch + 4, load, 2, count)
+}
+
+pub(crate) fn local_halfword_table(mem: &dyn Memory, start: u64, branch: u64, r: u32, at: u64,
+                                   writes_register: impl Fn(u64, u32) -> bool) -> Option<()> {
+    let (load, _) = adjacent_halfword_table(mem, start, branch, r, &writes_register)?;
+    (load.at == at).then_some(())
+}
+
+fn adjacent_halfword_table(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                           writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64)> {
+    let Sym::Target { base, load, .. } = value(mem, start, branch, reg, 0)? else { return None };
+    if base != branch + 4 || load.idx == 31 || load.table.is_none() { return None; }
+    let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
+    let add = last_writer(branch, reg)?;
+    let w = mem.word(add)?;
+    if w & 0xffe0_fc00 != 0x8b00_0800 { return None; } // add Xd, Xn, Xm, lsl #2
+    let anchor = last_writer(add, bits(w, 5, 5))?;
+    if mem.word(anchor)? & 0x9f00_0000 != 0x1000_0000 // adr Xn, case
+        || last_writer(add, bits(w, 16, 5))? != load.at
+    {
+        return None;
+    }
+    let ldrh = mem.word(load.at)?;
+    if ldrh & 0xffe0_fc00 != 0x7860_7800 { return None; } // ldrh Wt, [Xn, Xm, lsl #1]
+    let table = last_writer(load.at, bits(ldrh, 5, 5))?;
+    let w = mem.word(table)?;
+    // Require an untruncated local table pointer, as well as the local anchor.
+    if w & 0x9f00_0000 != 0x1000_0000 {
+        if w & 0xff80_0000 != 0x9100_0000 { return None; } // add Xd, Xn, #imm
+        let page = last_writer(table, bits(w, 5, 5))?;
+        if mem.word(page)? & 0x9f00_0000 != 0x9000_0000 { return None; } // adrp Xn, table
+    }
+    Some((load, anchor))
+}
+
+fn table_targets(mem: &dyn Memory, base: u64, load: Load, shift: u32, count: u64) -> Option<Vec<u64>> {
+    if count == 0 || count > MAX_ENTRIES { return None; }
+    let Load { table, size, signed, .. } = load;
+    let raw = mem.bytes(table?, (count as usize) * size as usize)?;''')
+    replace_once(jt, '''        out.push(target);
+    }
+    out.sort_unstable();
+    out.dedup();
+    Some(out)''', '''        out.push(target);
+    }
+    Some(out)''')
     module = lifter / 'src/module.rs'
+    replace_once(module, '    pub chunk_instructions: usize,', '''    pub chunk_instructions: usize,
+    /// Sole address-taking references used as local switch anchors.
+    pub anchor_origins: BTreeSet<u64>,''')
+    replace_once(module, 'Options { chunk_instructions: 40_000 }',
+                 'Options { chunk_instructions: 40_000, anchor_origins: BTreeSet::new() }')
+    replace_once(module, "    m: &'m Module<'a>,", "    m: &'m Module<'a>,\n    anchor_origins: &'m BTreeSet<u64>,")
+    replace_once(module, "    fn new(m: &'m Module<'a>) -> Self {",
+                 "    fn new(m: &'m Module<'a>, anchor_origins: &'m BTreeSet<u64>) -> Self {")
+    replace_once(module, 'let l = Lifted::new(m);', 'let l = Lifted::new(m, &opts.anchor_origins);')
     replace_once(module, '    insns: Vec<Insn>,', '    insns: Vec<Insn>,\n    direct_edges: Vec<(u64, u64)>,')
     replace_once(module, '        let mut a = m.text.start;',
                  '        let mut direct_edges = Vec::new();\n        let mut a = m.text.start;')
@@ -95,7 +167,7 @@ pub fn resolve_with_recovery(
                     i
                 },''')
     replace_once(module, '        Lifted { m, insns, unsupported }', '''        direct_edges.sort_unstable();
-        Lifted { m, insns, direct_edges, unsupported }''')
+        Lifted { m, anchor_origins, insns, direct_edges, unsupported }''')
     replace_once(module, '    fn at(&self, a: u64) -> &Insn {', '''    fn direct_predecessors(&self, a: u64) -> &[(u64, u64)] {
         let start = self.direct_edges.partition_point(|&(target, _)| target < a);
         let end = start + self.direct_edges[start..].partition_point(|&(target, _)| target == a);
@@ -235,6 +307,126 @@ fn fallthrough_alias_bound(l: &Lifted, entry: u64, load: u64, branch: u64, index
     None
 }
 
+fn nested_writes(l: &Lifted, pc: u64, r: u32) -> bool {
+    // The matcher uses encoding-level writes, which may miss GPR destinations
+    // such as fixed-point conversions and the second exclusive-pair result.
+    jt::Memory::word(l.m, pc).is_some_and(|w| jt::writes(w, r))
+        || matches!(l.at(pc), Insn::Op(code) if code.contains(&format!("c->x[{r}] =")))
+}
+
+fn nested_outer_bound(l: &Lifted, branch: u64, load: u64, index: u32, selector: u32) -> Option<(u64, u64)> {
+    let word = |pc| jt::Memory::word(l.m, pc);
+    let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
+    let index_copy = (start..load).step_by(4).filter(|&pc| nested_writes(l, pc, index)).last()?;
+    let selector_copy = (load + 4..branch).step_by(4).filter(|&pc| nested_writes(l, pc, selector)).last()?;
+    let mov_source = |pc| {
+        let w = word(pc)?;
+        (w & 0xffe0_ffe0 == 0x2a00_03e0).then(|| bits(w, 16, 5)) // mov Wd, Wm
+    };
+    let source = mov_source(index_copy)?;
+    if source == index || source == selector || source == 31 || mov_source(selector_copy)? != source {
+        return None;
+    }
+    let guard = index_copy.checked_sub(4).filter(|&pc| pc > start)?;
+    let compare = word(guard - 4)?;
+    if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != source
+        || word(guard)? & 0xff00_001f != 0x5400_0008 // cmp Wsource, #limit; b.hi default
+        || !matches!(l.at(guard), Insn::BCond(_, target) if *target > branch)
+    {
+        return None;
+    }
+    // Both copies are reached through the guard, with no independent entry
+    // and with the same checked value. The W copies clear the upper bits.
+    if (guard..=branch).step_by(4).any(|pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty()) {
+        return None;
+    }
+    for pc in (index_copy..branch).step_by(4) {
+        if !matches!(l.at(pc), Insn::Op(code) if !code.contains("rt_svc(c"))
+            || (pc < selector_copy && nested_writes(l, pc, source))
+        {
+            return None;
+        }
+    }
+    Some((((bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12)) + 1, index_copy))
+}
+
+fn nested_case_entry(l: &Lifted, sub: u64, selector: u32) -> Option<u64> {
+    let start = l.m.text.start.max(sub.saturating_sub(0x800));
+    let mut pending = vec![sub];
+    let mut seen = BTreeSet::new();
+    let mut case = None;
+    while let Some(a) = pending.pop() {
+        if !seen.insert(a) { continue; }
+        if a <= start { return None; }
+        let previous = a - 4;
+        let direct = l.direct_predecessors(a);
+        if matches!(l.at(previous), Insn::Br(_)) {
+            // The sole accepted computed entrance is the first case, just
+            // after its dispatch. Prove that table and its selector below.
+            if !direct.is_empty() || case.is_some_and(|other| other != a) { return None; }
+            case = Some(a);
+            continue;
+        }
+        if l.m.seeds.contains(&a) { return None; }
+        let fallthrough = (!l.at(previous).ends_block()).then_some(previous);
+        if direct.is_empty() && fallthrough.is_none() { return None; }
+        for &(_, from) in direct {
+            if !(start..a).contains(&from) || !matches!(l.at(from), Insn::B(_) | Insn::BCond(_, _)) {
+                return None;
+            }
+            pending.push(from);
+        }
+        if let Some(from) = fallthrough {
+            match l.at(from) {
+                Insn::Op(code) if !code.contains("rt_svc(c")
+                    && !nested_writes(l, from, selector) => {}
+                Insn::Bl(_) | Insn::Blr(_) if jt::callee_saved(selector) => {}
+                Insn::BCond(_, _) => {}
+                _ => return None,
+            }
+            pending.push(from);
+        }
+    }
+    case
+}
+
+fn nested_table_bound(l: &Lifted, load: u64, inner_branch: u64, r: u32, index: u32) -> Option<u64> {
+    if (load..=inner_branch).step_by(4).any(|pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty()) {
+        return None;
+    }
+    let start = l.m.text.start.max(load.saturating_sub(jt::WINDOW * 4));
+    let mut a = load;
+    let (sub, selector, offset) = loop {
+        if a <= start || l.m.seeds.contains(&a) || !l.direct_predecessors(a).is_empty() {
+            return None;
+        }
+        a -= 4;
+        if !matches!(l.at(a), Insn::Op(code) if !code.contains("rt_svc(c")) { return None; }
+        let w = jt::Memory::word(l.m, a)?;
+        if nested_writes(l, a, index) {
+            if w & 0xffc0_0000 != 0x5100_0000 || bits(w, 0, 5) != index { return None; }
+            break (a, bits(w, 5, 5), bits(w, 10, 12) as usize); // sub Windex, Wselector, #offset
+        }
+    };
+    if selector == 31 || index == 31 { return None; }
+    let writes_register = |pc, reg| nested_writes(l, pc, reg);
+    jt::local_halfword_table(l.m, sub + 4, inner_branch, r, load, writes_register)?;
+    let case = nested_case_entry(l, sub, selector)?;
+    if (case..inner_branch).step_by(4).any(|pc| matches!(l.at(pc), Insn::Br(_))) { return None; }
+    let branch = case - 4;
+    let r = bits(jt::Memory::word(l.m, branch)?, 5, 5);
+    let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
+    let targets = jt::ordered_halfword_cases(l.m, start, branch, r, writes_register, |load, index, anchor| {
+        if l.m.seeds.contains(&case) && !l.anchor_origins.contains(&anchor) { return None; }
+        nested_outer_bound(l, branch, load, index, selector)
+    })?;
+    if targets.iter().any(|&target| (case + 4..=inner_branch).contains(&target)) { return None; }
+    let first = targets.iter().position(|&target| target == case)?;
+    let last = targets.iter().rposition(|&target| target == case)?;
+    (first == offset && targets[first..=last].iter().all(|&target| target == case))
+        .then_some((last - first + 1) as u64)
+}
+
 fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u64> {
     jt::resolve_with_recovery(l.m, entry, pc, branch, r, |load, reg| {
         // The reaching-definition walk rejects paths that cross a call
@@ -257,7 +449,9 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
         let table = constant(definitions.next()?)?;
         definitions.all(|definition| constant(definition) == Some(table)).then_some(table)
     }, |load, idx| {
-        guarded_table_bound(l, load, idx).or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
+        guarded_table_bound(l, load, idx)
+            .or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
+            .or_else(|| nested_table_bound(l, load, branch, r, idx))
     }).unwrap_or_default()
 }
 

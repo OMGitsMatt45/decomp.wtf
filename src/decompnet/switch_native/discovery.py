@@ -238,18 +238,25 @@ def unwind_entries(image, inspection):
     return sorted(roots)
 
 
-def entries(image, inspection):
+def entries(image, inspection, *, anchor_origins=None):
     base = inspection['base']
     text = inspection['segments'][0]
     lo, hi = base + text['offset'], base + text['offset'] + text['size']
-    roots = {inspection['entry'], *unwind_entries(image, inspection)}
+    hard_roots = {inspection['entry'], *unwind_entries(image, inspection)}
+    roots = set(hard_roots)
     returns_twice = inspection.get('returns_twice', {})
     return_targets = set(returns_twice.get('functions', ()))
     return_slots = set(returns_twice.get('slots', ()))
 
-    def add(target):
+    def add(target, origin=None):
         if lo <= target < hi and target % 4 == 0:
             roots.add(target)
+            if anchor_origins is not None:
+                if origin is None:
+                    hard_roots.add(target)
+                elif (target not in hard_roots and target > lo
+                      and words[(target - lo) // 4 - 1][0] & 0xfffffc1f == 0xd61f0000):
+                    anchor_origins[target] = None if target in anchor_origins else origin
 
     words = list(struct.iter_unpack('<I', image[text['offset']:text['offset'] + text['size']]))
     for i, (word,) in enumerate(words):
@@ -261,14 +268,14 @@ def entries(image, inspection):
         if immediate & (1 << 20):
             immediate -= 1 << 21
         if kind == 0x10000000:
-            add(pc + immediate)
+            add(pc + immediate, pc)
         elif i + 1 < len(words):
             following = words[i + 1][0]
             page = (pc & ~0xfff) + (immediate << 12)
             # Adjacent ADD Xd, Xn, #imm, where Xn is this ADRP's destination.
             if following & 0xff800000 == 0x91000000 and following >> 5 & 31 == word & 31:
                 delta = (following >> 10 & 0xfff) << (12 if following & (1 << 22) else 0)
-                add(page + delta)
+                add(page + delta, pc)
             # AArch64 PLT entries load an identified JUMP_SLOT and branch to it.
             if return_slots and word & 31 == 16 and following & 0xffc003ff == 0xf9400211 and i + 3 < len(words):
                 offset = (following >> 10 & 0xfff) * 8
@@ -284,4 +291,10 @@ def entries(image, inspection):
                 if pc + (immediate << 2) in return_targets:
                     # longjmp can re-enter immediately after the original call.
                     add(pc + 4)
+    if anchor_origins is not None:
+        # Only the sole address reference to a nearby dispatch's first case
+        # can be the table's own anchor. The emitter checks the exact ADR.
+        for target, origin in list(anchor_origins.items()):
+            if origin is None or target in hard_roots:
+                del anchor_origins[target]
     return sorted(roots)

@@ -24,12 +24,15 @@ def revision():
     return value.hexdigest()
 
 
-def emit(binary, image_path, inspection, entries_path, game, report, *, name='guest', desktop=False):
+def emit(binary, image_path, inspection, entries_path, game, report, *, name='guest', desktop=False, anchor_origins=()):
     text = inspection['segments'][0]
+    command = [str(binary), str(image_path), str(inspection['base']),
+               str(text['offset']), str(text['size']), str(entries_path), str(game), str(report), name]
+    if anchor_origins:
+        command.append('--anchor-origins')
     try:
-        result = subprocess.run([str(binary), str(image_path), str(inspection['base']),
-            str(text['offset']), str(text['size']), str(entries_path), str(game), str(report), name],
-            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
+        result = subprocess.run(command, input=''.join(f'{pc}\n' for pc in anchor_origins) if anchor_origins else None,
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise pc.PCError('Switch source generation could not run: ' + str(error)) from error
     if result.returncode:
