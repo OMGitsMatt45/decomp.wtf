@@ -307,6 +307,28 @@ def test_halfword_table_accepts_scheduled_byte_store_after_taken_guard_compare(
     assert ('f_8000120' in table) == resolved
 
 
+@pytest.mark.parametrize('variant', ['preserved', 'index-overwrite', 'alternate-entry'])
+def test_halfword_table_checks_w_producer_before_scheduled_moves(tmp_path, emission_env, variant):
+    from tools.switch_fixture import distant_guard_table_fixture, reference
+    image = bytearray(distant_guard_table_fixture(compare=0x7100091f, alternate=0xd503201f))
+    struct.pack_into('<I', image, 0, 0x1400001e)  # b 0x78
+    struct.pack_into('<I', image, 0x78, 0xd2800021)  # mov x1, #1
+    struct.pack_into('<Q', image, 0x1010, 2)
+    # The W subtraction clears the upper index bits before the scheduled
+    # argument copies. The taken guard is separated from the dispatcher.
+    move = 0xaa0103e8 if variant == 'index-overwrite' else 0xaa0003f3
+    alternate = 0xb5ffff60 if variant == 'alternate-entry' else 0xd503201f
+    struct.pack_into('<9I', image, 0x80, 0xb94000e8, 0x51000508, 0x2a0203f5,
+                     0x2a0103f4, move, 0x7100091f, 0x54000349, alternate, 0xd65f03c0)
+    path = tmp_path / 'scheduled-guard-moves.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_8000120' in table) == (variant == 'preserved')
+
+
 @pytest.mark.parametrize(('entrance', 'copy', 'between', 'resolved'), [
     (0xd503201f, 0x2a1503e9, 0xd503201f, True),   # Both paths preserve mov w9, w21.
     (0xb50000e0, 0x2a1503e9, 0xd503201f, False),  # A direct edge bypasses the copy.
@@ -497,6 +519,35 @@ def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, em
     assert {0x080000b4, 0x080000d8, 0x08000000 + fence} <= entries and 0x080000e0 not in entries
     table = (out / 'game/guest0_table.c').read_text()
     assert ('f_80000e0' in table) == (variant in ('closed', 'mixed', 'shared'))
+
+
+@pytest.mark.parametrize('variant', ['closed', 'guard-bypass', 'independent-anchor'])
+def test_linked_guarded_byte_table_with_forward_anchor(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # Hoist X23 before a loop, then guard W9 and use an ADR anchor beyond
+    # the instruction after BR. An unrelated ADR provides the function fence.
+    words = (0xb0000017, 0x910002f7, 0x100002ae, 0x52800020,
+             0x34000060, 0x51000400, 0x17fffffe, 0x11000409,
+             0x7100093f, 0x540000a8, 0x100000aa, 0x38696aeb,
+             0x8b0b094a, 0xd61f0140, 0x14000005, 0x52800280,
+             0xd65f03c0, 0xd2800540, 0xd65f03c0, 0xd2800000,
+             0xd65f03c0, 0xd2800640, 0xd65f03c0, 0xd65f03c0)
+    struct.pack_into(f'<{len(words)}I', image, 0x80, *words)
+    image[0x1000:0x1003] = bytes([0, 2, 6])
+    if variant == 'guard-bypass':
+        struct.pack_into('<I', image, 0x98, 0x350000a0)  # cbnz w0, load at 0xac
+    if variant == 'independent-anchor':
+        struct.pack_into('<Q', image, 0x1008, 0x080000bc)
+    path = tmp_path / 'linked-guarded-byte.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000bc, 0x080000dc} <= entries and 0x080000c4 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000c4' in table) == (variant == 'closed')
 
 
 @pytest.mark.parametrize('variant', ['full-width', 'narrow-alias', 'returning-wrapper'])

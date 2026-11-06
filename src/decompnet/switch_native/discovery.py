@@ -254,8 +254,7 @@ def entries(image, inspection, *, anchor_origins=None):
             if anchor_origins is not None:
                 if origin is None:
                     hard_roots.add(target)
-                elif (target not in hard_roots and target > lo
-                      and words[(target - lo) // 4 - 1][0] & 0xfffffc1f == 0xd61f0000):
+                elif target not in hard_roots:
                     anchor_origins.setdefault(target, []).append(origin)
 
     words = list(struct.iter_unpack('<I', image[text['offset']:text['offset'] + text['size']]))
