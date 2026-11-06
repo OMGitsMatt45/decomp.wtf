@@ -40,6 +40,25 @@ def snapshot(path, romfs=None, *, images=False):
     return result
 
 
+def module_entries(image, module, feedback):
+    text, ro, data = module['segments']
+    lo = module['base'] + text['offset']
+    hi = lo + text['size']
+    hard_roots = set(module['roots'])
+    # Relocated code pointers in initialized data/vtables supplement ADR roots.
+    for segment in (ro, data):
+        start = (segment['offset'] + 7) & ~7
+        end = segment['offset'] + segment['size']
+        for offset in range(start, end - 7, 8):
+            address = struct.unpack_from('<Q', image, offset)[0]
+            if lo <= address < hi and address % 4 == 0:
+                hard_roots.add(address)
+    hard_roots.update(p for p in feedback if lo <= p < hi)
+    anchor_origins = {}
+    roots = hard_roots.union(discovery.entries(image, module, anchor_origins=anchor_origins))
+    return sorted(roots), sorted(pc for target, pc in anchor_origins.items() if target not in hard_roots)
+
+
 def generate(project, root):
     path = Path(project['input'])
     romfs = project.get('switch_romfs')
@@ -57,22 +76,13 @@ def generate(project, root):
         image_path = assets / (module['name'] + '.bin')
         image_path.write_bytes(image)
         text, ro, data = module['segments']
-        lo, hi = module['base'] + text['offset'], module['base'] + text['offset'] + text['size']
-        roots = set(module['roots']) | set(discovery.entries(image, module))
-        # Relocated code pointers in initialized data/vtables supplement ADR roots.
-        for segment in (ro, data):
-            start = (segment['offset'] + 7) & ~7
-            end = segment['offset'] + segment['size']
-            for offset in range(start, end - 7, 8):
-                address = struct.unpack_from('<Q', image, offset)[0]
-                if lo <= address < hi and address % 4 == 0:
-                    roots.add(address)
-        roots.update(p for p in feedback if lo <= p < hi)
-        module['discovered_entries'] = sorted(roots)
+        roots, anchor_origins = module_entries(image, module, feedback)
+        module['discovered_entries'] = roots
         entries = root / (module['name'] + '-entries.txt')
-        entries.write_text(''.join(str(p) + '\n' for p in sorted(roots)))
+        entries.write_text(''.join(str(p) + '\n' for p in roots))
         prefix = 'guest' + str(i)
-        emit(binary, image_path, module, entries, game, root / (module['name'] + '-translation.json'), name=prefix, desktop=True)
+        emit(binary, image_path, module, entries, game, root / (module['name'] + '-translation.json'),
+             name=prefix, desktop=True, anchor_origins=anchor_origins)
         registry += [f'extern const uint64_t {prefix}_fn_addrs[], {prefix}_fn_count;\n',
                      f'extern const GuestFn {prefix}_fn_ptrs[];\n']
         fields = [module['base'], len(image), text['offset'], text['size'], ro['offset'], ro['size'],

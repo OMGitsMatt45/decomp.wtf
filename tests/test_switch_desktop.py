@@ -324,6 +324,51 @@ def test_halfword_table_proves_masked_alias_across_an_earlier_guard(tmp_path, em
     assert 'f_80000d4' not in table
 
 
+@pytest.mark.parametrize('variant', [
+    'preserved', 'foreign-case-branch', 'foreign-inner-branch', 'foreign-table-slot',
+    'foreign-feedback-root', 'ambiguous-anchor', 'bypassed-anchor', 'clobber', 'fp-clobber', 'caller-saved',
+])
+def test_nested_halfword_table_requires_preserved_outer_selector(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # The guarded outer table selects 1..3 into its first case. That case
+    # joins two paths, calls a leaf, and uses the saved selector minus one.
+    nop = 0xd503201f
+    entrance = {'foreign-case-branch': 0x35000160, 'foreign-inner-branch': 0x350002a0,
+                'ambiguous-anchor': 0x1000016c, 'bypassed-anchor': 0x1000016a}.get(variant, nop)
+    saved, inner_index = (0x2a0103e7, 0x510004e8) if variant == 'caller-saved' else (0x2a0103f5, 0x510006a8)
+    clobber = {'clobber': 0x52800055, 'fp-clobber': 0x1e18fc15}.get(variant, nop)
+    outer_anchor = nop if variant == 'bypassed-anchor' else 0x100000aa
+    words = (0xaa1e03f3, 0x52800041, entrance, 0x7100103f, 0x54000368, 0x2a0103e8,
+             0xb0000009, 0x91000129, outer_anchor, 0x7868792b, 0x8b0b094a, saved, 0xd61f0140,
+             0x34000060, clobber, 0x14000002, 0xd503201f, 0x94000013, inner_index,
+             0xb0000009, 0x91004129, 0x1000008a, 0x7868792b, 0x8b0b094a, 0xd61f0140,
+             0xd2800140, 0xd65f0260, 0xd2800540, 0xd65f0260, 0xd2800180, 0xd65f0260,
+             0xd2800000, 0xd65f0260)
+    struct.pack_into(f'<{len(words)}I', image, 0x80, *words)
+    struct.pack_into('<I', image, 0x110, 0xd65f03c0)  # called leaf
+    if variant == 'bypassed-anchor':
+        struct.pack_into('<I', image, 0x114, 0x17ffffde)  # independent branch to CMP
+    other_case = 5 if variant == 'foreign-table-slot' else 18
+    struct.pack_into('<5H', image, 0x1000, other_case, 0, 0, 0, 18)
+    struct.pack_into('<3H', image, 0x1010, 0, 2, 4)
+    path = tmp_path / 'nested-switch.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    feedback = []
+    if variant == 'foreign-feedback-root':
+        report = tmp_path / 'feedback.json'
+        report.write_text(json.dumps(dict(schema='decomp.wtf.switch-native-run/v1',
+            input_sha256=project.inspect(path)['input']['sha256'],
+            failures=[dict(kind='missing-native-target', pc=0x080000b4)])))
+        feedback.append(report)
+    project.export(path, out, feedback=feedback)
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000ec' in table) == (variant == 'preserved')
+    assert ('f_80000f4' in table) == (variant == 'preserved')
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'
