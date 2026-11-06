@@ -39,11 +39,12 @@ def _run(command, *, cwd=None):
     return result.stdout
 
 
-def _recover_table_bases(lifter, replace_once):
+def _recover_jump_tables(lifter, replace_once):
     jt = lifter / 'src/jt.rs'
+    replace_once(jt, 'const WINDOW: u64 = 24;', 'pub(crate) const WINDOW: u64 = 24;')
     replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
     let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
-    resolve_with_base(mem, entry, pc, r, |_, _| None)
+    resolve_with_recovery(mem, entry, pc, r, |_, _| None, |_, _| None)
 }
 
 pub fn constant_at(mem: &dyn Memory, entry: u64, definition: u64, r: u32) -> Option<u64> {
@@ -53,23 +54,53 @@ pub fn constant_at(mem: &dyn Memory, entry: u64, definition: u64, r: u32) -> Opt
     }
 }
 
-pub fn resolve_with_base(
+pub fn resolve_with_recovery(
     mem: &dyn Memory, entry: u64, pc: u64, r: u32,
-    recover: impl FnOnce(u64, u32) -> Option<u64>,
+    recover_base: impl FnOnce(u64, u32) -> Option<u64>,
+    recover_bound: impl FnOnce(u64, u32) -> Option<u64>,
 ) -> Option<Vec<u64>> {
     let Sym::Target''')
+    replace_once(jt, '    let count = bound(mem, entry, at, idx)?;', '''    let adjacent_halfword = size == 2 && !signed && shift == 2 && base == pc + 4;
+    let count = bound(mem, entry, at, idx).or_else(|| {
+        // Only an unextended X index with a locally resolved table base.
+        if adjacent_halfword && table.is_some() && bits(mem.word(at)?, 13, 3) == 3 {
+            recover_bound(at, idx)
+        } else {
+            None
+        }
+    })?;''')
     replace_once(jt, '    let raw = mem.bytes(table?, (count as usize) * size as usize)?;', '''    // A byte-offset table can reuse a base register from an earlier block
     // and branch back to cases near the dispatch.
     let nearby_backward = size == 1 && base < pc && pc - base <= u8::MAX as u64 * 4;
     let table = match table {
         Some(table) => table,
-        None if !signed && shift == 2 && (nearby_backward || (size == 2 && base == pc + 4)) => {
-            recover(at, bits(mem.word(at)?, 5, 5))?
+        None if adjacent_halfword || (!signed && shift == 2 && nearby_backward) => {
+            recover_base(at, bits(mem.word(at)?, 5, 5))?
         }
         None => return None,
     };
     let raw = mem.bytes(table, (count as usize) * size as usize)?;''')
     module = lifter / 'src/module.rs'
+    replace_once(module, '    insns: Vec<Insn>,', '    insns: Vec<Insn>,\n    direct_edges: Vec<(u64, u64)>,')
+    replace_once(module, '        let mut a = m.text.start;',
+                 '        let mut direct_edges = Vec::new();\n        let mut a = m.text.start;')
+    replace_once(module, '''                Ok(i) => i,''', '''                Ok(i) => {
+                    if let Insn::B(target) | Insn::BCond(_, target) | Insn::Bl(target) = &i {
+                        if m.text.contains(target) {
+                            direct_edges.push((*target, a));
+                        }
+                    }
+                    i
+                },''')
+    replace_once(module, '        Lifted { m, insns, unsupported }', '''        direct_edges.sort_unstable();
+        Lifted { m, insns, direct_edges, unsupported }''')
+    replace_once(module, '    fn at(&self, a: u64) -> &Insn {', '''    fn direct_predecessors(&self, a: u64) -> &[(u64, u64)] {
+        let start = self.direct_edges.partition_point(|&(target, _)| target < a);
+        let end = start + self.direct_edges[start..].partition_point(|&(target, _)| target == a);
+        &self.direct_edges[start..end]
+    }
+
+    fn at(&self, a: u64) -> &Insn {''')
     replace_once(module, 'reaching_defs(l, entry, preds, br_pc, r)', 'reaching_defs(l, entry, preds, br_pc, r, 512)')
     replace_once(module, 'pc: u64, r: u32) -> Option<Vec<u64>> {\n    let (mut defs, mut seen, mut work)',
                  'pc: u64, r: u32, limit: usize) -> Option<Vec<u64>> {\n    let (mut defs, mut seen, mut work)')
@@ -78,8 +109,40 @@ pub fn resolve_with_base(
                  'Some(Table::All { known: recover_table(l, entry, br_pc, r), reach: vec![range], blocks: false })')
     replace_once(module, '            reach.push(range);',
                  '            known.extend(recover_table(l, entry, d + 4, r));\n            reach.push(range);')
-    replace_once(module, '/// How the `br` at `br_pc` is emitted,', '''fn recover_table(l: &Lifted, entry: u64, pc: u64, r: u32) -> Vec<u64> {
-    jt::resolve_with_base(l.m, entry, pc, r, |load, reg| {
+    replace_once(module, '/// How the `br` at `br_pc` is emitted,', '''fn guarded_table_bound(l: &Lifted, mut a: u64, idx: u32) -> Option<u64> {
+    // The table block is locally straight-line. Its guard can be far away
+    // but must be the only direct incoming edge into the table block.
+    for _ in 0..jt::WINDOW {
+        if a == l.m.text.start || l.m.seeds.contains(&a) { return None; }
+        let previous = a - 4;
+        match l.direct_predecessors(a) {
+            [] if matches!(l.at(previous), Insn::Op(_)) => {
+                if jt::writes(jt::Memory::word(l.m, previous)?, idx) { return None; }
+                a = previous;
+            }
+            &[(_, branch)] if matches!(l.at(previous), Insn::B(_) | Insn::Br(_) | Insn::Ret(_)) => {
+                if l.m.seeds.contains(&branch) || !l.direct_predecessors(branch).is_empty() {
+                    return None;
+                }
+                let guard = jt::Memory::word(l.m, branch)?;
+                let compare = jt::Memory::word(l.m, branch.checked_sub(4)?)?;
+                if guard & 0xff00_001f != 0x5400_0009 // b.ls, taken into the table block
+                    || compare & 0xff80_001f != 0xf100_001f // cmp Xidx, #imm
+                    || bits(compare, 5, 5) != idx || idx == 31
+                {
+                    return None;
+                }
+                let limit = (bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12);
+                return Some(limit + 1);
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn recover_table(l: &Lifted, entry: u64, pc: u64, r: u32) -> Vec<u64> {
+    jt::resolve_with_recovery(l.m, entry, pc, r, |load, reg| {
         if !jt::callee_saved(reg) { return None; }
         // Include earlier partitions and local backward edges from later
         // case bodies, with the walk limited to this instruction window.
@@ -98,7 +161,7 @@ pub fn resolve_with_base(
         let constant = |definition| jt::constant_at(l.m, start, definition, reg);
         let table = constant(definitions.next()?)?;
         definitions.all(|definition| constant(definition) == Some(table)).then_some(table)
-    }).unwrap_or_default()
+    }, |load, idx| guarded_table_bound(l, load, idx)).unwrap_or_default()
 }
 
 /// How the `br` at `br_pc` is emitted,''')
@@ -193,7 +256,7 @@ fn masked_index(w: u32) -> Option<(u32, u64)> {
                     && r.start().checked_add(255 * 4) == Some(*r.end());
                 let limit = if crosses_anchor { l.m.text.end } else { end };
                 let (lo, hi) = ((*r.start()).max(entry), (*r.end()).min(limit - 4));''')
-        _recover_table_bases(patched, replace_once)
+        _recover_jump_tables(patched, replace_once)
         # Propagate a restored guest stack through skipped native call frames.
         module = patched / 'src/module.rs'
         for call in ('{}(c);', 'rt_dispatch(c);',
