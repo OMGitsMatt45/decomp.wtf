@@ -176,22 +176,25 @@ def test_compact_jump_table_can_enter_a_later_partition(tmp_path, emission_env):
     assert 'f_80000a4' in table
 
 
-@pytest.mark.parametrize(('lane_instruction', 'resolved'), [
+@pytest.mark.parametrize(('simd_instruction', 'resolved'), [
     (None, True),
     (0x0e1404d8, True),   # dup v24.2s, v6.s[2]
+    (0x1e270358, True),   # fmov s24, w26
     (0x0e143cd8, False),  # umov w24, v6.s[2]
     (0x4e142cd8, False),  # smov x24, v6.s[2]
+    (0x1e2600d8, False),  # fmov w24, s6
+    (0x1e18fc18, False),  # fcvtzs w24, s0, #1
 ])
 def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, emission_env,
-                                                                    lane_instruction, resolved):
+                                                                    simd_instruction, resolved):
     from tools.switch_fixture import halfword_table_partition_fixture, reference
     path = tmp_path / 'halfword-target.nro'
     image = bytearray(halfword_table_partition_fixture())
-    if lane_instruction is not None:
-        # Execute DUP on the way to dispatch. A real clobber is on an
-        # alternate path so the reference execution can still use the table.
+    if simd_instruction is not None:
+        # Execute vector-only writes on the way to dispatch. Real clobbers
+        # are on an alternate path so the reference can still use the table.
         struct.pack_into('<I', image, 0x90, 0x14000002 if resolved else 0xb5000088)
-        struct.pack_into('<I', image, 0x98, lane_instruction)
+        struct.pack_into('<I', image, 0x98, simd_instruction)
     path.write_bytes(image)
     assert reference(path)['x'][0] == 42
     out = tmp_path / 'source'
@@ -388,6 +391,37 @@ def test_nested_halfword_table_requires_preserved_outer_selector(tmp_path, emiss
     table = (out / 'game/guest0_table.c').read_text()
     assert ('f_80000ec' in table) == (variant == 'preserved')
     assert ('f_80000f4' in table) == (variant == 'preserved')
+
+
+@pytest.mark.parametrize('variant', ['closed', 'loop-clobber', 'guard-bypass', 'foreign-entry', 'mutable-table'])
+def test_linked_halfword_tables_require_a_closed_control_flow_graph(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # Two distant bases are initialized together. Only the first table enters
+    # the second dispatch, and the second table's first slot loops back to it.
+    words = (0xb0000013, 0x91000273, 0xb0000015, 0x910042b5, 0x1000030c, 0x52800020,
+             0x51000008, 0x7100051f, 0x54000248, 0x10000089, 0x78687a6a, 0x8b0a0929,
+             0xd61f0120, 0x1400000d, 0x52800047, 0x510004e8, 0x7100051f, 0x54000128,
+             0x10000089, 0x78687aaa, 0x8b0a0929, 0xd61f0120, 0xd503201f, 0x17fffff7,
+             0x52800540, 0xd65f03c0, 0x52800000, 0xd65f03c0, 0xd65f03c0)
+    struct.pack_into(f'<{len(words)}I', image, 0x80, *words)
+    if variant == 'loop-clobber':
+        struct.pack_into('<I', image, 0xd8, 0xaa0003f5)  # mov x21, x0 on the loop path
+    if variant == 'foreign-entry':
+        struct.pack_into('<I', image, 0xf4, 0x17ffffe6)  # branch from beyond the fence to the ADD
+    if variant == 'mutable-table':
+        struct.pack_into('<I', image, 0x88, 0xd0000015)  # materialize the data page instead
+    struct.pack_into('<2H', image, 0x1000, 6 if variant == 'guard-bypass' else 0, 1)
+    struct.pack_into('<2H', image, 0x2010 if variant == 'mutable-table' else 0x1010, 0, 2)
+    path = tmp_path / 'linked-tables.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000b4, 0x080000d8, 0x080000f0} <= entries and 0x080000e0 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000e0' in table) == (variant == 'closed')
 
 
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
