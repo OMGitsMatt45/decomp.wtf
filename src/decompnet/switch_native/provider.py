@@ -39,6 +39,68 @@ def _run(command, *, cwd=None):
     return result.stdout
 
 
+def _recover_halfword_tables(lifter, replace_once):
+    jt = lifter / 'src/jt.rs'
+    replace_once(jt, '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
+    let Sym::Target''', '''pub fn resolve(mem: &dyn Memory, entry: u64, pc: u64, r: u32) -> Option<Vec<u64>> {
+    resolve_with_base(mem, entry, pc, r, |_, _| None)
+}
+
+pub fn constant_at(mem: &dyn Memory, entry: u64, definition: u64, r: u32) -> Option<u64> {
+    match value(mem, entry, definition + 4, r, 0)? {
+        Sym::Const(address) => Some(address),
+        _ => None,
+    }
+}
+
+pub fn resolve_with_base(
+    mem: &dyn Memory, entry: u64, pc: u64, r: u32,
+    recover: impl FnOnce(u64, u32) -> Option<u64>,
+) -> Option<Vec<u64>> {
+    let Sym::Target''')
+    replace_once(jt, '    let raw = mem.bytes(table?, (count as usize) * size as usize)?;', '''    let table = match table {
+        Some(table) => table,
+        None if size == 2 && !signed && shift == 2 && base == pc + 4 => {
+            recover(at, bits(mem.word(at)?, 5, 5))?
+        }
+        None => return None,
+    };
+    let raw = mem.bytes(table, (count as usize) * size as usize)?;''')
+    module = lifter / 'src/module.rs'
+    replace_once(module, 'reaching_defs(l, entry, preds, br_pc, r)', 'reaching_defs(l, entry, preds, br_pc, r, 512)')
+    replace_once(module, 'pc: u64, r: u32) -> Option<Vec<u64>> {\n    let (mut defs, mut seen, mut work)',
+                 'pc: u64, r: u32, limit: usize) -> Option<Vec<u64>> {\n    let (mut defs, mut seen, mut work)')
+    replace_once(module, 'if seen.len() > 512 {', 'if seen.len() > limit {')
+    replace_once(module, 'Some(Table::All { known: Vec::new(), reach: vec![range], blocks: false })',
+                 'Some(Table::All { known: recover_table(l, entry, br_pc, r), reach: vec![range], blocks: false })')
+    replace_once(module, '            reach.push(range);',
+                 '            known.extend(recover_table(l, entry, d + 4, r));\n            reach.push(range);')
+    replace_once(module, '/// How the `br` at `br_pc` is emitted,', '''fn recover_table(l: &Lifted, entry: u64, pc: u64, r: u32) -> Vec<u64> {
+    jt::resolve_with_base(l.m, entry, pc, r, |load, reg| {
+        if !jt::callee_saved(reg) { return None; }
+        // Include earlier partitions and local backward edges from later
+        // case bodies, with the walk limited to this instruction window.
+        let start = l.m.text.start.max(load.saturating_sub(0x800));
+        let end = l.m.text.end.min(load.saturating_add(0x2000));
+        let mut preds = BTreeMap::<u64, Vec<u64>>::new();
+        for address in (start..end).step_by(4) {
+            if let Insn::B(target) | Insn::BCond(_, target) = l.at(address) {
+                if (start..end).contains(target) {
+                    preds.entry(*target).or_default().push(address);
+                }
+            }
+        }
+        let limit = ((end - start) / 4) as usize;
+        let mut definitions = reaching_defs(l, start, &preds, load, reg, limit)?.into_iter();
+        let constant = |definition| jt::constant_at(l.m, start, definition, reg);
+        let table = constant(definitions.next()?)?;
+        definitions.all(|definition| constant(definition) == Some(table)).then_some(table)
+    }).unwrap_or_default()
+}
+
+/// How the `br` at `br_pc` is emitted,''')
+
+
 def build(*, desktop=False):
     vendor = verify_vendor()
     rustc = os.environ.get('DECOMP_SWITCH_RUSTC') or shutil.which('rustc')
@@ -84,6 +146,7 @@ def build(*, desktop=False):
                     && r.start().checked_add(255 * 4) == Some(*r.end());
                 let limit = if crosses_anchor { l.m.text.end } else { end };
                 let (lo, hi) = ((*r.start()).max(entry), (*r.end()).min(limit - 4));''')
+        _recover_halfword_tables(patched, replace_once)
         # Propagate a restored guest stack through skipped native call frames.
         module = patched / 'src/module.rs'
         for call in ('{}(c);', 'rt_dispatch(c);',

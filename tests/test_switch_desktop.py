@@ -172,6 +172,19 @@ def test_compact_jump_table_can_enter_a_later_partition(tmp_path, emission_env):
     assert 'f_80000a4' in table
 
 
+def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, emission_env):
+    from tools.switch_fixture import halfword_table_partition_fixture, reference
+    path = tmp_path / 'halfword-target.nro'
+    path.write_bytes(halfword_table_partition_fixture())
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000A0, 0x080000B8} <= entries and 0x080000BC not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert 'f_80000bc' in table and 'f_80000c0' not in table
+
+
 def test_magic_detection_and_status_expose_the_development_route(original, monkeypatch):
     monkeypatch.setattr(provider, 'build', lambda **_: pytest.fail('status cannot install or compile'))
     assert pc.input_platform(original) == 'switch'

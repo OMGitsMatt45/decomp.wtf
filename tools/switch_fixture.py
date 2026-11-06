@@ -74,6 +74,22 @@ def compact_table_partition_fixture():
     return bytes(raw)
 
 
+def halfword_table_partition_fixture():
+    """A bounded halfword table's base is set before the dispatcher partition."""
+    raw = bytearray(conditional_target_fixture())
+    # adrp/add x24, table; mov x8, #1; adr x12, dispatch; b dispatch; nop x3;
+    # dispatch: cmp w8, #2; b.hi default; adr x9, anchor; ldrh w10, [x24, x8, lsl #1];
+    # add x9, x9, x10, lsl #2; br x9; anchor: mov x0, #1; case: mov x0, #42; ret;
+    # default: mov x0, #0; ret.
+    words = (0xb0000018, 0x91002318, 0xd2800028, 0x100000ac, 0x14000004,
+             0xd503201f, 0xd503201f, 0xd503201f, 0x7100091f, 0x54000108,
+             0x10000089, 0x78687b0a, 0x8b0a0929, 0xd61f0120, 0xd2800020,
+             0xd2800540, 0xd65f03c0, 0xd2800000, 0xd65f03c0)
+    struct.pack_into('<19I', raw, 0x80, *words)
+    struct.pack_into('<3H', raw, 0x1008, 0, 1, 3)
+    return bytes(raw)
+
+
 def changed_code_fixture():
     """Overwrite a discovered entry in guest memory, then branch to it."""
     raw = bytearray(conditional_target_fixture())
