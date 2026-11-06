@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 
 import pytest
@@ -109,10 +110,25 @@ def test_nro_layout_is_rebased_without_changing_original_bytes(original):
     assert loaded['entry'] == 0x08000000
     assert loaded['modules'][0]['base'] == 0x08000000
     assert loaded['modules'][0]['input']['sha256'] == hashlib.sha256(original.read_bytes()).hexdigest()
+    assert loaded['system_resource_size'] == 0
+
+
+def test_desktop_export_preserves_npdm_system_resource_size(tmp_path, emission_env):
+    from tools.switch_exefs_fixture import fixture as exefs_fixture
+    original = exefs_fixture(tmp_path / 'exefs')
+    npdm = original / 'main.npdm'
+    raw = bytearray(npdm.read_bytes())
+    struct.pack_into('<I', raw, 0x14, 0x1000000)
+    npdm.write_bytes(raw)
+
+    out = tmp_path / 'source'
+    project.export(original, out)
+
+    assert json.loads((out / 'analysis.json').read_text())['system_resource_size'] == 0x1000000
+    assert 'sw_system_resource_size(void){return 16777216ull;}' in (out / 'runtime/modules.c').read_text()
 
 
 def test_stripped_unwind_callback_is_in_the_export_dispatch_table(tmp_path, emission_env):
-    import struct
     from tests.test_switch_discovery import original as unwind_fixture
 
     image, _ = unwind_fixture()

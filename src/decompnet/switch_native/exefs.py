@@ -253,6 +253,7 @@ def load(path, *, include_images=False, single=False):
     modules, inputs = [], []
     base = media.BASE
     stack_size = 0x10000
+    system_resource_size = 0
     for name, file in paths:
         module = media.load(file, include_image=True)
         if module['format'] != 'nso':
@@ -274,6 +275,9 @@ def load(path, *, include_images=False, single=False):
         if declared and (not 0x4000 <= declared <= 16 * 1024 * 1024 or declared % 0x1000):
             raise PCError('Switch NPDM stack exceeds development bounds or is unaligned')
         stack_size = declared or stack_size
+        system_resource_size = struct.unpack_from('<I', raw, 0x14)[0]
+        if system_resource_size > 0x1fe00000 or system_resource_size % 0x1000:
+            raise PCError('Switch NPDM system resource size is out of bounds or is unaligned')
         inputs.append(dict(name=npdm.name, size=len(raw), sha256=hashlib.sha256(raw).hexdigest()))
     aliases = {}
     definitions = {}
@@ -427,5 +431,6 @@ def load(path, *, include_images=False, single=False):
             module.pop('image')
     digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return dict(platform='switch', format='exefs', input=dict(name=root.name, sha256=digest), inputs=inputs,
-                entry=main['base'], stack_size=stack_size, modules=modules, initializers=initializers,
+                entry=main['base'], stack_size=stack_size, system_resource_size=system_resource_size,
+                modules=modules, initializers=initializers,
                 native_game_backend_available=False, scope='host-linked-module-runtime-development', startup=startup)
