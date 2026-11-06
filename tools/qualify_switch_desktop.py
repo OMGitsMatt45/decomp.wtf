@@ -49,6 +49,7 @@ def fixtures(work, rustc):
         (inputs / (name + '.nro')).write_bytes(raw)
     exefs_fixture(inputs / 'exefs')
     exefs_fixture(inputs / 'sdk-startup', sdk_startup=True)
+    exefs_fixture(inputs / 'sdk-startup-with-fini', sdk_startup_with_finalizers=True)
     (inputs / 'cpu.nro').write_bytes(cpu_fixture(nro=True))
     (inputs / 'cpu-nso.nso').write_bytes(cpu_fixture(compressed=True))
     (inputs / 'conditional-target.nro').write_bytes(conditional_target_fixture())
@@ -70,11 +71,13 @@ def qualify(args):
     work.mkdir(parents=True, exist_ok=True)
     os.environ['DECOMP_SWITCH_RUSTC'] = args.rustc
     inputs = work / 'inputs' if args.resume else fixtures(work, args.rustc)
-    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'changed-code', 'missing', 'svc', 'fault']
+    names = ['hello', 'threads', 'parallel-threads', 'exefs', 'sdk-startup', 'sdk-startup-with-fini',
+             'cpu', 'cpu-nso', 'conditional-target', 'exclusive', 'changed-code', 'missing', 'svc', 'fault']
     sources = {}
     for name in names:
         source = work / (name + '-source')
-        original = inputs / (name if name in ('exefs', 'sdk-startup') else name + ('.nso' if name == 'cpu-nso' else '.nro'))
+        original = inputs / (name if name in ('exefs', 'sdk-startup', 'sdk-startup-with-fini')
+                             else name + ('.nso' if name == 'cpu-nso' else '.nro'))
         if args.resume:
             verified = pc.verify(source)['manifest']
             if verified['backend']['revision'] != revision():
@@ -106,6 +109,10 @@ def qualify(args):
         if name in ('threads', 'parallel-threads'): assert output == 'threads: 40400\n'
         if name in ('exefs', 'sdk-startup'):
             assert data['initializers_run'] == 2 and data['final_cpu']['x'][0] == 42
+        if name == 'sdk-startup-with-fini':
+            assert data['initializers_run'] == 2 and data['final_cpu']['x'][0] == (42 << 8 | 30)
+            memory = bytes.fromhex(data['data_samples'][0]['hex'])
+            assert struct.unpack_from('<Q', memory)[0] == 16
         if name in ('cpu', 'cpu-nso'):
             assert data['final_cpu']['x'][0] == 150
             memory = bytes.fromhex(data['data_samples'][0]['hex'])

@@ -87,12 +87,15 @@ def generate(project, root):
     registry.append('const uint64_t *sw_initializers(size_t *n){*n=' + str(len(inspection['initializers'])) + ';return initializers;}\n')
     startup = inspection.get('startup') or {}
     registry.append(f'uint64_t sw_sdk_startup(void){{return {startup.get("entry", 0)}ull;}}\n')
-    for phase in ('sdk', 'main'):
-        values = startup.get(phase + '_initializers', [])
-        registry.append('static const uint64_t ' + phase + '_initializers[]={' +
+    for name, values in (('sdk_initializers', startup.get('sdk_initializers', [])),
+                         ('main_initializers', startup.get('main_initializers', [])),
+                         ('sdk_finalizers', startup.get('finalizers'))):
+        if values is None:
+            registry.append(f'const uint64_t *sw_{name}(size_t *n){{*n=0;return NULL;}}\n')
+            continue
+        registry.append(f'static const uint64_t {name}[]={{' +
                         ','.join(str(p) + 'ull' for p in values or [0]) + '};\n')
-        registry.append('const uint64_t *sw_' + phase + '_initializers(size_t *n){*n=' +
-                        str(len(values)) + ';return ' + phase + '_initializers;}\n')
+        registry.append(f'const uint64_t *sw_{name}(size_t *n){{*n={len(values)};return {name};}}\n')
     title = int(inspection['input']['sha256'][:16], 16)
     if path.is_dir():
         _, _, npdm = exefs.files(path)

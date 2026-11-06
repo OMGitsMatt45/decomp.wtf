@@ -169,6 +169,17 @@ def test_sdk_startup_defers_constructors_and_selects_dt_init_once(tmp_path):
     assert SDK_BASE + 0x180 in result['modules'][1]['roots']
 
 
+def test_five_argument_sdk_startup_initializes_and_finalizes_modules_in_order(tmp_path):
+    root = fixture(tmp_path / 'exefs', sdk_startup_with_finalizers=True)
+    result = exefs.load(root)
+    assert result['startup'] == dict(model='nn-sdk-start', entry=SDK_BASE + 0x180,
+        sdk_initializers=[], main_initializers=[SDK_BASE + SYMBOLS['sdk']['sdk_init'],
+                                               BASE + SYMBOLS['main']['main_init']],
+        finalizers=[BASE + 0x300, SDK_BASE + 0x1c4])
+    assert BASE + 0x300 in result['modules'][0]['roots']
+    assert SDK_BASE + 0x1c4 in result['modules'][1]['roots']
+
+
 @pytest.mark.parametrize('case', ['mod0', 'missing-dependency', 'missing-import', 'strong-optional',
     'hidden-export', 'rela-size', 'rela-kind', 'rela-symbol', 'rela-target', 'rela-overlap',
     'relative-symbol', 'relr-without-base', 'string-offset', 'hash-count', 'symbol-value',

@@ -12,7 +12,7 @@ BASE = 0x7100000000
 SDK_BASE = BASE + 0x10000
 
 
-def module(name, *, gnu_hash=False, sdk_startup=False):
+def module(name, *, gnu_hash=False, sdk_startup=False, sdk_startup_with_finalizers=False):
     text, ro, data = [bytearray.fromhex((FIXTURES / ('switch-module-' + name + section + '.hex')).read_text())
                       for section in ('.text', '.rodata', '.data')]
     ro.extend(bytes(0x800 - len(ro)))
@@ -38,7 +38,28 @@ def module(name, *, gnu_hash=False, sdk_startup=False):
         relocs = [(labels['counter_ptr'], (2 << 32) | 1025, 0),
                   (labels['sdk_array'], 1027, labels['sdk_init'])]
         tags = [(14, string('fixture-sdk')), (25, labels['sdk_array']), (27, 8)]
-    if sdk_startup:
+    if sdk_startup_with_finalizers:
+        if name == 'sdk':
+            # Read the counter before and after x3, then call the finalizers in x4.
+            # Return the two observations as fixture_add(30) results packed into bytes.
+            text.extend(bytes(max(0, 0x1dc - len(text))))
+            struct.pack_into('<17I', text, 0x180, 0xa9be53f3, 0xa9017bf5,
+                             0xaa0303f3, 0xaa0403f4, 0xd63f0040, 0xd28003c0,
+                             0x97ffffda, 0xaa0003f5, 0xd63f0260, 0xd28003c0,
+                             0x97ffffd6, 0x8b0022b5, 0xd63f0280,
+                             0xaa1503e0, 0xa9417bf5, 0xa8c253f3, 0xd65f03c0)
+            entries.append(('_ZN2nn4init5StartEmmPFvvES2_S2_', 0x12, 1, 0x180, 68))
+            # SDK DT_FINI adds 7 to the shared counter.
+            struct.pack_into('<6I', text, 0x1c4, 0x1000f1e8, 0xf9400108,
+                             0xf9400109, 0x91001d29, 0xf9000109, 0xd65f03c0)
+            tags += [(12, labels['sdk_init']), (13, 0x1c4)]
+        else:
+            # main's DT_FINI sets shared_counter to 9. The SDK finalizer runs
+            # next and adds 7, making reverse order observable in the report.
+            text.extend(bytes(max(0, 0x310 - len(text))))
+            struct.pack_into('<4I', text, 0x300, 0x1000e808, 0xd2800129, 0xf9000109, 0xd65f03c0)
+            tags += [(12, labels['main_init']), (13, 0x300)]
+    elif sdk_startup:
         if name == 'sdk':
             # Original ABI fixture: call SDK callback, main callback, then
             # return fixture_add(30). Constructors leave shared_counter=12.
@@ -97,10 +118,11 @@ def segments(raw):
     return parts
 
 
-def fixture(root, *, gnu_hash=False, sdk_startup=False):
+def fixture(root, *, gnu_hash=False, sdk_startup=False, sdk_startup_with_finalizers=False):
     root = Path(root); root.mkdir(parents=True)
     for name in ('main', 'sdk'):
-        (root / name).write_bytes(module(name, gnu_hash=gnu_hash, sdk_startup=sdk_startup))
+        (root / name).write_bytes(module(name, gnu_hash=gnu_hash, sdk_startup=sdk_startup,
+                                         sdk_startup_with_finalizers=sdk_startup_with_finalizers))
     npdm = bytearray(0x80); npdm[:4] = b'META'
     struct.pack_into('<I', npdm, 0x1c, 0x10000)
     (root / 'main.npdm').write_bytes(npdm)

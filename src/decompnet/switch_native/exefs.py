@@ -387,7 +387,9 @@ def load(path, *, include_images=False, single=False):
     for module in modules:
         initialize(module)
     sdk_start_name = '_ZN2nn4init5StartEmmPFvvES2_'
-    sdk_starts = [(m, s) for m, s in definitions.get(sdk_start_name, []) if s['kind'] == 2]
+    sdk_start_with_fini = sdk_start_name + 'S2_'
+    sdk_starts = [(m, s) for name in (sdk_start_name, sdk_start_with_fini)
+                  for m, s in definitions.get(name, []) if s['kind'] == 2]
     startup = None
     if sdk_starts:
         if len(sdk_starts) != 1:
@@ -411,13 +413,30 @@ def load(path, *, include_images=False, single=False):
             seen.add(module['name'])
             for needed in module['_dynamic']['needed']:
                 sdk_order(aliases[module_alias(needed)])
-            order.extend(constructors(module))
+            order.append(module)
 
         sdk_order(owner)
         for module in modules:
             sdk_order(module)
+        sdk_initializers = [pointer for module in order for pointer in constructors(module)]
+        main_initializers = constructors(main)
         startup = dict(model='nn-sdk-start', entry=pointer,
-                       sdk_initializers=order, main_initializers=constructors(main))
+                       sdk_initializers=sdk_initializers, main_initializers=main_initializers)
+        if symbol['name'] == sdk_start_with_fini:
+            # With three callbacks, RTLD's first callback only marks itself ready.
+            # The second initializes all DSOs after nninitStartup and the third
+            # calls DT_FINI in reverse order after nnMain returns.
+            finalizers = []
+            for module in reversed(order + [main]):
+                offset = module['_dynamic']['tags'].get(13)
+                if offset:
+                    finalizer = module['base'] + offset
+                    if code_module(finalizer) is not module:
+                        raise PCError(module['name'] + ': DT_FINI is outside executable code')
+                    module.setdefault('_extra_roots', set()).add(finalizer)
+                    finalizers.append(finalizer)
+            startup.update(sdk_initializers=[], main_initializers=sdk_initializers + main_initializers,
+                           finalizers=finalizers)
     for module in modules:
         module['roots'] = sorted(module.pop('_roots') | module.pop('_extra_roots', set()))
         module.pop('_dynamic')
