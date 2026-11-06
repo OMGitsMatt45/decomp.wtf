@@ -550,6 +550,43 @@ def test_linked_guarded_byte_table_with_forward_anchor(tmp_path, emission_env, v
     assert ('f_80000c4' in table) == (variant == 'closed')
 
 
+@pytest.mark.parametrize('variant', ['closed', 'unknown-selector', 'store-entry', 'flags-entry', 'coincident-edge'])
+def test_linked_table_prunes_only_proven_false_equality_edges(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    words = {
+        0x80: 0x1000044e, 0x84: 0x350002e0, 0x88: 0x35000381,  # Fence and two alternate paths.
+        0x8c: 0xb000001c, 0x90: 0x9100039c, 0x94: 0x14000007,  # Hoisted X28 base.
+        0x98: 0x2a1f03e8, 0x9c: 0x7100051f, 0xa0: 0x54000301, 0xa4: 0x14000003, 0xac: 0xd65f03c0,
+        0xb0: 0x52800048, 0xb4: 0x51000508, 0xb8: 0x71000d1f, 0xbc: 0x54fffee8,  # Backward default.
+        0xc0: 0x10000089, 0xc4: 0x78687b8a, 0xc8: 0x8b0a0929, 0xcc: 0xd61f0120,
+        0xd0: 0xd2800020, 0xd4: 0xd65f03c0, 0xd8: 0xd2800540, 0xdc: 0xd65f03c0,
+        # An X28 overwrite is followed by a known unequal W8 on the path to CMP.
+        0xe0: 0xaa0003fc, 0xe4: 0x52800008, 0xe8: 0x390003ff, 0xec: 0x17ffffec,
+        # The loop case reaches CMP with W8=1. The separate CBZ edge carries zero.
+        0xf0: 0x52800028, 0xf4: 0x17ffffea, 0xf8: 0x34fffd28, 0xfc: 0xd65f03c0,
+        0x100: 0x52800000, 0x104: 0xd65f03c0, 0x108: 0xd65f03c0,
+    }
+    words.update({
+        'unknown-selector': {0xe4: 0x2a0203e8},  # mov W8, W2
+        'store-entry': {0x84: 0x35000320},       # CBNZ reaches the store after the constant.
+        'flags-entry': {0x84: 0x350000e0},       # CBNZ reaches B.NE without the CMP.
+        'coincident-edge': {0xa0: 0x54000021},   # Taken and fallthrough edges have the same target.
+    }.get(variant, {}))
+    for offset, word in words.items():
+        struct.pack_into('<I', image, offset, word)
+    struct.pack_into('<4H', image, 0x1000, 0, 2, 8, 0)
+    path = tmp_path / 'linked-equality-table.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert {0x080000d0, 0x08000108} <= entries and 0x080000d8 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000d8' in table) == (variant == 'closed')
+
+
 @pytest.mark.parametrize('variant', ['full-width', 'narrow-alias', 'returning-wrapper'])
 def test_halfword_table_preserves_base_through_full_width_aliases(tmp_path, emission_env, variant):
     from tools.switch_fixture import conditional_target_fixture, reference
