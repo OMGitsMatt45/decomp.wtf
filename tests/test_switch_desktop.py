@@ -176,17 +176,31 @@ def test_compact_jump_table_can_enter_a_later_partition(tmp_path, emission_env):
     assert 'f_80000a4' in table
 
 
-def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, emission_env):
+@pytest.mark.parametrize(('lane_instruction', 'resolved'), [
+    (None, True),
+    (0x0e1404d8, True),   # dup v24.2s, v6.s[2]
+    (0x0e143cd8, False),  # umov w24, v6.s[2]
+    (0x4e142cd8, False),  # smov x24, v6.s[2]
+])
+def test_halfword_table_resolves_a_base_from_a_predecessor_partition(tmp_path, emission_env,
+                                                                    lane_instruction, resolved):
     from tools.switch_fixture import halfword_table_partition_fixture, reference
     path = tmp_path / 'halfword-target.nro'
-    path.write_bytes(halfword_table_partition_fixture())
+    image = bytearray(halfword_table_partition_fixture())
+    if lane_instruction is not None:
+        # Execute DUP on the way to dispatch. A real clobber is on an
+        # alternate path so the reference execution can still use the table.
+        struct.pack_into('<I', image, 0x90, 0x14000002 if resolved else 0xb5000088)
+        struct.pack_into('<I', image, 0x98, lane_instruction)
+    path.write_bytes(image)
     assert reference(path)['x'][0] == 42
     out = tmp_path / 'source'
     project.export(path, out)
     entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
     assert {0x080000A0, 0x080000B8} <= entries and 0x080000BC not in entries
     table = (out / 'game/guest0_table.c').read_text()
-    assert 'f_80000bc' in table and 'f_80000c0' not in table
+    assert ('f_80000bc' in table) == resolved
+    assert 'f_80000c0' not in table
 
 
 @pytest.mark.parametrize('call_after_base', [False, True])
