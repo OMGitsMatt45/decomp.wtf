@@ -334,6 +334,8 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     surface_reduction(root)
     from .stencil_sampling import apply as stencil_sampling
     stencil_sampling(root)
+    from .audio_work_size import apply as audio_work_size
+    audio_work_size(root)
     replace_once(rt / 'src/gpu/vulkan/textures.rs', '        let header = tic::texture_header(&tic);\n', '''        if word == 0 && tic == [0; 8] && dim == TexDim::D2 && !array && !shadow {
             let view = self.placeholder(vk::ImageViewType::TYPE_2D)?;
             return Ok((view, self.sampler(&tic::Sampler::default())));
