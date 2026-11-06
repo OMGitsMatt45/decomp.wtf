@@ -171,3 +171,148 @@ fn texel_fetch_uses_the_bound_texture_numeric_type() {
 
 #[test]
 fn straight_line_fragment_shader()''')
+
+
+def maxwell_integer_saturation(root):
+    from .patches import replace_once
+
+    translate = root / 'crates/maxwell/src/translate.rs'
+    replace_once(translate, '''    fn i2i(&mut self, i: &Insn) -> R {
+        let b = self.src_b(i)?;
+        let v = self.int_source(b, i.bits(10, 2), i.bit(13), i.bits(41, 2))?;
+''', '''    fn i2i(&mut self, i: &Insn) -> R {
+        let b = self.src_b(i)?;
+        let v = self.int_source(b, i.bits(10, 2), i.bit(13), i.bits(41, 2))?;
+        if i.bit(50) {
+            let saturated = self.saturating_i2i(i, v)?;
+            return self.set(i.rd(), saturated);
+        }
+''')
+    replace_once(translate, '    fn pack_half(&mut self, f: Word) -> R<Word> {', '''    fn saturating_i2i(&mut self, i: &Insn, value: Word) -> R<Word> {
+        let u = self.t.u32;
+        let width = 8 << i.bits(8, 2).min(2);
+        let signed_dest = i.bit(12);
+        let upper = u32::MAX >> (32 - width + u32::from(signed_dest));
+        let upper = self.u(upper);
+        if !i.bit(13) && !i.bit(45) {
+            return self.ext(u, glsl::UMIN, &[value, upper]);
+        }
+
+        // Keep the sign separate so source modifiers can represent both
+        // abs(INT_MIN) and negated unsigned words before clamping.
+        let zero = self.u(0);
+        let false_ = self.b.constant_false(self.t.bool);
+        let (magnitude, mut negative) = if i.bit(13) {
+            let source = self.cast_i(value)?;
+            let signed_zero = self.cast_i(zero)?;
+            let sign = self.b.s_less_than(self.t.bool, None, source, signed_zero)?;
+            let negated = self.b.i_sub(u, None, zero, value)?;
+            let magnitude = self.b.select(u, None, sign, negated, value)?;
+            (magnitude, if i.bit(49) { false_ } else { sign })
+        } else {
+            (value, false_)
+        };
+        if i.bit(45) {
+            negative = self.b.logical_not(self.t.bool, None, negative)?;
+        }
+        let positive = self.ext(u, glsl::UMIN, &[magnitude, upper])?;
+        let negative_value = if signed_dest {
+            let limit = self.u(1 << (width - 1));
+            let clamped = self.ext(u, glsl::UMIN, &[magnitude, limit])?;
+            self.b.i_sub(u, None, zero, clamped)?
+        } else {
+            zero
+        };
+        Ok(self.b.select(u, None, negative, negative_value, positive)?)
+    }
+
+    fn pack_half(&mut self, f: Word) -> R<Word> {''')
+
+    test = root / 'crates/maxwell/tests/translate.rs'
+    replace_once(test, '#[test]\nfn straight_line_fragment_shader()', '''fn integer_conversion_result(spirv: &[u32]) -> u32 {
+    use rspirv::{dr::Loader, spirv::Op};
+    use std::collections::HashMap;
+
+    // Evaluate the straight-line scalar integer instructions in this fixture.
+    let mut loader = Loader::new();
+    rspirv::binary::parse_words(spirv, &mut loader).unwrap();
+    let module = loader.module();
+    let mut values = HashMap::<u32, u32>::new();
+    let mut variables = HashMap::<u32, u32>::new();
+    for insn in &module.types_global_values {
+        let value = match insn.class.opcode {
+            Op::Constant => insn.operands[0].unwrap_literal_bit32(),
+            Op::ConstantFalse => 0,
+            Op::ConstantTrue => 1,
+            _ => continue,
+        };
+        values.insert(insn.result_id.unwrap(), value);
+    }
+    for insn in &module.functions[0].blocks[0].instructions {
+        let id = |n: usize| insn.operands[n].unwrap_id_ref();
+        let v = |n| values[&id(n)];
+        let value = match insn.class.opcode {
+            Op::Variable => continue,
+            Op::Store => { variables.insert(id(0), v(1)); continue; }
+            Op::Load => variables[&id(0)],
+            Op::Bitcast => v(0),
+            Op::BitwiseAnd => v(0) & v(1),
+            Op::ISub => v(0).wrapping_sub(v(1)),
+            Op::SLessThan => u32::from((v(0) as i32) < (v(1) as i32)),
+            Op::LogicalNot => u32::from(v(0) == 0),
+            Op::Select => if v(0) != 0 { v(1) } else { v(2) },
+            Op::BitFieldUExtract => (v(0) >> v(1)) & (u32::MAX >> (32 - v(2))),
+            Op::BitFieldSExtract => (((v(0) << (32 - v(1) - v(2))) as i32) >> (32 - v(2))) as u32,
+            Op::ExtInst if insn.operands[1].unwrap_literal_ext_inst_integer() == 38 => v(2).min(v(3)),
+            Op::CompositeConstruct => return v(0), // Render target R.
+            opcode => panic!("Unexpected instruction in integer conversion fixture: {opcode:?}"),
+        };
+        values.insert(insn.result_id.unwrap(), value);
+    }
+    panic!("No render target output in integer conversion fixture");
+}
+
+#[test]
+fn i2i_sat_clamps_to_the_typed_destination_range() {
+    const U8: u64 = 0;
+    const U16: u64 = 1;
+    const U32: u64 = 2;
+    const S8: u64 = 4;
+    const S16: u64 = 5;
+    const S32: u64 = 6;
+    const SAT: u64 = 1 << 50;
+    const ABS: u64 = 1 << 49;
+    const NEG: u64 = 1 << 45;
+    let cases = [
+        (U8, U32, 256, 0, 0),
+        (U8, U32, 256, SAT, 255),
+        (U8, U32, 7, SAT, 7),
+        (U8, S32, -1i32 as u32, SAT, 0),
+        (S8, S32, 128, SAT, 127),
+        (S8, S32, -129i32 as u32, SAT, -128i32 as u32),
+        (S8, S8, 0xfe, SAT, -2i32 as u32),
+        (U16, U32, 65536, SAT, 65535),
+        (U16, U16, 0xffff_0001, SAT, 1),
+        (S16, U32, 65535, SAT, 32767),
+        (S16, S32, -32769i32 as u32, SAT, -32768i32 as u32),
+        (S16, S16, 0xfffe, SAT, -2i32 as u32),
+        (S32, U32, u32::MAX, SAT, i32::MAX as u32),
+        (U32, S32, i32::MIN as u32, SAT, 0),
+        (U32, U32, u32::MAX, SAT, u32::MAX),
+        (S32, S32, i32::MIN as u32, SAT | NEG, i32::MAX as u32),
+        (U32, S32, i32::MIN as u32, SAT | ABS, 0x8000_0000),
+        (S8, U32, 255, SAT | NEG, -128i32 as u32),
+    ];
+    for (dest, src, value, flags, expected) in cases {
+        let i2i = 0x5ce0_0000_0000_0000 | flags | PT | 1 << 20
+            | (dest & 3) << 8 | (src & 3) << 10 | (dest >> 2) << 12 | (src >> 2) << 13;
+        let code = program(fragment_header(1), &[mov32i(1, value), i2i, EXIT]);
+        let shader = translate(&code, &options(Stage::Fragment), &kirikae_maxwell::NoEnv).unwrap();
+        assert!(shader.unsupported.is_empty(), "{:?}", shader.unsupported);
+        validate(&shader.spirv);
+        assert_eq!(integer_conversion_result(&shader.spirv), expected, "I2I {i2i:016x}, {value:08x}");
+    }
+}
+
+#[test]
+fn straight_line_fragment_shader()''')

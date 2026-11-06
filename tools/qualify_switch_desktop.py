@@ -150,6 +150,8 @@ def qualify(args):
     output = run([args.cargo, 'test', '--locked', '--manifest-path', source / 'Cargo.toml', '-p', 'kirikae-rt', '--lib', '--no-default-features'], work / 'runtime-tests.log', env=env)
     summary = re.search(r'test result: ok\. (\d+) passed; 0 failed', output)
     assert summary, output[-2000:]
+    run([args.cargo, 'test', '--locked', '--manifest-path', source / 'Cargo.toml', '-p', 'kirikae-maxwell',
+         '--test', 'translate', 'i2i_sat_clamps_to_the_typed_destination_range'], work / 'maxwell-tests.log', env=env)
     rejected = run([args.cargo, 'check', '--locked', '--manifest-path', source / 'Cargo.toml', '-p', 'kirikae-rt',
                     '--no-default-features', '--features', 'decomp-native,diagnostic-interpreter'],
                    work / 'interpreter-rejected.log', expect=101, env=env)
