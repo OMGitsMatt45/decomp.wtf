@@ -50,11 +50,15 @@ impl PictureInfo {
         {
             return Err("NVDEC: invalid VP8 packet or first partition size".into());
         }
-        let pitch = [u32_at(raw, 0x4c) as usize, u32_at(raw, 0x50) as usize];
-        for (stride, visible) in pitch.into_iter().zip([width, width.div_ceil(2) * 2]) {
+        let mut pitch = [0; 2];
+        for (i, visible) in [width, width.div_ceil(2) * 2].into_iter().enumerate() {
+            // Tegra VP8 FrameStride entries count 16-byte units.
+            let stride = u32_at(raw, 0x4c + i * 4).checked_mul(16)
+                .ok_or("NVDEC: VP8 plane pitch overflow")? as usize;
             if stride < visible || stride > MAX_DIMENSION * 2 || !stride.is_multiple_of(64) {
                 return Err(format!("NVDEC: invalid VP8 plane pitch {stride} for {visible} bytes"));
             }
+            pitch[i] = stride;
         }
         Ok(Self { width, height, key_frame: raw[0x3c] == 1, version, first_partition_size,
             packet_size, pitch, frame_offset: [u32_at(raw, 0x5c), u32_at(raw, 0x68)],
@@ -188,7 +192,7 @@ mod tests {
         setup[0x3c] = u8::from(key);
         setup[0x3d] = ((tag >> 1) & 7) as u8;
         for (offset, value) in [(0x40, tag >> 5), (0x48, payload.len() as u32),
-            (0x4c, 128), (0x50, 64), (0x5c, 1), (0x68, 2)]
+            (0x4c, 8), (0x50, 4), (0x5c, 1), (0x68, 2)]
         {
             setup[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
         }
@@ -205,11 +209,23 @@ mod tests {
             bad[offset] = value;
             assert!(PictureInfo::parse(&bad).is_err(), "field {offset:#x}");
         }
-        for (offset, value) in [(0x40, 1u32 << 19), (0x48, 1), (0x48, MAX_PACKET_SIZE as u32 + 1), (0x4c, 8)] {
+        for (offset, value) in [(0x40, 1u32 << 19), (0x48, 1), (0x48, MAX_PACKET_SIZE as u32 + 1),
+            (0x4c, 0), (0x4c, 3), (0x4c, 1 << 28)]
+        {
             let mut bad = setup;
             bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
             assert!(PictureInfo::parse(&bad).is_err(), "field {offset:#x}");
         }
+    }
+
+    #[test]
+    fn parses_720p_picture_pitch_in_16_byte_units() {
+        let (mut setup, _, _) = split_frame(KEY);
+        setup[0x38..0x3a].copy_from_slice(&1280u16.to_le_bytes());
+        setup[0x3a..0x3c].copy_from_slice(&720u16.to_le_bytes());
+        setup[0x4c..0x50].copy_from_slice(&80u32.to_le_bytes());
+        setup[0x50..0x54].copy_from_slice(&80u32.to_le_bytes());
+        assert_eq!(PictureInfo::parse(&setup).unwrap().pitch, [1280, 1280]);
     }
 
     #[test]
