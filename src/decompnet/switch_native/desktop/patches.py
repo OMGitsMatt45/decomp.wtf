@@ -235,8 +235,21 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     replace_once(rt / 'src/gpu/vulkan/pipeline.rs',
                  '    pub(super) fn pipeline(&mut self, key: &PipelineKey, now: bool) -> Result<vk::Pipeline, String> {',
                  '    pub(super) fn pipeline(&mut self, key: &PipelineKey, now: bool) -> Result<vk::Pipeline, String> {\n        let now = now || cfg!(feature = "decomp-native");')
-    replace_once(rt / 'src/fault.rs', '    std::process::exit(4);',
-                 '    #[cfg(feature = "decomp-native")]\n    crate::decomp_native::fatal_fault(guest);\n    std::process::exit(4);')
+    fault = rt / 'src/fault.rs'
+    replace_once(fault, '    let msg = match unsafe { cpu.as_ref() } {', '''    #[cfg(feature = "decomp-native")]
+    let mut location = None;
+    let msg = match unsafe { cpu.as_ref() } {''')
+    replace_once(fault, '            let p = c.process();', '''            let p = c.process();
+            let [pc, lr, sp, fp] = [c.pc, c.x[30], c.sp, c.x[29]];
+            #[cfg(feature = "decomp-native")]
+            let [pc, lr, sp, fp] = crate::decomp_native::fault_frame().unwrap_or([pc, lr, sp, fp]);
+            #[cfg(feature = "decomp-native")]
+            { location = Some((pc, c.thread.id)); }''')
+    replace_once(fault, '                p.describe(c.pc),\n                p.describe(c.x[30]),\n                c.sp',
+                 '                p.describe(pc),\n                p.describe(lr),\n                sp')
+    replace_once(fault, '            let mut fp = c.x[29];', '            let mut fp = fp;')
+    replace_once(fault, '    std::process::exit(4);',
+                 '    #[cfg(feature = "decomp-native")]\n    crate::decomp_native::fatal_fault(guest, location);\n    std::process::exit(4);')
     vk = rt / 'src/gpu/vulkan/mod.rs'
     replace_once(vk, '    pub name: String,', '    pub name: String,\n    pub software: bool,')
     replace_once(vk, '            name,\n            stats:', '            name,\n            software: props.device_type == vk::PhysicalDeviceType::CPU,\n            stats:')

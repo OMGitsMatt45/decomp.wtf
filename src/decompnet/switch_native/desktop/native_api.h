@@ -27,6 +27,7 @@ const char *sw_romfs_sha256(void);
 
 void sw_initialize(void);
 void sw_enter(Cpu *c, uintptr_t memory_base, uint64_t unhooked);
+int sw_fault_frame(uint64_t frame[4]);
 int sw_function_enter(Cpu *c, uint64_t address);
 void sw_poll(Cpu *c);
 
