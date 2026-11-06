@@ -313,3 +313,9 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     buffer_crop(root)
     from .sample_grid import apply as maxwell_sample_grid
     maxwell_sample_grid(root)
+    from .layers import apply as layered_targets
+    layered_targets(root)
+    from .layer_clear import apply as layered_clear
+    layered_clear(root)
+    from .surface_reduction import apply as surface_reduction
+    surface_reduction(root)
