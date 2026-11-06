@@ -146,9 +146,18 @@ mod decomp_pctl_tests {
 def account_availability(root):
     from .patches import replace_once
     path = Path(root) / 'crates/rt/src/services/acc.rs'
-    replace_once(path, 'Arc::new(crate::services::stub::Stub::new("acc/IManagerForApplication"))',
-                 'Arc::new(ApplicationAccountManager)')
-    replace_once(path, 'struct Profile;', '''struct ApplicationAccountManager;
+    replace_once(path, '            101 => Reply::ok().object(Arc::new(crate::services::stub::Stub::new("acc/IManagerForApplication"))),',
+                 '''            101 => Reply::ok().object(Arc::new(ApplicationAccountManager)),
+            // LoadOpenContext restores the profile exposed by ListOpenContextStoredUsers.
+            130 if self.name == "acc:u0" => match req.data.as_slice() {
+                uid if uid == USER_ID => Reply::ok().object(Arc::new(ApplicationAccountManager)),
+                uid if uid.len() == USER_ID.len() && uid.iter().any(|&byte| byte != 0) => Reply::err(RESULT_USER_NOT_EXIST),
+                _ => Reply::err(RESULT_INVALID_USER_ID),
+            },''')
+    replace_once(path, 'struct Profile;', '''const RESULT_INVALID_USER_ID: u32 = 0x287c;
+const RESULT_USER_NOT_EXIST: u32 = 0xc87c;
+
+struct ApplicationAccountManager;
 
 impl Service for ApplicationAccountManager {
     fn name(&self) -> String { "acc/IManagerForApplication".into() }
@@ -179,6 +188,31 @@ fn local_application_account_reports_offline() {
     }
     harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
     assert_eq!(harness::observed("acc/availability"), vec![0, 1, 0, 0, 0]);
+}
+
+#[cfg(test)]
+#[test]
+fn local_open_context_restores_only_the_local_account() {
+    use crate::{abi::Entry, services::{Buf, harness}};
+    extern "C" fn probe(c: &mut Cpu) {
+        let account = Account { name: "acc:u0" };
+        let addr = c.tpidrro_el0;
+        let list = account.call(c, &Request { cmd: 131, b: vec![Buf { addr, size: 0x80 }], ..Default::default() });
+        let uid = c.process().memory.read(addr, USER_ID.len() as u64).unwrap();
+        let load = |c: &mut Cpu, data| account.call(c, &Request { cmd: 130, data, ..Default::default() });
+        let local = load(c, uid);
+        let availability = local.objects[0].call(c, &Request::default());
+        let unknown = load(c, vec![0xff; USER_ID.len()]);
+        let invalid = load(c, vec![0; USER_ID.len()]);
+        let short = load(c, vec![1]);
+        harness::record("acc/open_context", &[list.result as u64, local.result as u64, local.data.len() as u64,
+            local.objects.len() as u64, availability.result as u64, availability.data[0] as u64,
+            unknown.result as u64, invalid.result as u64, short.result as u64]);
+        c.halt();
+    }
+    harness::run(vec![Entry { addr: harness::ENTRY, func: probe }]);
+    assert_eq!(harness::observed("acc/open_context"), vec![0, 0, 0, 1, 0, 0,
+        RESULT_USER_NOT_EXIST as u64, RESULT_INVALID_USER_ID as u64, RESULT_INVALID_USER_ID as u64]);
 }
 
 struct Profile;''')
