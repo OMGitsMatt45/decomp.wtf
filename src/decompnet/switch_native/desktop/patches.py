@@ -172,6 +172,64 @@ fn a1b5g5r5_translates_component_selectors() {
 }
 
 pub(super) fn read_texture(gpu: &Gpu,''')
+    # Maxwell RGB32 occupies 12 bytes per guest texel. The host RGBA32 image
+    # needs a fourth component after deswizzling, without changing guest offsets.
+    textures = rt / 'src/gpu/vulkan/textures.rs'
+    replace_once(textures, 'pub(super) fn read_texture(gpu: &Gpu,', '''pub(super) fn expand_rgb32(format: &TexFormat, data: &mut Vec<u8>) {
+    if format.vk != vk::Format::R32G32B32A32_SFLOAT || format.block_bytes != 12 {
+        return;
+    }
+    debug_assert!(data.len().is_multiple_of(12));
+    let texels = data.len() / 12;
+    data.resize(texels * 16, 0);
+    let alpha = 1.0f32.to_le_bytes();
+    for index in (0..texels).rev() {
+        let (source, destination) = (index * 12, index * 16);
+        data.copy_within(source..source + 12, destination);
+        data[destination + 12..destination + 16].copy_from_slice(&alpha);
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn rgb32_pitch_texture_expands_texels_and_preserves_selectors() {
+    use vk::ComponentSwizzle as S;
+    let mem = GuestMemory::new().unwrap();
+    let gpu = Gpu::default();
+    let (cpu, va) = (0x1000_0000, 0x5_0000_0000);
+    mem.map(cpu, 0x1000).unwrap();
+    gpu.map(va, cpu, 0x1000);
+
+    let bytes = |words: &[u32]| words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>();
+    let mut data = [0xa5; 64];
+    data[..24].copy_from_slice(&bytes(&[1, 2, 3, 4, 5, 6]));
+    data[32..56].copy_from_slice(&bytes(&[7, 8, 9, 10, 11, u32::MAX]));
+    assert!(mem.write(cpu, &data));
+
+    let mut words = [0; 8];
+    words[0] = 0x02 | 7 << 7 | 5 << 19 | 3 << 22 | 7 << 28;
+    let mut header = crate::gpu::tic::texture_header(&words);
+    header.layout = Layout::Pitch { pitch: 32 };
+    (header.address, header.width, header.height) = (va, 2, 2);
+    let format = formats::texture(header.components, header.data_type, header.srgb).unwrap();
+    assert_eq!(format.block_bytes, 12);
+    assert_eq!(swizzle(&header), [S::A, S::G, S::ZERO, S::ONE]);
+    let a = 1.0f32.to_bits();
+    assert_eq!(read_texture(&gpu, &mem, &header, &format, 1, 1), vec![
+        (2, 2, bytes(&[1, 2, 3, a, 4, 5, 6, a, 7, 8, 9, a, 10, 11, u32::MAX, a])),
+    ]);
+}
+
+pub(super) fn read_texture(gpu: &Gpu,''')
+    replace_once(textures, '    if h.components == 0x15 {', '''    for (_, _, level) in &mut out {
+        expand_rgb32(f, level);
+    }
+    if h.components == 0x15 {''')
+    volumes = rt / 'src/gpu/vulkan/volumes.rs'
+    replace_once(volumes, 'ARRAY_VOLUME, CROP, SOURCE_RECHECK, read_texture, swizzle',
+                 'ARRAY_VOLUME, CROP, SOURCE_RECHECK, expand_rgb32, read_texture, swizzle')
+    replace_once(volumes, '                if format.astc {', '''                expand_rgb32(format, &mut data);
+                if format.astc {''')
     # Native exports must preserve every draw, including transient targets on
     # the first use of a shader pair. Pending compilation is not a failed draw.
     replace_once(rt / 'src/gpu/vulkan/pipeline.rs',
