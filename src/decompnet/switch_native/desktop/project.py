@@ -23,7 +23,7 @@ def inspect(path, *, images=False):
     # relocated by the host linker. Preserve the probe's original fixed layout.
     module.update(name='main', base=0x08000000, entry=0x08000000, roots=[0x08000000])
     return dict(platform='switch', format=module['format'], input=module['input'], inputs=[module['input']],
-                entry=module['entry'], stack_size=0x100000, modules=[module], initializers=[])
+                entry=module['entry'], stack_size=0x100000, system_resource_size=0, modules=[module], initializers=[])
 
 
 def snapshot(path, romfs=None, *, images=False):
@@ -109,7 +109,8 @@ def generate(project, root):
             romfs_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
         if romfs_sha != inspection['inputs'][-1]['sha256']:
             raise pc.PCError('Switch RomFS changed during source export')
-    for name, value in dict(entry=inspection['entry'], stack_size=inspection['stack_size'], title_id=title).items():
+    for name, value in dict(entry=inspection['entry'], stack_size=inspection['stack_size'],
+                            system_resource_size=inspection['system_resource_size'], title_id=title).items():
         registry.append(f'uint64_t sw_{name}(void){{return {value}ull;}}\n')
     for name, value in dict(input_sha256=inspection['input']['sha256'], backend_revision=revision(), romfs_sha256=romfs_sha).items():
         registry.append('const char *sw_' + name + '(void){return ' + json.dumps(value) + ';}\n')

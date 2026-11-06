@@ -18,6 +18,7 @@ const uint64_t *sw_main_initializers(size_t *count);
 uint64_t sw_sdk_startup(void);
 uint64_t sw_entry(void);
 uint64_t sw_stack_size(void);
+uint64_t sw_system_resource_size(void);
 uint64_t sw_title_id(void);
 const char *sw_input_sha256(void);
 const char *sw_backend_revision(void);

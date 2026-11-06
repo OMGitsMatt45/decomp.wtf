@@ -134,6 +134,17 @@ def test_npdm_stack_is_input_bound(tmp_path):
     with pytest.raises(pc.PCError, match='stack'): exefs.load(root)
 
 
+@pytest.mark.parametrize('size', [1, 0x20000000])
+def test_invalid_npdm_system_resource_size_is_rejected(tmp_path, size):
+    root = fixture(tmp_path / 'exefs')
+    npdm = root / 'main.npdm'
+    raw = bytearray(npdm.read_bytes())
+    struct.pack_into('<I', raw, 0x14, size)
+    npdm.write_bytes(raw)
+    with pytest.raises(pc.PCError, match='system resource size'):
+        exefs.load(root)
+
+
 @pytest.mark.parametrize('local', ['weak-default', 'symbolic-tag', 'symbolic-flag', 'hidden', 'protected'])
 def test_symbol_preemption_and_local_visibility(tmp_path, local):
     root = fixture(tmp_path / 'exefs')

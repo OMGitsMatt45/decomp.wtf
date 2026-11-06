@@ -29,6 +29,7 @@ unsafe extern "C" {
     fn sw_sdk_startup() -> u64;
     fn sw_entry() -> u64;
     fn sw_stack_size() -> u64;
+    fn sw_system_resource_size() -> u64;
     fn sw_title_id() -> u64;
     fn sw_input_sha256() -> *const c_char;
     fn sw_backend_revision() -> *const c_char;
@@ -240,7 +241,8 @@ fn load(assets: &std::path::Path) -> Result<(kirikae_loader::Executable, &'stati
         Some(image)
     } else { None };
     Ok((Executable { modules, entry: STARTUP, title_id: Some(unsafe { sw_title_id() }),
-        main_stack_size: Some(unsafe { sw_stack_size() }), romfs, ..Default::default() }, Box::leak(entries.into_boxed_slice())))
+        main_stack_size: Some(unsafe { sw_stack_size() }), system_resource_size: unsafe { sw_system_resource_size() },
+        romfs, ..Default::default() }, Box::leak(entries.into_boxed_slice())))
 }
 
 fn run(args: &[String]) -> Result<(i32, Value), String> {
