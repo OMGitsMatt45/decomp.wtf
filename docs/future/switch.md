@@ -325,13 +325,10 @@ on transient targets. Compilation errors and unsupported shaders remain fatal.
 The Windows Switch workflow executes native CPU/module comparisons, original
 desktop programs and runtime regressions without retail game inputs.
 
-Maxwell upper-left raster origin reverses the front-face convention used by
-the Vulkan host. The runtime now accounts for mode bit 0 of `SET_WINDOW_ORIGIN`
-(`0x13ac`); its separate `FLIP_Y` field is not used as an origin flag. The
-original graphics probe checks both windings with both window origins, the
-separate FLIP_Y flag and both viewport-height signs, in addition to its two
-unculled triangle sizes. Register
-definitions come from [NVIDIA's class header](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/cl9097.h).
+The Vulkan runtime maps the Maxwell window-origin mode and its separate
+`FLIP_Y` flag to the host front-face convention. The original graphics probe
+checks both windings across both origin modes, both flip states, and both
+viewport-height signs. [NVIDIA's Maxwell register definitions](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/clb197.h#L2305-L2311)
 
 The original `prepo:u` play-report commands `10100` and `10101` copy guest report
 buffers into a bounded process-local queue. They do not contact Nintendo or

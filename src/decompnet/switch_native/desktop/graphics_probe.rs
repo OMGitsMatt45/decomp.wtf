@@ -45,7 +45,8 @@ fn main() {
     for origin in [0, 1, 0x10, 0x11] {
         for clockwise in [false, true] {
             for negative_height in [false, true] {
-                let visible = (clockwise == (origin & 1 != 0)) ^ negative_height;
+                let flip_y = origin & 0x10 != 0;
+                let visible = (clockwise == (origin & 1 != 0)) ^ flip_y ^ negative_height;
                 cases.push((128,96,true,origin,clockwise,negative_height,visible));
             }
         }

@@ -118,11 +118,12 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '        if let Err(why) = &ok {\n            crate::decomp::gpu_failure(0, why);\n            self.stats.skipped += 1;')
     replace_once(rt / 'src/gpu/vulkan/draw.rs', '                self.stats.skipped_dispatches += 1;',
                  '                crate::decomp::gpu_failure(0, why);\n                self.stats.skipped_dispatches += 1;')
-    # Maxwell's upper-left raster origin reverses its front-face convention
-    # (NV9097 SET_WINDOW_ORIGIN at 0x13ac, mode bit 0). FLIP_Y is separate.
+    # Map the Maxwell window origin and its independent Y flip to the host
+    # front-face convention. Vulkan applies the signed viewport separately.
     replace_once(rt / 'src/gpu/vulkan/draw.rs',
                  '            let front = if regs[0x647] != 0x900 { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE };',
-                 '''            let clockwise = (regs[0x647] == 0x900) ^ (regs[0x4eb] & 1 == 0);
+                 '''            let origin = regs[0x4eb];
+            let clockwise = (regs[0x647] == 0x900) ^ (origin & 1 == 0) ^ (origin & 0x10 != 0);
             let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
     # Maxwell's A1B5G5R5 (TIC 0x14) has red in the low five bits.
     # Keep the Vulkan A1R5G5B5 image and translate the guest's component selectors.
