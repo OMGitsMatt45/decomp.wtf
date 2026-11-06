@@ -26,15 +26,17 @@ def revision():
 
 def emit(binary, image_path, inspection, entries_path, game, report, *, name='guest', desktop=False, anchor_origins=()):
     text = inspection['segments'][0]
+    rodata = inspection['segments'][1]
     command = [str(binary), str(image_path), str(inspection['base']),
                str(text['offset']), str(text['size']), str(entries_path), str(game), str(report), name]
-    if anchor_origins:
-        rodata = inspection['segments'][1]
+    stdin = None
+    if anchor_origins or (desktop and rodata['size']):
         command.append('--anchor-origins')
         if rodata['size']:
             command.extend([str(rodata['offset']), str(rodata['size'])])
+        stdin = ''.join(f'{pc}\n' for pc in anchor_origins)
     try:
-        result = subprocess.run(command, input=''.join(f'{pc}\n' for pc in anchor_origins) if anchor_origins else None,
+        result = subprocess.run(command, input=stdin,
                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise pc.PCError('Switch source generation could not run: ' + str(error)) from error
