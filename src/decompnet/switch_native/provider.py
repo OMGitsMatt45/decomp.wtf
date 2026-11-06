@@ -142,6 +142,65 @@ pub fn resolve_with_recovery(
     None
 }
 
+fn prove_guarded_w_copy(l: &Lifted, entry: u64, compare: u64, index: u32, source: u32) -> Option<()> {
+    // The copy must have executed on every path to the comparison, and
+    // neither register may have changed since. Check all direct entrances.
+    let start = entry.max(compare.saturating_sub(jt::WINDOW * 4));
+    let mut pending = vec![compare];
+    let mut seen = BTreeSet::new();
+    while let Some(a) = pending.pop() {
+        if !seen.insert(a) { continue; }
+        if a <= start || l.m.seeds.contains(&a) { return None; }
+        let previous = a - 4;
+        let fallthrough = (!l.at(previous).ends_block()).then_some(previous);
+        let direct = l.direct_predecessors(a);
+        if direct.is_empty() && fallthrough.is_none() { return None; }
+        for p in direct.iter().map(|&(_, from)| from).chain(fallthrough) {
+            if !(start..a).contains(&p) { return None; }
+            match l.at(p) {
+                Insn::Op(code) if !code.contains("rt_svc(c") => {
+                    let word = jt::Memory::word(l.m, p)?;
+                    // mov Windex, Wsource (orr with WZR, unshifted)
+                    if word == (0x2a00_03e0 | (source << 16) | index) { continue; }
+                    if jt::writes(word, index) || jt::writes(word, source) { return None; }
+                }
+                Insn::B(_) | Insn::BCond(_, _) => {}
+                _ => return None,
+            }
+            pending.push(p);
+        }
+    }
+    Some(())
+}
+
+fn fallthrough_alias_bound(l: &Lifted, entry: u64, load: u64, branch: u64, index: u32) -> Option<u64> {
+    // Walk the guarded fallthrough from the load to a CMP/B.HI pair. An
+    // entrance after CMP would allow execution without the checked bound.
+    let mut a = load;
+    for _ in 0..jt::WINDOW {
+        if a <= entry || l.m.seeds.contains(&a) || !l.direct_predecessors(a).is_empty() { return None; }
+        let p = a - 4;
+        let word = jt::Memory::word(l.m, p)?;
+        match l.at(p) {
+            Insn::Op(code) if !code.contains("rt_svc(c") && !jt::writes(word, index) => a = p,
+            Insn::BCond(_, target) if *target > branch && word & 0xff00_001f == 0x5400_0008 => {
+                if p <= entry || l.m.seeds.contains(&p) || !l.direct_predecessors(p).is_empty() { return None; }
+                let compare = p - 4;
+                let word = jt::Memory::word(l.m, compare)?;
+                let source = bits(word, 5, 5);
+                if word & 0xff80_001f != 0x7100_001f || source == index || source == 31 || index == 31 {
+                    return None;
+                }
+                prove_guarded_w_copy(l, entry, compare, index, source)?;
+                let limit = (bits(word, 10, 12) as u64) << (bits(word, 22, 1) * 12);
+                return Some(limit + 1);
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u64> {
     jt::resolve_with_recovery(l.m, entry, pc, branch, r, |load, reg| {
         // The reaching-definition walk rejects paths that cross a call
@@ -163,7 +222,9 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
         let constant = |definition| jt::constant_at(l.m, start, definition, reg);
         let table = constant(definitions.next()?)?;
         definitions.all(|definition| constant(definition) == Some(table)).then_some(table)
-    }, |load, idx| guarded_table_bound(l, load, idx)).unwrap_or_default()
+    }, |load, idx| {
+        guarded_table_bound(l, load, idx).or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
+    }).unwrap_or_default()
 }
 
 /// How the `br` at `br_pc` is emitted,''')

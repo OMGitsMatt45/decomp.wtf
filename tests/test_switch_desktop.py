@@ -232,6 +232,37 @@ def test_halfword_table_requires_a_unique_full_width_taken_guard(tmp_path, emiss
     assert ('f_8000120' in table) == resolved
 
 
+@pytest.mark.parametrize(('entrance', 'copy', 'between', 'resolved'), [
+    (0xd503201f, 0x2a1503e9, 0xd503201f, True),   # Both paths preserve mov w9, w21.
+    (0xb50000e0, 0x2a1503e9, 0xd503201f, False),  # A direct edge bypasses the copy.
+    (0xb5000180, 0x2a1503e9, 0xd503201f, False),  # A direct edge bypasses the guard.
+    (0xd503201f, 0xaa1503e9, 0xd503201f, False),  # mov x9, x21 can keep high bits.
+    (0xd503201f, 0x2a1503e9, 0x52800055, False),  # One path overwrites W21.
+    (0xd503201f, 0x2a1503e9, 0x52800049, False),  # One path overwrites W9.
+])
+def test_halfword_table_requires_zero_extended_alias_on_every_path(tmp_path, emission_env,
+                                                                  entrance, copy, between, resolved):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # The two paths join at CMP W21, #2. The checked fallthrough loads an
+    # unsigned halfword with X9 and branches across the seeded ADR anchor.
+    words = (entrance, 0x52800055, copy, 0xb4000081, between, 0x14000002, 0xd65f03c0,
+             0x71000abf, 0x54000188, 0xb000000b, 0x9100016b, 0x100000ac, 0x7869796a,
+             0x8b0a098c, 0x52800028, 0xd61f0180, 0xd2800020, 0xd65f03c0, 0xd2800540,
+             0xd65f03c0, 0xd2800060, 0xd65f03c0)
+    struct.pack_into('<22I', image, 0x80, *words)
+    struct.pack_into('<3H', image, 0x1000, 0, 4, 2)
+    path = tmp_path / 'copied-index.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert 0x080000C0 in entries and 0x080000C8 not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000c8' in table) == resolved
+
+
 @pytest.mark.parametrize(('checked_index', 'resolved'), [
     (0x12003d09, True),   # and w9, w8, #0xffff
     (0x12003909, False),  # and w9, w8, #0x7fff
