@@ -99,6 +99,38 @@ def test_vendor_pins_and_modified_vendor_rejection(tmp_path, monkeypatch):
     assert file.read_text().endswith('// local change\n')
 
 
+@pytest.mark.parametrize('valid_winner', [True, False])
+def test_emitter_cache_publish_reuses_only_a_verified_winner(tmp_path, monkeypatch, valid_winner):
+    monkeypatch.setenv('DECOMP_SWITCH_BUILD_CACHE', str(tmp_path))
+    monkeypatch.setenv('DECOMP_SWITCH_RUSTC', 'test-rustc')
+    binary_name = 'switch-emitter.exe' if os.name == 'nt' else 'switch-emitter'
+    winner = b'other compiler process output'
+
+    def compile_stub(command):
+        if command[-1] == '--version':
+            return 'test-rustc 1.90.0'
+        command[-1].write_bytes(b'local compiler process output')
+
+    monkeypatch.setattr(provider, '_run', compile_stub)
+    rename = Path.rename
+
+    def publish_winner_first(work, destination):
+        destination.mkdir()
+        (destination / binary_name).write_bytes(winner)
+        digest = hashlib.sha256(winner if valid_winner else b'edited').hexdigest()
+        (destination / 'build.json').write_text(json.dumps(dict(key=destination.name, binary_sha256=digest)))
+        return rename(work, destination)
+
+    monkeypatch.setattr(Path, 'rename', publish_winner_first)
+    if valid_winner:
+        assert provider.build().read_bytes() == winner
+    else:
+        with pytest.raises(pc.PCError, match='cache differs'):
+            provider.build()
+    destination, = tmp_path.iterdir()
+    assert (destination / binary_name).read_bytes() == winner
+
+
 def test_cached_donor_pull_verifies_hash_and_preserves_edits(tmp_path):
     archive = tmp_path / 'sample.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
