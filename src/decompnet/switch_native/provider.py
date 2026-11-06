@@ -103,21 +103,36 @@ pub(crate) fn ordered_halfword_cases(
     writes_register: impl Fn(u64, u32) -> bool,
     prove_bound: impl FnOnce(u64, u32, u64) -> Option<(u64, u64)>,
 ) -> Option<Vec<u64>> {
-    let (load, anchor) = adjacent_halfword_table(mem, entry, branch, r, &writes_register)?;
+    let (load, anchor, base) = local_halfword_load(mem, entry, branch, r, &writes_register)?;
+    if base != branch + 4 { return None; }
     let (count, checked_start) = prove_bound(load.at, load.idx, anchor)?;
-    if adjacent_halfword_table(mem, checked_start, branch, r, &writes_register)? != (load, anchor) { return None; }
+    if local_halfword_load(mem, checked_start, branch, r, &writes_register)? != (load, anchor, base) { return None; }
     halfword_targets(mem, branch, load.table?, count)
+}
+
+pub(crate) fn backward_halfword_cases(
+    mem: &dyn Memory, entry: u64, branch: u64, r: u32, rodata: (u64, u64),
+    writes_register: impl Fn(u64, u32) -> bool,
+    prove_bound: impl FnOnce(u64, u32) -> Option<(u64, u64)>,
+) -> Option<Vec<u64>> {
+    let (load, anchor, base) = local_halfword_load(mem, entry, branch, r, &writes_register)?;
+    if base >= branch { return None; }
+    let (count, checked_start) = prove_bound(load.at, load.idx)?;
+    if local_halfword_load(mem, checked_start, branch, r, &writes_register)? != (load, anchor, base) { return None; }
+    let table = load.table?;
+    if table < rodata.0 || table.checked_add(count * 2)? > rodata.1 { return None; }
+    table_targets(mem, base, table, 2, false, 2, count)
 }
 
 pub(crate) fn local_halfword_table(mem: &dyn Memory, start: u64, branch: u64, r: u32, at: u64,
                                    writes_register: impl Fn(u64, u32) -> bool) -> Option<()> {
-    let (load, _) = adjacent_halfword_table(mem, start, branch, r, &writes_register)?;
-    (load.at == at).then_some(())
+    let (load, _, base) = local_halfword_load(mem, start, branch, r, &writes_register)?;
+    (base == branch + 4 && load.at == at).then_some(())
 }
 
-fn adjacent_halfword_table(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
-                           writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64)> {
-    let (load, anchor) = adjacent_halfword_operands(mem, start, branch, reg, writes_register)?;
+fn local_halfword_load(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                       writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64, u64)> {
+    let (load, anchor, base) = local_halfword_operands(mem, start, branch, reg, writes_register)?;
     load.table?;
     let ldrh = mem.word(load.at)?;
     let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
@@ -129,13 +144,13 @@ fn adjacent_halfword_table(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
         let page = last_writer(table, bits(w, 5, 5))?;
         if mem.word(page)? & 0x9f00_0000 != 0x9000_0000 { return None; } // adrp Xn, table
     }
-    Some((load, anchor))
+    Some((load, anchor, base))
 }
 
-fn adjacent_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
-                              writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64)> {
+fn local_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
+                           writes_register: &impl Fn(u64, u32) -> bool) -> Option<(Load, u64, u64)> {
     let Sym::Target { base, load, .. } = value(mem, start, branch, reg, 0)? else { return None };
-    if base != branch + 4 || load.idx == 31 { return None; }
+    if load.idx == 31 { return None; }
     let last_writer = |before, r| (start..before).step_by(4).filter(|&pc| writes_register(pc, r)).last();
     let add = last_writer(branch, reg)?;
     let w = mem.word(add)?;
@@ -148,13 +163,13 @@ fn adjacent_halfword_operands(mem: &dyn Memory, start: u64, branch: u64, reg: u3
     }
     let ldrh = mem.word(load.at)?;
     if ldrh & 0xffe0_fc00 != 0x7860_7800 { return None; } // ldrh Wt, [Xn, Xm, lsl #1]
-    Some((load, anchor))
+    Some((load, anchor, base))
 }
 
 pub(crate) fn halfword_dispatch(mem: &dyn Memory, start: u64, branch: u64, reg: u32,
                                 writes_register: impl Fn(u64, u32) -> bool) -> Option<(u64, u64)> {
-    let (load, anchor) = adjacent_halfword_operands(mem, start, branch, reg, &writes_register)?;
-    Some((load.at, anchor))
+    let (load, anchor, base) = local_halfword_operands(mem, start, branch, reg, &writes_register)?;
+    (base == branch + 4).then_some((load.at, anchor))
 }
 
 pub(crate) fn halfword_targets(mem: &dyn Memory, branch: u64, table: u64, count: u64) -> Option<Vec<u64>> {
@@ -341,17 +356,60 @@ fn nested_writes(l: &Lifted, pc: u64, r: u32) -> bool {
         || matches!(l.at(pc), Insn::Op(code) if code.contains(&format!("c->x[{r}] =")))
 }
 
+fn w_move_source(w: u32) -> Option<u32> {
+    (w & 0xffe0_ffe0 == 0x2a00_03e0).then(|| bits(w, 16, 5)) // mov Wd, Wm
+}
+
+fn recover_backward_halfword(l: &Lifted, branch: u64, r: u32) -> Option<Vec<u64>> {
+    let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
+    let word = |pc| jt::Memory::word(l.m, pc);
+    let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty();
+    let mut alias_at = None;
+    let targets = jt::backward_halfword_cases(l.m, start, branch, r, l.options.rodata?, |pc, reg| nested_writes(l, pc, reg),
+        |load, index| {
+            let copy = (start..load).step_by(4).filter(|&pc| nested_writes(l, pc, index)).last()?;
+            let source = w_move_source(word(copy)?)?;
+            if source == 31 || l.m.seeds.contains(&copy) { return None; }
+            // Every direct entrance reaches the W-copy with the same checked low bits.
+            // That copy clears the upper bits before the X-indexed load.
+            let guard_count = |guard: u64, condition: u32| {
+                let cmp = word(guard.checked_sub(4)?)?;
+                if has_entry(guard) || word(guard)? & 0xff00_001f != (0x5400_0000 | condition)
+                    || cmp & 0xff80_001f != 0x7100_001f || bits(cmp, 5, 5) != source
+                {
+                    return None;
+                }
+                Some(((bits(cmp, 10, 12) as u64) << (bits(cmp, 22, 1) * 12)) + 1)
+            };
+            let fallthrough = copy.checked_sub(4).filter(|&pc| l.in_text(pc))?;
+            let count = guard_count(fallthrough, 8)?; // b.hi default
+            if !matches!(l.at(fallthrough), Insn::BCond(_, target) if !(fallthrough..=branch).contains(target)) {
+                return None;
+            }
+            let taken = l.direct_predecessors(copy);
+            if taken.is_empty() || taken.iter().any(|&(_, pc)| guard_count(pc, 9) != Some(count)) { return None; }
+            if (copy + 4..=branch).step_by(4).any(has_entry)
+                || (copy..branch).step_by(4).any(|pc| !matches!(l.at(pc), Insn::Op(code) if !code.contains("rt_svc(c")))
+            {
+                return None;
+            }
+            alias_at = Some(copy);
+            Some((count, copy))
+        })?;
+    let alias = alias_at?;
+    let taken = l.direct_predecessors(alias);
+    // A table slot cannot bypass a comparison by entering its guard or setup.
+    targets.iter().all(|target| !(alias - 4..=branch).contains(target)
+        && !taken.iter().any(|(_, guard)| guard == target)).then_some(targets)
+}
+
 fn nested_outer_bound(l: &Lifted, branch: u64, load: u64, index: u32, selector: u32) -> Option<(u64, u64)> {
     let word = |pc| jt::Memory::word(l.m, pc);
     let start = l.m.text.start.max(branch.saturating_sub(jt::WINDOW * 4));
     let index_copy = (start..load).step_by(4).filter(|&pc| nested_writes(l, pc, index)).last()?;
     let selector_copy = (load + 4..branch).step_by(4).filter(|&pc| nested_writes(l, pc, selector)).last()?;
-    let mov_source = |pc| {
-        let w = word(pc)?;
-        (w & 0xffe0_ffe0 == 0x2a00_03e0).then(|| bits(w, 16, 5)) // mov Wd, Wm
-    };
-    let source = mov_source(index_copy)?;
-    if source == index || source == selector || source == 31 || mov_source(selector_copy)? != source {
+    let source = w_move_source(word(index_copy)?)?;
+    if source == index || source == selector || source == 31 || w_move_source(word(selector_copy)?)? != source {
         return None;
     }
     let guard = index_copy.checked_sub(4).filter(|&pc| pc > start)?;
@@ -634,7 +692,8 @@ fn recover_table(l: &Lifted, entry: u64, pc: u64, branch: u64, r: u32) -> Vec<u6
         guarded_table_bound(l, load, idx)
             .or_else(|| fallthrough_alias_bound(l, entry, load, branch, idx))
             .or_else(|| nested_table_bound(l, load, branch, r, idx))
-    }).or_else(|| recover_linked_halfword(l, branch)).unwrap_or_default()
+    }).or_else(|| recover_backward_halfword(l, branch, r))
+        .or_else(|| recover_linked_halfword(l, branch)).unwrap_or_default()
 }
 
 /// How the `br` at `br_pc` is emitted,''')

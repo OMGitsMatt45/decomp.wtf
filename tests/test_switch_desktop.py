@@ -234,6 +234,35 @@ def test_backward_byte_table_requires_a_constant_base_on_each_path(tmp_path, emi
     assert ('f_80000a8' in table) == (not unknown_base)
 
 
+@pytest.mark.parametrize('variant', ['guarded', 'wrong-source', 'skipped-compare', 'operand-entry', 'table-guard-entry'])
+def test_backward_halfword_table_checks_every_guard_into_the_w_alias(tmp_path, emission_env, variant):
+    from tools.switch_fixture import conditional_target_fixture, reference
+    image = bytearray(conditional_target_fixture())
+    # CMP W0; B.HI default falls into MOV W8,W0. A distant B.LS enters
+    # the same copy and creates a separate partition before the LDRH.
+    words = (0x52800020, 0x1000028c, 0x350001e2, 0x35000241, 0x14000003, 0x52800020,
+             0xd65f03c0, 0x7100041f, 0x54000128, 0x2a0003e8, 0xb000000b, 0x9100016b,
+             0x10ffff29, 0x7868796a, 0x8b0a0929, 0x52800016, 0xd61f0120, 0x52800000,
+             0xd65f03c0, 0x52800540, 0xd65f03c0, 0x7100041f, 0x54fffe69, 0x17fffffa)
+    struct.pack_into(f'<{len(words)}I', image, 0x80, *words)
+    if variant == 'wrong-source':
+        struct.pack_into('<I', image, 0xd4, 0x7100043f)  # cmp w1, #1
+    if variant == 'skipped-compare':
+        struct.pack_into('<I', image, 0x8c, 0x35000261)  # cbnz w1, b.ls
+    if variant == 'operand-entry':
+        struct.pack_into('<I', image, 0xe0, 0x17fffff5)  # b to the load
+    struct.pack_into('<2H', image, 0x1000, 17 if variant == 'table-guard-entry' else 0, 14)
+    path = tmp_path / 'backward-halfword.nro'
+    path.write_bytes(image)
+    assert reference(path)['x'][0] == 42
+    out = tmp_path / 'source'
+    project.export(path, out)
+    entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
+    assert 0x08000094 in entries and 0x080000cc not in entries
+    table = (out / 'game/guest0_table.c').read_text()
+    assert ('f_80000cc' in table) == (variant == 'guarded')
+
+
 @pytest.mark.parametrize(('producer', 'compare', 'alternate', 'resolved'), [
     (0xd2800028, 0xf100091f, 0xd503201f, True),   # full-width guard
     (0xd2800028, 0xf100091f, 0xb4000408, False),  # alternate branch to load
