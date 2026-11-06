@@ -267,21 +267,24 @@ def test_halfword_table_requires_zero_extended_alias_on_every_path(tmp_path, emi
     assert ('f_80000c8' in table) == resolved
 
 
-@pytest.mark.parametrize(('checked_index', 'resolved'), [
-    (0x12003d09, True),   # and w9, w8, #0xffff
-    (0x12003909, False),  # and w9, w8, #0x7fff
-    (0x12003c09, False),  # and w9, w0, #0xffff
+@pytest.mark.parametrize(('checked_index', 'scheduled', 'resolved'), [
+    (0x12003d09, (), True),                # and w9, w8, #0xffff
+    (0x12003909, (), False),               # and w9, w8, #0x7fff
+    (0x12003c09, (), False),               # and w9, w0, #0xffff
+    (0x12003d09, (0x390033e8,), True),     # strb w8, [sp, #0xc]
+    (0x12003d09, (0x2b1f03ff,), False),    # adds wzr, wzr, wzr
+    (0x12003d09, (0x52800048,), False),    # mov w8, #2
 ])
-def test_halfword_table_requires_matching_masked_alias(tmp_path, emission_env, checked_index, resolved):
+def test_halfword_table_requires_matching_masked_alias(tmp_path, emission_env, checked_index, scheduled, resolved):
     from tools.switch_fixture import conditional_target_fixture, reference
     image = bytearray(conditional_target_fixture())
-    # x8 = 0x10002; cmp (w8 & 0xffff), #2; b.hi default; and x8, x8, #0xffff;
-    # load an unsigned halfword from 0x1000 and branch to 0xb0 plus its scaled offset.
-    words = (0xd2800048, 0xf2a00028, checked_index, 0x7100093f, 0x54000188,
+    # x8 = 0x10002; cmp (w8 & 0xffff), #2; optional scheduled instruction;
+    # b.hi default; mask X8, load an unsigned halfword, and branch to the scaled offset.
+    words = (0xd10043ff, 0xd2800048, 0xf2a00028, checked_index, 0x7100093f, *scheduled, 0x54000188,
              0x92403d08, 0xb000000b, 0x9100016b, 0x10000089, 0x7868796a,
              0x8b0a0929, 0xd61f0120, 0xd2800020, 0xd65f03c0, 0xd2800540,
              0xd65f03c0, 0xd2800060, 0xd65f03c0)
-    struct.pack_into('<18I', image, 0x80, *words)
+    struct.pack_into(f'<{len(words)}I', image, 0x80, *words)
     struct.pack_into('<3H', image, 0x1000, 0, 4, 2)
     path = tmp_path / 'masked-index.nro'
     path.write_bytes(image)
