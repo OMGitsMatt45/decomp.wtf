@@ -127,11 +127,14 @@ def backward_byte_table_fixture(*, unknown_base):
     return bytes(raw)
 
 
-def distant_guard_table_fixture(*, compare, alternate):
+def distant_guard_table_fixture(*, compare, alternate, producer=0xd2800028):
     """A halfword table whose only guarded entrance is outside the local matcher."""
     raw = bytearray(conditional_target_fixture())
-    # mov x8, #1; cmp x8 or w8, #2; b.ls dispatch; optional alternate edge; ret.
-    struct.pack_into('<5I', raw, 0x80, 0xd2800028, compare, 0x540003c9, alternate, 0xd65f03c0)
+    struct.pack_into('<I', raw, 0, 0x1400001f)  # b index_setup
+    struct.pack_into('<I', raw, 0x7c, 0x10007ca7)  # adr x7, index_value
+    struct.pack_into('<Q', raw, 0x1010, 1)
+    # Produce the index, compare it with 2, and branch to dispatch on LS.
+    struct.pack_into('<5I', raw, 0x80, producer, compare, 0x540003c9, alternate, 0xd65f03c0)
     struct.pack_into('<I', raw, 0xfc, 0x1400000d)  # b default, so no fallthrough into dispatch
     # adrp/add x24, table; adr x9, anchor; ldrh w10, [x24, x8, lsl #1];
     # add x9, x9, x10, lsl #2; br x9; anchor: mov x0, #1; ret; case: mov x0, #42; ret.

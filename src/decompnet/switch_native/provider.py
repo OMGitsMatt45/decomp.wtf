@@ -118,7 +118,7 @@ pub fn resolve_with_recovery(
         if a == l.m.text.start || l.m.seeds.contains(&a) { return None; }
         let previous = a - 4;
         match l.direct_predecessors(a) {
-            [] if matches!(l.at(previous), Insn::Op(_)) => {
+            [] if matches!(l.at(previous), Insn::Op(code) if !code.contains("rt_svc(c")) => {
                 if jt::writes(jt::Memory::word(l.m, previous)?, idx) { return None; }
                 a = previous;
             }
@@ -127,12 +127,27 @@ pub fn resolve_with_recovery(
                     return None;
                 }
                 let guard = jt::Memory::word(l.m, branch)?;
-                let compare = jt::Memory::word(l.m, branch.checked_sub(4)?)?;
+                let compare_at = branch.checked_sub(4)?;
+                let compare = jt::Memory::word(l.m, compare_at)?;
                 if guard & 0xff00_001f != 0x5400_0009 // b.ls, taken into the table block
-                    || compare & 0xff80_001f != 0xf100_001f // cmp Xidx, #imm
+                    || compare & 0x7f80_001f != 0x7100_001f // cmp Widx or Xidx, #imm
                     || bits(compare, 5, 5) != idx || idx == 31
                 {
                     return None;
+                }
+                if bits(compare, 31, 1) == 0 {
+                    // CMP Widx only constrains the low half of Xidx. Require a
+                    // preceding zero-extending load and no way to skip it.
+                    let producer_at = compare_at.checked_sub(4)?;
+                    if producer_at < l.m.text.start || l.m.seeds.contains(&compare_at)
+                        || !l.direct_predecessors(compare_at).is_empty()
+                    {
+                        return None;
+                    }
+                    let producer = jt::Memory::word(l.m, producer_at)?;
+                    if producer & 0xffc0_001f != (0xb940_0000 | idx) { // ldr Widx, [Xn, #imm]
+                        return None;
+                    }
                 }
                 let limit = (bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12);
                 return Some(limit + 1);

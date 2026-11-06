@@ -217,21 +217,28 @@ def test_backward_byte_table_requires_a_constant_base_on_each_path(tmp_path, emi
     assert ('f_80000a8' in table) == (not unknown_base)
 
 
-@pytest.mark.parametrize(('compare', 'alternate', 'resolved'), [
-    (0xf100091f, 0xd503201f, True),   # cmp x8, #2; nop
-    (0xf100091f, 0xb4000408, False),  # cmp x8, #2; cbz x8, load
-    (0xf100091f, 0xb4ffffe8, False),  # cmp x8, #2; cbz x8, b.ls
-    (0x7100091f, 0xd503201f, False),  # cmp w8, #2; nop
+@pytest.mark.parametrize(('producer', 'compare', 'alternate', 'resolved'), [
+    (0xd2800028, 0xf100091f, 0xd503201f, True),   # full-width guard
+    (0xd2800028, 0xf100091f, 0xb4000408, False),  # alternate branch to load
+    (0xd2800028, 0xf100091f, 0xb4ffffe8, False),  # alternate branch to b.ls
+    (0xd2800028, 0x7100091f, 0xd503201f, False),  # unsupported producer for W guard
+    (0xb94000e8, 0x7100091f, 0xd503201f, True),   # ldr w8, [x7] clears the upper bits
+    (0xf94000e8, 0x7100091f, 0xd503201f, False),  # ldr x8, [x7] can set upper bits
+    (0xb94000e8, 0x7100091f, 0xb4ffffc8, False),  # alternate branch to compare
+    (0xb94000e8, 0x7100091f, 0x10ffffcb, False),  # compare address materialized as a root
 ])
-def test_halfword_table_requires_a_unique_full_width_taken_guard(tmp_path, emission_env, compare, alternate, resolved):
+def test_halfword_table_requires_a_unique_proven_taken_guard(tmp_path, emission_env,
+                                                            producer, compare, alternate, resolved):
     from tools.switch_fixture import distant_guard_table_fixture, reference
     path = tmp_path / 'distant-guard-target.nro'
-    path.write_bytes(distant_guard_table_fixture(compare=compare, alternate=alternate))
+    path.write_bytes(distant_guard_table_fixture(producer=producer, compare=compare, alternate=alternate))
     assert reference(path)['x'][0] == 42
     out = tmp_path / 'source'
     project.export(path, out)
     entries = {int(entry) for entry in (out / 'main-entries.txt').read_text().splitlines()}
     assert 0x08000118 in entries and 0x08000120 not in entries
+    if alternate == 0x10ffffcb:
+        assert 0x08000084 in entries
     table = (out / 'game/guest0_table.c').read_text()
     assert ('f_8000120' in table) == resolved
 
