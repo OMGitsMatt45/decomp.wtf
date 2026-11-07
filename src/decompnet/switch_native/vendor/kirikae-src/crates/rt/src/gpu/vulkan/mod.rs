@@ -68,6 +68,7 @@ pub struct Renderer {
     surface_fn: Option<ash::khr::surface::Instance>,
     platforms: Vec<&'static CStr>,
     swapchain_fn: Option<ash::khr::swapchain::Device>,
+    nv_swapchain_boost: Option<vk::PFN_vkSetLatencySleepModeNV>,
     swapchain: Option<Swapchain>,
     family: u32,
     present_failed: bool,
@@ -365,8 +366,39 @@ impl Renderer {
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default().dynamic_rendering(true);
         let priorities = [1.0];
         let queues = [vk::DeviceQueueCreateInfo::default().queue_family_index(family).queue_priorities(&priorities)];
+        let boost_requested = crate::env_var!("KIRIKAE_NV_SWAPCHAIN_BOOST").is_some_and(|value| value == "1");
+        // Vulkan 1.3 satisfies the core timeline semaphore dependency. Boost
+        // uses neither the timeline semaphore nor the present ID feature.
+        let try_boost = boost_requested
+            && swapchains
+            && props.vendor_id == 0x10de
+            && has(ash::nv::low_latency2::NAME)
+            && has(ash::khr::present_id::NAME);
+        let ordinary_extensions = extensions.len();
+        if try_boost {
+            extensions.extend([ash::khr::present_id::NAME.as_ptr(), ash::nv::low_latency2::NAME.as_ptr()]);
+        } else if boost_requested {
+            eprintln!("kirikae: NVIDIA swapchain boost is unavailable on the selected Vulkan device");
+        }
         let info = vk::DeviceCreateInfo::default().queue_create_infos(&queues).enabled_extension_names(&extensions).enabled_features(&features).push_next(&mut v13);
-        let device = unsafe { instance.create_device(physical, &info, None)? };
+        let (device, boost_enabled) = match unsafe { instance.create_device(physical, &info, None) } {
+            Err(e) if try_boost => {
+                eprintln!("kirikae: NVIDIA swapchain boost device setup failed ({e:?}); using the ordinary Vulkan device");
+                let ordinary_info = info.enabled_extension_names(&extensions[..ordinary_extensions]);
+                (unsafe { instance.create_device(physical, &ordinary_info, None)? }, false)
+            }
+            result => (result?, try_boost),
+        };
+        let nv_swapchain_boost = if boost_enabled {
+            let proc = unsafe { instance.get_device_proc_addr(device.handle(), c"vkSetLatencySleepModeNV".as_ptr()) };
+            if proc.is_none() {
+                eprintln!("kirikae: NVIDIA swapchain boost entry point is unavailable");
+            }
+            // The proc address was queried by the exact Vulkan command name.
+            proc.map(|f| unsafe { std::mem::transmute::<_, vk::PFN_vkSetLatencySleepModeNV>(f) })
+        } else {
+            None
+        };
         let queue = unsafe { device.get_device_queue(family, 0) };
         let push = push_supported.then(|| ash::khr::push_descriptor::Device::new(&instance, &device));
         let swapchain_fn = swapchains.then(|| ash::khr::swapchain::Device::new(&instance, &device));
@@ -463,6 +495,7 @@ impl Renderer {
             surface_fn,
             platforms,
             swapchain_fn,
+            nv_swapchain_boost,
             swapchain: None,
             family,
             present_failed: false,

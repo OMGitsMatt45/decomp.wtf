@@ -27,9 +27,10 @@ def apply(root):
         let mut xfb_feature = vk::PhysicalDeviceTransformFeedbackFeaturesEXT::default().transform_feedback(xfb_enabled);''')
     replace_once(renderer, '            .depth_bias_clamp(supported.depth_bias_clamp == vk::TRUE);', '''            .depth_bias_clamp(supported.depth_bias_clamp == vk::TRUE)
             .vertex_pipeline_stores_and_atomics(supported.vertex_pipeline_stores_and_atomics == vk::TRUE);''')
-    replace_once(renderer, '        let device = unsafe { instance.create_device(physical, &info, None)? };', '''        let info = if xfb_enabled { info.push_next(&mut xfb_feature) } else { info };
-        let device = unsafe { instance.create_device(physical, &info, None)? };
-        let transform_feedback = xfb_enabled.then(|| transform_feedback::TransformFeedback::new(&instance, &device, physical));''')
+    replace_once(renderer, '.push_next(&mut v13);', '''.push_next(&mut v13);
+        let info = if xfb_enabled { info.push_next(&mut xfb_feature) } else { info };''')
+    replace_once(renderer, '        let queue = unsafe { device.get_device_queue(family, 0) };', '''        let transform_feedback = xfb_enabled.then(|| transform_feedback::TransformFeedback::new(&instance, &device, physical));
+        let queue = unsafe { device.get_device_queue(family, 0) };''')
     replace_once(renderer, '        let buffer = unsafe { device.create_buffer(&vk::BufferCreateInfo::default().size(RING_SIZE).usage(usage), None)? };', '''        let usage = if xfb_enabled { usage | vk::BufferUsageFlags::TRANSFORM_FEEDBACK_BUFFER_EXT } else { usage };
         let buffer = unsafe { device.create_buffer(&vk::BufferCreateInfo::default().size(RING_SIZE).usage(usage), None)? };''')
     replace_once(renderer, '            rendering: None,', '            rendering: None,\n            transform_feedback,\n            vertex_storage: supported.vertex_pipeline_stores_and_atomics == vk::TRUE,')

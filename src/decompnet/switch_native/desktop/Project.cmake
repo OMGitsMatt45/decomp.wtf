@@ -8,12 +8,40 @@ endif()
 find_program(CARGO cargo REQUIRED)
 set(SWITCH_CARGO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo" CACHE PATH "Cargo build cache")
 set(SWITCH_RUST_LIBRARY "${SWITCH_CARGO_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}kirikae_rt${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(SWITCH_RUST_PGO_PROFILE "" CACHE FILEPATH "Optional LLVM instrumentation profile for kirikae-rt")
+set(SWITCH_CARGO_COMMAND build)
+set(SWITCH_CARGO_PROFILE_ARGS)
+set(SWITCH_CARGO_PROFILE_INPUTS)
+set(SWITCH_CARGO_PROFILE_KEY normal)
+if(NOT SWITCH_RUST_PGO_PROFILE STREQUAL "")
+  get_filename_component(SWITCH_PGO_SOURCE "${SWITCH_RUST_PGO_PROFILE}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  if(NOT EXISTS "${SWITCH_PGO_SOURCE}" OR IS_DIRECTORY "${SWITCH_PGO_SOURCE}")
+    message(FATAL_ERROR "SWITCH_RUST_PGO_PROFILE must identify a local profile file")
+  endif()
+  file(SHA256 "${SWITCH_PGO_SOURCE}" SWITCH_CARGO_PROFILE_KEY)
+  # The path changes when the bytes change, so Cargo also sees a new input.
+  set(SWITCH_PGO_INPUT "${CMAKE_CURRENT_BINARY_DIR}/rust-pgo/${SWITCH_CARGO_PROFILE_KEY}.profdata")
+  configure_file("${SWITCH_PGO_SOURCE}" "${SWITCH_PGO_INPUT}" COPYONLY)
+  file(SHA256 "${SWITCH_PGO_INPUT}" SWITCH_PINNED_PROFILE_KEY)
+  if(NOT SWITCH_PINNED_PROFILE_KEY STREQUAL SWITCH_CARGO_PROFILE_KEY)
+    message(FATAL_ERROR "PGO profile changed during configuration")
+  endif()
+  set(SWITCH_CARGO_COMMAND rustc)
+  set(SWITCH_CARGO_PROFILE_ARGS --lib -- "-Cprofile-use=${SWITCH_PGO_INPUT}"
+    "-Cllvm-args=-pgo-warn-missing-function")
+  set(SWITCH_CARGO_PROFILE_INPUTS "${SWITCH_PGO_SOURCE}" "${SWITCH_PGO_INPUT}")
+endif()
+# Force a new Cargo invocation when reusing a build tree with another mode.
+set(SWITCH_CARGO_PROFILE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/switch-cargo-profile.txt")
+file(CONFIGURE OUTPUT "${SWITCH_CARGO_PROFILE_STAMP}" CONTENT "${SWITCH_CARGO_PROFILE_KEY}\n" @ONLY)
+
 file(GLOB_RECURSE RUNTIME_SOURCE CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sdk/crates/*/src/*.rs")
 add_custom_command(OUTPUT "${SWITCH_RUST_LIBRARY}"
   COMMAND "${CMAKE_COMMAND}" -E env "CARGO_TARGET_DIR=${SWITCH_CARGO_TARGET_DIR}"
-    "${CARGO}" build --locked --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/sdk/Cargo.toml"
-    --release -p kirikae-rt --no-default-features --features decomp-native,h264
+    "${CARGO}" "${SWITCH_CARGO_COMMAND}" --locked --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/sdk/Cargo.toml"
+    --release -p kirikae-rt --no-default-features --features decomp-native,h264 ${SWITCH_CARGO_PROFILE_ARGS}
   DEPENDS ${RUNTIME_SOURCE} sdk/Cargo.toml sdk/Cargo.lock sdk/crates/rt/Cargo.toml
+    "${SWITCH_CARGO_PROFILE_STAMP}" ${SWITCH_CARGO_PROFILE_INPUTS}
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   VERBATIM)
 add_custom_target(switch_host_runtime DEPENDS "${SWITCH_RUST_LIBRARY}")
