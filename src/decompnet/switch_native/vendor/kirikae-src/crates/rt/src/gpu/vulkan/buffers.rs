@@ -6,6 +6,12 @@ use crate::mem::GuestMemory;
 use super::Renderer;
 use super::submit::Garbage;
 
+pub(super) struct CheckedBinding {
+    cp_seen: usize,
+    pending_epoch: u64,
+    binding: (vk::Buffer, u64),
+}
+
 impl Renderer {
     /// Prepare one bounded prefix per instance-rate stream. The bound address
     /// stays at element zero because Vulkan adds firstInstance when fetching.
@@ -96,7 +102,7 @@ impl Renderer {
                     forwarded |= 1 << stream;
                     (self.ring.buffer, offset)
                 } else {
-                    let pair = self.checked_guest_buffer(mem, cpu, size, BIND_ALIGNMENT, buffer_cache::Kind::Vertex)
+                    let pair = self.checked_guest_buffer(mem, cpu, size, BIND_ALIGNMENT, buffer_cache::Kind::Vertex, true)
                         .map_err(|_| "instance stream upload")?
                         .ok_or("instance stream mapping")?;
                     self.stats.vertex_bytes += size;
@@ -226,9 +232,8 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn guest_buffer(&mut self, gpu: &Gpu, mem: &GuestMemory, va: u64, size: u64, align: u64, kind: buffer_cache::Kind) -> Result<(vk::Buffer, u64), String> {
         let cpu = gpu.translate(va);
-        let pending = cpu.is_none_or(|c| self.pending_pages.overlapping(c, size).next().is_some());
-        if !pending && let Some(cpu) = cpu
-            && let Some(buffer) = self.checked_guest_buffer(mem, cpu, size, align, kind)?
+        if let Some(cpu) = cpu
+            && let Some(buffer) = self.checked_guest_buffer(mem, cpu, size, align, kind, false)?
         {
             return Ok(buffer);
         }
@@ -240,14 +245,32 @@ impl Renderer {
     }
 
     fn checked_guest_buffer(&mut self, mem: &GuestMemory, cpu: u64, size: u64,
-        align: u64, kind: buffer_cache::Kind) -> Result<Option<(vk::Buffer, u64)>, String> {
+        align: u64, kind: buffer_cache::Kind, pending_already_checked: bool) -> Result<Option<(vk::Buffer, u64)>, String> {
         let key = (cpu, size, kind);
-        if crate::env_var!("KIRIKAE_NO_CHECKED").is_none()
-            && let Some(entry) = self.checked.get_mut(&key)
-            && !self.cp_writes.since(cpu, size, entry.0)
+        let pending_epoch = self.pending_pages.next;
+        let checked = self.checked.get_mut(&key);
+        // This proof belongs to the exact translated CPU range and is used
+        // under the renderer lock. Publishing a write advances the epoch;
+        // retirement only removes pending entries and records the CPU write.
+        if !pending_already_checked
+            && (kind != buffer_cache::Kind::ReadOnlyStorage || !self.pending_pages.pages.is_empty())
         {
-            entry.0 = self.cp_writes.len();
-            return Ok(Some((entry.1, entry.2)));
+            if self.reuse_pending_checks && checked.as_ref().is_some_and(|entry| entry.pending_epoch == pending_epoch) {
+                self.stats.checked_pending_reused += 1;
+            } else {
+                if self.reuse_pending_checks { self.stats.checked_pending_scans += 1; }
+                if self.pending_pages.overlapping(cpu, size).next().is_some() {
+                    return Ok(None);
+                }
+            }
+        }
+        if crate::env_var!("KIRIKAE_NO_CHECKED").is_none()
+            && let Some(entry) = checked
+            && !self.cp_writes.since(cpu, size, entry.cp_seen)
+        {
+            entry.cp_seen = self.cp_writes.len();
+            entry.pending_epoch = pending_epoch;
+            return Ok(Some(entry.binding));
         }
         let Some(data) = mem.bytes(cpu, size) else { return Ok(None); };
         let resident = self.cached(cpu, size, kind, data, |bytes| bytes.to_vec())
@@ -256,7 +279,9 @@ impl Renderer {
             Some(binding) => binding,
             None => (self.ring.buffer, self.ring_copy(data, align).ok_or("ring full")?),
         };
-        self.checked.insert(key, (self.cp_writes.len(), buffer, offset));
+        self.checked.insert(key, CheckedBinding {
+            cp_seen: self.cp_writes.len(), pending_epoch, binding: (buffer, offset),
+        });
         Ok(Some((buffer, offset)))
     }
 
@@ -273,10 +298,7 @@ impl Renderer {
             return Ok(None);
         }
         let cpu = mapping.cpu + offset;
-        if !self.pending_pages.pages.is_empty() && self.pending_pages.overlapping(cpu, size).next().is_some() {
-            return Ok(None);
-        }
-        self.checked_guest_buffer(mem, cpu, size, align, buffer_cache::Kind::ReadOnlyStorage)
+        self.checked_guest_buffer(mem, cpu, size, align, buffer_cache::Kind::ReadOnlyStorage, false)
     }
 
     #[allow(clippy::too_many_arguments)]
