@@ -560,7 +560,7 @@ pub(super) fn texture_hash(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &
         && let Some(stride) = layer_size(h, f, levels)
     {
         for layer in 1..layers as u64 {
-            let Some(bytes) = gpu.bytes(mem, h.address + layer * stride, first.len() as u64) else { break };
+            let Some(bytes) = gpu.mapped_bytes(mem, h.address + layer * stride, first.len() as u64) else { break };
             for gob in bytes.chunks(512).step_by(16) {
                 hash = (hash ^ hash64(gob)).wrapping_mul(0x0000_0100_0000_01b3).rotate_left(5) ^ layer;
             }
@@ -570,17 +570,45 @@ pub(super) fn texture_hash(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &
 }
 
 pub(super) fn texture_source(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &TexFormat) -> Option<Vec<u8>> {
-    let (bw, bh) = (h.width.div_ceil(f.block_w) as u64, h.height.div_ceil(f.block_h) as u64);
-    let row = bw * f.block_bytes as u64;
     let size = match h.layout {
-        Layout::BlockLinear { block_height_log2, .. } => {
-            let rows = 8u64 << block_height_log2;
-            row.div_ceil(64) * 64 * bh.div_ceil(rows) * rows
-        }
-        Layout::Pitch { pitch } => pitch as u64 * bh,
+        Layout::BlockLinear { .. } => level_offset(h, f, 1),
+        Layout::Pitch { pitch } => pitch as u64 * h.height.div_ceil(f.block_h) as u64,
         Layout::Buffer => return None,
     };
-    gpu.read(mem, h.address, size.min(64 << 20))
+    gpu.mapped_bytes(mem, h.address, size.min(64 << 20)).map(std::borrow::Cow::into_owned)
+}
+
+#[test]
+fn bc7_texture_reads_remapped_tail_pages() {
+    const PAGE: u64 = 0x1_0000;
+    const VA: u64 = 0x5_0000_0000;
+    const BASE: u64 = 0x1000_0000;
+    const TAIL: u64 = 0x2000_0000;
+
+    let mem = GuestMemory::new().unwrap();
+    mem.map(BASE, 2 * PAGE).unwrap();
+    mem.map(TAIL, PAGE).unwrap();
+    assert!(mem.write(BASE, &vec![0x41; 2 * PAGE as usize]));
+    assert!(mem.write(TAIL, &vec![0x52; PAGE as usize]));
+
+    let gpu = Gpu::default();
+    gpu.map(VA, BASE, 2 * PAGE);
+    let mut header = tic::texture_header(&[0; 8]);
+    header.address = VA;
+    header.width = 512;
+    header.height = 256;
+    header.layout = Layout::BlockLinear { block_height_log2: 3, block_depth_log2: 0 };
+    let format = formats::texture(0x17, 2, true).unwrap();
+    let original_hash = texture_hash(&gpu, &mem, &header, &format, 1, 1).unwrap();
+
+    gpu.map(VA + PAGE, TAIL, PAGE);
+    assert_eq!(gpu.translate(VA), Some(BASE));
+    let levels = read_texture(&gpu, &mem, &header, &format, 1, 1);
+    let blocks = levels[0].2.as_chunks::<16>().0;
+    let remapped_blocks = blocks.iter().filter(|block| **block == [0x52; 16]).count();
+    let updated_hash = texture_hash(&gpu, &mem, &header, &format, 1, 1).unwrap();
+    assert_eq!(blocks.len(), 8192);
+    assert_eq!((remapped_blocks, updated_hash != original_hash), (4096, true));
 }
 
 pub(super) fn read_levels(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &TexFormat, levels: u32, offset: &mut u64, out: &mut Vec<(u32, u32, Vec<u8>)>) {
@@ -599,12 +627,13 @@ pub(super) fn read_levels(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &T
                 let width_bytes = row.div_ceil(64) * 64;
                 let rows = 8u64 << bhl;
                 let size = width_bytes * (bh as u64).div_ceil(rows) * rows;
-                let raw = gpu.read(mem, h.address + *offset, size).unwrap_or_else(|| vec![0; size as usize]);
+                let raw = gpu.mapped_bytes(mem, h.address + *offset, size)
+                    .unwrap_or_else(|| vec![0; size as usize].into());
                 out.push((w, hh, deswizzle(&raw, bw, bh, f.block_bytes, bhl)));
                 *offset += size;
             }
             Layout::Pitch { pitch } => {
-                let raw = gpu.read(mem, h.address, pitch as u64 * bh as u64).unwrap_or_default();
+                let raw = gpu.mapped_bytes(mem, h.address, pitch as u64 * bh as u64).unwrap_or_default();
                 let mut data = Vec::new();
                 for y in 0..bh as u64 {
                     if let Some(r) = raw.get((y * pitch as u64) as usize..((y * pitch as u64) + row) as usize) {

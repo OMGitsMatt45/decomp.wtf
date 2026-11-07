@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -178,10 +179,15 @@ impl Gpu {
     }
 
     pub fn translate(&self, va: u64) -> Option<u64> {
+        let (start, mapping) = self.mapping(va)?;
+        Some(mapping.cpu + (va - start))
+    }
+
+    fn mapping(&self, va: u64) -> Option<(u64, Mapping)> {
         let (changes, me) = (MAPS_CHANGED.load(Ordering::Acquire), self as *const Self as usize);
         let slot = mapping_slot(va);
         let hit = LAST_MAPPINGS.with_borrow(|last| {
-            last[slot].filter(|&(n, gpu, start, m)| (n, gpu) == (changes, me) && (start..start + m.size).contains(&va)).map(|(_, _, start, m)| m.cpu + (va - start))
+            last[slot].filter(|&(n, gpu, start, m)| (n, gpu) == (changes, me) && (start..start + m.size).contains(&va)).map(|(_, _, start, m)| (start, m))
         });
         if hit.is_some() {
             return hit;
@@ -193,7 +199,7 @@ impl Gpu {
         }
         let entry = (MAPS_CHANGED.load(Ordering::Acquire), me, start, m);
         LAST_MAPPINGS.with_borrow_mut(|last| last[slot] = Some(entry));
-        Some(m.cpu + (va - start))
+        Some((start, m))
     }
 
     fn pieces(&self, va: u64, len: u64) -> Option<Vec<(u64, u64)>> {
@@ -231,6 +237,26 @@ impl Gpu {
 
     fn bytes<'m>(&self, mem: &'m GuestMemory, va: u64, len: u64) -> Option<&'m [u8]> {
         mem.bytes(self.translate(va)?, len)
+    }
+
+    fn mapped_bytes<'m>(&self, mem: &'m GuestMemory, va: u64, len: u64) -> Option<Cow<'m, [u8]>> {
+        let (start, mapping) = self.mapping(va)?;
+        let offset = va - start;
+        if len <= mapping.size - offset {
+            return mem.bytes(mapping.cpu + offset, len).map(Cow::Borrowed);
+        }
+
+        va.checked_add(len)?;
+        let pieces = self.pieces(va, len)?;
+        if let [(cpu, size)] = pieces.as_slice() {
+            return mem.bytes(*cpu, *size).map(Cow::Borrowed);
+        }
+        let mut data = Vec::new();
+        data.try_reserve_exact(len.try_into().ok()?).ok()?;
+        for (cpu, size) in pieces {
+            data.extend_from_slice(mem.bytes(cpu, size)?);
+        }
+        Some(Cow::Owned(data))
     }
 
     fn write(&self, mem: &GuestMemory, va: u64, bytes: &[u8]) -> bool {
