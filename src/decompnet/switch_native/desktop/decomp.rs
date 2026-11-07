@@ -17,6 +17,10 @@ pub static AUDIO: Mutex<Option<Value>> = Mutex::new(None);
 
 pub fn graphics_finished(g: &crate::gpu::Gpu, r: Option<&crate::gpu::vulkan::Renderer>) {
     if let Some(r) = r {
+        if r.stats.checked_pending_reused != 0 || r.stats.checked_pending_scans != 0 {
+            eprintln!("kirikae: checked pending ranges: {} proofs reused, {} exact scans",
+                r.stats.checked_pending_reused, r.stats.checked_pending_scans);
+        }
         *GPU.lock().unwrap() = Some(json!({"submits":g.stats.submits.load(Ordering::Relaxed),
             "draws":r.stats.draws,"skipped_draws":r.stats.skipped,"dispatches":r.stats.dispatches,
             "skipped_dispatches":r.stats.skipped_dispatches,"skip_reasons":r.stats.skip_reasons}));
