@@ -81,6 +81,7 @@ impl Renderer {
             self.device.begin_command_buffer(self.cmd, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)).unwrap();
         }
         self.recording = true;
+        self.batch_started_at = self.batch_time_budget.map(|_| std::time::Instant::now());
         self.bound = Bound::default();
         if let Some((q, _)) = self.timestamps {
             let first = 2 * self.current as u32;
@@ -140,6 +141,7 @@ impl Renderer {
             self.device.queue_submit(self.queue, &submit, fence).unwrap();
         }
         self.recording = false;
+        self.batch_started_at = None;
         self.in_flight.push_back(self.current);
         self.serial += 1;
         self.stats.batches += 1;
@@ -399,7 +401,12 @@ impl Renderer {
     }
 
     pub(super) fn split(&mut self) {
-        if self.ring.recorded > BATCH_RING_LIMIT {
+        // Check before the next draw or dispatch prepares resources. Existing
+        // flush rules still submit the same commands and retire all writes.
+        if self.ring.recorded > BATCH_RING_LIMIT
+            || self.batch_time_budget.zip(self.batch_started_at)
+                .is_some_and(|(budget, start)| start.elapsed() >= budget)
+        {
             self.flush();
         }
     }

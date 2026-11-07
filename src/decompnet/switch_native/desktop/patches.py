@@ -325,7 +325,7 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     from .twod import point_copy
     point_copy(root)
     from .bindless import apply as static_bindless_textures
-    static_bindless_textures(root)
+    static_bindless_textures(root, adapter)
     from .presentation import buffer_crop
     buffer_crop(root)
     from .sample_grid import apply as maxwell_sample_grid
@@ -344,6 +344,8 @@ pub(super) fn read_texture(gpu: &Gpu,''')
     primitive_restart(root)
     from .instance_batches import apply as instance_batches
     instance_batches(root)
+    from .readonly_storage import apply as readonly_storage
+    readonly_storage(root, adapter)
     from .audio_work_size import apply as audio_work_size
     audio_work_size(root)
     replace_once(rt / 'src/gpu/vulkan/textures.rs', '        let header = tic::texture_header(&tic);\n', '''        if word == 0 && tic == [0; 8] && dim == TexDim::D2 && !array && !shadow {

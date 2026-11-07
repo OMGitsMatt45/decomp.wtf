@@ -37,6 +37,11 @@ pub struct TextureHeader {
     pub srgb: bool,
 }
 
+pub fn texture_address(w: &[u32; 8]) -> u64 {
+    let low_mask = if matches!(bits(w, 85, 3), 3 | 4) { !0x1ff } else { !0x1f };
+    u64::from(w[1] & low_mask) | u64::from(w[2] & 0xffff) << 32
+}
+
 pub fn texture_header(w: &[u32; 8]) -> TextureHeader {
     let version = bits(w, 85, 3);
     let layout = match version {
@@ -44,16 +49,12 @@ pub fn texture_header(w: &[u32; 8]) -> TextureHeader {
         1 | 2 => Layout::Pitch { pitch: bits(w, 96, 16) << 5 },
         _ => Layout::Buffer,
     };
-    let address = match layout {
-        Layout::BlockLinear { .. } => (bits(w, 41, 23) as u64) << 9 | (bits(w, 64, 16) as u64) << 32,
-        _ => (bits(w, 37, 27) as u64) << 5 | (bits(w, 64, 16) as u64) << 32,
-    };
     TextureHeader {
         components: bits(w, 0, 7),
         data_type: bits(w, 7, 3),
         data_types: [bits(w, 7, 3), bits(w, 10, 3), bits(w, 13, 3), bits(w, 16, 3)],
         swizzle: [bits(w, 19, 3), bits(w, 22, 3), bits(w, 25, 3), bits(w, 28, 3)],
-        address,
+        address: texture_address(w),
         layout,
         width: bits(w, 128, 16) + 1,
         height: bits(w, 160, 16) + 1,
@@ -115,5 +116,25 @@ mod tests {
         assert_eq!(h.address, 0x56_0000_0000 | 0x1234 << 9);
         assert_eq!(h.layout, Layout::BlockLinear { block_height_log2: 4, block_depth_log2: 0 });
         assert_eq!((h.width, h.height, h.texture_type), (1920, 1080, 1));
+    }
+
+    #[test]
+    fn raw_address_matches_all_header_versions_and_bit_boundaries() {
+        let mut seed = 0x4193_ef27u32;
+        for version in 0..8 {
+            for case in 0..1024 {
+                let mut words = std::array::from_fn(|_| {
+                    seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; seed
+                });
+                words[2] = words[2] & !(7 << 21) | version << 21;
+                if case == 0 { words[1] = 0; words[2] &= !0xffff; }
+                if case == 1 { words[1] = u32::MAX; words[2] |= 0xffff; }
+                let low = if matches!(version, 3 | 4) { u64::from(bits(&words, 41, 23)) << 9 }
+                    else { u64::from(bits(&words, 37, 27)) << 5 };
+                let expected = low | u64::from(bits(&words, 64, 16)) << 32;
+                assert_eq!(texture_address(&words), expected);
+                assert_eq!(texture_header(&words).address, expected);
+            }
+        }
     }
 }

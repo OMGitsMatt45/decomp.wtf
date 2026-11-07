@@ -46,6 +46,51 @@ impl Stream {
         }
     }
 
+    /// Emit a contiguous parameter slice without updating the cursor per word.
+    /// The caller still owns the original copied entry and the engine lock.
+    #[inline]
+    pub(super) fn visit(&mut self, mut words: &[u32], mut emit: impl FnMut(u32, u32, u32)) {
+        while !words.is_empty() {
+            let mut p = match self.packet.take() {
+                Some(p) => p,
+                None => {
+                    let (&header, rest) = words.split_first().unwrap();
+                    words = rest;
+                    let (kind, count, sub, method) = (header >> 29, header >> 16 & 0x1fff, header >> 13 & 7, header & 0xfff);
+                    match kind {
+                        1 | 3 | 5 if count != 0 => Packet { kind, sub, method, remaining: count, consumed: 0 },
+                        4 => { emit(sub, method, count); continue; }
+                        _ => continue,
+                    }
+                }
+            };
+            let count = (p.remaining as usize).min(words.len());
+            let (params, rest) = words.split_at(count);
+            words = rest;
+            match p.kind {
+                1 => for (i, &value) in params.iter().enumerate() {
+                    emit(p.sub, p.method + p.consumed + i as u32, value);
+                },
+                3 => for &value in params {
+                    emit(p.sub, p.method, value);
+                },
+                _ => {
+                    let mut tail = params;
+                    if p.consumed == 0 && let Some((&value, rest)) = params.split_first() {
+                        emit(p.sub, p.method, value);
+                        tail = rest;
+                    }
+                    for &value in tail {
+                        emit(p.sub, p.method + 1, value);
+                    }
+                }
+            }
+            p.consumed += count as u32;
+            p.remaining -= count as u32;
+            if p.remaining != 0 { self.packet = Some(p); }
+        }
+    }
+
     /// Host-model execution must not bypass an entry that leaves raw parameters
     /// for the next segment, even when the stream was initially idle.
     pub(super) fn complete_entry(words: &[u32]) -> bool {
@@ -103,6 +148,38 @@ mod tests {
         assert!(Stream::complete_entry(&words));
         assert!(!Stream::complete_entry(&[0xa006_0e3a,4]));
         assert!(Stream::complete_entry(&[0xa006_0e3a,4,270,7,36,0,258447]));
+    }
+
+    #[test]
+    fn packet_visit_matches_the_cursor_after_every_partial_entry() {
+        let mut seed = 0x6000_0001u32;
+        let mut random = || { seed = seed.wrapping_mul(1664525).wrapping_add(1013904223); seed };
+        for len in 0..256 {
+            let mut words = Vec::new();
+            for i in 0..len {
+                let kind = [0, 1, 3, 4, 5, 7][i % 6];
+                let count = random() % 11;
+                words.push(kind << 29 | count << 16 | random() & 0xffff);
+                if matches!(kind, 1 | 3 | 5) {
+                    words.extend((0..count).map(|_| random()));
+                }
+            }
+            let mut reference = Stream::default();
+            let mut candidate = Stream::default();
+            let mut tail = words.as_slice();
+            while !tail.is_empty() {
+                let (entry, rest) = tail.split_at((1 + random() as usize % 17).min(tail.len()));
+                tail = rest;
+                let mut reference_pos = 0;
+                let old: Vec<_> = std::iter::from_fn(|| reference.next(entry, &mut reference_pos)).collect();
+                let mut new = Vec::new();
+                candidate.visit(entry, |sub, method, value| new.push((sub, method, value)));
+                assert_eq!(reference, candidate);
+                assert_eq!(old, new);
+                candidate.visit(&[], |_, _, _| panic!("empty entry emitted a method"));
+                assert_eq!(reference, candidate);
+            }
+        }
     }
 
     #[test]

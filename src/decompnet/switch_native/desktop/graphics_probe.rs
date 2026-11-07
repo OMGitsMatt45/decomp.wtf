@@ -104,12 +104,12 @@ fn texture_updates(gpu: &Gpu, mem: &GuestMemory) {
     assert!(mem.write(0x121000, &shader(true, &[mov(4, 0.5), mov(5, 0.5), sample, EXIT])));
 
     // Reuse the probe triangle and render target from the previous test.
-    let draw = |index| {
+    let draw_with_shader = |index, fragment| {
         assert!(mem.write(0x180060, &words(&[index])));
         let mut cp = Vec::new();
         method(&mut cp, 0, &[CLASS_3D]);
         method(&mut cp, 0x646, &[0]);
-        method(&mut cp, 0x850, &[1, 0x21000]);
+        method(&mut cp, 0x850, &[1, fragment]);
         address(&mut cp, 0x55d, 0x1_0008_0000);
         address(&mut cp, 0x557, 0x1_0008_0040);
         method(&mut cp, 0x8e0, &[32]);
@@ -124,6 +124,7 @@ fn texture_updates(gpu: &Gpu, mem: &GuestMemory) {
         let pixels = gpu.read_pixels(0x200000, 128, 96).expect("texture remap readback");
         pixels[48 * 128 + 64] & 0xffffff
     };
+    let draw = |index| draw_with_shader(index, 0x21000);
 
     let before = draw(0);
     gpu.map(texture, second, 0x1000);
@@ -132,6 +133,26 @@ fn texture_updates(gpu: &Gpu, mem: &GuestMemory) {
     let unchanged_alias = draw(1);
     assert_eq!([before, after, unchanged_alias], [0xff0000, 0x00ff00, 0xff0000],
         "texture remap RGB before={before:06x}, after={after:06x}, alias={unchanged_alias:06x}");
+
+    // Warm an unchanged TIC, then change only its component swizzle. Restoring
+    // the exact raw descriptor must recover the original cached view.
+    let mut edited = tic(texture);
+    edited[0] = rgba8 & !((7 << 19) | (7 << 22)) | 3 << 19 | 2 << 22;
+    for (descriptor, expected) in [(edited, 0xff0000), (tic(texture), 0x00ff00)] {
+        assert!(mem.write(0x180000, &words(&descriptor)));
+        for _ in 0..2 { assert_eq!(draw(0), expected, "raw TIC swizzle edit"); }
+    }
+
+    // Sampling outside U distinguishes repeat from clamp-to-border and then
+    // black from white border state. Only the raw TSC changes between draws.
+    assert!(mem.write(0x122000, &shader(true, &[mov(4, 1.5), mov(5, 0.5), sample, EXIT])));
+    let repeat = [0; 8];
+    let mut black = repeat; black[0] = 3;
+    let mut white = black; white[4..].fill(1f32.to_bits());
+    for (sampler, expected) in [(repeat, 0x00ff00), (black, 0), (white, 0xffffff), (repeat, 0x00ff00)] {
+        assert!(mem.write(0x180040, &words(&sampler)));
+        for _ in 0..2 { assert_eq!(draw_with_shader(0, 0x22000), expected, "raw TSC wrap/border edit"); }
+    }
 
     // An 8x8 BC1 texture has two mip levels in two 512-byte GOBs.
     // Fill the four level-zero blocks with one endpoint and leave mip 1 red.
@@ -175,12 +196,59 @@ fn texture_updates(gpu: &Gpu, mem: &GuestMemory) {
     tic[5] |= 1 << 16;
     assert!(mem.write(0x180000, &words(&tic)));
     let layer_zero = draw(0);
+    assert_eq!(draw(0), layer_zero, "warm array base descriptor");
     tic[1] += 1024;
     tic[5] &= !(1 << 16);
     assert!(mem.write(0x180000, &words(&tic)));
     let layer_one = draw(0);
+    assert_eq!(draw(0), layer_one, "warm array slice descriptor");
     assert_eq!([layer_zero, layer_one], [0x00ff00, 0x0000ff],
         "mipmapped array RGB layer 0={layer_zero:06x}, layer 1={layer_one:06x}");
+}
+
+fn texture_feedback(gpu: &Gpu, mem: &GuestMemory) {
+    let words = |data: &[u32]| data.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>();
+    let submit = |cp: &[u32]| {
+        assert!(mem.write(0x300000, &words(cp)));
+        gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+    };
+    // Use exact-size attachments. The viewport fixture's original target may
+    // have grown, which would test a crop copy instead of direct feedback.
+    let (source, alternate) = (0x1_0012_0000, 0x1_0013_0000);
+    let target = |cp: &mut Vec<u32>, at| {
+        method(cp, 0, &[CLASS_3D]); address(cp, 0x200, at);
+        method(cp, 0x202, &[128 * 4, 96, 0xd5, 1 << 12]);
+    };
+    let clear = |at, color: [f32; 4]| {
+        let mut cp = Vec::new(); target(&mut cp, at);
+        method(&mut cp, 0x360, &color.map(f32::to_bits)); method(&mut cp, 0x674, &[0x3c]);
+        submit(&cp);
+    };
+    let rgba8 = 0x08 | 2 << 7 | 2 << 10 | 2 << 13 | 2 << 16
+        | 2 << 19 | 3 << 22 | 4 << 25 | 5 << 28;
+    let tic = [rgba8, source as u32, (source >> 32) as u32 | 1 << 21,
+        16, 127 | 1 << 23, 95, 0, 0];
+    assert!(mem.write(0x180000, &words(&tic)));
+    assert!(mem.write(0x180040, &[0; 32]));
+    assert!(mem.write(0x180060, &words(&[0])));
+    let draw = |at| {
+        let mut cp = Vec::new(); target(&mut cp, at);
+        method(&mut cp, 0x850, &[1, 0x21000]);
+        method(&mut cp, 0x586, &[4]); method(&mut cp, 0x35e, &[3]); method(&mut cp, 0x585, &[0]);
+        submit(&cp);
+        gpu.read_pixels(gpu.translate(at).unwrap(), 128, 96).expect("feedback readback")[48 * 128 + 64] & 0xffffff
+    };
+    clear(source, [1.0, 0.0, 0.0, 1.0]);
+    clear(alternate, [0.0, 0.0, 0.0, 1.0]);
+    for _ in 0..2 { assert_eq!(draw(alternate), 0xff0000, "warm ordinary source view"); }
+    for (color, expected) in [([0.0, 1.0, 0.0, 1.0], 0x00ff00), ([0.0, 0.0, 1.0, 1.0], 0x0000ff)] {
+        clear(source, color);
+        assert_eq!(draw(source), expected, "active target samples its latest feedback copy");
+    }
+    assert_eq!(draw(alternate), 0x0000ff, "GPU-produced texture wins over old CPU bytes");
+    // Leave the original target selected for the following qualification scene.
+    let mut cp = Vec::new(); target(&mut cp, 0x1_0010_0000);
+    method(&mut cp, 0x360, &[0, 0, 0, 1f32.to_bits()]); submit(&cp);
 }
 
 fn primitive_restart(gpu: &Gpu, mem: &GuestMemory) {
@@ -298,6 +366,8 @@ fn main() {
         "renderer":kirikae_rt::decomp::RENDERER.lock().unwrap().clone(), "frames":frames,
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});
     texture_updates(&gpu, &mem);
+    texture_feedback(&gpu, &mem);
+    assert_eq!(gpu.render_stats().unwrap().skipped, 0);
     primitive_restart(&gpu, &mem);
     gpfifo_continuation(&gpu, &mem);
     gpu.shutdown();

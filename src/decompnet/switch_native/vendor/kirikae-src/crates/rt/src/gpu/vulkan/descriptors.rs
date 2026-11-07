@@ -22,7 +22,14 @@ pub(super) const TEXTURE_OFFSET: u32 = 40;
 
 pub(super) const IMAGE_OFFSET: u32 = 104;
 
+fn storage_is_readonly(shader: &ShaderModule) -> bool {
+    shader.shader.storage_written == 0 && shader.shader.images.is_empty() && !shader.shader.probe
+}
+
 impl Renderer {
+    pub(super) fn readonly_storage_for_compute(&self, shader: &ShaderModule) -> bool {
+        self.readonly_storage_cache && self.buffer_cache_on && storage_is_readonly(shader)
+    }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn descriptors(
         &mut self,
@@ -34,9 +41,13 @@ impl Renderer {
         fs: Option<&ShaderModule>,
         out: &mut Vec<Descriptor>,
     ) -> Result<(), String> {
-        self.shader_descriptors(gpu, mem, regs, cbufs[0], vs, VERTEX_BASE, Stage::Vertex, out)?;
+        // A writer in either stage may alias a readonly binding in the other.
+        let resident_storage = self.readonly_storage_cache && self.buffer_cache_on
+            && [0, 2, 3, 4].iter().all(|&stage| !crate::gpu::threed::stage_enabled(regs, stage))
+            && storage_is_readonly(vs) && fs.is_none_or(storage_is_readonly);
+        self.shader_descriptors(gpu, mem, regs, cbufs[0], vs, VERTEX_BASE, Stage::Vertex, resident_storage, out)?;
         if let Some(fs) = fs {
-            self.shader_descriptors(gpu, mem, regs, cbufs[4], fs, FRAGMENT_BASE, Stage::Fragment, out)?;
+            self.shader_descriptors(gpu, mem, regs, cbufs[4], fs, FRAGMENT_BASE, Stage::Fragment, resident_storage, out)?;
         }
         Ok(())
     }
@@ -51,6 +62,7 @@ impl Renderer {
         s: &ShaderModule,
         base: u32,
         stage: Stage,
+        resident_storage: bool,
         out: &mut Vec<Descriptor>,
     ) -> Result<(), String> {
         let ubo_align = self.limits.min_uniform_buffer_offset_alignment.max(16);
@@ -99,6 +111,16 @@ impl Renderer {
                 eprintln!("gpu: storage buffer {slot} ({stage:?}): {addr:#x} size {size:#x}");
             }
             let size = size.clamp(16, MAX_STORAGE).next_multiple_of(4);
+            if resident_storage
+                && let Some((buffer, offset)) = self.readonly_storage_buffer(gpu, mem, addr, size, ssbo_align)?
+            {
+                #[cfg(debug_assertions)]
+                if buffer != self.ring.buffer {
+                    self.stats.readonly_storage_resident += 1;
+                }
+                out.push(Descriptor::Buffer(base + STORAGE_OFFSET + slot, vk::DescriptorType::STORAGE_BUFFER, buffer, offset, size));
+                continue;
+            }
             let written = s.shader.storage_written >> slot & 1 == 1;
             let cpu = gpu.translate(addr);
             let offset = match cpu.and_then(|c| self.storage.get(&(c, size)).copied()) {

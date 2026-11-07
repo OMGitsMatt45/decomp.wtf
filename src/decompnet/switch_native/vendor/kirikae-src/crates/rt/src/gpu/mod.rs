@@ -12,6 +12,7 @@ pub mod formats;
 pub mod fxhash;
 pub mod mme;
 mod pushbuffer;
+mod registers;
 pub mod threed;
 pub mod tic;
 pub mod twod;
@@ -33,6 +34,17 @@ struct Mapping {
     size: u64,
 }
 
+enum MappingPieces {
+    One((u64, u64)),
+    Many(Vec<(u64, u64)>),
+}
+
+impl MappingPieces {
+    fn as_slice(&self) -> &[(u64, u64)] {
+        match self { Self::One(one) => std::slice::from_ref(one), Self::Many(many) => many }
+    }
+}
+
 static MAPS_CHANGED: AtomicU64 = AtomicU64::new(0);
 
 type Found = (u64, usize, u64, Mapping);
@@ -47,7 +59,7 @@ thread_local! {
 
 struct Engines {
     classes: [u32; 8],
-    regs: fxhash::FastMap<u32, Vec<u32>>,
+    regs: registers::Registers,
     inline: Option<(u64, u64, Vec<u8>)>,
     cb_upload: (u64, Vec<u8>),
     pushbuffer: pushbuffer::Stream,
@@ -95,7 +107,7 @@ impl Default for Gpu {
             reserved: Mutex::new((0, 0)),
             syncpoints: std::array::from_fn(|_| AtomicU32::new(0)),
             next_syncpoint: AtomicU32::new(16),
-            engines: Mutex::new(Engines { classes: [0; 8], regs: fxhash::FastMap::default(), inline: None, cb_upload: (0, Vec::new()), pushbuffer: Default::default(), threed: Default::default() }),
+            engines: Mutex::new(Engines { classes: [0; 8], regs: registers::Registers::new(crate::env_var!("KIRIKAE_FAST_ENGINE_REGS").is_some_and(|v| v == "1")), inline: None, cb_upload: (0, Vec::new()), pushbuffer: Default::default(), threed: Default::default() }),
             renderer: Mutex::new((None, false)),
             written: Mutex::new(Vec::new()),
             gpu_writes: Default::default(),
@@ -204,8 +216,18 @@ impl Gpu {
         Some((start, m))
     }
 
-    fn pieces(&self, va: u64, len: u64) -> Option<Vec<(u64, u64)>> {
+    fn pieces(&self, va: u64, len: u64) -> Option<MappingPieces> {
         let maps = self.maps.lock().unwrap();
+        if len != 0 && crate::env_var!("KIRIKAE_CP_PIECES").is_some_and(|v| v == "1") {
+            let (&start, m) = maps.range(..=va).next_back()?;
+            let offset = va - start;
+            if offset >= m.size {
+                return None;
+            }
+            if len <= m.size - offset {
+                return Some(MappingPieces::One((m.cpu + offset, len)));
+            }
+        }
         let mut out: Vec<(u64, u64)> = Vec::new();
         let mut at = va;
         while at < va + len {
@@ -220,7 +242,7 @@ impl Gpu {
             }
             at += n;
         }
-        Some(out)
+        Some(MappingPieces::Many(out))
     }
 
     pub fn gpu_addresses_of(&self, cpu: u64) -> Vec<u64> {
@@ -255,7 +277,7 @@ impl Gpu {
         }
         let mut data = Vec::new();
         data.try_reserve_exact(len.try_into().ok()?).ok()?;
-        for (cpu, size) in pieces {
+        for &(cpu, size) in pieces.as_slice() {
             data.extend_from_slice(mem.bytes(cpu, size)?);
         }
         Some(Cow::Owned(data))
@@ -265,7 +287,7 @@ impl Gpu {
         self.cpu_access(va, bytes.len() as u64);
         let Some(pieces) = self.pieces(va, bytes.len() as u64) else { return false };
         let mut done = 0;
-        for (cpu, n) in pieces {
+        for &(cpu, n) in pieces.as_slice() {
             if let Some(r) = self.renderer.lock().unwrap().0.as_mut() {
                 r.note_write(cpu, n);
             }
@@ -306,6 +328,8 @@ impl Gpu {
     pub fn submit(&self, mem: &GuestMemory, entries: &[u64]) -> Result<(), String> {
         self.stats.submits.fetch_add(1, Ordering::Relaxed);
         self.forget_written();
+        let reuse_copy = crate::env_var!("KIRIKAE_REUSE_PUSHBUFFER_COPY").is_some_and(|v| v == "1");
+        let mut copied_words = Vec::new();
         for &e in entries {
             let va = (e & 0xffff_fffc) | ((e >> 32) & 0xff) << 32;
             let words = (e >> 42) & 0x1f_ffff;
@@ -314,7 +338,11 @@ impl Gpu {
             }
             self.cpu_access(va, words * 4);
             let bytes = self.bytes(mem, va, words * 4).ok_or_else(|| format!("pushbuffer at GPU address {va:#x} is not mapped"))?;
-            let w: Vec<u32> = bytes.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)).collect();
+            // Keep a copy: methods can write to guest command memory while this entry executes.
+            let mut local_words;
+            let w = if reuse_copy { &mut copied_words } else { local_words = Vec::new(); &mut local_words };
+            w.clear();
+            w.extend(bytes.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)));
             let plan = if crate::nvn::shadow::ON.load(Ordering::Relaxed) {
                 let ready = {
                     let eng = self.engines.lock().unwrap();
@@ -437,9 +465,17 @@ impl Gpu {
     fn run_pushbuffer(&self, mem: &GuestMemory, w: &[u32]) {
         let mut guard = self.engines.lock().unwrap();
         let eng = &mut *guard;
-        let mut i = 0;
-        while let Some((sub, method, value)) = eng.pushbuffer.next(w, &mut i) {
-            self.method(mem, eng, sub, method, value);
+        if crate::env_var!("KIRIKAE_CP_PACKETS").is_some_and(|v| v == "1") {
+            // Methods mutate engine registers and memory but never inspect the
+            // decoder. Keep the lock and put the cursor back at this boundary.
+            let mut decoder = std::mem::take(&mut eng.pushbuffer);
+            decoder.visit(w, |sub, method, value| self.method(mem, eng, sub, method, value));
+            eng.pushbuffer = decoder;
+        } else {
+            let mut i = 0;
+            while let Some((sub, method, value)) = eng.pushbuffer.next(w, &mut i) {
+                self.method(mem, eng, sub, method, value);
+            }
         }
     }
 
@@ -596,7 +632,7 @@ impl Gpu {
             self.flush_cb_upload(mem, eng);
         }
         if m < 0x40 {
-            let regs = eng.regs.entry(0).or_insert_with(|| vec![0; 0x40]);
+            let regs = eng.regs.get_or_insert(0, 0x40);
             regs[m as usize] = v;
             match m {
                 0x07 => {
@@ -613,7 +649,7 @@ impl Gpu {
             }
             return;
         }
-        let regs = eng.regs.entry(class).or_insert_with(|| vec![0; 0x1000]);
+        let regs = eng.regs.get_or_insert(class, 0x1000);
         if let Some(r) = regs.get_mut(m as usize) {
             *r = v;
         }
@@ -996,7 +1032,7 @@ mod tests {
             let mut eng = gpu.engines.lock().unwrap();
             eng.classes[0] = CLASS_3D;
             eng.threed.macros.code = std::sync::Arc::new(INDEXED_MACRO.to_vec());
-            let regs = eng.regs.entry(CLASS_3D).or_insert_with(|| vec![0; 0x1000]);
+            let regs = eng.regs.get_or_insert(CLASS_3D, 0x1000);
             regs[0xd1b] = u32::MAX;
             regs[threed::reg::CONSTANT_BUFFER_SELECTOR] = 0x2000;
             regs[threed::reg::CONSTANT_BUFFER_SELECTOR + 1] = 5;

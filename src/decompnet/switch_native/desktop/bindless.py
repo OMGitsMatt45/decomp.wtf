@@ -1,7 +1,7 @@
 """Expose statically identified Maxwell TEX.B handles to the host renderer."""
 
 
-def apply(root):
+def apply(root, adapter):
     from .patches import replace_once
 
     translate = root / 'crates/maxwell/src/translate.rs'
@@ -179,10 +179,51 @@ pub struct ImageUse {''')
                  'let offset = if i.bit(if bindless { 36 } else { 54 }) { Some(take_b(self)?) } else { None };')
 
     vulkan = root / 'crates/rt/src/gpu/vulkan'
-    replace_once(vulkan / 'pipeline.rs', '''            fn texture_kind(&self, slot: Option<u32>, handle: u32) -> Kind {
-                let Some(word) = self.cbuf(slot.unwrap_or(self.default_slot), handle * 4) else { return Kind::Float };''',
-                 '''            fn texture_use_kind(&self, usage: &kirikae_maxwell::TextureUse) -> Kind {
-                let Ok(word) = usage.handle_word(self.default_slot, |slot, offset| self.cbuf(slot, offset).ok_or(())) else { return Kind::Float };''')
+    replace_once(vulkan / 'pipeline.rs', '''        struct Env<'a> {
+            gpu: &'a Gpu,
+            mem: &'a GuestMemory,
+            cbufs: [Option<(u64, u32)>; CB_SLOTS],
+            default_slot: u32,
+            header_pool: u64,
+        }
+        impl kirikae_maxwell::Env for Env<'_> {
+            fn texture_kind(&self, slot: Option<u32>, handle: u32) -> Kind {
+                let Some(word) = self.cbuf(slot.unwrap_or(self.default_slot), handle * 4) else { return Kind::Float };
+                let address = self.header_pool + (word & 0xfffff) as u64 * 32;
+                let Some(words) = self.gpu.bytes(self.mem, address, 32).and_then(crate::gpu::tic::words) else { return Kind::Float };
+                let header = crate::gpu::tic::texture_header(&words);
+                formats::texture(header.components, header.data_type, header.srgb).map_or(Kind::Float, |format| format.kind)
+            }
+
+            fn cbuf(&self, slot: u32, offset: u32) -> Option<u32> {
+                let (addr, size) = self.cbufs.get(slot as usize).copied().flatten()?;
+                if offset + 4 > size {
+                    return None;
+                }
+                let b = self.gpu.read(self.mem, addr + offset as u64, 4)?;
+                Some(u32::from_le_bytes(b.try_into().unwrap()))
+            }
+        }
+        let env = Env { gpu, mem, cbufs, default_slot: regs[reg::BINDLESS_TEXTURE] & 0x1f,
+            header_pool: crate::gpu::threed::address(regs, reg::TEX_HEADER_POOL) };
+''', '''        let env = super::texture_kinds::ShaderEnv {
+            gpu, mem, cbufs,
+            default_slot: regs[reg::BINDLESS_TEXTURE] & 0x1f,
+            header_pool: crate::gpu::threed::address(regs, reg::TEX_HEADER_POOL),
+            kind_table: self.shader_kind_table,
+        };
+''')
+    renderer = vulkan / 'mod.rs'
+    replace_once(renderer, 'mod textures;\n', 'mod texture_kinds;\nmod textures;\n')
+    replace_once(renderer, '    shaders: HashMap<ShaderKey, Vec<Arc<ShaderModule>>>,\n',
+                 '    shaders: HashMap<ShaderKey, Vec<Arc<ShaderModule>>>,\n'
+                 "    shader_kind_table: Option<&'static texture_kinds::TextureKindTable>,\n")
+    replace_once(renderer, '            shaders: HashMap::default(),\n',
+                 '''            shaders: HashMap::default(),
+            shader_kind_table: crate::env_var!("KIRIKAE_SHADER_KIND_FAST")
+                .is_some_and(|value| value == "1").then(texture_kinds::TextureKindTable::shared),
+''')
+    (vulkan / 'texture_kinds.rs').write_bytes((adapter / 'texture_kinds.rs').read_bytes())
     replace_once(vulkan / 'pipeline.rs', 'kirikae_maxwell::Env::texture_kind(&env, t.slot, t.handle)',
                  'kirikae_maxwell::Env::texture_use_kind(&env, t)')
     replace_once(vulkan / 'descriptors.rs', 'self.texture(gpu, mem, regs, cbufs, t.slot, t.handle, t.dim, t.array, t.shadow)',

@@ -2,7 +2,7 @@ use super::fxhash::FastMap as HashMap;
 
 use ash::vk;
 
-const ARENA: u64 = 16 << 20;
+pub(super) const ARENA: u64 = 16 << 20;
 const MIN_BLOCK: u64 = 256;
 const CLASSES: usize = 17;
 const PROMOTE: u32 = 2;
@@ -12,6 +12,7 @@ const VRAM_BUDGET: u64 = 128 << 20;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Kind {
     Constant,
+    ReadOnlyStorage,
     Vertex,
     Index(u32, bool),
 }
@@ -43,6 +44,7 @@ struct Entry {
 #[derive(Default)]
 pub struct BufferCache {
     arenas: Vec<Arena>,
+    storage_buffers: bool,
     free: Vec<Vec<Block>>,
     entries: HashMap<(u64, u64, Kind), Entry>,
     vram: Option<u32>,
@@ -63,10 +65,10 @@ fn find_memory(props: &vk::PhysicalDeviceMemoryProperties, flags: vk::MemoryProp
 }
 
 impl BufferCache {
-    pub fn new(props: &vk::PhysicalDeviceMemoryProperties, host: u32) -> BufferCache {
+    pub fn new(props: &vk::PhysicalDeviceMemoryProperties, host: u32, storage_buffers: bool) -> BufferCache {
         let host_flags = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
         let vram = find_memory(props, host_flags | vk::MemoryPropertyFlags::DEVICE_LOCAL).filter(|_| std::env::var_os("KIRIKAE_NO_BAR").is_none());
-        BufferCache { free: vec![Vec::new(); CLASSES], vram, host, ..Default::default() }
+        BufferCache { free: vec![Vec::new(); CLASSES], vram, host, storage_buffers, ..Default::default() }
     }
 
     pub fn lookup(
@@ -159,7 +161,8 @@ impl BufferCache {
     }
 
     fn new_arena(&mut self, device: &ash::Device) -> Option<Arena> {
-        let usage = vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::UNIFORM_BUFFER;
+        let mut usage = vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::UNIFORM_BUFFER;
+        if self.storage_buffers { usage |= vk::BufferUsageFlags::STORAGE_BUFFER; }
         unsafe {
             let buffer = device.create_buffer(&vk::BufferCreateInfo::default().size(ARENA).usage(usage), None).ok()?;
             let req = device.get_buffer_memory_requirements(buffer);
@@ -175,6 +178,10 @@ impl BufferCache {
             }
             let memory = match memory {
                 Some(m) => m,
+                None if req.memory_type_bits >> self.host & 1 == 0 => {
+                    device.destroy_buffer(buffer, None);
+                    return None;
+                }
                 None => match device.allocate_memory(&vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(self.host), None) {
                     Ok(m) => m,
                     Err(_) => {
