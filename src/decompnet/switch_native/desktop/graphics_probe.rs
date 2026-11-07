@@ -134,6 +134,51 @@ fn texture_remap(gpu: &Gpu, mem: &GuestMemory) {
         "texture remap RGB before={before:06x}, after={after:06x}, alias={unchanged_alias:06x}");
 }
 
+fn primitive_restart(gpu: &Gpu, mem: &GuestMemory) {
+    let vertices = [
+        [-0.95f32, -0.75, 0.5, 1.0], [-0.45, -0.75, 0.5, 1.0], [-0.70, 0.65, 0.5, 1.0],
+        [0.0, 0.8, 0.5, 1.0],
+        [0.45, -0.75, 0.5, 1.0], [0.95, -0.75, 0.5, 1.0], [0.70, 0.65, 0.5, 1.0],
+    ];
+    let vertex_bytes: Vec<_> = vertices.iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+    assert!(mem.write(0x130000, &vertex_bytes));
+    let draw = |format, restart: Option<u32>| {
+        let mut cp = Vec::new();
+        method(&mut cp, 0, &[CLASS_3D]);
+        method(&mut cp, 0x4eb, &[0]);
+        method(&mut cp, 0x646, &[0]);
+        method(&mut cp, 0x850, &[1, 0x20000]);
+        let sx = 64f32.to_bits(); let sy = 48f32.to_bits();
+        method(&mut cp, 0x280, &[sx, sy, 0.5f32.to_bits(), sx, sy, 0.5f32.to_bits()]);
+        address(&mut cp, 0x7c0, 0x1_0003_006f);
+        address(&mut cp, 0x5f2, 0x1_0009_0000);
+        method(&mut cp, 0x5f6, &[format, 0]);
+        method(&mut cp, 0x591, &[u32::from(restart.is_some()), restart.unwrap_or(0)]);
+        method(&mut cp, 0x674, &[0x3c]);
+        method(&mut cp, 0x586, &[5]);
+        method(&mut cp, 0x5f8, &[7]);
+        method(&mut cp, 0x585, &[0]);
+        assert!(mem.write(0x300000, &cp.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+        gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+        let pixels = gpu.read_pixels(0x200000, 128, 96).expect("primitive restart readback");
+        [19, 64, 109].map(|x| pixels[48 * 128 + x] & 0xffffff)
+    };
+
+    for format in 0..3u32 {
+        let indices: Vec<_> = (0..7u32).flat_map(|i| i.to_le_bytes().into_iter().take(1 << format)).collect();
+        assert!(mem.write(0x190000, &indices));
+        // Repeated draws promote each converted buffer. Change the restart
+        // register while keeping the bytes and the pipeline topology identical.
+        for restart in [None, Some(3), Some(7), Some(3), None] {
+            for _ in 0..3 {
+                let expected_center = if restart == Some(3) { 0 } else { 0xff0000 };
+                assert_eq!(draw(format, restart), [0xff0000, expected_center, 0xff0000],
+                    "indexed strip: format {format}, restart {restart:?}");
+            }
+        }
+    }
+}
+
 fn main() {
     let root = PathBuf::from(std::env::args().nth(1).expect("output directory"));
     std::fs::create_dir_all(&root).unwrap();
@@ -204,6 +249,7 @@ fn main() {
         "renderer":kirikae_rt::decomp::RENDERER.lock().unwrap().clone(), "frames":frames,
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});
     texture_remap(&gpu, &mem);
+    primitive_restart(&gpu, &mem);
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("{report}");
