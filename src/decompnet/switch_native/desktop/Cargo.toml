@@ -15,6 +15,7 @@ kirikae-testkit = { path = "crates/testkit" }
 [profile.release]
 opt-level = 3
 codegen-units = 8
+lto = "thin"
 panic = "abort"
 
 # LLVM 22 recursively overflows while optimizing vp9dec 0.1.1 at level 3.
