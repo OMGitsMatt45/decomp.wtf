@@ -299,7 +299,85 @@ fn main() {
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});
     texture_updates(&gpu, &mem);
     primitive_restart(&gpu, &mem);
+    gpfifo_continuation(&gpu, &mem);
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("{report}");
+}
+
+fn gpfifo_continuation(gpu: &Gpu, mem: &GuestMemory) {
+    const CODE: [u32; 31] = [
+        0x00000601, 0x00000501, 0x0346c215, 0x017dc061, 0x01118451,
+        0x00002041, 0x05434021, 0x00002331, 0x00001841, 0x0638c021,
+        0x01900041, 0x00155510, 0x00002041, 0x0002e807, 0x00001841,
+        0x01618021, 0x00000841, 0x017e0021, 0x00003041, 0x01614071,
+        0xffffed11, 0x00004211, 0xfffe6817, 0xd0808912, 0x01118071,
+        0x01434071, 0x01438071, 0x0638c021, 0x01900041, 0x000000c1, 0x00000041,
+    ];
+    let ald = |rd: u64, at: u64, count: u64| 0xefd8_0000_0000_0000u64 | (count - 1) << 47 | 0xff << 39 | at << 20 | PT | 0xff << 8 | rd;
+    let ast = |rd: u64, at: u64| 0xeff0_0000_0000_0000u64 | 3 << 47 | 0xff << 39 | at << 20 | PT | 0xff << 8 | rd;
+    let imm = |op: u64, rd: u64, ra: u64, value: f32| op | (value.to_bits() as u64) << 20 | PT | ra << 8 | rd;
+    let vs = [ald(0, 0x80, 4), ald(4, 0x2f8, 1),
+        0x5cb8_0000_0000_0000 | 2 << 10 | 2 << 8 | PT | 4 << 20 | 4,
+        imm(0x1e00_0000_0000_0000, 5, 4, 0.25),
+        imm(0x0800_0000_0000_0000, 5, 5, -0.75),
+        0x5c58_0000_0000_0000 | 5 << 20 | PT,
+        ast(0, 0x70), imm(0x0800_0000_0000_0000, 4, 4, 1.0),
+        imm(0x1e00_0000_0000_0000, 4, 4, 0.125),
+        mov(5, 0.0), mov(6, 0.0), mov(7, 1.0), ast(4, 0x80), EXIT];
+    assert!(mem.write(0x1a2000, &shader(false, &vs)));
+    assert!(mem.write(0x1b1000, &shader(true, &[ald(0, 0x80, 4), EXIT])));
+    let vertices = [0f32, 0., 0., 0., 0., 0., 0., 0.,
+        -0.08, -0.30, 0.5, 1.0, 0.08, -0.30, 0.5, 1.0, 0.0, 0.30, 0.5, 1.0];
+    assert!(mem.write(0x130000, &vertices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+    let indices: Vec<u16> = (0..306).map(|index| if index < 36 { 99 } else { 2 + ((index - 36) % 3) }).collect();
+    assert!(mem.write(0x190000, &indices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+    let mut setup = Vec::new();
+    method(&mut setup, 0, &[CLASS_3D]);
+    method(&mut setup, 0x4eb, &[0]); method(&mut setup, 0x646, &[0]);
+    method(&mut setup, 0x280, &[64f32.to_bits(), 48f32.to_bits(), 0.5f32.to_bits(), 64f32.to_bits(), 48f32.to_bits(), 0.5f32.to_bits()]);
+    method(&mut setup, 0x810, &[1, 0xa2000]); method(&mut setup, 0x850, &[1, 0xb1000]);
+    method(&mut setup, 0x458, &[1 << 21 | 7 << 27]); method(&mut setup, 0x700, &[16]);
+    address(&mut setup, 0x701, 0x1_0003_0000); address(&mut setup, 0x7c0, 0x1_0003_004f);
+    address(&mut setup, 0x5f2, 0x1_0009_0000); method(&mut setup, 0x5f6, &[1, 36]); method(&mut setup, 0x591, &[0, 0]);
+    method(&mut setup, 0x45, &[0]); for word in CODE { method(&mut setup, 0x46, &[word]); }
+    method(&mut setup, 0x47, &[29]); method(&mut setup, 0x48, &[0]); method(&mut setup, 0xd1b, &[u32::MAX]);
+    assert!(mem.write(0x300000, &setup.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+    gpu.submit(mem, &[0x1_0020_0000 | (setup.len() as u64) << 42]).unwrap();
+
+    // Exact captured kind-5 packet and indexed-indirect parameters; deliberately
+    // include zero arguments that the old entry-local parser treated as headers.
+    let words = [0xa006_0e3au32, 4, 270, 7, 36, 0, 258447, 0x9100_0002];
+    assert!(mem.write(0x310000, &words.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+    let entry = |offset: usize, length: usize| 0x1_0021_0000 | (offset as u64 * 4) | (length as u64) << 42;
+    let mut reference = None;
+    let mut cases = 0;
+    for separate_submits in [false, true] {
+        for split in 0..=words.len() {
+            let mut clear = Vec::new(); method(&mut clear, 0x674, &[0x3c]);
+            assert!(mem.write(0x300000, &clear.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+            gpu.submit(mem, &[0x1_0020_0000 | (clear.len() as u64) << 42]).unwrap();
+            let before = gpu.render_stats().unwrap();
+            let before_macros = gpu.stats.macros.load(Ordering::Relaxed);
+            let entries = [entry(0, split), entry(split, 0), entry(split, words.len() - split)];
+            if separate_submits {
+                for part in entries { gpu.submit(mem, &[part]).unwrap(); }
+            } else { gpu.submit(mem, &entries).unwrap(); }
+            let pixels = gpu.read_pixels(0x200000, 128, 96).expect("split GPFIFO readback");
+            let after = gpu.render_stats().unwrap();
+            assert_eq!(gpu.stats.macros.load(Ordering::Relaxed) - before_macros, 1);
+            assert_eq!(after.draws - before.draws, 7, "split {split}, separate submits {separate_submits}");
+            assert_eq!(after.skipped, before.skipped);
+            for (slot, x) in [16usize, 32, 48, 64, 80, 96, 112].into_iter().enumerate() {
+                let pixel = pixels[48 * 128 + x];
+                let expected = ((slot + 1) * 255) as i32 / 8;
+                assert!(((pixel >> 16 & 255) as i32 - expected).abs() <= 1,
+                    "instance {slot}: {pixel:06x}, split {split}, separate {separate_submits}");
+            }
+            if let Some(expected) = &reference { assert_eq!(&pixels, expected, "split {split}, separate submits {separate_submits}"); }
+            else { reference = Some(pixels); }
+            cases += 1;
+        }
+    }
+    eprintln!("kirikae: split GPFIFO qualification passed {cases} cases, seven distinct InstanceIndex positions/colors, exact 270/7/36/0/258447 arguments");
 }
