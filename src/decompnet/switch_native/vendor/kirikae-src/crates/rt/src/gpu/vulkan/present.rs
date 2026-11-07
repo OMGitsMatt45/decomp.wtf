@@ -263,6 +263,17 @@ impl Renderer {
         let done = images.iter().map(|_| unsafe { self.device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap() }).collect();
         let sc = self.swapchain.as_mut()?;
         *sc = Swapchain { surface, handle, images, extent, srgb, done, stale: false, format: format.format, readable };
+        if let Some(set_mode) = self.nv_swapchain_boost {
+            // The boost hint works independently of the swapchain's latency mode.
+            let boost = vk::LatencySleepModeInfoNV::default().low_latency_mode(false).low_latency_boost(true).minimum_interval_us(0);
+            let result = unsafe { set_mode(self.device.handle(), handle, &boost) };
+            if result == vk::Result::SUCCESS {
+                eprintln!("kirikae: requested NVIDIA swapchain boost ({}x{})", extent.width, extent.height);
+            } else {
+                eprintln!("kirikae: NVIDIA swapchain boost request failed ({result:?}); using ordinary presentation");
+                self.nv_swapchain_boost = None;
+            }
+        }
         if crate::gpu::trace() || self.stats.presents == 0 {
             eprintln!("kirikae: presenting to the window through a swapchain ({}x{}, {:?}, {mode:?})", extent.width, extent.height, format.format);
         }
