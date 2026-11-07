@@ -47,10 +47,18 @@ def apply(root):
         if *instances > 1 && streams.iter().any(|&stream| stream != 31 && instanced_stream(regs, stream)) {
             *instances = 1;
         }''')
-    replace_once(draw, '        for k in std::mem::take(&mut self.feedback_used) {', '''        if !self.feedback_used.is_empty() {
+    replace_once(draw, '''        self.feedback_used.clear();
+        let described = self.descriptors(gpu, mem, regs, cbufs, &vs, fs.as_deref(), &mut descriptors);
+        self.draw_targets.clear();
+        described?;''', '''        self.feedback_used.clear();
+        self.draw_texture_alias = (*instances > 1).then_some(false);
+        let described = self.descriptors(gpu, mem, regs, cbufs, &vs, fs.as_deref(), &mut descriptors);
+        self.draw_targets.clear();
+        let texture_alias = self.draw_texture_alias.take() == Some(true);
+        described?;
+        if texture_alias || !self.feedback_used.is_empty() {
             *instances = 1;
-        }
-        for k in std::mem::take(&mut self.feedback_used) {''')
+        }''')
     replace_once(draw, 'd.cmd_draw_indexed(cmd, count, 1, 0, base.wrapping_sub(lowest as i32), draw.instance);',
                  'd.cmd_draw_indexed(cmd, count, *instances, 0, base.wrapping_sub(lowest as i32), draw.instance);')
     replace_once(draw, 'd.cmd_draw(cmd, draw.count, 1, draw.first - lowest, draw.instance)',
@@ -65,5 +73,7 @@ def apply(root):
     probe = root / 'crates/rt/examples/decomp-graphics.rs'
     replace_once(probe, '    primitive_restart(&gpu, &mem);', '''    primitive_restart(&gpu, &mem);
     instance_batches(&gpu, &mem);''')
+    replace_once(probe, '    gpu.shutdown();', '    gpu.shutdown();\n    derived_feedback();')
     with probe.open('a', encoding='utf-8', newline='\n') as output:
         output.write((adapter / 'instance_batches_probe.rs').read_text(encoding='utf-8'))
+        output.write((adapter / 'derived_feedback_probe.rs').read_text(encoding='utf-8'))

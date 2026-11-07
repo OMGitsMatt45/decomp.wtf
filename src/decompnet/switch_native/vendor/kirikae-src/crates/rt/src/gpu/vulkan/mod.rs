@@ -106,6 +106,8 @@ pub struct Renderer {
     draw_targets: Vec<ImageKey>,
     feedbacks: HashMap<ImageKey, u64>,
     feedback_used: Vec<ImageKey>,
+    // Only populated while preparing a native instance batch.
+    draw_texture_alias: Option<bool>,
     twins: HashMap<ImageKey, (ImageKey, u64)>,
     gathers: HashMap<ImageKey, Vec<u64>>,
     gather_sources: HashMap<ImageKey, (u64, Vec<Option<ImageKey>>)>,
@@ -485,6 +487,7 @@ impl Renderer {
             draw_targets: Vec::new(),
             feedbacks: HashMap::default(),
             feedback_used: Vec::new(),
+            draw_texture_alias: None,
             twins: HashMap::default(),
             gathers: HashMap::default(),
             gather_sources: HashMap::default(),

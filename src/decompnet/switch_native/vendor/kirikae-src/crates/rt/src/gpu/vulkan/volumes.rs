@@ -109,7 +109,9 @@ impl Renderer {
         Ok(())
     }
 
-    fn rendered_slice(&self, at: u64, format: vk::Format, w: u32, h: u32) -> Option<ImageKey> {
+    fn rendered_slice(&mut self, at: u64, format: vk::Format, w: u32, h: u32) -> Option<ImageKey> {
+        // A slice can become GPU-backed after the first instance touches it.
+        self.note_draw_texture_address(at);
         self.at(at).iter().copied().filter(|k| k.format == format && k.width >= w && k.height >= h && self.images[k].gpu_dirty).max_by_key(|k| self.images[k].stamp)
     }
 
