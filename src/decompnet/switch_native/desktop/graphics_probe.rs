@@ -296,7 +296,15 @@ fn primitive_restart(gpu: &Gpu, mem: &GuestMemory) {
     }
 }
 
-fn depth_bias_registers(gpu: &Gpu, mem: &GuestMemory) {
+fn depth_bias_registers() {
+    let mem = GuestMemory::new().unwrap();
+    mem.map(0x100000, 0x300000).unwrap();
+    let probe_gpu = Gpu::default();
+    probe_gpu.map(0x1_0000_0000, 0x100000, 0x300000);
+    let ald = 0xefd8_0000_0000_0000 | 3 << 47 | 0xff << 39 | 0x80 << 20 | PT | 0xff << 8;
+    let ast = 0xeff0_0000_0000_0000 | 3 << 47 | 0xff << 39 | 0x70 << 20 | PT | 0xff << 8;
+    assert!(mem.write(0x110000, &shader(false, &[ald, ast, EXIT])));
+    assert!(mem.write(0x120000, &shader(true, &[mov(0, 1.0), mov(1, 0.0), mov(2, 0.0), mov(3, 1.0), EXIT])));
     let color = 0x1_0016_0000;
     let depth = 0x1_0018_0000;
     let near = 0x1_0003_0000;
@@ -304,7 +312,7 @@ fn depth_bias_registers(gpu: &Gpu, mem: &GuestMemory) {
     let vertices: [f32; 12] = [-0.75,-0.75,0.4,1.0, 0.75,-0.75,0.5,1.0, 0.0,0.75,0.45,1.0];
     let farther = [-0.75f32,-0.75,0.415,1.0, 0.75,-0.75,0.515,1.0, 0.0,0.75,0.465,1.0];
     for (address, vertices) in [(near, vertices), (far, farther)] {
-        assert!(mem.write(gpu.translate(address).unwrap(), &vertices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+        assert!(mem.write(probe_gpu.translate(address).unwrap(), &vertices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
     }
     assert!(mem.write(0x124000, &shader(true, &[mov(0, 0.0), mov(1, 1.0), mov(2, 0.0), mov(3, 1.0), EXIT])));
     // Constant -200 is too small to pass the depth test. Slope -200
@@ -347,10 +355,15 @@ fn depth_bias_registers(gpu: &Gpu, mem: &GuestMemory) {
             method(&mut cp, 0x585, &[0]);
         }
         assert!(mem.write(0x300000, &cp.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
-        gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
-        let pixels = gpu.read_pixels(gpu.translate(color).unwrap(), 128, 96).expect("depth bias readback");
+        probe_gpu.submit(&mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+        let pixels = probe_gpu.read_pixels(probe_gpu.translate(color).unwrap(), 128, 96).expect("depth bias readback");
         assert_eq!(pixels[48 * 128 + 64] & 0xffffff, expected, "Maxwell depth-bias word {register:#x}");
     }
+    let stats = probe_gpu.render_stats().expect("Vulkan renderer");
+    assert_eq!(stats.draws, 4);
+    assert_eq!(stats.skipped, 0);
+    probe_gpu.shutdown();
+    eprintln!("kirikae: constant and slope depth-bias qualification passed");
 }
 
 fn main() {
@@ -425,7 +438,7 @@ fn main() {
     assert_eq!(gpu.render_stats().unwrap().skipped, 0);
     primitive_restart(&gpu, &mem);
     gpfifo_continuation(&gpu, &mem);
-    depth_bias_registers(&gpu, &mem);
+    depth_bias_registers();
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("{report}");
