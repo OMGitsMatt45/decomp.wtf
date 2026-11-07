@@ -398,6 +398,7 @@ fn present(p: &Process, s: &Slot, transform: u32) {
 static VSYNC_EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 const ONE_BLANK: std::time::Duration = std::time::Duration::from_nanos(16_666_667);
+const HYBRID_SPIN_TAIL: std::time::Duration = std::time::Duration::from_micros(400);
 
 #[derive(Clone, Copy)]
 struct Deadline {
@@ -414,10 +415,10 @@ impl Deadline {
         blank_time(self.next_blank).max(self.last_release + ONE_BLANK).saturating_sub(now)
     }
 
-    fn advance(self, released: std::time::Duration) -> (Self, bool) {
+    fn advance(self, released: std::time::Duration, max_debt_periods: u64) -> (Self, bool) {
         let next_blank = self.next_blank + 2;
-        // Keep at most one period of debt on the absolute phase.
-        if released > blank_time(next_blank) {
+        // Change the rebase bound while keeping each nominal step at two blanks.
+        if released > blank_time(self.next_blank + 2 * max_debt_periods) {
             (Self::start(released), true)
         } else {
             (Self { next_blank, last_release: released }, false)
@@ -442,14 +443,63 @@ fn deadline_mode(deadline: &mut Option<Deadline>, interval: u32, uncapped: bool)
     active
 }
 
+fn hybrid_coarse_sleep(remaining: std::time::Duration) -> std::time::Duration {
+    remaining.saturating_sub(HYBRID_SPIN_TAIL)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum HybridTail {
+    Done,
+    Sleep(std::time::Duration),
+    Spin,
+}
+
+fn hybrid_tail(remaining: std::time::Duration) -> HybridTail {
+    if remaining.is_zero() {
+        HybridTail::Done
+    } else if remaining > HYBRID_SPIN_TAIL {
+        HybridTail::Sleep(remaining)
+    } else {
+        HybridTail::Spin
+    }
+}
+
+fn hybrid_wait_until(target: std::time::Instant) -> Option<std::time::Duration> {
+    use std::time::Instant;
+
+    let coarse = hybrid_coarse_sleep(target.saturating_duration_since(Instant::now()));
+    if !coarse.is_zero() {
+        std::thread::sleep(coarse);
+    }
+    let started = Instant::now();
+    match hybrid_tail(target.saturating_duration_since(started)) {
+        HybridTail::Done => None,
+        HybridTail::Sleep(remaining) => {
+            std::thread::sleep(remaining);
+            None
+        }
+        HybridTail::Spin => loop {
+            // A scheduler pause consumes the remaining wall-time budget.
+            let now = Instant::now();
+            if now >= target {
+                return Some(now.saturating_duration_since(started));
+            }
+            std::hint::spin_loop();
+        },
+    }
+}
+
 #[derive(Default)]
 struct DeadlineStats {
     releases: u64,
     sleep_calls: u64,
     sleep_requested_ns: u128,
     sleep_elapsed_ns: u128,
+    hybrid_spin_calls: u64,
+    hybrid_spin_wall_ns: u128,
     starts: u64,
     rebases: u64,
+    extra_period_releases: u64,
     max_retained_debt_ns: u128,
 }
 
@@ -461,22 +511,37 @@ struct PaceState {
 
 fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
     let diagnostics = crate::env_var!("KIRIKAE_VI_DEADLINE_STATS").is_some_and(|value| value == "1");
+    let max_debt_periods = if crate::env_var!("KIRIKAE_VI_DEADLINE_MAX_DEBT_PERIODS") == Some(std::ffi::OsStr::new("2")) {
+        2
+    } else {
+        1
+    };
     let now = epoch.elapsed();
     let previous = state.deadline;
     let wait = match previous {
         Some(deadline) => deadline.wait(now),
         None => state.last.map_or(std::time::Duration::ZERO, |last| blank_time(last + 2).saturating_sub(now)),
     };
-    let sleep_started = if wait.is_zero() {
-        None
+    let (sleep_started, spin_wall) = if wait.is_zero() {
+        (None, None)
     } else {
         crate::display::PACED_NS.fetch_add(wait.as_nanos() as u64, Ordering::Relaxed);
         let started = diagnostics.then(|| epoch.elapsed());
-        std::thread::sleep(wait);
-        started
+        let spin_wall = if cfg!(windows)
+            && crate::env_var!("KIRIKAE_VI_HYBRID_WAIT").is_some_and(|value| value == "1")
+        {
+            hybrid_wait_until(epoch + (now + wait))
+        } else {
+            std::thread::sleep(wait);
+            None
+        };
+        (started, spin_wall)
     };
     let released = epoch.elapsed();
-    let (next, rebased) = previous.map_or_else(|| (Deadline::start(released), false), |deadline| deadline.advance(released));
+    let (next, rebased) = previous.map_or_else(
+        || (Deadline::start(released), false),
+        |deadline| deadline.advance(released, max_debt_periods),
+    );
     state.deadline = Some(next);
     state.last = Some(blank_at(released));
     if diagnostics {
@@ -487,16 +552,22 @@ fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
             stats.sleep_requested_ns += wait.as_nanos();
             stats.sleep_elapsed_ns += (released - started).as_nanos();
         }
+        if let Some(elapsed) = spin_wall {
+            stats.hybrid_spin_calls += 1;
+            stats.hybrid_spin_wall_ns += elapsed.as_nanos();
+        }
         stats.starts += previous.is_none() as u64;
         stats.rebases += rebased as u64;
         if let Some(deadline) = previous.filter(|_| !rebased) {
+            stats.extra_period_releases += (released > blank_time(deadline.next_blank + 2)) as u64;
             stats.max_retained_debt_ns = stats.max_retained_debt_ns
                 .max(released.saturating_sub(blank_time(deadline.next_blank)).as_nanos());
         }
         if stats.releases.is_multiple_of(256) {
-            eprintln!("kirikae: vi deadline: releases={} sleep_calls={} requested_ns={} elapsed_ns={} starts={} rebases={} max_retained_debt_ns={}",
+            eprintln!("kirikae: vi deadline: releases={} sleep_calls={} requested_ns={} elapsed_ns={} starts={} rebases={} max_retained_debt_ns={} max_debt_periods={} extra_period_releases={} hybrid_spin_calls={} hybrid_spin_wall_ns={}",
                 stats.releases, stats.sleep_calls, stats.sleep_requested_ns, stats.sleep_elapsed_ns,
-                stats.starts, stats.rebases, stats.max_retained_debt_ns);
+                stats.starts, stats.rebases, stats.max_retained_debt_ns, max_debt_periods, stats.extra_period_releases,
+                stats.hybrid_spin_calls, stats.hybrid_spin_wall_ns);
         }
     }
 }
@@ -533,7 +604,7 @@ fn pace(interval: u32) {
 
 #[cfg(test)]
 mod deadline_tests {
-    use super::{Deadline, ONE_BLANK, blank_at, blank_time, deadline_mode};
+    use super::{Deadline, HYBRID_SPIN_TAIL, HybridTail, ONE_BLANK, blank_at, blank_time, deadline_mode, hybrid_coarse_sleep, hybrid_tail};
     use std::time::Duration;
 
     #[test]
@@ -545,7 +616,7 @@ mod deadline_tests {
             let released = ready + deadline.wait(ready);
             assert_eq!(released, target);
             assert_eq!(blank_at(released), 1 + 2 * frame);
-            let (next, rebased) = deadline.advance(released);
+            let (next, rebased) = deadline.advance(released, 1);
             assert!(!rebased);
             deadline = next;
         }
@@ -557,7 +628,7 @@ mod deadline_tests {
         let deadline = Deadline::start(blank_time(2));
         let late = blank_time(4) + Duration::from_millis(8);
         assert_eq!(deadline.wait(late), Duration::ZERO);
-        let (next, rebased) = deadline.advance(late);
+        let (next, rebased) = deadline.advance(late, 1);
         assert!(!rebased);
         let ready = late + Duration::from_millis(8);
         assert_eq!(ready + next.wait(ready), blank_time(6));
@@ -567,11 +638,11 @@ mod deadline_tests {
     fn one_period_late_preserves_phase_and_full_blank_spacing() {
         let deadline = Deadline::start(blank_time(2));
         let late = blank_time(6);
-        let (next, rebased) = deadline.advance(late);
+        let (next, rebased) = deadline.advance(late, 1);
         assert!(!rebased);
         assert_eq!(next.next_blank, 6);
         assert_eq!(next.wait(late), ONE_BLANK);
-        let (third, rebased) = next.advance(late + ONE_BLANK);
+        let (third, rebased) = next.advance(late + ONE_BLANK, 1);
         assert!(!rebased);
         assert_eq!(third.next_blank, 8);
         assert_eq!(late + ONE_BLANK + third.wait(late + ONE_BLANK), late + ONE_BLANK * 2);
@@ -586,7 +657,7 @@ mod deadline_tests {
             let ready = previous + Duration::from_millis(40);
             let released = ready + deadline.wait(ready);
             let target = deadline.next_blank;
-            let (next, rebased) = deadline.advance(released);
+            let (next, rebased) = deadline.advance(released, 1);
             assert!(released - previous >= ONE_BLANK);
             assert!(next.next_blank > target);
             if rebased {
@@ -606,7 +677,7 @@ mod deadline_tests {
         let ready = blank_time(3);
         assert_eq!(ready + deadline.wait(ready), blank_time(4));
         for released in [blank_time(6) + Duration::from_nanos(1), blank_time(180)] {
-            let (next, rebased) = deadline.advance(released);
+            let (next, rebased) = deadline.advance(released, 1);
             assert!(rebased);
             assert_eq!(next.next_blank, blank_at(released) + 2);
             assert_eq!(next.last_release, released);
@@ -620,6 +691,90 @@ mod deadline_tests {
             assert!(!deadline_mode(&mut deadline, interval, uncapped));
             assert!(deadline_mode(&mut deadline, 2, false));
             assert!(deadline.is_none());
+        }
+    }
+
+    #[test]
+    fn two_period_boundary_is_inclusive_and_catch_up_keeps_blank_spacing() {
+        let deadline = Deadline::start(blank_time(2));
+        let late = blank_time(8);
+        assert!(deadline.advance(late, 1).1);
+        let (next, rebased) = deadline.advance(late, 2);
+        assert!(!rebased);
+        assert_eq!(next.next_blank, 6);
+        assert_eq!(next.wait(late), ONE_BLANK);
+        assert_eq!(next.advance(late + ONE_BLANK, 2).0.next_blank, 8);
+
+        let (next, rebased) = deadline.advance(late + Duration::from_nanos(1), 2);
+        assert!(rebased);
+        assert_eq!(next.next_blank, 10);
+        assert_eq!(next.wait(next.last_release), blank_time(10) - next.last_release);
+    }
+
+    #[test]
+    fn jitter_trace_recovers_a_period_before_the_larger_stall() {
+        let work_ms = [29, 28, 29, 59, 55, 24, 25, 29, 28, 29, 30, 30, 29, 29, 27, 30, 150, 24, 29];
+        let run = |max_debt_periods| {
+            let mut deadline = Deadline::start(blank_time(2));
+            let mut releases = Vec::new();
+            let mut rebases = Vec::new();
+            for (frame, work) in work_ms.into_iter().enumerate() {
+                let ready = deadline.last_release + Duration::from_millis(work);
+                let wait = deadline.wait(ready);
+                let oversleep = if !wait.is_zero() && matches!(frame, 1 | 12) {
+                    Duration::from_micros(400)
+                } else {
+                    Duration::ZERO
+                };
+                let released = ready + wait + oversleep;
+                assert!(released - deadline.last_release >= ONE_BLANK);
+                assert!(released >= blank_time(deadline.next_blank));
+                let (next, rebased) = deadline.advance(released, max_debt_periods);
+                assert!(next.next_blank >= deadline.next_blank + 2);
+                if rebased {
+                    rebases.push(frame + 1);
+                }
+                releases.push(released.as_nanos());
+                deadline = next;
+            }
+            (releases, rebases)
+        };
+        let (one, one_rebases) = run(1);
+        let (two, two_rebases) = run(2);
+        assert_eq!(one, [
+            66_666_666, 100_400_000, 133_333_333, 192_333_333, 247_333_333, 271_333_333,
+            300_000_000, 333_333_333, 366_666_666, 400_000_000, 433_333_333, 466_666_666,
+            500_400_000, 533_333_333, 566_666_666, 600_000_000, 750_000_000, 783_333_333, 816_666_666,
+        ]);
+        assert_eq!(two, [
+            66_666_666, 100_400_000, 133_333_333, 192_333_333, 247_333_333, 271_333_333,
+            296_333_333, 325_333_333, 353_333_333, 382_333_333, 412_333_333, 442_333_333,
+            471_333_333, 500_333_333, 533_333_333, 566_666_666, 716_666_666, 750_000_000, 783_333_333,
+        ]);
+        assert_eq!(one_rebases, [5, 17]);
+        assert_eq!(two_rebases, [17]);
+    }
+
+    #[test]
+    fn hybrid_coarse_sleep_preserves_the_absolute_tail() {
+        assert_eq!(hybrid_coarse_sleep(Duration::from_millis(1)), Duration::from_micros(600));
+        for remaining in [Duration::ZERO, Duration::from_micros(120), HYBRID_SPIN_TAIL] {
+            assert_eq!(hybrid_coarse_sleep(remaining), Duration::ZERO);
+        }
+    }
+
+    #[test]
+    fn hybrid_tail_spins_only_inside_the_bound_after_wake() {
+        let target = Duration::from_millis(1);
+        for (wake, action) in [
+            (Duration::from_micros(500), HybridTail::Sleep(Duration::from_micros(500))),
+            (Duration::from_micros(600) - Duration::from_nanos(1), HybridTail::Sleep(HYBRID_SPIN_TAIL + Duration::from_nanos(1))),
+            (Duration::from_micros(600), HybridTail::Spin),
+            (Duration::from_micros(970), HybridTail::Spin),
+            (target, HybridTail::Done),
+            (Duration::from_micros(1040), HybridTail::Done),
+        ] {
+            assert_eq!(hybrid_tail(target.saturating_sub(wake)), action);
         }
     }
 }
