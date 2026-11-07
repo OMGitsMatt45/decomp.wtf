@@ -201,6 +201,9 @@ impl Renderer {
         self.create_image(key, levels, layers).map_err(|e| format!("image: {e:?}"))?;
         let data = read_texture(gpu, mem, header, format, levels, layers);
         self.upload_layers(key, levels as usize, &data);
+        if layers == 1 {
+            self.remember_texture_source(gpu, mem, key, header, format);
+        }
         Ok(Some((key, 0)))
     }
 
