@@ -602,15 +602,13 @@ fn linked_table(l: &Lifted, start: u64, end: u64, branch: u64) -> Option<LinkedT
     let (producer, guard, count) = if let Some(masked) = masked { masked } else {
         let mut guard = load - 4;
         while guard > local_start && matches!(l.at(guard), Insn::Op(_)) { guard -= 4; }
-        if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008
-            || !matches!(l.at(guard), Insn::BCond(_, target) if (branch + 4..end).contains(target))
-        {
-            return None;
-        }
+        if guard <= local_start || word(guard)? & 0xff00_001f != 0x5400_0008 { return None; }
+        let Insn::BCond(_, target) = l.at(guard) else { return None; };
         let compare = word(guard - 4)?;
         if compare & 0xff80_001f != 0x7100_001f || bits(compare, 5, 5) != idx { return None; }
         let producer = last_index_write(guard - 4)?;
         if word(producer)? & 0xbfc0_001f != (0x1100_0000 | idx) { return None; } // add/sub Widx, Wn, #imm
+        if !(start..end).contains(target) || (producer + 4..=branch).contains(target) { return None; }
         let count = ((bits(compare, 10, 12) as u64) << (bits(compare, 22, 1) * 12)) + 1;
         (producer, Some(guard), count)
     };
@@ -651,15 +649,53 @@ fn udf_return_wrapper(l: &Lifted, target: u64) -> bool {
         && matches!(l.at(target + 8), Insn::Bl(_)) && word(last).is_some_and(|w| w >> 16 == 0)
 }
 
+fn linked_equality_fallthrough(l: &Lifted, start: u64, branch: u64) -> Option<(u64, (u32, u32))> {
+    let compare = branch.checked_sub(4).filter(|&pc| pc >= start)?;
+    let word = |pc| jt::Memory::word(l.m, pc);
+    if word(branch)? & 0xff00_001f != 0x5400_0001 { return None; } // b.ne
+    let w = word(compare)?;
+    let reg = bits(w, 5, 5);
+    if w & 0xff80_001f != 0x7100_001f || reg == 31 { return None; } // cmp Wreg, #imm
+    let value = bits(w, 10, 12) << (bits(w, 22, 1) * 12);
+    Some((compare, (reg, value)))
+}
+
+fn linked_equality_rejects(l: &Lifted, start: u64, mut from: u64, compare: u64,
+                           (reg, value): (u32, u32), has_entry: &impl Fn(u64) -> bool) -> bool {
+    let word = |pc| jt::Memory::word(l.m, pc).unwrap_or(0);
+    // A taken CBZ Wreg proves zero, unless its fallthrough reaches the same CMP.
+    if from + 4 != compare && word(from) & 0xff00_001f == (0x3400_0000 | reg)
+        && matches!(l.at(from), Insn::BCond(_, target) if *target == compare)
+    {
+        return value != 0;
+    }
+    if matches!(l.at(from), Insn::B(target) if *target == compare) {
+        if from <= start || has_entry(from) { return false; }
+        from -= 4;
+    } else if from + 4 != compare {
+        return false;
+    }
+    for _ in 0..jt::WINDOW {
+        let w = word(from);
+        if w == (0x2a1f_03e0 | reg) { return value != 0; } // mov Wreg, wzr
+        if w & 0xffc0_001f == (0x5280_0000 | reg) { // movz Wreg, #imm
+            return (bits(w, 5, 16) << (bits(w, 21, 1) * 16)) != value;
+        }
+        if from <= start || has_entry(from) || w & 0xffc0_0000 != 0x3900_0000 { return false; } // strb
+        from -= 4;
+    }
+    false
+}
+
 fn prove_linked_table(l: &Lifted, start: u64, table: &LinkedTable,
                       cases: &BTreeMap<u64, Vec<u64>>) -> Option<()> {
     let has_entry = |pc| l.m.seeds.contains(&pc) || !l.direct_predecessors(pc).is_empty() || cases.contains_key(&pc);
     if (table.producer + 4..=table.branch).step_by(4).any(has_entry) { return None; }
-    let mut pending = vec![(table.dispatch.load, table.base_register)];
+    let mut pending = vec![(table.dispatch.load, table.base_register, None)];
     let mut seen = BTreeSet::new();
     let mut proved_definition = false;
-    while let Some((pc, reg)) = pending.pop() {
-        if !seen.insert((pc, reg)) { continue; }
+    while let Some((pc, reg, equality)) = pending.pop() {
+        if !seen.insert((pc, reg, equality)) { continue; }
         if pc <= start || seen.len() > 4096 { return None; }
         let previous = pc - 4;
         let preds = l.direct_predecessors(pc);
@@ -668,13 +704,26 @@ fn prove_linked_table(l: &Lifted, start: u64, table: &LinkedTable,
         let fallthrough = (!trapped && !l.at(previous).ends_block()).then_some(previous);
         if preds.is_empty() && !cases.contains_key(&pc) && fallthrough.is_none() && !trapped { return None; }
         for from in preds.iter().map(|&(_, from)| from).chain(computed).chain(fallthrough) {
+            if equality.is_some_and(|fact| linked_equality_rejects(l, start, from, pc, fact, &has_entry)) {
+                continue;
+            }
+            // Only the fallthrough of B.NE carries the equality. Alternate
+            // entries into the branch could supply flags from a different CMP.
+            if fallthrough == Some(from) && !has_entry(from)
+                && matches!(l.at(from), Insn::BCond(_, target) if *target != pc)
+            {
+                if let Some((compare, fact)) = linked_equality_fallthrough(l, start, from) {
+                    pending.push((compare, reg, Some(fact)));
+                    continue;
+                }
+            }
             match l.at(from) {
                 Insn::Op(code) if !code.contains("rt_svc(c") => {
                     if nested_writes(l, from, reg) {
                         let w = jt::Memory::word(l.m, from)?;
                         let source = bits(w, 16, 5);
                         if w & 0xffe0_ffff == (0xaa00_03e0 | reg) && source != 31 { // mov Xreg, Xsource
-                            pending.push((from, source));
+                            pending.push((from, source, None));
                             continue;
                         }
                         if has_entry(from) || local_page_add(l, start, from, reg) != Some(table.table) {
@@ -688,7 +737,7 @@ fn prove_linked_table(l: &Lifted, start: u64, table: &LinkedTable,
                 Insn::B(_) | Insn::BCond(_, _) | Insn::Br(_) => {}
                 _ => return None,
             }
-            pending.push((from, reg));
+            pending.push((from, reg, None));
         }
     }
     proved_definition.then_some(())
