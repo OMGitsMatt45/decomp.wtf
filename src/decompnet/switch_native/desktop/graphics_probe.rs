@@ -315,12 +315,10 @@ fn main() {
     // positive-height viewport. Test the origin mode, the separate FLIP_Y bit,
     // both guest front-face settings and both signs of viewport height.
     let mut cases = vec![(128,96,false,0,false,false,true), (256,192,false,0,false,false,true)];
-    for origin in [0, 1, 0x10, 0x11] {
+    for (origin, ccw_visibility) in [(0, [true, false]), (1, [false, true]), (0x10, [true, true]), (0x11, [true, false])] {
         for clockwise in [false, true] {
-            for negative_height in [false, true] {
-                let flip_y = origin & 0x10 != 0;
-                let visible = (clockwise == (origin & 1 != 0)) ^ flip_y ^ negative_height;
-                cases.push((128,96,true,origin,clockwise,negative_height,visible));
+            for (negative_height, ccw_visible) in [false, true].into_iter().zip(ccw_visibility) {
+                cases.push((128,96,true,origin,clockwise,negative_height,ccw_visible ^ clockwise));
             }
         }
     }

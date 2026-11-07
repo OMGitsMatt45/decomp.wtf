@@ -126,12 +126,14 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
                  '        if let Err(why) = &ok {\n            crate::decomp::gpu_failure(0, why);\n            self.stats.skipped += 1;')
     replace_once(rt / 'src/gpu/vulkan/draw.rs', '                self.stats.skipped_dispatches += 1;',
                  '                crate::decomp::gpu_failure(0, why);\n                self.stats.skipped_dispatches += 1;')
-    # Map the Maxwell window origin and its independent Y flip to the host
-    # front-face convention. Vulkan applies the signed viewport separately.
+    # Map the Maxwell winding to the actual signed Vulkan viewport.
     replace_once(rt / 'src/gpu/vulkan/draw.rs',
                  '            let front = if regs[0x647] != 0x900 { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE };',
                  '''            let origin = regs[0x4eb];
-            let clockwise = (regs[0x647] == 0x900) ^ (origin & 1 == 0) ^ (origin & 0x10 != 0);
+            let upper_left = origin & 1 == 0;
+            // The positive-height upper-left viewport already uses the needed winding.
+            let reverse_for_y = origin & 0x10 != 0 && (!upper_left || viewport.height < 0.0);
+            let clockwise = (regs[0x647] == 0x900) ^ upper_left ^ reverse_for_y;
             let front = if clockwise { vk::FrontFace::CLOCKWISE } else { vk::FrontFace::COUNTER_CLOCKWISE };''')
     replace_once(rt / 'src/gpu/vulkan/images.rs',
                  '                let Some((sk, _)) = self.surface_image(gpu, mem, src, true) else { return false };',
