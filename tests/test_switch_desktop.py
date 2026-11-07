@@ -32,6 +32,20 @@ def test_plain_entry_guard_preserves_guest_fp_and_callbacks_use_host_fp(tmp_path
     assert 'plain entries: 10000; callbacks: 1; FP state preserved' in ran.stdout
 
 
+def test_native_entry_metadata_cache_checks_warm_code_and_exact_addresses(tmp_path):
+    rustc = os.environ.get('DECOMP_SWITCH_RUSTC') or shutil.which('rustc')
+    if not rustc:
+        pytest.skip('native entry metadata fixture requires Rust')
+    source = Path(__file__).resolve().parents[1] / 'tools/fixtures/switch-native-entry-cache.rs'
+    binary = tmp_path / ('native-entry-cache.exe' if os.name == 'nt' else 'native-entry-cache')
+    built = subprocess.run([rustc, '--edition=2024', '--test', str(source), '-o', str(binary)],
+                           capture_output=True, text=True, timeout=60)
+    assert built.returncode == 0, built.stdout + built.stderr
+    ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert '5 passed; 0 failed' in ran.stdout
+
+
 @pytest.fixture
 def original(tmp_path):
     path = tmp_path / 'owner module.nro'

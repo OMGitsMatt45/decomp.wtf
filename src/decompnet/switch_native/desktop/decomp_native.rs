@@ -2,13 +2,17 @@
 use std::{ffi::{CStr, CString, c_char, c_void}, path::PathBuf, sync::{OnceLock, atomic::Ordering}};
 use serde_json::{Value, json};
 use crate::{Cpu, Entry, HALT_PC};
+#[path = "native_entries.rs"]
+mod native_entries;
+use native_entries::Code;
 
 #[repr(C, align(16))]
 pub struct NativeCpu {
     x: [u64; 32], sp: u64, pc: u64, nzcv: u64, tpidr: u64, tpidrro: u64,
     excl_addr: u64, excl_lo: u64, owner: *mut c_void, fpcr: u64, fpsr: u64,
     excl_hi: u64, pending_entries: u64, entry_address: u64, next_entry_address: u64, entry_index: u64,
-    pad: [u8; 136], v: [u128; 32],
+    entry_cache_on: u64, entry_stats_on: u64, entry_cache_hits: u64, entry_cache_misses: u64, entry_hint_hits: u64, entry_searches: u64,
+    pad: [u8; 88], v: [u128; 32],
 }
 const _: () = assert!(std::mem::size_of::<NativeCpu>() == 1024);
 const _: () = assert!(std::mem::offset_of!(NativeCpu, v) == 512);
@@ -42,9 +46,6 @@ unsafe extern "C" {
     fn switch_asset_matches_expected(path: *const c_char, expected: *const c_char) -> i32;
 }
 
-struct Code {
-    base: u64, text: Vec<u8>, entries: Vec<u64>,
-}
 struct Config {
     code: Vec<Code>, initializers: Vec<u64>, entry: u64, samples: Vec<(String, u64, u64)>,
     sdk_startup: u64, sdk_initializers: Vec<u64>, main_initializers: Vec<u64>,
@@ -54,7 +55,28 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 static REPORT: OnceLock<PathBuf> = OnceLock::new();
 const STARTUP: u64 = 0x7f_fe00_0000;
 
+static ENTRY_STATS: [std::sync::atomic::AtomicU64; 4] = [const { std::sync::atomic::AtomicU64::new(0) }; 4];
+fn entry_cache_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("KIRIKAE_ENTRY_CACHE").is_none_or(|value| value != "0"))
+}
+fn entry_stats() -> Option<Value> {
+    crate::env_var!("KIRIKAE_ENTRY_STATS").is_some().then(|| {
+        let v = ENTRY_STATS.each_ref().map(|n| n.load(Ordering::Relaxed));
+        json!({"cache_enabled":entry_cache_enabled(),"cache_hits":v[0],"cache_misses":v[1],"hint_hits":v[2],"binary_searches":v[3]})
+    })
+}
+pub fn report_entry_stats() {
+    if let Some(stats) = entry_stats() { eprintln!("kirikae: native entry lookup cumulative: {stats}"); }
+}
+fn flush_entry_stats(n: &mut NativeCpu) {
+    if n.entry_stats_on == 0 { return; }
+    let values = [std::mem::take(&mut n.entry_cache_hits), std::mem::take(&mut n.entry_cache_misses),
+        std::mem::take(&mut n.entry_hint_hits), std::mem::take(&mut n.entry_searches)];
+    for (total, value) in ENTRY_STATS.iter().zip(values) { total.fetch_add(value, Ordering::Relaxed); }
+}
 fn flush_entry_count(n: &mut NativeCpu) {
+    flush_entry_stats(n);
     if n.pending_entries != 0 {
         crate::decomp::NATIVE.fetch_add(std::mem::take(&mut n.pending_entries), Ordering::Relaxed);
     }
@@ -87,7 +109,8 @@ fn enter(c: &mut Cpu, skip_hook: bool) {
     let mut n = NativeCpu { x: [0; 32], sp: 0, pc: 0, nzcv: 0, tpidr: 0, tpidrro: 0,
         excl_addr: 0, excl_lo: 0, owner: (c as *mut Cpu).cast(), fpcr: 0, fpsr: 0,
         excl_hi: 0, pending_entries: 0, entry_address: 0, next_entry_address: 0, entry_index: 0,
-        pad: [0; 136], v: [0; 32] };
+        entry_cache_on: u64::from(entry_cache_enabled()), entry_stats_on: u64::from(crate::env_var!("KIRIKAE_ENTRY_STATS").is_some()), entry_cache_hits: 0,
+        entry_cache_misses: 0, entry_hint_hits: 0, entry_searches: 0, pad: [0; 88], v: [0; 32] };
     copy_to_native(c, &mut n);
     unsafe { sw_enter(&mut n, c.process().memory.base() as usize, if skip_hook { c.pc } else { u64::MAX }); }
     flush_entry_count(&mut n);
@@ -105,27 +128,18 @@ pub extern "C" fn sw_host_entry_is_plain(n: &mut NativeCpu, address: u64, skip: 
     let p = c.process();
     if p.sched.exiting.load(Ordering::Relaxed) || (skip == 0 && p.hle.owns(address)) { return 0; }
     let Some(config) = CONFIG.get() else { return 0; };
-    let Some(code) = config.code.iter().find(|m| address >= m.base && address < m.base + m.text.len() as u64) else { return 0; };
-    // Reuse the last or next entry index for loops and fallthrough. Verify
-    // the exact address in the selected module before using either hint.
-    let is_next = n.next_entry_address == address;
-    let matches_hint = is_next | (n.entry_address == address);
-    let hint = n.entry_index as usize + usize::from(is_next);
-    let index = if matches_hint && code.entries.get(hint) == Some(&address) {
-        hint
-    } else if let Ok(index) = code.entries.binary_search(&address) {
-        index
-    } else {
-        return 0;
-    };
-    let offset = (address - code.base) as usize;
-    let end = code.entries.get(index + 1).copied().unwrap_or(code.base + code.text.len() as u64);
-    let size = (end - address) as usize;
-    let bytes = unsafe { std::slice::from_raw_parts(p.memory.base().add(address as usize), size) };
-    if bytes != &code.text[offset..offset + size] { return 0; }
+    let lookup = native_entries::lookup(&config.code, address, n.entry_address, n.next_entry_address, n.entry_index, n.entry_cache_on != 0);
+    if n.entry_stats_on != 0 {
+        n.entry_cache_hits += u64::from(lookup.cache_hit);
+        n.entry_cache_misses += u64::from(!lookup.cache_hit);
+        n.entry_hint_hits += u64::from(lookup.hint_hit);
+        n.entry_searches += u64::from(lookup.searched);
+    }
+    let Some(entry) = lookup.entry else { return 0; };
+    if !unsafe { entry.matches(p.memory.base()) } { return 0; }
     n.entry_address = address;
-    n.next_entry_address = end;
-    n.entry_index = index as u64;
+    n.next_entry_address = entry.end;
+    n.entry_index = entry.index as u64;
     // Each running guest thread owns this counter. Batch the global update at
     // polls and other host boundaries to avoid sharing a cache line per entry.
     n.pending_entries += 1;
@@ -312,7 +326,7 @@ fn run(args: &[String]) -> Result<(i32, Value), String> {
         "status":if result.exit_code == 0 && failures.is_empty() { "passed" } else { "failed" },
         "exit_code":result.exit_code, "interpreter_instructions":result.interpreted, "runtime_compilation":false,
         "host_action":if crate::decomp_host_menu::RETURNED_TO_SETTINGS.load(Ordering::Relaxed) { Some("settings") } else { None },
-        "native_function_entries":crate::decomp::NATIVE.load(Ordering::Relaxed), "failures":failures,
+        "native_function_entries":crate::decomp::NATIVE.load(Ordering::Relaxed), "native_entry_lookup":entry_stats(), "failures":failures,
         "final_cpu":crate::decomp::FINAL_CPU.lock().unwrap().clone(),"data_samples":samples,
         "graphics":crate::decomp::GPU.lock().unwrap().clone(),"audio":crate::decomp::AUDIO.lock().unwrap().clone(),
         "initializers_run":crate::decomp::INITIALIZERS.load(Ordering::Relaxed),

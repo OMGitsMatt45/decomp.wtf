@@ -83,6 +83,10 @@ compile_error!("Native exports cannot include the guest CPU interpreter");''')
     pub fn symbol''')
     replace_once(rt / 'src/process.rs', '    crate::nvn::install(process);',
                  '    crate::decomp::process_started(process);\n    crate::nvn::install(process);')
+    replace_once(rt / 'src/process.rs', '            print_times(&mut last_times, frames - last_frames);',
+                 '            print_times(&mut last_times, frames - last_frames);\n'
+                 '            #[cfg(feature = "decomp-native")]\n'
+                 '            crate::decomp_native::report_entry_stats();')
     # Track unsupported service paths even with the optional coverage recorder off.
     replace_once(rt / 'src/usage.rs', '''pub fn begin_ipc() {
     if on()''', '''pub fn begin_ipc() {
@@ -290,7 +294,7 @@ pub(super) fn read_texture(gpu: &Gpu,''')
                  'pub fn key(code: KeyCode, pressed: bool) {\n    if crate::env_var!("KIRIKAE_INPUT_TRACE").is_some() { eprintln!("kirikae: input key {code:?} pressed={pressed}"); }')
     replace_once(rt / 'src/sched.rs', '        if d.is_zero() { std::thread::yield_now() } else { std::thread::sleep(d) }',
                  '        if d.is_zero() { std::thread::yield_now() } else {\n            let start = std::time::Instant::now();\n            while start.elapsed() < d && !c.process().sched.exiting.load(Ordering::Relaxed) {\n                std::thread::sleep((d - start.elapsed().min(d)).min(Duration::from_millis(10)));\n            }\n        }')
-    for name in ('decomp.rs', 'decomp_native.rs'):
+    for name in ('decomp.rs', 'decomp_native.rs', 'native_entries.rs'):
         (rt / 'src' / name).write_bytes((adapter / name).read_bytes())
     from .services import (account_availability, applet_controls, application_play_history,
                            parental_session, hid_activation, applet_audio, hid_vibration,
