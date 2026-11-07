@@ -364,9 +364,10 @@ The Windows Switch workflow executes native CPU/module comparisons, original
 desktop programs and runtime regressions without retail game inputs.
 
 The Vulkan runtime maps the Maxwell window-origin mode and its separate
-`FLIP_Y` flag to the host front-face convention. The original graphics probe
-checks both windings across both origin modes, both flip states, and both
-viewport-height signs. [NVIDIA's Maxwell register definitions](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/clb197.h#L2305-L2311)
+`FLIP_Y` flag to the signed host viewport. For upper-left draws, the extra
+winding reversal applies to negative-height viewports. The original graphics
+probe checks both windings across both origin modes, both flip states, and
+both viewport-height signs. [NVIDIA's Maxwell register definitions](https://github.com/NVIDIA/open-gpu-doc/blob/master/classes/3d/clb197.h#L2305-L2311)
 
 The original `prepo:u` play-report commands `10100` and `10101` copy guest report
 buffers into a bounded process-local queue. They do not contact Nintendo or
