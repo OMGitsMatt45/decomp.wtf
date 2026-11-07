@@ -397,14 +397,127 @@ fn present(p: &Process, s: &Slot, transform: u32) {
 
 static VSYNC_EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
+const ONE_BLANK: std::time::Duration = std::time::Duration::from_nanos(16_666_667);
+
+#[derive(Clone, Copy)]
+struct Deadline {
+    next_blank: u64,
+    last_release: std::time::Duration,
+}
+
+impl Deadline {
+    fn start(released: std::time::Duration) -> Self {
+        Self { next_blank: blank_at(released) + 2, last_release: released }
+    }
+
+    fn wait(self, now: std::time::Duration) -> std::time::Duration {
+        blank_time(self.next_blank).max(self.last_release + ONE_BLANK).saturating_sub(now)
+    }
+
+    fn advance(self, released: std::time::Duration) -> (Self, bool) {
+        let next_blank = self.next_blank + 2;
+        // Keep at most one period of debt on the absolute phase.
+        if released > blank_time(next_blank) {
+            (Self::start(released), true)
+        } else {
+            (Self { next_blank, last_release: released }, false)
+        }
+    }
+}
+
+fn blank_time(blank: u64) -> std::time::Duration {
+    std::time::Duration::new(blank / 60, ((blank % 60) * 1_000_000_000 / 60) as u32)
+}
+
+fn blank_at(elapsed: std::time::Duration) -> u64 {
+    // Invert the rounded-down blank_time, including its exact boundaries.
+    (((elapsed.as_nanos() + 1) * 60 - 1) / 1_000_000_000) as u64
+}
+
+fn deadline_mode(deadline: &mut Option<Deadline>, interval: u32, uncapped: bool) -> bool {
+    let active = interval == 2 && !uncapped;
+    if !active {
+        *deadline = None;
+    }
+    active
+}
+
+#[derive(Default)]
+struct DeadlineStats {
+    releases: u64,
+    sleep_calls: u64,
+    sleep_requested_ns: u128,
+    sleep_elapsed_ns: u128,
+    starts: u64,
+    rebases: u64,
+    max_retained_debt_ns: u128,
+}
+
+struct PaceState {
+    last: Option<u64>,
+    deadline: Option<Deadline>,
+    stats: Option<DeadlineStats>,
+}
+
+fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
+    let diagnostics = crate::env_var!("KIRIKAE_VI_DEADLINE_STATS").is_some_and(|value| value == "1");
+    let now = epoch.elapsed();
+    let previous = state.deadline;
+    let wait = match previous {
+        Some(deadline) => deadline.wait(now),
+        None => state.last.map_or(std::time::Duration::ZERO, |last| blank_time(last + 2).saturating_sub(now)),
+    };
+    let sleep_started = if wait.is_zero() {
+        None
+    } else {
+        crate::display::PACED_NS.fetch_add(wait.as_nanos() as u64, Ordering::Relaxed);
+        let started = diagnostics.then(|| epoch.elapsed());
+        std::thread::sleep(wait);
+        started
+    };
+    let released = epoch.elapsed();
+    let (next, rebased) = previous.map_or_else(|| (Deadline::start(released), false), |deadline| deadline.advance(released));
+    state.deadline = Some(next);
+    state.last = Some(blank_at(released));
+    if diagnostics {
+        let stats = state.stats.get_or_insert_with(DeadlineStats::default);
+        stats.releases += 1;
+        if let Some(started) = sleep_started {
+            stats.sleep_calls += 1;
+            stats.sleep_requested_ns += wait.as_nanos();
+            stats.sleep_elapsed_ns += (released - started).as_nanos();
+        }
+        stats.starts += previous.is_none() as u64;
+        stats.rebases += rebased as u64;
+        if let Some(deadline) = previous.filter(|_| !rebased) {
+            stats.max_retained_debt_ns = stats.max_retained_debt_ns
+                .max(released.saturating_sub(blank_time(deadline.next_blank)).as_nanos());
+        }
+        if stats.releases.is_multiple_of(256) {
+            eprintln!("kirikae: vi deadline: releases={} sleep_calls={} requested_ns={} elapsed_ns={} starts={} rebases={} max_retained_debt_ns={}",
+                stats.releases, stats.sleep_calls, stats.sleep_requested_ns, stats.sleep_elapsed_ns,
+                stats.starts, stats.rebases, stats.max_retained_debt_ns);
+        }
+    }
+}
+
 fn pace(interval: u32) {
-    static LAST: Mutex<Option<u64>> = Mutex::new(None);
+    static LAST: Mutex<PaceState> = Mutex::new(PaceState { last: None, deadline: None, stats: None });
+    let absolute = crate::env_var!("KIRIKAE_VI_ABSOLUTE_DEADLINE").is_some_and(|value| value == "1");
     if std::env::var_os("KIRIKAE_NO_FRAME_LIMIT").is_some() {
+        if absolute {
+            deadline_mode(&mut LAST.lock().unwrap().deadline, interval, true);
+        }
         return;
     }
     let epoch = *VSYNC_EPOCH.get_or_init(std::time::Instant::now);
+    let mut state = LAST.lock().unwrap();
+    if absolute && deadline_mode(&mut state.deadline, interval, false) {
+        pace_deadline(&mut state, epoch);
+        return;
+    }
     let blank = |n: u64| epoch + std::time::Duration::from_nanos(n * 1_000_000_000 / 60);
-    let mut last = LAST.lock().unwrap();
+    let last = &mut state.last;
     let now = std::time::Instant::now();
     let current = (now.duration_since(epoch).as_nanos() * 60 / 1_000_000_000) as u64;
     match last.map(|l| l + interval as u64) {
@@ -415,6 +528,99 @@ fn pace(interval: u32) {
             *last = Some(target);
         }
         _ => *last = Some(current),
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::{Deadline, ONE_BLANK, blank_at, blank_time, deadline_mode};
+    use std::time::Duration;
+
+    #[test]
+    fn on_time_deadlines_follow_exact_30_hz_phase() {
+        let mut deadline = Deadline::start(blank_time(1));
+        for frame in 1..=300 {
+            let target = blank_time(1 + 2 * frame);
+            let ready = target - Duration::from_millis(1);
+            let released = ready + deadline.wait(ready);
+            assert_eq!(released, target);
+            assert_eq!(blank_at(released), 1 + 2 * frame);
+            let (next, rebased) = deadline.advance(released);
+            assert!(!rebased);
+            deadline = next;
+        }
+        assert_eq!(deadline.last_release - blank_time(1), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn sub_blank_lateness_can_recover_next_nominal_release() {
+        let deadline = Deadline::start(blank_time(2));
+        let late = blank_time(4) + Duration::from_millis(8);
+        assert_eq!(deadline.wait(late), Duration::ZERO);
+        let (next, rebased) = deadline.advance(late);
+        assert!(!rebased);
+        let ready = late + Duration::from_millis(8);
+        assert_eq!(ready + next.wait(ready), blank_time(6));
+    }
+
+    #[test]
+    fn one_period_late_preserves_phase_and_full_blank_spacing() {
+        let deadline = Deadline::start(blank_time(2));
+        let late = blank_time(6);
+        let (next, rebased) = deadline.advance(late);
+        assert!(!rebased);
+        assert_eq!(next.next_blank, 6);
+        assert_eq!(next.wait(late), ONE_BLANK);
+        let (third, rebased) = next.advance(late + ONE_BLANK);
+        assert!(!rebased);
+        assert_eq!(third.next_blank, 8);
+        assert_eq!(late + ONE_BLANK + third.wait(late + ONE_BLANK), late + ONE_BLANK * 2);
+    }
+
+    #[test]
+    fn sustained_slow_work_rebases_without_building_more_than_one_period_of_debt() {
+        let mut deadline = Deadline::start(blank_time(2));
+        let mut rebases = 0;
+        for _ in 0..60 {
+            let previous = deadline.last_release;
+            let ready = previous + Duration::from_millis(40);
+            let released = ready + deadline.wait(ready);
+            let target = deadline.next_blank;
+            let (next, rebased) = deadline.advance(released);
+            assert!(released - previous >= ONE_BLANK);
+            assert!(next.next_blank > target);
+            if rebased {
+                assert_eq!(next.next_blank, blank_at(released) + 2);
+                rebases += 1;
+            } else {
+                assert!(released <= blank_time(next.next_blank));
+            }
+            deadline = next;
+        }
+        assert!(rebases > 0);
+    }
+
+    #[test]
+    fn observed_oversleep_past_bound_rebases_at_actual_release() {
+        let deadline = Deadline::start(blank_time(2));
+        let ready = blank_time(3);
+        assert_eq!(ready + deadline.wait(ready), blank_time(4));
+        for released in [blank_time(6) + Duration::from_nanos(1), blank_time(180)] {
+            let (next, rebased) = deadline.advance(released);
+            assert!(rebased);
+            assert_eq!(next.next_blank, blank_at(released) + 2);
+            assert_eq!(next.last_release, released);
+        }
+    }
+
+    #[test]
+    fn other_intervals_and_uncapped_clear_deadline() {
+        for (interval, uncapped) in [(0, false), (1, false), (3, false), (4, false), (2, true)] {
+            let mut deadline = Some(Deadline::start(blank_time(2)));
+            assert!(!deadline_mode(&mut deadline, interval, uncapped));
+            assert!(deadline_mode(&mut deadline, 2, false));
+            assert!(deadline.is_none());
+        }
     }
 }
 
