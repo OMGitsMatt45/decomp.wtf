@@ -100,7 +100,8 @@ pub struct Renderer {
     index_checked: Option<(u64, u64, buffer_cache::Kind)>,
     heads: HashMap<u64, (u64, u64)>,
     storage: HashMap<(u64, u64), u64>,
-    checked: HashMap<(u64, u64, buffer_cache::Kind), (usize, vk::Buffer, u64)>,
+    checked: HashMap<(u64, u64, buffer_cache::Kind), buffers::CheckedBinding>,
+    reuse_pending_checks: bool,
     cp_writes: CpWrites,
     write_back: Vec<(u64, u64, u64)>,
     pitch_targets: HashMap<ImageKey, (u64, u32, u32)>,
@@ -164,6 +165,8 @@ pub struct RenderStats {
     pub written_back: u64,
     pub ring_bytes: u64,
     pub cbuf_bytes: u64,
+    pub checked_pending_reused: u64,
+    pub checked_pending_scans: u64,
     #[cfg(debug_assertions)]
     pub readonly_storage_resident: u64,
     pub vertex_bytes: u64,
@@ -493,6 +496,8 @@ impl Renderer {
             heads: HashMap::default(),
             storage: HashMap::default(),
             checked: HashMap::default(),
+            reuse_pending_checks: crate::env_var!("KIRIKAE_CHECKED_PENDING_CACHE").is_some_and(|value| value == "1")
+                && crate::env_var!("KIRIKAE_NO_CHECKED").is_none(),
             cp_writes: CpWrites::default(),
             write_back: Vec::new(),
             pitch_targets: HashMap::default(),
