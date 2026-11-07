@@ -286,13 +286,15 @@ fn layer_shaders_use_integer_interfaces() {
             let sources: Vec<_> = (0..d as u64)
                 .map(|z| {
                     let address = cpu + (z >> bd) * blocks_high * gobs_wide * block_size + ((z & ((1 << bd) - 1)) << bh) * 512;
-                    self.latest_slice(layered, z as u32, self.rendered_slice(address, format.vk, w, h))
+                    let separate = self.rendered_slice(address, format.vk, w, h);
+                    self.latest_slice(layered, z as u32, separate)
                 }).collect();''')
     replace_once(volumes, '''            let sources: Vec<Option<ImageKey>> = (0..d as u64).map(|z| self.rendered_slice(cpu + z * stride, format.vk, w, h)).collect();''', '''            let layered = self.rendered_slice(cpu, format.vk, w, h)
                 .filter(|key| self.images[key].layers >= d);
-            let sources: Vec<_> = (0..d as u64).map(|z|
-                self.latest_slice(layered, z as u32, self.rendered_slice(cpu + z * stride, format.vk, w, h))
-            ).collect();''')
+            let sources: Vec<_> = (0..d as u64).map(|z| {
+                let separate = self.rendered_slice(cpu + z * stride, format.vk, w, h);
+                self.latest_slice(layered, z as u32, separate)
+            }).collect();''')
     replace_once(volumes, '''    fn copy_slices(&mut self, key: (u64, vk::Format), sources: &[Option<ImageKey>], w: u32, h: u32) {''', '''    fn latest_slice(&self, layered: Option<ImageKey>, layer: u32, separate: Option<ImageKey>) -> Option<(ImageKey, u32)> {
         separate.filter(|key| Some(*key) != layered).map(|key| (key, 0)).into_iter()
             .chain(layered.map(|key| (key, layer)))

@@ -56,6 +56,7 @@ pub(super) const DERIVED: u64 = CROP | GATHER | TWIN | FEEDBACK | STENCIL_TEXTUR
     replace_once(textures, '    #[allow(clippy::too_many_arguments)]\n    pub(super) fn upload_texture', '''    fn stencil_texture(&mut self, gpu: &Gpu, mem: &GuestMemory, header: &TextureHeader, format: &TexFormat,
         mut sampler: tic::Sampler) -> Result<(vk::ImageView, vk::Sampler), String> {
         let cpu = gpu.translate(header.address).ok_or("not mapped")?;
+        self.note_draw_texture_address(cpu);
         let stencil = vk::ImageAspectFlags::STENCIL;
         let target = self.at(cpu).iter().copied().filter(|key| {
             key.width == header.width && key.height == header.height

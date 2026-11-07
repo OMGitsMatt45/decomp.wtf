@@ -56,6 +56,21 @@ pub(super) const DERIVED: u64 = CROP | GATHER | TWIN | FEEDBACK;
 pub(super) const CROP_SIZES: usize = 3;
 
 impl Renderer {
+    fn draw_target_at(&self, cpu: u64) -> bool {
+        self.draw_targets.iter().any(|target| target.cpu == cpu)
+    }
+
+    pub(super) fn note_draw_texture_address(&mut self, cpu: u64) {
+        if self.draw_texture_alias == Some(false) && self.draw_target_at(cpu) {
+            self.draw_texture_alias = Some(true);
+        }
+    }
+
+    fn draw_texture_sources_alias(&self, sources: &[Option<ImageKey>]) -> bool {
+        self.draw_texture_alias == Some(false)
+            && sources.iter().flatten().any(|source| self.draw_target_at(source.cpu))
+    }
+
     pub(super) fn forget_textures(&mut self, cpu: u64, layered: bool) {
         let end = if layered { cpu.saturating_add(1 << 32) } else { cpu };
         let found: Vec<u64> = self.tex_at.range(cpu..=end).map(|(&a, _)| a).collect();
@@ -128,6 +143,7 @@ impl Renderer {
         }
         let format = formats::texture(header.components, header.data_type, header.srgb).ok_or_else(|| format!("texture format {:#x} type {}", header.components, header.data_type))?;
         let cpu = gpu.translate(header.address).ok_or("texture not mapped")?;
+        self.note_draw_texture_address(cpu);
         if crate::gpu::trace() {
             eprintln!("gpu: texture {handle} -> tic {tic_index:#x}: {:#x} {}x{}x{} type {} levels {} view {}..={} {:?} swizzle {:?} types {:?} mip {} filter {}{} reduction {} wrap {:?} lod {}..{} bias {}{}", header.address, header.width, header.height, header.depth, header.texture_type, header.levels, header.min_level, header.max_level, format.vk, header.swizzle, header.data_types, sampler_state.mip, if sampler_state.mag_linear { "L" } else { "N" }, if sampler_state.min_linear { "L" } else { "N" }, sampler_state.reduction, sampler_state.address, sampler_state.min_lod as f32 / 256.0, sampler_state.max_lod as f32 / 256.0, sampler_state.lod_bias as f32 / 256.0, sampler_state.compare.map_or(String::new(), |c| format!(" compare {c}")));
         }
@@ -142,6 +158,10 @@ impl Renderer {
         // Fixed GPU remaps can change the backing memory without changing the TIC.
         let tex_key = TexKey { cpu, tic, tsc, dim, array, shadow };
         if let Some(e) = self.tex_cache.get(&tex_key).copied().filter(|e| !self.draw_targets.contains(&e.image)) {
+            let source = e.image.cpu & !DERIVED;
+            if source != cpu {
+                self.note_draw_texture_address(source);
+            }
             if let Some(k) = e.refresh {
                 self.refresh_texture(gpu, mem, k, &header, &format, layers);
             }
@@ -181,6 +201,9 @@ impl Renderer {
                 key
             }
         };
+        if key.cpu != cpu {
+            self.note_draw_texture_address(key.cpu);
+        }
         self.lap(14, &mut lap);
         let swizzle = swizzle(&header);
         let view_format = if same_class(key.format, format.vk) { format.vk } else { key.format };
@@ -295,6 +318,7 @@ impl Renderer {
     }
 
     pub(super) fn crop(&mut self, src: ImageKey, width: u32, height: u32) -> Result<ImageKey, String> {
+        self.note_draw_texture_address(src.cpu);
         self.stats.crop_calls += 1;
         let key = ImageKey { cpu: src.cpu | CROP, format: src.format, width, height };
         let stamp = self.images[&src].stamp;
@@ -368,6 +392,7 @@ impl Renderer {
     }
 
     pub(super) fn depth_twin(&mut self, src: ImageKey, format: vk::Format) -> Result<ImageKey, String> {
+        self.note_draw_texture_address(src.cpu);
         let key = ImageKey { cpu: src.cpu | TWIN, format, width: src.width, height: src.height };
         let (stamp, layers) = (self.images[&src].stamp, self.images[&src].layers);
         if self.twins.get(&key) == Some(&(src, stamp)) && self.images.contains_key(&key) {
@@ -418,6 +443,9 @@ impl Renderer {
             && sources.len() == copied.len()
             && sources.iter().zip(copied).all(|(s, &c)| s.map_or(0, |k| self.images[&k].stamp) == c)
         {
+            if self.draw_texture_sources_alias(sources) {
+                self.draw_texture_alias = Some(true);
+            }
             return Ok(key);
         }
         let sources = match self.gather_sources.get(&key) {
@@ -438,6 +466,9 @@ impl Renderer {
                 sources
             }
         };
+        if self.draw_texture_sources_alias(&sources) {
+            self.draw_texture_alias = Some(true);
+        }
         let stamps: Vec<u64> = sources.iter().map(|s| s.map_or(0, |k| self.images[&k].stamp)).collect();
         let copied = self.gathers.get(&key).cloned().unwrap_or_default();
         if copied == stamps {
