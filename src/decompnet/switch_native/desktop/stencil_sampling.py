@@ -25,6 +25,9 @@ def apply(root):
                  'img.views.get(&(format, swizzle, view_type, aspect, base, count, layer))')
     replace_once(images, 'img.views.insert((format, swizzle, view_type, base, count, layer), v);',
                  'img.views.insert((format, swizzle, view_type, aspect, base, count, layer), v);')
+    replace_once(root / 'crates/rt/src/gpu/vulkan/present.rs',
+                 'vk::ImageViewType::TYPE_2D, 0, 1, 0);',
+                 'vk::ImageViewType::TYPE_2D, vk::ImageAspectFlags::COLOR, 0, 1, 0);')
     replace_once(images, 'aspect_mask: aspect_of(format) & !vk::ImageAspectFlags::STENCIL, base_mip_level: base,',
                  'aspect_mask: aspect, base_mip_level: base,')
 

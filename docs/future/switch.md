@@ -223,6 +223,10 @@ the drawable. Current Vulkan geometry targets still use guest dimensions.
 Resizing a swapchain does not establish the shared drawable-resolution geometry
 contract. That is why this remains an explicit development export.
 
+Set `KIRIKAE_PRESENT_FILTER=cubic` to use range-clamped cubic scaling when a
+compatible Vulkan swapchain upscales a complete RGBA8 or BGRA8 frame. Exact-size
+presentation, downscaling, and unsupported surfaces use the linear blit.
+
 Keyboard: WASD/arrows left stick, IJKL right stick, Z/X/C/V face buttons,
 E/U shoulders, Q/O triggers, Enter plus, Backspace minus. Gamepad and HID sources
 are included. Saves use a title namespace below the host data directory's

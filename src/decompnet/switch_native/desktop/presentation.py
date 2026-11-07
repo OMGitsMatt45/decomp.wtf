@@ -129,29 +129,29 @@ fn present(p: &Process, s: &Slot, rect: [i32; 4], transform: u32) {
         if crop.left >= crop.right || crop.top >= crop.bottom {
             return Presented::NoImage;
         }''')
-    replace_once(present, '        let (w, h) = (width.min(key.width) as i32, height.min(key.height) as i32);\n', '')
+    replace_once(present, '''        let visible = [width.min(key.width), height.min(key.height)];
+        let cubic = if self.present_filter_cubic && sc.filter.is_some()''', '''        let visible = [crop.right - crop.left, crop.bottom - crop.top];
+        let [left, top, width, height] = fit_frame(visible, [extent.width, extent.height]);
+        let cubic = if self.present_filter_cubic && sc.filter.is_some()
+            && crop == BufferCrop::full(key.width, key.height)
+            && [width, height] == [extent.width, extent.height]''')
     replace_once(present, '.src_offsets([vk::Offset3D { x: 0, y: 0, z: 0 }, vk::Offset3D { x: w, y: h, z: 1 }])',
                  '''.src_offsets([
-                vk::Offset3D { x: crop.left as i32, y: crop.top as i32, z: 0 },
-                vk::Offset3D { x: crop.right as i32, y: crop.bottom as i32, z: 1 },
-            ])''')
-    replace_once(present, '''        let (x0, x1) = if flip_h { (extent.width as i32, 0) } else { (0, extent.width as i32) };
-        let (y0, y1) = if flip_v { (extent.height as i32, 0) } else { (0, extent.height as i32) };''', '''        let [left, top, width, height] = fit_frame(
-            [crop.right - crop.left, crop.bottom - crop.top],
-            [extent.width, extent.height],
-        );
-        let (left, top, right, bottom) = (left as i32, top as i32, (left + width) as i32, (top + height) as i32);
-        let (x0, x1) = if flip_h { (right, left) } else { (left, right) };
-        let (y0, y1) = if flip_v { (bottom, top) } else { (top, bottom) };''')
-    replace_once(present, '            d.cmd_blit_image(self.cmd, source,', '''            if width != extent.width || height != extent.height {
-                let black = vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] };
-                d.cmd_clear_color_image(self.cmd, target, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &black, &[range]);
-                let written = [to_dst[0]
-                    .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)];
-                d.cmd_pipeline_barrier(self.cmd, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &written);
-            }
-            d.cmd_blit_image(self.cmd, source,''')
+                        vk::Offset3D { x: crop.left as i32, y: crop.top as i32, z: 0 },
+                        vk::Offset3D { x: crop.right as i32, y: crop.bottom as i32, z: 1 },
+                    ])''')
+    replace_once(present, '''                let [w, h] = visible.map(|v| v as i32);
+                let (x0, x1) = if flip_h { (extent.width as i32, 0) } else { (0, extent.width as i32) };
+                let (y0, y1) = if flip_v { (extent.height as i32, 0) } else { (0, extent.height as i32) };''', '''                let (left, top, right, bottom) = (left as i32, top as i32, (left + width) as i32, (top + height) as i32);
+                let (x0, x1) = if flip_h { (right, left) } else { (left, right) };
+                let (y0, y1) = if flip_v { (bottom, top) } else { (top, bottom) };''')
+    replace_once(present, '                d.cmd_blit_image(self.cmd, self.images[&key].image,', '''                if width != extent.width || height != extent.height {
+                    let black = vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] };
+                    d.cmd_clear_color_image(self.cmd, target, write_layout, &black, &[range]);
+                    let written = [to_write[0].old_layout(write_layout).src_access_mask(write_access)];
+                    d.cmd_pipeline_barrier(self.cmd, write_stage, write_stage, vk::DependencyFlags::empty(), &[], &[], &written);
+                }
+                d.cmd_blit_image(self.cmd, self.images[&key].image,''')
 
     replace_once(vi, '    #[test]\n    fn parcel_round_trip()', '''    #[test]
     fn queue_crop_uses_flattened_rect_and_precedes_flips() {
