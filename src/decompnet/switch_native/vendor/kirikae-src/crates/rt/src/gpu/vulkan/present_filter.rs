@@ -29,17 +29,28 @@ pub(super) fn color_view(device: &ash::Device, image: vk::Image, format: vk::For
     unsafe { device.create_image_view(&info, None) }
 }
 
-pub(super) fn transform(source: ImageKey, visible: [u32; 2], output: vk::Extent2D, flip: [bool; 2]) -> Option<[f32; 4]> {
-    let [w, h] = visible;
-    if !rgba8(source.format) || visible != [source.width, source.height] || w == 0 || h == 0
-        || output.width < w || output.height < h || (output.width, output.height) == (w, h)
+#[derive(Debug, PartialEq)]
+pub(super) struct SourceTransform {
+    mapping: [f32; 4],
+    bounds: [u32; 4],
+}
+
+const PUSH_CONSTANT_SIZE: u32 = size_of::<[u32; 8]>() as u32;
+
+pub(super) fn transform(source: ImageKey, crop: [u32; 4], output: vk::Extent2D, flip: [bool; 2]) -> Option<SourceTransform> {
+    let [left, top, right, bottom] = crop;
+    if !rgba8(source.format) || left >= right || top >= bottom || right > source.width || bottom > source.height {
+        return None;
+    }
+    let (w, h) = (right - left, bottom - top);
+    if output.width < w || output.height < h || (output.width, output.height) == (w, h)
     {
         return None;
     }
     let (sx, sy) = (w as f32 / output.width as f32, h as f32 / output.height as f32);
-    let (sx, ox) = if flip[0] { (-sx, w as f32) } else { (sx, 0.0) };
-    let (sy, oy) = if flip[1] { (-sy, h as f32) } else { (sy, 0.0) };
-    Some([sx, sy, ox, oy])
+    let (sx, ox) = if flip[0] { (-sx, right as f32) } else { (sx, left as f32) };
+    let (sy, oy) = if flip[1] { (-sy, bottom as f32) } else { (sy, top as f32) };
+    Some(SourceTransform { mapping: [sx, sy, ox, oy], bounds: [left, top, right - 1, bottom - 1] })
 }
 
 impl PresentFilter {
@@ -62,7 +73,7 @@ impl PresentFilter {
             .bindings(&bindings);
         filter.set_layout = unsafe { device.create_descriptor_set_layout(&set, None)? };
         let layouts = [filter.set_layout];
-        let constants = [vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::FRAGMENT).size(16)];
+        let constants = [vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::FRAGMENT).size(PUSH_CONSTANT_SIZE)];
         let layout = vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts).push_constant_ranges(&constants);
         filter.layout = unsafe { device.create_pipeline_layout(&layout, None)? };
         filter.pipeline = create_pipeline(device, filter.layout, format)?;
@@ -80,7 +91,7 @@ impl PresentFilter {
         extent: vk::Extent2D,
         source: vk::ImageView,
         source_size: [u32; 2],
-        transform: [f32; 4],
+        transform: SourceTransform,
     ) {
         let rect = vk::Rect2D::default().extent(extent);
         let attachments = [vk::RenderingAttachmentInfo::default()
@@ -95,7 +106,7 @@ impl PresentFilter {
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .image_info(&source_info)];
-        let constants = transform.map(f32::to_ne_bytes);
+        let constants = [transform.mapping.map(f32::to_bits), transform.bounds].map(|words| words.map(u32::to_ne_bytes));
         let device = &self.device;
         unsafe {
             device.cmd_begin_rendering(cmd, &rendering);
@@ -103,7 +114,7 @@ impl PresentFilter {
             device.cmd_set_viewport(cmd, 0, &view);
             device.cmd_set_scissor(cmd, 0, &[rect]);
             push.cmd_push_descriptor_set(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &writes);
-            device.cmd_push_constants(cmd, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, constants.as_flattened());
+            device.cmd_push_constants(cmd, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, constants.as_flattened().as_flattened());
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
         }
@@ -182,33 +193,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn presentation_filter_requires_a_complete_supported_source_and_upscale() {
+    fn presentation_filter_requires_a_valid_supported_source_and_upscale() {
         let source = ImageKey { cpu: 0, format: vk::Format::B8G8R8A8_UNORM, width: 1920, height: 1080 };
         let hd = vk::Extent2D { width: 1920, height: 1080 };
         let qhd = vk::Extent2D { width: 2560, height: 1440 };
         let smaller = vk::Extent2D { width: 2560, height: 900 };
-        let visible = [1920, 1080];
-        assert_eq!(transform(source, visible, hd, [false, false]), None);
-        assert_eq!(transform(source, visible, smaller, [false, false]), None);
-        assert_eq!(transform(source, [1920, 1040], qhd, [false, false]), None);
+        let full = [0, 0, 1920, 1080];
+        assert_eq!(transform(source, full, hd, [false, false]), None);
+        assert_eq!(transform(source, full, smaller, [false, false]), None);
+        assert_eq!(transform(source, [100, 0, 99, 1080], qhd, [false, false]), None);
+        assert_eq!(transform(source, [0, 0, 1920, 1081], qhd, [false, false]), None);
         let unsupported = ImageKey { format: vk::Format::R32_UINT, ..source };
-        assert_eq!(transform(unsupported, visible, qhd, [false, false]), None);
-        assert_eq!(transform(source, visible, qhd, [false, false]), Some([0.75, 0.75, 0.0, 0.0]));
+        assert_eq!(transform(unsupported, full, qhd, [false, false]), None);
+        assert_eq!(transform(source, full, qhd, [false, false]).unwrap().mapping, [0.75, 0.75, 0.0, 0.0]);
+        let cropped = transform(source, [0, 0, 1280, 720], qhd, [false, false]).unwrap();
+        assert_eq!(cropped.mapping, [0.5, 0.5, 0.0, 0.0]);
+        assert_eq!(cropped.bounds, [0, 0, 1279, 719]);
     }
 
     #[test]
     fn presentation_transform_maps_centers_with_independent_flips() {
-        let source = ImageKey { cpu: 0, format: vk::Format::R8G8B8A8_SRGB, width: 3, height: 2 };
+        let source = ImageKey { cpu: 0, format: vk::Format::R8G8B8A8_SRGB, width: 8, height: 8 };
         let output = vk::Extent2D { width: 6, height: 4 };
+        let crop = [4, 5, 7, 7];
         for (flip, corner) in [
-            ([false, false], [-0.25, -0.25]),
-            ([true, false], [2.25, -0.25]),
-            ([false, true], [-0.25, 1.25]),
-            ([true, true], [2.25, 1.25]),
+            ([false, false], [3.75, 4.75]),
+            ([true, false], [6.25, 4.75]),
+            ([false, true], [3.75, 6.25]),
+            ([true, true], [6.25, 6.25]),
         ] {
-            let [sx, sy, ox, oy] = transform(source, [3, 2], output, flip).unwrap();
+            let transform = transform(source, crop, output, flip).unwrap();
+            let [sx, sy, ox, oy] = transform.mapping;
+            assert_eq!(transform.bounds, [4, 5, 6, 6]);
             assert_eq!([0.5 * sx + ox - 0.5, 0.5 * sy + oy - 0.5], corner);
-            assert_eq!([5.5 * sx + ox - 0.5, 3.5 * sy + oy - 0.5], [2.0 - corner[0], 1.0 - corner[1]]);
+            assert_eq!([5.5 * sx + ox - 0.5, 3.5 * sy + oy - 0.5], [10.0 - corner[0], 11.0 - corner[1]]);
         }
     }
 }

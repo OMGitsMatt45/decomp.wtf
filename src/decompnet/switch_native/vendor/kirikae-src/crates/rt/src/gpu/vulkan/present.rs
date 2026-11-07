@@ -103,7 +103,7 @@ impl Renderer {
         let readback = readback.filter(|(_, prepared)| sc.readable && *prepared == extent).map(|(buffer, _)| buffer);
         let visible = [width.min(key.width), height.min(key.height)];
         let cubic = if self.present_filter_cubic && sc.filter.is_some()
-            && let Some(transform) = present_filter::transform(key, visible, extent, [flip_h, flip_v])
+            && let Some(transform) = present_filter::transform(key, [0, 0, visible[0], visible[1]], extent, [flip_h, flip_v])
         {
             match self.present_filter_source_view(key) {
                 Ok(view) => Some((view, transform)),
