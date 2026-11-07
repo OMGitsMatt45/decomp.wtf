@@ -11,6 +11,7 @@ pub mod compute;
 pub mod formats;
 pub mod fxhash;
 pub mod mme;
+mod pushbuffer;
 pub mod threed;
 pub mod tic;
 pub mod twod;
@@ -49,6 +50,7 @@ struct Engines {
     regs: fxhash::FastMap<u32, Vec<u32>>,
     inline: Option<(u64, u64, Vec<u8>)>,
     cb_upload: (u64, Vec<u8>),
+    pushbuffer: pushbuffer::Stream,
     threed: threed::State,
 }
 
@@ -93,7 +95,7 @@ impl Default for Gpu {
             reserved: Mutex::new((0, 0)),
             syncpoints: std::array::from_fn(|_| AtomicU32::new(0)),
             next_syncpoint: AtomicU32::new(16),
-            engines: Mutex::new(Engines { classes: [0; 8], regs: fxhash::FastMap::default(), inline: None, cb_upload: (0, Vec::new()), threed: Default::default() }),
+            engines: Mutex::new(Engines { classes: [0; 8], regs: fxhash::FastMap::default(), inline: None, cb_upload: (0, Vec::new()), pushbuffer: Default::default(), threed: Default::default() }),
             renderer: Mutex::new((None, false)),
             written: Mutex::new(Vec::new()),
             gpu_writes: Default::default(),
@@ -311,7 +313,16 @@ impl Gpu {
                 continue;
             }
             self.cpu_access(va, words * 4);
-            let plan = if crate::nvn::shadow::ON.load(Ordering::Relaxed) { crate::nvn::shadow::cp_entry(va, words) } else { None };
+            let bytes = self.bytes(mem, va, words * 4).ok_or_else(|| format!("pushbuffer at GPU address {va:#x} is not mapped"))?;
+            let w: Vec<u32> = bytes.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)).collect();
+            let plan = if crate::nvn::shadow::ON.load(Ordering::Relaxed) {
+                let ready = {
+                    let eng = self.engines.lock().unwrap();
+                    eng.pushbuffer.is_idle() && eng.threed.macros.pending.is_none() && eng.cb_upload.1.is_empty()
+                        && pushbuffer::Stream::complete_entry(&w)
+                };
+                if ready { crate::nvn::shadow::cp_entry(va, words) } else { None }
+            } else { None };
             if let Some(p) = plan.as_ref().filter(|_| crate::nvn::exec::ON.load(Ordering::Relaxed))
                 && self.execute(mem, p)
             {
@@ -319,8 +330,6 @@ impl Gpu {
             }
             let simulated = plan.as_ref().filter(|_| crate::nvn::exec::CHECK.load(Ordering::Relaxed)).and_then(|p| self.simulate(mem, p));
             let before = (self.stats.draws.load(Ordering::Relaxed), self.stats.clears.load(Ordering::Relaxed));
-            let bytes = self.bytes(mem, va, words * 4).ok_or_else(|| format!("pushbuffer at GPU address {va:#x} is not mapped"))?;
-            let w: Vec<u32> = bytes.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)).collect();
             self.run_pushbuffer(mem, &w);
             if crate::nvn::exec::CHECK.load(Ordering::Relaxed) {
                 crate::nvn::exec::segment_done();
@@ -339,6 +348,7 @@ impl Gpu {
                 crate::nvn::shadow::cp_entry_done(plan, draws, clears);
             }
         }
+        self.finish_pushbuffer(mem);
         let mut r = self.renderer.lock().unwrap();
         if let Some(r) = r.0.as_mut() {
             r.flush();
@@ -428,30 +438,15 @@ impl Gpu {
         let mut guard = self.engines.lock().unwrap();
         let eng = &mut *guard;
         let mut i = 0;
-        while i < w.len() {
-            let hdr = w[i];
-            i += 1;
-            let kind = hdr >> 29;
-            let count = (hdr >> 16) & 0x1fff;
-            let sub = (hdr >> 13) & 7;
-            let method = hdr & 0xfff;
-            match kind {
-                1 | 3 | 5 => {
-                    for k in 0..count as usize {
-                        let Some(&v) = w.get(i + k) else { break };
-                        let m = match kind {
-                            1 => method + k as u32,
-                            3 => method,
-                            _ => method + (k > 0) as u32,
-                        };
-                        self.method(mem, eng, sub, m, v);
-                    }
-                    i += count as usize;
-                }
-                4 => self.method(mem, eng, sub, method, count),
-                _ => {}
-            }
+        while let Some((sub, method, value)) = eng.pushbuffer.next(w, &mut i) {
+            self.method(mem, eng, sub, method, value);
         }
+    }
+
+    fn finish_pushbuffer(&self, mem: &GuestMemory) {
+        let mut guard = self.engines.lock().unwrap();
+        let eng = &mut *guard;
+        if !eng.pushbuffer.is_idle() { return; }
         if let Some(p) = eng.threed.macros.pending.take() {
             self.run_macro(mem, eng, p);
         }
@@ -534,6 +529,7 @@ impl Gpu {
 
     fn method(&self, mem: &GuestMemory, eng: &mut Engines, sub: u32, m: u32, v: u32) {
         if m == 0 {
+            if let Some(p) = eng.threed.macros.pending.take() { self.run_macro(mem, eng, p); }
             eng.classes[sub as usize] = v & 0xffff;
             return;
         }
@@ -964,5 +960,102 @@ mod tests {
         assert_eq!(mem.read(0x2000_0000, 0x10).unwrap(), [0xaa; 0x10]);
         assert_eq!(mem.read(0x1000_1000, 0x10).unwrap(), [0; 0x10]);
         assert!(!gpu.write(&mem, 0x5_0000_1ff0, &[0xaa; 0x20]));
+    }
+
+    const INDEXED_MACRO: [u32; 31] = [
+        0x00000601, 0x00000501, 0x0346c215, 0x017dc061, 0x01118451,
+        0x00002041, 0x05434021, 0x00002331, 0x00001841, 0x0638c021,
+        0x01900041, 0x00155510, 0x00002041, 0x0002e807, 0x00001841,
+        0x01618021, 0x00000841, 0x017e0021, 0x00003041, 0x01614071,
+        0xffffed11, 0x00004211, 0xfffe6817, 0xd0808912, 0x01118071,
+        0x01434071, 0x01438071, 0x0638c021, 0x01900041, 0x000000c1,
+        0x00000041,
+    ];
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct StreamResult {
+        registers: Vec<(u32, Vec<u32>)>,
+        memory: Vec<u8>,
+        draws: u64,
+        macros: u64,
+        idle: bool,
+        pending_macro: Option<(u32, Vec<u32>)>,
+        cb_upload: (u64, Vec<u8>),
+    }
+
+    fn execute_segments(words: &[u32], lengths: &[usize], separate_submits: bool) -> StreamResult {
+        let mem = GuestMemory::new().unwrap();
+        mem.map(0x1000_0000, 0x2000).unwrap();
+        mem.map(0x2000_0000, 0x4000).unwrap();
+        let gpu = Gpu::default();
+        // Qualification exercises CPU command semantics without loading Vulkan.
+        gpu.renderer.lock().unwrap().1 = true;
+        gpu.map(0x5_0000_0000, 0x1000_0000, 0x2000);
+        gpu.map(0x6_0000_0000, 0x2000_0000, 0x4000);
+        {
+            let mut eng = gpu.engines.lock().unwrap();
+            eng.classes[0] = CLASS_3D;
+            eng.threed.macros.code = std::sync::Arc::new(INDEXED_MACRO.to_vec());
+            let regs = eng.regs.entry(CLASS_3D).or_insert_with(|| vec![0; 0x1000]);
+            regs[0xd1b] = u32::MAX;
+            regs[threed::reg::CONSTANT_BUFFER_SELECTOR] = 0x2000;
+            regs[threed::reg::CONSTANT_BUFFER_SELECTOR + 1] = 5;
+        }
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        assert!(mem.write(0x2000_0000, &bytes));
+        let mut offset = 0;
+        let mut entries = Vec::new();
+        for &length in lengths {
+            assert!(offset + length <= words.len());
+            let entry = 0x6_0000_0000 | (offset as u64 * 4) | (length as u64) << 42;
+            entries.push(entry);
+            if separate_submits { gpu.submit(&mem, &[entry]).unwrap(); }
+            offset += length;
+        }
+        assert_eq!(offset, words.len());
+        if !separate_submits { gpu.submit(&mem, &entries).unwrap(); }
+        let eng = gpu.engines.lock().unwrap();
+        let mut registers: Vec<_> = eng.regs.iter().map(|(k,v)| (*k,v.clone())).collect();
+        registers.sort_unstable_by_key(|r| r.0);
+        StreamResult {
+            registers, memory: mem.read(0x1000_0000,0x2000).unwrap(),
+            draws: gpu.stats.draws.load(Ordering::Relaxed), macros: gpu.stats.macros.load(Ordering::Relaxed),
+            idle: eng.pushbuffer.is_idle(),
+            pending_macro: eng.threed.macros.pending.as_ref().map(|m| (m.index,m.params.clone())),
+            cb_upload: eng.cb_upload.clone(),
+        }
+    }
+
+    #[test]
+    fn split_gpfifo_entries_and_submits_preserve_macro_and_constant_uploads() {
+        // Exact outdoor split: the BEGIN word was in one GP-FIFO segment and
+        // these five indexed-indirect arguments were in the next segment.
+        let words = [
+            0xa006_0e3a,4,270,7,36,0,258447,0x9100_0002,
+            0x8100_08e3, // Inline constant-buffer offset 0x100.
+            0x6004_08e4,0,0xdead_beef,0xa006_0e3a,0x9100_0002,
+            0x8000_0002,
+        ];
+        let expected = execute_segments(&words,&[words.len()],false);
+        assert_eq!(expected.draws,7);
+        assert_eq!(expected.macros,1);
+        assert!(expected.idle && expected.pending_macro.is_none());
+        assert_eq!(&expected.memory[0x100..0x110],&[0,0,0,0,0xef,0xbe,0xad,0xde,0x3a,0x0e,0x06,0xa0,2,0,0,0x91]);
+        for split in 0..=words.len() {
+            let lengths = [split,0,words.len()-split];
+            assert_eq!(execute_segments(&words,&lengths,false),expected,"entry split {split}");
+            assert_eq!(execute_segments(&words,&lengths,true),expected,"submit split {split}");
+        }
+        let ones = vec![1;words.len()];
+        assert_eq!(execute_segments(&words,&ones,false),expected);
+        assert_eq!(execute_segments(&words,&ones,true),expected);
+
+        // Parameter packets themselves can also be separate: completing the
+        // first one must not run the macro at the end of its GP-FIFO entry.
+        let mut packets = vec![0x2001_0e3a,4,0x6005_0e3b];
+        packets.extend_from_slice(&words[2..]);
+        for split in 0..=packets.len() {
+            assert_eq!(execute_segments(&packets,&[split,0,packets.len()-split],false),expected,"parameter-packet entry split {split}");
+        }
     }
 }
