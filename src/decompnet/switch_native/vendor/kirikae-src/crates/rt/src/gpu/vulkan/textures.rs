@@ -13,6 +13,7 @@ use super::{Renderer, hash64};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct TexKey {
+    pub(super) cpu: u64,
     pub(super) tic: [u32; 8],
     pub(super) tsc: [u32; 8],
     pub(super) dim: TexDim,
@@ -138,7 +139,8 @@ impl Renderer {
             let view = if header.texture_type == 5 { self.array_volume(gpu, mem, cpu, &header, &format)? } else { self.volume(gpu, mem, cpu, &header, &format)? };
             return Ok((view, self.sampler(&sampler_state)));
         }
-        let tex_key = TexKey { tic, tsc, dim, array, shadow };
+        // Fixed GPU remaps can change the backing memory without changing the TIC.
+        let tex_key = TexKey { cpu, tic, tsc, dim, array, shadow };
         if let Some(e) = self.tex_cache.get(&tex_key).copied().filter(|e| !self.draw_targets.contains(&e.image)) {
             if let Some(k) = e.refresh {
                 self.refresh_texture(gpu, mem, k, &header, &format, layers);

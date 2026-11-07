@@ -84,6 +84,56 @@ fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
     assert_eq!(pixels, expected.iter().map(|v| v * 0x010101).collect::<Vec<_>>());
 }
 
+fn texture_remap(gpu: &Gpu, mem: &GuestMemory) {
+    let (texture, alias) = (0x2_0000_0000, 0x2_0001_0000);
+    let (first, second) = (0x170000, 0x171000);
+    assert!(mem.write(first, &[255, 0, 0, 255]));
+    assert!(mem.write(second, &[0, 255, 0, 255]));
+    gpu.map(texture, first, 0x1000);
+    gpu.map(alias, first, 0x1000);
+
+    let words = |data: &[u32]| data.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>();
+    let rgba8 = 0x08 | 2 << 7 | 2 << 10 | 2 << 13 | 2 << 16
+        | 2 << 19 | 3 << 22 | 4 << 25 | 5 << 28;
+    let tic = |address: u64| [rgba8, address as u32, (address >> 32) as u32 | 1 << 21, 1, 1 << 23, 0, 0, 0];
+    assert!(mem.write(0x180000, &words(&tic(texture))));
+    assert!(mem.write(0x180020, &words(&tic(alias))));
+    assert!(mem.write(0x180040, &[0; 32]));
+    // TEXS samples a 1x1 RGBA8 texture at its center. Handle zero reads cbuf slot 0.
+    let sample = 0xd800_0000_0000_0000 | 1 << 53 | 4 << 50 | 2 << 28 | 5 << 20 | PT | 4 << 8;
+    assert!(mem.write(0x121000, &shader(true, &[mov(4, 0.5), mov(5, 0.5), sample, EXIT])));
+
+    // Reuse the probe triangle and render target from the previous test.
+    let draw = |index| {
+        assert!(mem.write(0x180060, &words(&[index])));
+        let mut cp = Vec::new();
+        method(&mut cp, 0, &[CLASS_3D]);
+        method(&mut cp, 0x646, &[0]);
+        method(&mut cp, 0x850, &[1, 0x21000]);
+        address(&mut cp, 0x55d, 0x1_0008_0000);
+        address(&mut cp, 0x557, 0x1_0008_0040);
+        method(&mut cp, 0x8e0, &[32]);
+        address(&mut cp, 0x8e1, 0x1_0008_0060);
+        method(&mut cp, 0x924, &[1]);
+        method(&mut cp, 0x674, &[0x3c]);
+        method(&mut cp, 0x586, &[4]);
+        method(&mut cp, 0x35e, &[3]);
+        method(&mut cp, 0x585, &[0]);
+        assert!(mem.write(0x300000, &words(&cp)));
+        gpu.submit(mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+        let pixels = gpu.read_pixels(0x200000, 128, 96).expect("texture remap readback");
+        pixels[48 * 128 + 64] & 0xffffff
+    };
+
+    let before = draw(0);
+    gpu.map(texture, second, 0x1000);
+    assert_eq!(gpu.translate(texture), Some(second));
+    let after = draw(0);
+    let unchanged_alias = draw(1);
+    assert_eq!([before, after, unchanged_alias], [0xff0000, 0x00ff00, 0xff0000],
+        "texture remap RGB before={before:06x}, after={after:06x}, alias={unchanged_alias:06x}");
+}
+
 fn main() {
     let root = PathBuf::from(std::env::args().nth(1).expect("output directory"));
     std::fs::create_dir_all(&root).unwrap();
@@ -153,6 +203,7 @@ fn main() {
     let report = json!({"schema":"decomp.wtf.switch-graphics-probe/v1", "status":"passed", "cpu_path":"host qualification scene",
         "renderer":kirikae_rt::decomp::RENDERER.lock().unwrap().clone(), "frames":frames,
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});
+    texture_remap(&gpu, &mem);
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("{report}");
