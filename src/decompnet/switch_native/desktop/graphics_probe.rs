@@ -296,6 +296,76 @@ fn primitive_restart(gpu: &Gpu, mem: &GuestMemory) {
     }
 }
 
+fn depth_bias_registers() {
+    let mem = GuestMemory::new().unwrap();
+    mem.map(0x100000, 0x300000).unwrap();
+    let probe_gpu = Gpu::default();
+    probe_gpu.map(0x1_0000_0000, 0x100000, 0x300000);
+    let ald = 0xefd8_0000_0000_0000 | 3 << 47 | 0xff << 39 | 0x80 << 20 | PT | 0xff << 8;
+    let ast = 0xeff0_0000_0000_0000 | 3 << 47 | 0xff << 39 | 0x70 << 20 | PT | 0xff << 8;
+    assert!(mem.write(0x110000, &shader(false, &[ald, ast, EXIT])));
+    assert!(mem.write(0x120000, &shader(true, &[mov(0, 1.0), mov(1, 0.0), mov(2, 0.0), mov(3, 1.0), EXIT])));
+    let color = 0x1_0016_0000;
+    let depth = 0x1_0018_0000;
+    let near = 0x1_0003_0000;
+    let far = 0x1_0003_0100;
+    let vertices: [f32; 12] = [-0.75,-0.75,0.4,1.0, 0.75,-0.75,0.5,1.0, 0.0,0.75,0.45,1.0];
+    let farther = [-0.75f32,-0.75,0.415,1.0, 0.75,-0.75,0.515,1.0, 0.0,0.75,0.465,1.0];
+    for (address, vertices) in [(near, vertices), (far, farther)] {
+        assert!(mem.write(probe_gpu.translate(address).unwrap(), &vertices.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+    }
+    assert!(mem.write(0x124000, &shader(true, &[mov(0, 0.0), mov(1, 1.0), mov(2, 0.0), mov(3, 1.0), EXIT])));
+    // Constant -200 is too small to pass the depth test. Slope -200
+    // brings the otherwise identical farther triangle in front.
+    for (register, expected) in [(0x56f, 0xff0000), (0x55b, 0x00ff00)] {
+        let mut cp = Vec::new();
+        method(&mut cp, 0, &[CLASS_3D]);
+        address(&mut cp, 0x200, color);
+        method(&mut cp, 0x202, &[128 * 4, 96, 0xd5, 1 << 12]);
+        method(&mut cp, 0x487, &[1]);
+        method(&mut cp, 0x680, &[0x1111]);
+        address(&mut cp, 0x3f8, depth);
+        method(&mut cp, 0x3fa, &[0x14]);
+        method(&mut cp, 0x48a, &[128, 96]);
+        method(&mut cp, 0x54e, &[1]);
+        method(&mut cp, 0x4b3, &[1]);
+        method(&mut cp, 0x4ba, &[1]);
+        method(&mut cp, 0x4c3, &[0x201]);
+        method(&mut cp, 0x646, &[0]);
+        method(&mut cp, 0x280, &[64f32.to_bits(), 48f32.to_bits(), 1f32.to_bits(), 64f32.to_bits(), 48f32.to_bits(), 0]);
+        method(&mut cp, 0x360, &[0, 0, 0, 1f32.to_bits(), 1f32.to_bits()]);
+        method(&mut cp, 0x674, &[0x3d]);
+        address(&mut cp, 0x582, 0x1_0000_0000);
+        method(&mut cp, 0x810, &[1, 0x10000]);
+        method(&mut cp, 0x458, &[1 << 21 | 7 << 27]);
+        for (source, fragment, bias) in [(near, 0x20000, false), (far, 0x24000, true)] {
+            method(&mut cp, 0x372, &[u32::from(bias)]);
+            method(&mut cp, 0x55b, &[0]);
+            method(&mut cp, 0x56f, &[0]);
+            method(&mut cp, 0x61f, &[0]);
+            if bias {
+                method(&mut cp, register, &[(-200f32).to_bits()]);
+            }
+            method(&mut cp, 0x850, &[1, fragment]);
+            method(&mut cp, 0x700, &[16]);
+            address(&mut cp, 0x701, source);
+            address(&mut cp, 0x7c0, source + 47);
+            method(&mut cp, 0x586, &[4]);
+            method(&mut cp, 0x35e, &[3]);
+            method(&mut cp, 0x585, &[0]);
+        }
+        assert!(mem.write(0x300000, &cp.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()));
+        probe_gpu.submit(&mem, &[0x1_0020_0000 | (cp.len() as u64) << 42]).unwrap();
+        let pixels = probe_gpu.read_pixels(probe_gpu.translate(color).unwrap(), 128, 96).expect("depth bias readback");
+        assert_eq!(pixels[48 * 128 + 64] & 0xffffff, expected, "Maxwell depth-bias word {register:#x}");
+    }
+    let stats = probe_gpu.render_stats().expect("Vulkan renderer");
+    assert_eq!(stats.draws, 4);
+    assert_eq!(stats.skipped, 0);
+    probe_gpu.shutdown();
+    eprintln!("kirikae: constant and slope depth-bias qualification passed");
+}
+
 fn main() {
     let root = PathBuf::from(std::env::args().nth(1).expect("output directory"));
     std::fs::create_dir_all(&root).unwrap();
@@ -368,6 +438,7 @@ fn main() {
     assert_eq!(gpu.render_stats().unwrap().skipped, 0);
     primitive_restart(&gpu, &mem);
     gpfifo_continuation(&gpu, &mem);
+    depth_bias_registers();
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("{report}");

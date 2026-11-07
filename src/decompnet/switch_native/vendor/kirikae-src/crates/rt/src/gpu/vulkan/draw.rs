@@ -546,7 +546,11 @@ impl Renderer {
                 vk::PrimitiveTopology::LINE_LIST | vk::PrimitiveTopology::LINE_STRIP => 1,
                 _ => 2,
             };
-            let values = [regs[0x55b], regs[0x56f], regs[0x61f]];
+            let values = [
+                regs[0x56f], // SET_DEPTH_BIAS
+                regs[0x55b], // SET_SLOPE_SCALE_DEPTH_BIAS
+                regs[0x61f], // SET_DEPTH_BIAS_CLAMP
+            ];
             let bias = has_depth && regs[0x370 + kind] & 1 == 1 && values[..2].iter().any(|&v| f32::from_bits(v) != 0.0);
             let was = b.depth_bias;
             if changed(&mut b.depth_bias, (bias, if bias { values } else { [0; 3] })) {
