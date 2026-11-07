@@ -398,6 +398,7 @@ fn present(p: &Process, s: &Slot, transform: u32) {
 static VSYNC_EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 const ONE_BLANK: std::time::Duration = std::time::Duration::from_nanos(16_666_667);
+const HYBRID_SPIN_TAIL: std::time::Duration = std::time::Duration::from_micros(400);
 
 #[derive(Clone, Copy)]
 struct Deadline {
@@ -442,12 +443,60 @@ fn deadline_mode(deadline: &mut Option<Deadline>, interval: u32, uncapped: bool)
     active
 }
 
+fn hybrid_coarse_sleep(remaining: std::time::Duration) -> std::time::Duration {
+    remaining.saturating_sub(HYBRID_SPIN_TAIL)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum HybridTail {
+    Done,
+    Sleep(std::time::Duration),
+    Spin,
+}
+
+fn hybrid_tail(remaining: std::time::Duration) -> HybridTail {
+    if remaining.is_zero() {
+        HybridTail::Done
+    } else if remaining > HYBRID_SPIN_TAIL {
+        HybridTail::Sleep(remaining)
+    } else {
+        HybridTail::Spin
+    }
+}
+
+fn hybrid_wait_until(target: std::time::Instant) -> Option<std::time::Duration> {
+    use std::time::Instant;
+
+    let coarse = hybrid_coarse_sleep(target.saturating_duration_since(Instant::now()));
+    if !coarse.is_zero() {
+        std::thread::sleep(coarse);
+    }
+    let started = Instant::now();
+    match hybrid_tail(target.saturating_duration_since(started)) {
+        HybridTail::Done => None,
+        HybridTail::Sleep(remaining) => {
+            std::thread::sleep(remaining);
+            None
+        }
+        HybridTail::Spin => loop {
+            // A scheduler pause consumes the remaining wall-time budget.
+            let now = Instant::now();
+            if now >= target {
+                return Some(now.saturating_duration_since(started));
+            }
+            std::hint::spin_loop();
+        },
+    }
+}
+
 #[derive(Default)]
 struct DeadlineStats {
     releases: u64,
     sleep_calls: u64,
     sleep_requested_ns: u128,
     sleep_elapsed_ns: u128,
+    hybrid_spin_calls: u64,
+    hybrid_spin_wall_ns: u128,
     starts: u64,
     rebases: u64,
     extra_period_releases: u64,
@@ -473,13 +522,20 @@ fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
         Some(deadline) => deadline.wait(now),
         None => state.last.map_or(std::time::Duration::ZERO, |last| blank_time(last + 2).saturating_sub(now)),
     };
-    let sleep_started = if wait.is_zero() {
-        None
+    let (sleep_started, spin_wall) = if wait.is_zero() {
+        (None, None)
     } else {
         crate::display::PACED_NS.fetch_add(wait.as_nanos() as u64, Ordering::Relaxed);
         let started = diagnostics.then(|| epoch.elapsed());
-        std::thread::sleep(wait);
-        started
+        let spin_wall = if cfg!(windows)
+            && crate::env_var!("KIRIKAE_VI_HYBRID_WAIT").is_some_and(|value| value == "1")
+        {
+            hybrid_wait_until(epoch + (now + wait))
+        } else {
+            std::thread::sleep(wait);
+            None
+        };
+        (started, spin_wall)
     };
     let released = epoch.elapsed();
     let (next, rebased) = previous.map_or_else(
@@ -496,6 +552,10 @@ fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
             stats.sleep_requested_ns += wait.as_nanos();
             stats.sleep_elapsed_ns += (released - started).as_nanos();
         }
+        if let Some(elapsed) = spin_wall {
+            stats.hybrid_spin_calls += 1;
+            stats.hybrid_spin_wall_ns += elapsed.as_nanos();
+        }
         stats.starts += previous.is_none() as u64;
         stats.rebases += rebased as u64;
         if let Some(deadline) = previous.filter(|_| !rebased) {
@@ -504,9 +564,10 @@ fn pace_deadline(state: &mut PaceState, epoch: std::time::Instant) {
                 .max(released.saturating_sub(blank_time(deadline.next_blank)).as_nanos());
         }
         if stats.releases.is_multiple_of(256) {
-            eprintln!("kirikae: vi deadline: releases={} sleep_calls={} requested_ns={} elapsed_ns={} starts={} rebases={} max_retained_debt_ns={} max_debt_periods={} extra_period_releases={}",
+            eprintln!("kirikae: vi deadline: releases={} sleep_calls={} requested_ns={} elapsed_ns={} starts={} rebases={} max_retained_debt_ns={} max_debt_periods={} extra_period_releases={} hybrid_spin_calls={} hybrid_spin_wall_ns={}",
                 stats.releases, stats.sleep_calls, stats.sleep_requested_ns, stats.sleep_elapsed_ns,
-                stats.starts, stats.rebases, stats.max_retained_debt_ns, max_debt_periods, stats.extra_period_releases);
+                stats.starts, stats.rebases, stats.max_retained_debt_ns, max_debt_periods, stats.extra_period_releases,
+                stats.hybrid_spin_calls, stats.hybrid_spin_wall_ns);
         }
     }
 }
@@ -543,7 +604,7 @@ fn pace(interval: u32) {
 
 #[cfg(test)]
 mod deadline_tests {
-    use super::{Deadline, ONE_BLANK, blank_at, blank_time, deadline_mode};
+    use super::{Deadline, HYBRID_SPIN_TAIL, HybridTail, ONE_BLANK, blank_at, blank_time, deadline_mode, hybrid_coarse_sleep, hybrid_tail};
     use std::time::Duration;
 
     #[test]
@@ -692,6 +753,29 @@ mod deadline_tests {
         ]);
         assert_eq!(one_rebases, [5, 17]);
         assert_eq!(two_rebases, [17]);
+    }
+
+    #[test]
+    fn hybrid_coarse_sleep_preserves_the_absolute_tail() {
+        assert_eq!(hybrid_coarse_sleep(Duration::from_millis(1)), Duration::from_micros(600));
+        for remaining in [Duration::ZERO, Duration::from_micros(120), HYBRID_SPIN_TAIL] {
+            assert_eq!(hybrid_coarse_sleep(remaining), Duration::ZERO);
+        }
+    }
+
+    #[test]
+    fn hybrid_tail_spins_only_inside_the_bound_after_wake() {
+        let target = Duration::from_millis(1);
+        for (wake, action) in [
+            (Duration::from_micros(500), HybridTail::Sleep(Duration::from_micros(500))),
+            (Duration::from_micros(600) - Duration::from_nanos(1), HybridTail::Sleep(HYBRID_SPIN_TAIL + Duration::from_nanos(1))),
+            (Duration::from_micros(600), HybridTail::Spin),
+            (Duration::from_micros(970), HybridTail::Spin),
+            (target, HybridTail::Done),
+            (Duration::from_micros(1040), HybridTail::Done),
+        ] {
+            assert_eq!(hybrid_tail(target.saturating_sub(wake)), action);
+        }
     }
 }
 

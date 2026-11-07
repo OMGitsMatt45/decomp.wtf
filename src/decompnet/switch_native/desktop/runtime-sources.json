@@ -152,7 +152,7 @@
     "crates/rt/src/services/ssl.rs": "5b3a65147f0ae0d9ff6c8647600409b4888c974534f8c90942db7ee170a92968",
     "crates/rt/src/services/stub.rs": "b4c5d5f9a577f3713c4168dfbe03d17cb7cbf3a8e4ce9f6b8ad4e0c95954973d",
     "crates/rt/src/services/time.rs": "c48b82de7ff8ced8c4558ff60e411befa9449a84fa92db90e59d2555d5e6c1a4",
-    "crates/rt/src/services/vi.rs": "75a02712439e0fd4166dae0e4495d073743e349df703d95b20649d748989ae01",
+    "crates/rt/src/services/vi.rs": "861420e663769da0441022803a2a7819a6a28231146cc94e855146fd7aeace73",
     "crates/rt/src/simd.rs": "1b9f7d67353bb0364e9268f28b52d1c5078c06ed1df4ef58a7b197231422a3e2",
     "crates/rt/src/threads.rs": "33c0ca797ed8d06e1e9ba4aea4255522c1990e5e1691d2d309d8d214f6ca3af9",
     "crates/rt/src/usage.rs": "09756927f0908340c5c13d3b17b19c93fa1066afe701c3b974ffbbf7477e316b",
