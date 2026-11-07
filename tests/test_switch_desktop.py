@@ -43,7 +43,7 @@ def test_native_entry_metadata_cache_checks_warm_code_and_exact_addresses(tmp_pa
     assert built.returncode == 0, built.stdout + built.stderr
     ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
     assert ran.returncode == 0, ran.stdout + ran.stderr
-    assert '5 passed; 0 failed' in ran.stdout
+    assert '6 passed; 0 failed' in ran.stdout
 
 
 @pytest.fixture

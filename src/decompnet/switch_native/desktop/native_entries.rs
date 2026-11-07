@@ -33,8 +33,38 @@ impl Entry<'_> {
         let offset = (self.address - self.code.base) as usize;
         let size = (self.end - self.address) as usize;
         let bytes = unsafe { std::slice::from_raw_parts(memory.add(self.address as usize), size) };
-        bytes == &self.code.text[offset..offset + size]
+        entry_bytes_equal(bytes, &self.code.text[offset..offset + size])
     }
+}
+
+// Use fixed-width loads only when their union covers the entire span.
+#[inline]
+fn entry_bytes_equal(live: &[u8], expected: &[u8]) -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::ptr::read_unaligned;
+        if live.len() != expected.len() { return false; }
+        let len = live.len();
+        let a = live.as_ptr();
+        let b = expected.as_ptr();
+        // Each load stays in its slice. For 9..16 bytes the two eight-byte
+        // ranges overlap or meet, so every byte participates.
+        unsafe {
+            if len == 4 {
+                return read_unaligned(a.cast::<u32>()) == read_unaligned(b.cast::<u32>());
+            }
+            if len == 8 {
+                return read_unaligned(a.cast::<u64>()) == read_unaligned(b.cast::<u64>());
+            }
+            if (9..=16).contains(&len) {
+                let offset = len - 8;
+                let head = read_unaligned(a.cast::<u64>()) ^ read_unaligned(b.cast::<u64>());
+                let tail = read_unaligned(a.add(offset).cast::<u64>()) ^ read_unaligned(b.add(offset).cast::<u64>());
+                return head | tail == 0;
+            }
+        }
+    }
+    live == expected
 }
 
 pub(super) struct Lookup<'a> {
@@ -92,6 +122,25 @@ pub(super) fn lookup(codes: &[Code], address: u64, last: u64, next: u64, index: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_entry_comparison_covers_every_byte_and_alignment() {
+        for len in 0..=64 {
+            for offset in 0..8 {
+                let expected = vec![0xa6; len + 8];
+                let mut live = vec![0xa6; len + 8];
+                let wanted = &expected[7 - offset..7 - offset + len];
+                let span = &mut live[offset..offset + len];
+                assert!(entry_bytes_equal(span, wanted));
+                for byte in 0..len {
+                    span[byte] ^= 1;
+                    assert!(!entry_bytes_equal(span, wanted));
+                    span[byte] ^= 1;
+                }
+                assert!(!entry_bytes_equal(span, &expected[..len + 1]));
+            }
+        }
+    }
 
     fn code(base: u64, entries: Vec<u64>) -> Code {
         Code { base, text: (0..64).collect(), entries }
