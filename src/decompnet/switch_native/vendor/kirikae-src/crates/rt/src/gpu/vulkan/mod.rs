@@ -16,6 +16,8 @@ mod guest_writes;
 mod images;
 mod pipeline;
 mod present;
+mod present_filter;
+mod present_filter_shader;
 mod readback;
 mod submit;
 mod textures;
@@ -30,7 +32,7 @@ use draw::{Bound, DrawScratch, RenderTargets, TargetAsk};
 use guest_writes::{CpWrites, Pending, PendingPages};
 use images::{Image, ImageKey};
 use pipeline::{LayoutKey, PipelineCompiler, PipelineKey, ShaderKey, ShaderModule, pipeline_cache_file, pipeline_cache_matches, remove_stale_saves};
-use present::Swapchain;
+use present::{PresentDump, Swapchain};
 use submit::{Batch, Garbage, IN_FLIGHT, RING_SIZE, Ring};
 use textures::{TexEntry, TexKey};
 use volumes::Volume;
@@ -63,13 +65,15 @@ pub struct Renderer {
     draw_wrote_storage: bool,
     pub pending_flag: Arc<std::sync::atomic::AtomicBool>,
     garbage: Vec<Garbage>,
-    submit_wait: Option<vk::Semaphore>,
+    submit_wait: Option<(vk::Semaphore, vk::PipelineStageFlags)>,
     submit_signal: Option<vk::Semaphore>,
     surface_fn: Option<ash::khr::surface::Instance>,
     platforms: Vec<&'static CStr>,
     swapchain_fn: Option<ash::khr::swapchain::Device>,
     nv_swapchain_boost: Option<vk::PFN_vkSetLatencySleepModeNV>,
     swapchain: Option<Swapchain>,
+    present_filter_cubic: bool,
+    present_dump: Option<PresentDump>,
     family: u32,
     present_failed: bool,
     buffers: BufferCache,
@@ -258,7 +262,8 @@ impl Drop for Renderer {
             if let Some((q, _)) = self.timestamps {
                 d.destroy_query_pool(q, None);
             }
-            if let Some(sc) = self.swapchain.take() {
+            if let Some(mut sc) = self.swapchain.take() {
+                drop(sc.filter.take());
                 for s in sc.done {
                     d.destroy_semaphore(s, None);
                 }
@@ -497,6 +502,8 @@ impl Renderer {
             swapchain_fn,
             nv_swapchain_boost,
             swapchain: None,
+            present_filter_cubic: crate::env_var!("KIRIKAE_PRESENT_FILTER").is_some_and(|mode| mode == "cubic"),
+            present_dump: PresentDump::from_env(),
             family,
             present_failed: false,
             buffers: BufferCache::new(&mem_props, ty, readonly_storage_cache),

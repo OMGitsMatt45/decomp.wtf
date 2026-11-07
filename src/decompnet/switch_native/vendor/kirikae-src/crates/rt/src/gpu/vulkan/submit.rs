@@ -134,8 +134,7 @@ impl Renderer {
             }
             self.device.end_command_buffer(cmd).unwrap();
             let cmds = [cmd];
-            let waits: Vec<vk::Semaphore> = self.submit_wait.take().into_iter().collect();
-            let stages = vec![vk::PipelineStageFlags::TRANSFER; waits.len()];
+            let (waits, stages): (Vec<_>, Vec<_>) = self.submit_wait.take().into_iter().unzip();
             let signals: Vec<vk::Semaphore> = self.submit_signal.take().into_iter().collect();
             let submit = [vk::SubmitInfo::default().command_buffers(&cmds).wait_semaphores(&waits).wait_dst_stage_mask(&stages).signal_semaphores(&signals)];
             self.device.queue_submit(self.queue, &submit, fence).unwrap();
