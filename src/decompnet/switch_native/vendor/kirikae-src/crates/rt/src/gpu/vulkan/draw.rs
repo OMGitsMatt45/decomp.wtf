@@ -119,7 +119,8 @@ impl Renderer {
         self.begin();
         self.end_rendering();
         let mut descriptors = Vec::new();
-        self.shader_descriptors(gpu, mem, regs, cbufs, &cs, VERTEX_BASE, Stage::Compute, &mut descriptors)?;
+        let resident_storage = self.readonly_storage_for_compute(&cs);
+        self.shader_descriptors(gpu, mem, regs, cbufs, &cs, VERTEX_BASE, Stage::Compute, resident_storage, &mut descriptors)?;
         let threads = qmd.threads() * qmd.grid.iter().map(|&n| n.max(1) as u64).product::<u64>();
         let probe = if cs.shader.probe {
             let size = (threads * 16).min(16 << 20);
@@ -300,11 +301,11 @@ impl Renderer {
             vk_attributes.push((i, binding, format, offset));
             if !vk_bindings.iter().any(|b| b.0 == binding) {
                 let stride = if inactive || instanced_stream(regs, stream) { 0 } else { regs[reg::VERTEX_STREAM + 4 * stream as usize] & 0xfff };
-                vk_bindings.push((binding, stride));
+                vk_bindings.push((binding, stride, vk::VertexInputRate::VERTEX));
                 streams.push(binding);
             }
         }
-        vk_bindings.sort_unstable();
+        vk_bindings.sort_unstable_by_key(|binding| binding.0);
 
         let per_target = regs[0x4b9] & 1 == 1;
         key.blend.clear();
@@ -422,7 +423,7 @@ impl Renderer {
         };
         let mut vertex_buffers = std::mem::take(&mut scratch.vertex_buffers);
         vertex_buffers.clear();
-        self.vertex_buffers(gpu, mem, regs, &streams, draw, range, &mut vertex_buffers)?;
+        self.vertex_buffers(gpu, mem, regs, &streams, draw, range, 0, &mut vertex_buffers)?;
         self.lap(6, &mut lap);
         self.lap(7, &mut lap);
         let lowest = range.map_or(0, |r| r.0);

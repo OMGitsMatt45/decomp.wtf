@@ -23,6 +23,9 @@ pub(super) struct TexKey {
 
 #[derive(Clone, Copy)]
 pub(super) struct TexEntry {
+    header: TextureHeader,
+    format: TexFormat,
+    layers: u32,
     pub(super) image: ImageKey,
     pub(super) view: vk::ImageView,
     pub(super) sampler: vk::Sampler,
@@ -96,6 +99,19 @@ impl Renderer {
         let tsc_pool = address(regs, reg::TEX_SAMPLER_POOL);
         let tic = tic::words(gpu.bytes(mem, tic_pool + tic_index as u64 * 32, 32).ok_or("texture header unreadable")?).unwrap();
         let tsc = tic::words(gpu.bytes(mem, tsc_pool + tsc_index as u64 * 32, 32).ok_or("sampler unreadable")?).unwrap();
+        // The full raw TIC and TSC identify previously validated metadata.
+        // Translate the address again and run the usual image refresh on hits.
+        if self.texture_decode_cache && matches!(dim, TexDim::D2 | TexDim::Cube)
+            && (word != 0 || tic != [0; 8])
+            && !crate::gpu::trace()
+            && crate::env_var!("KIRIKAE_WHITE_TEXTURES").is_none()
+            && crate::env_var!("KIRIKAE_TEX_SOLID").is_none()
+            && let Some(cpu) = gpu.translate(tic::texture_address(&tic))
+            && let Some(found) = self.cached_texture(gpu, mem, TexKey { cpu, tic, tsc, dim, array, shadow })?
+        {
+            self.lap(12, &mut lap);
+            return Ok(found);
+        }
         let header = tic::texture_header(&tic);
         let view_type = match (dim, array, header.texture_type) {
             (TexDim::D2, false, 1 | 3 | 5 | 7 | 8) => vk::ImageViewType::TYPE_2D,
@@ -157,27 +173,11 @@ impl Renderer {
         }
         // Fixed GPU remaps can change the backing memory without changing the TIC.
         let tex_key = TexKey { cpu, tic, tsc, dim, array, shadow };
-        if let Some(e) = self.tex_cache.get(&tex_key).copied().filter(|e| !self.draw_targets.contains(&e.image)) {
-            let source = e.image.cpu & !DERIVED;
-            if source != cpu {
-                self.note_draw_texture_address(source);
-            }
-            if let Some(k) = e.refresh {
-                self.refresh_texture(gpu, mem, k, &header, &format, layers);
-            }
-            if let Some(like) = e.gather {
-                self.gather(gpu, mem, cpu, &header, &format, like, layers)?;
-            }
-            if let Some(src) = e.crop {
-                self.crop(src, header.width, header.height)?;
-            }
-            if let Some((src, format)) = e.twin {
-                self.depth_twin(src, format)?;
-            }
+        if let Some(found) = self.cached_texture(gpu, mem, tex_key)? {
             self.lap(12, &mut lap);
-            return Ok((e.view, e.sampler));
+            return Ok(found);
         }
-        let mut entry = TexEntry { image: ImageKey { cpu: 0, format: vk::Format::UNDEFINED, width: 0, height: 0 }, view: vk::ImageView::null(), sampler: vk::Sampler::null(), refresh: None, gather: None, crop: None, twin: None };
+        let mut entry = TexEntry { header, format, layers, image: ImageKey { cpu: 0, format: vk::Format::UNDEFINED, width: 0, height: 0 }, view: vk::ImageView::null(), sampler: vk::Sampler::null(), refresh: None, gather: None, crop: None, twin: None };
         self.lap(12, &mut lap);
         let layered = self.layered_image(gpu, mem, cpu, &header, &format)?;
         self.lap(13, &mut lap);
@@ -290,6 +290,30 @@ impl Renderer {
             let _ = std::fs::write(std::path::Path::new(dir).join(name), bytes);
         }
         self.upload_layers(key, levels as usize, &data);
+    }
+
+    fn cached_texture(&mut self, gpu: &Gpu, mem: &GuestMemory, key: TexKey) -> Result<Option<(vk::ImageView, vk::Sampler)>, String> {
+        self.note_draw_texture_address(key.cpu);
+        let Some(entry) = self.tex_cache.get(&key).copied().filter(|entry| !self.draw_targets.contains(&entry.image)) else {
+            return Ok(None);
+        };
+        let source = entry.image.cpu & !DERIVED;
+        if source != key.cpu {
+            self.note_draw_texture_address(source);
+        }
+        if let Some(image) = entry.refresh {
+            self.refresh_texture(gpu, mem, image, &entry.header, &entry.format, entry.layers);
+        }
+        if let Some(like) = entry.gather {
+            self.gather(gpu, mem, key.cpu, &entry.header, &entry.format, like, entry.layers)?;
+        }
+        if let Some(source) = entry.crop {
+            self.crop(source, entry.header.width, entry.header.height)?;
+        }
+        if let Some((source, format)) = entry.twin {
+            self.depth_twin(source, format)?;
+        }
+        Ok(Some((entry.view, entry.sampler)))
     }
 
     pub(super) fn remember_texture_source(&mut self, gpu: &Gpu, mem: &GuestMemory, key: ImageKey, header: &TextureHeader, format: &TexFormat) {

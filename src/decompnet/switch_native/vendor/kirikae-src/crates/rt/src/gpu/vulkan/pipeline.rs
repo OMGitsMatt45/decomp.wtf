@@ -52,7 +52,7 @@ pub(super) struct PipelineKey {
     pub(super) layout: vk::PipelineLayout,
     pub(super) topology: vk::PrimitiveTopology,
     pub(super) attributes: Vec<(u32, u32, vk::Format, u32)>,
-    pub(super) bindings: Vec<(u32, u32)>,
+    pub(super) bindings: Vec<(u32, u32, vk::VertexInputRate)>,
     pub(super) colors: Vec<vk::Format>,
     pub(super) depth: vk::Format,
     pub(super) blend: Vec<[u32; 8]>,
@@ -77,7 +77,7 @@ pub(super) fn build_pipeline(device: &ash::Device, cache: vk::PipelineCache, key
             stages.push(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(key.fragment).name(c"main").specialization_info(&alpha_test));
         }
         let bindings: Vec<vk::VertexInputBindingDescription> =
-            key.bindings.iter().map(|&(b, stride)| vk::VertexInputBindingDescription { binding: b, stride, input_rate: vk::VertexInputRate::VERTEX }).collect();
+            key.bindings.iter().map(|&(binding, stride, input_rate)| vk::VertexInputBindingDescription { binding, stride, input_rate }).collect();
         let attributes: Vec<vk::VertexInputAttributeDescription> =
             key.attributes.iter().map(|&(location, binding, format, offset)| vk::VertexInputAttributeDescription { location, binding, format, offset }).collect();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default().vertex_binding_descriptions(&bindings).vertex_attribute_descriptions(&attributes);

@@ -216,6 +216,25 @@ pub fn vertex_attribute(sizes: u32, ty: u32) -> Option<(vk::Format, Kind)> {
     (f != F::UNDEFINED).then_some((f, kind))
 }
 
+/// Byte extent and alignment of the guest attribute's Vulkan format.
+pub(super) fn vertex_attribute_layout(sizes: u32) -> Option<(u32, u32)> {
+    Some(match sizes {
+        0x01 => (16, 4),
+        0x02 => (12, 4),
+        0x03 => (8, 2),
+        0x04 => (8, 4),
+        0x05 => (6, 2),
+        0x0a | 0x2f => (4, 1),
+        0x0f => (4, 2),
+        0x12 | 0x30 | 0x31 => (4, 4),
+        0x13 => (3, 1),
+        0x18 | 0x32 => (2, 1),
+        0x1b => (2, 2),
+        0x1d | 0x34 => (1, 1),
+        _ => return None,
+    })
+}
+
 pub fn topology(op: u32) -> vk::PrimitiveTopology {
     use vk::PrimitiveTopology as T;
     match op {

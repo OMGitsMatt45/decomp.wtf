@@ -18,7 +18,9 @@ def apply(root):
     with (gpu / 'threed.rs').open('a', encoding='utf-8', newline='\n') as output:
         output.write((adapter / 'instance_batches_gpu.rs').read_text(encoding='utf-8'))
     replace_once(vk / 'mod.rs', '    pub pushes_reused: u64,', '''    pub pushes_reused: u64,
-    pub instance_batches: u64,''')
+    pub instance_batches: u64,
+    pub instance_stream_batches: u64,
+    pub instance_pending_batches: u64,''')
     draw = vk / 'draw.rs'
     replace_once(draw, '        let ok = self.try_draw(gpu, mem, regs, cbufs, draw, cursors);',
                  '        let ok = self.try_draw(gpu, mem, regs, cbufs, draw, &mut 1, cursors);')
@@ -43,10 +45,17 @@ def apply(root):
             *instances = 1;
         }
         let exports_depth = fs.as_ref()''')
-    replace_once(draw, '        vk_bindings.sort_unstable();', '''        vk_bindings.sort_unstable();
-        if *instances > 1 && streams.iter().any(|&stream| stream != 31 && instanced_stream(regs, stream)) {
+    replace_once(draw, '        vk_bindings.sort_unstable_by_key(|binding| binding.0);', '''        vk_bindings.sort_unstable_by_key(|binding| binding.0);
+        let has_instance_stream = *instances > 1 && streams.iter().any(|&stream| instanced_stream(regs, stream));
+        let use_instance_streams = has_instance_stream
+            && crate::env_var!("KIRIKAE_INSTANCE_VERTEX_STREAMS").is_some_and(|value| value == "1");
+        if has_instance_stream && !use_instance_streams {
             *instances = 1;
         }''')
+    replace_once(draw, '        let pipeline = self.pipeline(&key, lasting)?;', '''        // Select the input-rate variant only after its streams are prepared.
+        // Ordinary draws keep their early pipeline lookup.
+        let mut pipeline = if use_instance_streams { None } else { Some(self.pipeline(&key, lasting)?) };''')
+    replace_once(draw, '        self.scratch_key = key;\n\n', '')
     replace_once(draw, '''        self.feedback_used.clear();
         let described = self.descriptors(gpu, mem, regs, cbufs, &vs, fs.as_deref(), &mut descriptors);
         self.draw_targets.clear();
@@ -59,12 +68,59 @@ def apply(root):
         if texture_alias || !self.feedback_used.is_empty() {
             *instances = 1;
         }''')
+    replace_once(draw, '        self.vertex_buffers(gpu, mem, regs, &streams, draw, range, 0, &mut vertex_buffers)?;', '''        let mut uploaded = 0;
+        let mut forwarded = 0;
+        if use_instance_streams && *instances > 1 {
+            match self.instance_vertex_buffers(gpu, mem, regs, &streams, &key.attributes, draw.instance, *instances, &mut vertex_buffers) {
+                Ok((bindings, pending)) => {
+                    uploaded = bindings;
+                    forwarded = pending;
+                    for (binding, stride, rate) in &mut key.bindings {
+                        if uploaded & (1 << *binding) != 0 {
+                            *stride = regs[reg::VERTEX_STREAM + 4 * *binding as usize] & 0xfff;
+                            *rate = vk::VertexInputRate::INSTANCE;
+                        }
+                    }
+                    match self.pipeline(&key, lasting) {
+                        Ok(instance_pipeline) => pipeline = Some(instance_pipeline),
+                        Err(_) => {
+                            for (_, stride, rate) in &mut key.bindings {
+                                if *rate == vk::VertexInputRate::INSTANCE {
+                                    *stride = 0;
+                                    *rate = vk::VertexInputRate::VERTEX;
+                                }
+                            }
+                            uploaded = 0;
+                            forwarded = 0;
+                            vertex_buffers.clear();
+                            *instances = 1;
+                        }
+                    }
+                }
+                Err(_) => {
+                    vertex_buffers.clear();
+                    *instances = 1;
+                }
+            }
+        }
+        self.vertex_buffers(gpu, mem, regs, &streams, draw, range, uploaded, &mut vertex_buffers)?;
+        let pipeline = match pipeline {
+            Some(pipeline) => pipeline,
+            None => self.pipeline(&key, lasting)?,
+        };
+        self.scratch_key = key;''')
     replace_once(draw, 'd.cmd_draw_indexed(cmd, count, 1, 0, base.wrapping_sub(lowest as i32), draw.instance);',
                  'd.cmd_draw_indexed(cmd, count, *instances, 0, base.wrapping_sub(lowest as i32), draw.instance);')
     replace_once(draw, 'd.cmd_draw(cmd, draw.count, 1, draw.first - lowest, draw.instance)',
                  'd.cmd_draw(cmd, draw.count, *instances, draw.first - lowest, draw.instance)')
     replace_once(draw, '        if let Some((xfb, offset)) = capture {\n            self.end_stream_capture', '''        if *instances > 1 {
             self.stats.instance_batches += 1;
+        }
+        if uploaded != 0 {
+            self.stats.instance_stream_batches += 1;
+        }
+        if forwarded != 0 {
+            self.stats.instance_pending_batches += 1;
         }
         if let Some((xfb, offset)) = capture {
             self.end_stream_capture''')

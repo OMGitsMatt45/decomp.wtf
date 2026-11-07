@@ -1,15 +1,120 @@
 use ash::vk;
 
 use crate::gpu::threed::{Draw, address, reg};
-use crate::gpu::{Gpu, buffer_cache};
+use crate::gpu::{Gpu, buffer_cache, formats};
 use crate::mem::GuestMemory;
 use super::Renderer;
 use super::submit::Garbage;
 
 impl Renderer {
+    /// Prepare one bounded prefix per instance-rate stream. The bound address
+    /// stays at element zero because Vulkan adds firstInstance when fetching.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn vertex_buffers(&mut self, gpu: &Gpu, mem: &GuestMemory, regs: &[u32], streams: &[u32], draw: Draw, range: Option<(u32, u32)>, out: &mut Vec<(u32, vk::Buffer, u64)>) -> Result<(), String> {
+    pub(super) fn instance_vertex_buffers(
+        &mut self, gpu: &Gpu, mem: &GuestMemory, regs: &[u32],
+        streams: &[u32], attributes: &[(u32, u32, vk::Format, u32)],
+        first_instance: u32, instances: u32, out: &mut Vec<(u32, vk::Buffer, u64)>,
+    ) -> Result<(u32, u32), &'static str> {
+        const MAX_PREFIX_BYTES: u64 = 256 << 10;
+        const BIND_ALIGNMENT: u64 = 16;
+        let last = instances.checked_sub(1)
+            .and_then(|offset| first_instance.checked_add(offset))
+            .ok_or("instance stream index")?;
+        let mut budget = MAX_PREFIX_BYTES;
+        let mut prefixes = [None; 16];
+        for &stream in streams.iter().filter(|&&stream| instanced_stream(regs, stream)) {
+            let base = reg::VERTEX_STREAM + 4 * stream as usize;
+            if regs[base + 3] > 1 {
+                return Err("instance stream divisor");
+            }
+            let stride = regs[base] & 0xfff;
+            if stride == 0 || stride > self.limits.max_vertex_input_binding_stride
+                || stream >= self.limits.max_vertex_input_bindings
+            {
+                return Err("instance stream stride");
+            }
+            for &(location, binding, _, offset) in attributes {
+                if binding != stream {
+                    continue;
+                }
+                let size_code = regs[reg::VERTEX_ATTRIBUTE + location as usize] >> 21 & 0x3f;
+                let (extent, alignment) = formats::vertex_attribute_layout(size_code)
+                    .ok_or("instance stream attribute")?;
+                if location >= self.limits.max_vertex_input_attributes
+                    || offset > self.limits.max_vertex_input_attribute_offset
+                    || offset % alignment != 0 || stride % alignment != 0
+                    || offset + extent > stride
+                {
+                    return Err("instance stream attribute");
+                }
+            }
+            let size = (u64::from(last) + 1).checked_mul(u64::from(stride))
+                .ok_or("instance stream prefix cap")?;
+            budget = budget.checked_sub(size).ok_or("instance stream prefix cap")?;
+            let va = address(regs, base + 1);
+            let limit = address(regs, reg::VERTEX_STREAM_LIMIT + 2 * stream as usize);
+            if va.checked_add(size - 1).is_none_or(|end| end > limit) {
+                return Err("instance stream limit");
+            }
+            let (mapping_start, mapping) = gpu.mapping(va).ok_or("instance stream mapping")?;
+            let mapping_offset = va - mapping_start;
+            if size > mapping.size - mapping_offset {
+                return Err("instance stream mapping");
+            }
+            let cpu = mapping.cpu.checked_add(mapping_offset).ok_or("instance stream mapping")?;
+            let cpu_end = cpu.checked_add(size).ok_or("instance stream mapping")?;
+            if mem.bytes(cpu, size).is_none() {
+                return Err("instance stream mapping");
+            }
+            if self.pitch_targets.values().any(|&(target, pitch, rows)| {
+                target < cpu_end && cpu < target.saturating_add(u64::from(pitch) * u64::from(rows))
+            }) {
+                return Err("instance stream pending write");
+            }
+            let ring_offset = if self.pending_pages.overlapping(cpu, size).next().is_some() {
+                if crate::env_var!("KIRIKAE_INSTANCE_PENDING_STREAMS").is_none_or(|value| value != "1") {
+                    return Err("instance stream pending write");
+                }
+                // The latest overlapping write must cover the whole prefix in
+                // this serial. The existing helper also enforces the graphics
+                // write barrier and refuses later partial overlaps.
+                Some(self.pending_in_ring(cpu, size, BIND_ALIGNMENT)
+                    .ok_or("instance stream pending write")?)
+            } else {
+                None
+            };
+            prefixes[stream as usize] = Some((cpu, size, ring_offset));
+        }
+        let mut uploaded = 0;
+        let mut forwarded = 0;
+        // This runs after descriptor and index preparation. The remaining
+        // buffer allocations can retire earlier batches but cannot flush the
+        // current serial and release the forwarded ranges.
+        for (stream, prefix) in prefixes.into_iter().enumerate() {
+            if let Some((cpu, size, ring_offset)) = prefix {
+                let (buffer, offset) = if let Some(offset) = ring_offset {
+                    forwarded |= 1 << stream;
+                    (self.ring.buffer, offset)
+                } else {
+                    let pair = self.checked_guest_buffer(mem, cpu, size, BIND_ALIGNMENT, buffer_cache::Kind::Vertex)
+                        .map_err(|_| "instance stream upload")?
+                        .ok_or("instance stream mapping")?;
+                    self.stats.vertex_bytes += size;
+                    pair
+                };
+                out.push((stream as u32, buffer, offset));
+                uploaded |= 1 << stream;
+            }
+        }
+        Ok((uploaded, forwarded))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn vertex_buffers(&mut self, gpu: &Gpu, mem: &GuestMemory, regs: &[u32], streams: &[u32], draw: Draw, range: Option<(u32, u32)>, uploaded: u32, out: &mut Vec<(u32, vk::Buffer, u64)>) -> Result<(), String> {
         for &s in streams {
+            if uploaded & (1 << s) != 0 {
+                continue;
+            }
             if s == 31 {
                 let offset = self.ring_copy(&[0u8; 64], 16).ok_or("ring full")?;
                 out.push((31, self.ring.buffer, offset));
@@ -122,29 +227,56 @@ impl Renderer {
     pub(super) fn guest_buffer(&mut self, gpu: &Gpu, mem: &GuestMemory, va: u64, size: u64, align: u64, kind: buffer_cache::Kind) -> Result<(vk::Buffer, u64), String> {
         let cpu = gpu.translate(va);
         let pending = cpu.is_none_or(|c| self.pending_pages.overlapping(c, size).next().is_some());
-        if !pending && let Some(c) = cpu {
-            let key = (c, size, kind);
-            if crate::env_var!("KIRIKAE_NO_CHECKED").is_none()
-                && let Some(e) = self.checked.get_mut(&key)
-                && !self.cp_writes.since(c, size, e.0)
-            {
-                e.0 = self.cp_writes.len();
-                return Ok((e.1, e.2));
-            }
-            if let Some(data) = mem.bytes(c, size) {
-                let found = match self.cached(c, size, kind, data, |d| d.to_vec()) {
-                    Some(found) => found,
-                    None => (self.ring.buffer, self.ring_copy(data, align).ok_or("ring full")?),
-                };
-                self.checked.insert(key, (self.cp_writes.len(), found.0, found.1));
-                return Ok(found);
-            }
+        if !pending && let Some(cpu) = cpu
+            && let Some(buffer) = self.checked_guest_buffer(mem, cpu, size, align, kind)?
+        {
+            return Ok(buffer);
         }
         if let Some(offset) = cpu.and_then(|c| self.pending_in_ring(c, size, align)) {
             return Ok((self.ring.buffer, offset));
         }
         let offset = self.ring_guest(gpu, mem, va, size, align, kind == buffer_cache::Kind::Constant)?;
         Ok((self.ring.buffer, offset))
+    }
+
+    fn checked_guest_buffer(&mut self, mem: &GuestMemory, cpu: u64, size: u64,
+        align: u64, kind: buffer_cache::Kind) -> Result<Option<(vk::Buffer, u64)>, String> {
+        let key = (cpu, size, kind);
+        if crate::env_var!("KIRIKAE_NO_CHECKED").is_none()
+            && let Some(entry) = self.checked.get_mut(&key)
+            && !self.cp_writes.since(cpu, size, entry.0)
+        {
+            entry.0 = self.cp_writes.len();
+            return Ok(Some((entry.1, entry.2)));
+        }
+        let Some(data) = mem.bytes(cpu, size) else { return Ok(None); };
+        let resident = self.cached(cpu, size, kind, data, |bytes| bytes.to_vec())
+            .filter(|&(_, offset)| kind != buffer_cache::Kind::ReadOnlyStorage || offset.is_multiple_of(align));
+        let (buffer, offset) = match resident {
+            Some(binding) => binding,
+            None => (self.ring.buffer, self.ring_copy(data, align).ok_or("ring full")?),
+        };
+        self.checked.insert(key, (self.cp_writes.len(), buffer, offset));
+        Ok(Some((buffer, offset)))
+    }
+
+    pub(super) fn readonly_storage_buffer(&mut self, gpu: &Gpu, mem: &GuestMemory,
+        va: u64, size: u64, align: u64) -> Result<Option<(vk::Buffer, u64)>, String> {
+        // Only single mapped, CPU-readable ranges can enter the resident cache.
+        // Pending GPU writes must keep the ordinary shared-ring behavior.
+        if va == 0 || size > buffer_cache::ARENA {
+            return Ok(None);
+        }
+        let Some((start, mapping)) = gpu.mapping(va) else { return Ok(None); };
+        let offset = va - start;
+        if size > mapping.size - offset {
+            return Ok(None);
+        }
+        let cpu = mapping.cpu + offset;
+        if !self.pending_pages.pages.is_empty() && self.pending_pages.overlapping(cpu, size).next().is_some() {
+            return Ok(None);
+        }
+        self.checked_guest_buffer(mem, cpu, size, align, buffer_cache::Kind::ReadOnlyStorage)
     }
 
     #[allow(clippy::too_many_arguments)]

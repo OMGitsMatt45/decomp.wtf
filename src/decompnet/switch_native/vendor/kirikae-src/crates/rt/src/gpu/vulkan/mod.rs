@@ -52,6 +52,8 @@ pub struct Renderer {
     cmd: vk::CommandBuffer,
     descriptor_pool: vk::DescriptorPool,
     recording: bool,
+    batch_time_budget: Option<std::time::Duration>,
+    batch_started_at: Option<std::time::Instant>,
     serial: u64,
     timestamps: Option<(vk::QueryPool, f64)>,
     rendering: Option<RenderTargets>,
@@ -71,6 +73,7 @@ pub struct Renderer {
     present_failed: bool,
     buffers: BufferCache,
     buffer_cache_on: bool,
+    readonly_storage_cache: bool,
     images: HashMap<ImageKey, Image>,
     by_cpu: std::collections::BTreeMap<u64, Vec<ImageKey>>,
     samplers: HashMap<tic::Sampler, vk::Sampler>,
@@ -112,6 +115,7 @@ pub struct Renderer {
     gathers: HashMap<ImageKey, Vec<u64>>,
     gather_sources: HashMap<ImageKey, (u64, Vec<Option<ImageKey>>)>,
     tex_cache: HashMap<TexKey, TexEntry>,
+    texture_decode_cache: bool,
     tex_at: std::collections::BTreeMap<u64, Vec<TexKey>>,
     newest: HashMap<u64, ImageKey>,
     target_memo: [(TargetAsk, ImageKey); 4],
@@ -160,6 +164,8 @@ pub struct RenderStats {
     pub written_back: u64,
     pub ring_bytes: u64,
     pub cbuf_bytes: u64,
+    #[cfg(debug_assertions)]
+    pub readonly_storage_resident: u64,
     pub vertex_bytes: u64,
     pub cached_bytes: u64,
     pub cache_memory: (u64, u64),
@@ -417,6 +423,8 @@ impl Renderer {
             .or_else(|_| unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None) })?;
         let compiler = PipelineCompiler::new(&device, pipeline_cache);
 
+        let readonly_storage_cache = crate::env_var!("KIRIKAE_READONLY_SSBO_CACHE")
+            .is_some_and(|value| value == "1");
         Ok(Renderer {
             entry,
             instance,
@@ -433,6 +441,11 @@ impl Renderer {
             current: 0,
             in_flight: VecDeque::new(),
             recording: false,
+            batch_time_budget: crate::env_var!("KIRIKAE_BATCH_MS")
+                .and_then(|value| value.to_str().and_then(|value| value.parse::<u64>().ok()))
+                .filter(|&ms| ms != 0)
+                .map(std::time::Duration::from_millis),
+            batch_started_at: None,
             serial: 1,
             timestamps,
             rendering: None,
@@ -450,7 +463,8 @@ impl Renderer {
             swapchain: None,
             family,
             present_failed: false,
-            buffers: BufferCache::new(&mem_props, ty),
+            buffers: BufferCache::new(&mem_props, ty, readonly_storage_cache),
+            readonly_storage_cache,
             buffer_cache_on: crate::env_var!("KIRIKAE_NO_BUFFER_CACHE").is_none(),
             images: HashMap::default(),
             by_cpu: std::collections::BTreeMap::new(),
@@ -492,6 +506,7 @@ impl Renderer {
             gathers: HashMap::default(),
             gather_sources: HashMap::default(),
             tex_cache: HashMap::default(),
+            texture_decode_cache: crate::env_var!("KIRIKAE_TEXTURE_DECODE_CACHE").is_some_and(|value| value == "1"),
             tex_at: std::collections::BTreeMap::new(),
             newest: HashMap::default(),
             target_memo: [((u64::MAX, vk::Format::UNDEFINED, 0, 0, u64::MAX), ImageKey { cpu: 0, format: vk::Format::UNDEFINED, width: 0, height: 0 }); 4],

@@ -242,6 +242,36 @@ impl Process {
     }
 }
 
+fn start_frame_stats(p: &'static Process) {
+    let _ = std::thread::Builder::new().name("kirikae-frames".into()).spawn(move || {
+        let mut last_frames = crate::display::FRAMES.load(Ordering::Relaxed);
+        let mut last_paced = crate::display::PACED_NS.load(Ordering::Relaxed);
+        let mut last_time = Instant::now();
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            if p.sched.exiting.load(Ordering::Relaxed) {
+                return;
+            }
+            let time = Instant::now();
+            let elapsed = time.duration_since(last_time).as_secs_f64();
+            let frames = crate::display::FRAMES.load(Ordering::Relaxed);
+            let paced = crate::display::PACED_NS.load(Ordering::Relaxed);
+            let count = frames.saturating_sub(last_frames);
+            let longest = crate::display::take_longest_frame();
+            eprintln!(
+                "kirikae: [{:>4}s] {frames} frames ({:.1} fps, {:.1} without the limit, longest {:.0} ms); measured {count} frames in {elapsed:.6} s",
+                time.duration_since(p.start).as_secs(),
+                count as f64 / elapsed,
+                crate::display::uncapped_fps(count, elapsed, paced.saturating_sub(last_paced)),
+                longest.as_secs_f64() * 1000.0,
+            );
+            last_frames = frames;
+            last_paced = paced;
+            last_time = time;
+        }
+    });
+}
+
 fn start_stats(p: &'static Process) {
     let _ = std::thread::Builder::new().name("kirikae-stats".into()).spawn(move || {
         let mut last_frames = 0;
@@ -540,9 +570,13 @@ pub fn run_executable(exe: &Executable, entries: &'static [Entry], opts: RunOpti
         start: Instant::now(),
     }));
 
-    if std::env::var_os("KIRIKAE_STATS").is_some() {
-        crate::prof::enable();
-        start_stats(process);
+    if let Some(mode) = std::env::var_os("KIRIKAE_STATS") {
+        if mode == "frames" {
+            start_frame_stats(process);
+        } else {
+            crate::prof::enable();
+            start_stats(process);
+        }
     }
     crate::nvn::install(process);
 
