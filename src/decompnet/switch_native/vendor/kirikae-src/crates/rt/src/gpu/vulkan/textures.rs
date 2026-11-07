@@ -163,7 +163,9 @@ impl Renderer {
         self.lap(13, &mut lap);
         let key = match layered.map(|(k, _)| k).or_else(|| self.find_image(cpu, header.width, header.height, format.vk)) {
             Some(k) => {
-                if layered.is_none() {
+                // The layered lookup also creates standalone mipmapped images.
+                // Keep array slices tied to their parent image.
+                if layered.is_none() || (self.images[&k].layers == 1 && self.images[&k].source.is_some()) {
                     self.refresh_texture(gpu, mem, k, &header, &format, layers);
                     entry.refresh = Some(k);
                 }
@@ -174,9 +176,7 @@ impl Renderer {
                 let levels = if header.texture_type == 7 { 1 } else { header.levels };
                 self.create_image(key, levels, layers).map_err(|e| format!("image: {e:?}"))?;
                 self.upload_texture(gpu, mem, key, &header, &format, levels, layers);
-                let hash = texture_hash(gpu, mem, &header, &format, levels, layers).unwrap_or(0);
-                let frame = crate::display::FRAMES.load(std::sync::atomic::Ordering::Relaxed);
-                self.images.get_mut(&key).unwrap().source = Some(Source { hash, checked: frame, volatile: false });
+                self.remember_texture_source(gpu, mem, key, &header, &format);
                 entry.refresh = Some(key);
                 key
             }
@@ -267,6 +267,13 @@ impl Renderer {
             let _ = std::fs::write(std::path::Path::new(dir).join(name), bytes);
         }
         self.upload_layers(key, levels as usize, &data);
+    }
+
+    pub(super) fn remember_texture_source(&mut self, gpu: &Gpu, mem: &GuestMemory, key: ImageKey, header: &TextureHeader, format: &TexFormat) {
+        let image = self.images.get_mut(&key).unwrap();
+        let hash = texture_hash(gpu, mem, header, format, image.levels, image.layers).unwrap_or(0);
+        let frame = crate::display::FRAMES.load(std::sync::atomic::Ordering::Relaxed);
+        image.source = Some(Source { hash, checked: frame, volatile: false });
     }
 
     pub(super) fn refresh_texture(&mut self, gpu: &Gpu, mem: &GuestMemory, key: ImageKey, header: &TextureHeader, format: &TexFormat, layers: u32) {
@@ -569,13 +576,13 @@ pub(super) fn texture_hash(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &
     Some(hash)
 }
 
-pub(super) fn texture_source(gpu: &Gpu, mem: &GuestMemory, h: &TextureHeader, f: &TexFormat) -> Option<Vec<u8>> {
+pub(super) fn texture_source<'m>(gpu: &Gpu, mem: &'m GuestMemory, h: &TextureHeader, f: &TexFormat) -> Option<std::borrow::Cow<'m, [u8]>> {
     let size = match h.layout {
         Layout::BlockLinear { .. } => level_offset(h, f, 1),
         Layout::Pitch { pitch } => pitch as u64 * h.height.div_ceil(f.block_h) as u64,
         Layout::Buffer => return None,
     };
-    gpu.mapped_bytes(mem, h.address, size.min(64 << 20)).map(std::borrow::Cow::into_owned)
+    gpu.mapped_bytes(mem, h.address, size.min(64 << 20))
 }
 
 #[test]

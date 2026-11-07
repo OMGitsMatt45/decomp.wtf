@@ -84,7 +84,7 @@ fn pitch_blit(gpu: &Gpu, mem: &GuestMemory) {
     assert_eq!(pixels, expected.iter().map(|v| v * 0x010101).collect::<Vec<_>>());
 }
 
-fn texture_remap(gpu: &Gpu, mem: &GuestMemory) {
+fn texture_updates(gpu: &Gpu, mem: &GuestMemory) {
     let (texture, alias) = (0x2_0000_0000, 0x2_0001_0000);
     let (first, second) = (0x170000, 0x171000);
     assert!(mem.write(first, &[255, 0, 0, 255]));
@@ -132,6 +132,55 @@ fn texture_remap(gpu: &Gpu, mem: &GuestMemory) {
     let unchanged_alias = draw(1);
     assert_eq!([before, after, unchanged_alias], [0xff0000, 0x00ff00, 0xff0000],
         "texture remap RGB before={before:06x}, after={after:06x}, alias={unchanged_alias:06x}");
+
+    // An 8x8 BC1 texture has two mip levels in two 512-byte GOBs.
+    // Fill the four level-zero blocks with one endpoint and leave mip 1 red.
+    let (mip_texture, backing) = (0x2_0002_0000u64, 0x172000);
+    let block = |endpoint: u16| {
+        let mut bytes = [0; 8];
+        bytes[..2].copy_from_slice(&endpoint.to_le_bytes());
+        bytes
+    };
+    let mut texels = [0; 1024];
+    for chunk in texels[..32].chunks_exact_mut(8) {
+        chunk.copy_from_slice(&block(0xf800));
+    }
+    texels[512..520].copy_from_slice(&block(0xf800));
+    assert!(mem.write(backing, &texels));
+    gpu.map(mip_texture, backing, 0x1000);
+    let bc1 = rgba8 & !0x7f | 0x24;
+    let mut tic = [bc1, mip_texture as u32, (mip_texture >> 32) as u32 | 3 << 21,
+        1 << 28, 7 | 1 << 23, 7, 0, 1 << 4];
+    assert!(mem.write(0x180000, &words(&tic)));
+    let before = draw(0);
+    for chunk in texels[..32].chunks_exact_mut(8) {
+        chunk.copy_from_slice(&block(0x07e0));
+    }
+    assert!(mem.write(backing, &texels));
+    kirikae_rt::display::FRAMES.fetch_add(30, Ordering::Relaxed);
+    let after = draw(0);
+    assert_eq!([before, after], [0xff0000, 0x00ff00],
+        "mipmapped BC1 refresh RGB before={before:06x}, after={after:06x}");
+
+    // A descriptor for the second layer must still sample that layer of the
+    // previously uploaded array, while the descriptor at its base samples layer 0.
+    let (array_texture, array_backing) = (0x2_0003_0000u64, 0x174000);
+    let mut array = texels.repeat(2);
+    for chunk in array[1024..1056].chunks_exact_mut(8) {
+        chunk.copy_from_slice(&block(0x001f));
+    }
+    assert!(mem.write(array_backing, &array));
+    gpu.map(array_texture, array_backing, 0x1000);
+    tic[1] = array_texture as u32;
+    tic[5] |= 1 << 16;
+    assert!(mem.write(0x180000, &words(&tic)));
+    let layer_zero = draw(0);
+    tic[1] += 1024;
+    tic[5] &= !(1 << 16);
+    assert!(mem.write(0x180000, &words(&tic)));
+    let layer_one = draw(0);
+    assert_eq!([layer_zero, layer_one], [0x00ff00, 0x0000ff],
+        "mipmapped array RGB layer 0={layer_zero:06x}, layer 1={layer_one:06x}");
 }
 
 fn primitive_restart(gpu: &Gpu, mem: &GuestMemory) {
@@ -248,7 +297,7 @@ fn main() {
     let report = json!({"schema":"decomp.wtf.switch-graphics-probe/v1", "status":"passed", "cpu_path":"host qualification scene",
         "renderer":kirikae_rt::decomp::RENDERER.lock().unwrap().clone(), "frames":frames,
         "pushbuffer_submits":gpu.stats.submits.load(Ordering::Relaxed), "draws":stats.draws,"skipped":stats.skipped});
-    texture_remap(&gpu, &mem);
+    texture_updates(&gpu, &mem);
     primitive_restart(&gpu, &mem);
     gpu.shutdown();
     std::fs::write(root.join("graphics-report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
