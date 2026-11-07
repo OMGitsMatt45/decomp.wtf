@@ -130,11 +130,12 @@ fn present(p: &Process, s: &Slot, rect: [i32; 4], transform: u32) {
             return Presented::NoImage;
         }''')
     replace_once(present, '''        let visible = [width.min(key.width), height.min(key.height)];
-        let cubic = if self.present_filter_cubic && sc.filter.is_some()''', '''        let visible = [crop.right - crop.left, crop.bottom - crop.top];
+        let cubic = if self.present_filter_cubic && sc.filter.is_some()
+            && let Some(transform) = present_filter::transform(key, [0, 0, visible[0], visible[1]], extent, [flip_h, flip_v])''', '''        let visible = [crop.right - crop.left, crop.bottom - crop.top];
         let [left, top, width, height] = fit_frame(visible, [extent.width, extent.height]);
         let cubic = if self.present_filter_cubic && sc.filter.is_some()
-            && crop == BufferCrop::full(key.width, key.height)
-            && [width, height] == [extent.width, extent.height]''')
+            && [width, height] == [extent.width, extent.height]
+            && let Some(transform) = present_filter::transform(key, [crop.left, crop.top, crop.right, crop.bottom], extent, [flip_h, flip_v])''')
     replace_once(present, '.src_offsets([vk::Offset3D { x: 0, y: 0, z: 0 }, vk::Offset3D { x: w, y: h, z: 1 }])',
                  '''.src_offsets([
                         vk::Offset3D { x: crop.left as i32, y: crop.top as i32, z: 0 },

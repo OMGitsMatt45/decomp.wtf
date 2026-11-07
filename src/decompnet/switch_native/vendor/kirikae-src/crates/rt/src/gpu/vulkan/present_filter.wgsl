@@ -1,6 +1,7 @@
 struct SourceTransform {
     scale: vec2<f32>,
     origin: vec2<f32>,
+    bounds: vec4<i32>,
 }
 
 @group(0) @binding(0) var source: texture_2d<f32>;
@@ -34,13 +35,12 @@ fn load_row(x: vec4<i32>, y: i32) -> mat4x4<f32> {
 
 @fragment
 fn fragment_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    // Use texel centers in source space, with replicated edges.
+    // Replicate the visible crop's edges without sampling producer padding.
     let pixel = position.xy * transform.scale + transform.origin - 0.5;
     let base = vec2<i32>(floor(pixel));
-    let last = vec2<i32>(textureDimensions(source)) - vec2<i32>(1);
     let taps = vec4<i32>(-1, 0, 1, 2);
-    let x = clamp(vec4<i32>(base.x) + taps, vec4<i32>(0), vec4<i32>(last.x));
-    let y = clamp(vec4<i32>(base.y) + taps, vec4<i32>(0), vec4<i32>(last.y));
+    let x = clamp(vec4<i32>(base.x) + taps, vec4<i32>(transform.bounds.x), vec4<i32>(transform.bounds.z));
+    let y = clamp(vec4<i32>(base.y) + taps, vec4<i32>(transform.bounds.y), vec4<i32>(transform.bounds.w));
     let fraction = fract(pixel);
     let wx = cubic_weights(fraction.x);
     let wy = cubic_weights(fraction.y);
