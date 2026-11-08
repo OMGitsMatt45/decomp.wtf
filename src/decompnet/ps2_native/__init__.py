@@ -111,6 +111,15 @@ def _read(path,inspection,name):
     with path.open('rb') as stream:return _Disc(stream).read(rec['lba'],rec['size'])
 
 
+def _disjoint_extents(files):
+    previous_end = 0
+    for lba, size in sorted((row['lba'], row['size']) for row in files if row['size']):
+        if lba < previous_end:
+            return False
+        previous_end = lba + (size + 2047) // 2048
+    return True
+
+
 def generate(project,root):
     path=Path(project['input']).resolve();inspection=media.inspect(path)
     pins=project.get('profile')
@@ -147,15 +156,35 @@ def generate(project,root):
         sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'game/iop')
     _log('Discover and translate input-derived VU operations...')
     vectors=vu_discovery.Catalog()
+    sector_size=inspection.get('sector_size',2048)
+    data_skip=inspection.get('sector_data_offset',0)
+    medium=(reviewed or {}).get('disc_medium','dvd' if sector_size==2048 else 'cd')
+    if medium not in ('cd','dvd'):raise pc.PCError('PS2 profile disc_medium must be cd or dvd')
+    image_size=inspection['input']['size']
+    sector_count=image_size//sector_size
+    files=[row for row in inspection['files'] if not row['directory']]
+    directory_mode=(bool(files) and medium=='dvd' and sector_size==2048 and not data_skip
+                    and image_size%sector_size==0 and 0<sector_count<=0xffffffff
+                    and _disjoint_extents(files))
+    directory_files=[]
     for name,data in vector_inputs:vectors.scan(name,data,raw_programs=True)
     if inspection['input_kind']=='disc':
         from ..rom.psx import _Disc
         with path.open('rb') as stream:
             disc=_Disc(stream)
-            for item in inspection['files']:
-                if item['directory']:continue
+            for item in files:
                 _log('Inspect VU uploads in '+item['path'])
-                vectors.scan_stream(item['path'],lambda offset,size:disc.read(item['lba']+offset//2048,size),item['size'])
+                digest=hashlib.sha256() if directory_mode else None
+
+                def read_extent(offset,size):
+                    data=disc.read(item['lba']+offset//2048,size)
+                    if digest is not None:
+                        digest.update(data)
+                    return data
+
+                vectors.scan_stream(item['path'],read_extent,item['size'])
+                if digest is not None:
+                    directory_files.append(dict(path=item['path'],size=item['size'],sha256=digest.hexdigest()))
     vu_generation=vu_native.generate(vectors,root/'game/vu')
     vu_programs.empty(root/'game/vu_programs')
     _native_execution_tests(root,sdk)
@@ -194,16 +223,14 @@ def generate(project,root):
     dispatch=registry.registry(records,root/'native/modules.cpp',project_root=root)
     # Recheck the complete identity before publishing source derived from it.
     if media.inspect(path)['input']!=inspection['input']:raise pc.PCError('PS2 owner input changed during export')
-    files=[f for f in inspection['files'] if not f['directory']]
     extract=[]
     for rec in files:
         if rec['path']==boot or rec.get('role')=='iop-irx':
             raw=_read(path,inspection,rec['path']);extract.append({**rec,'sha256':hashlib.sha256(raw).hexdigest()})
     recipe=dict(schema='decomp.wtf.ps2-assets/v1',input=inspection['input'],kind='disc' if files else 'ee-elf',
-        sector_size=inspection.get('sector_size',2048),sector_data_offset=inspection.get('sector_data_offset',0),extract=extract)
-    medium=(reviewed or {}).get('disc_medium','dvd' if recipe['sector_size']==2048 else 'cd')
-    if medium not in ('cd','dvd'):raise pc.PCError('PS2 profile disc_medium must be cd or dvd')
-    recipe['disc_medium']=medium
+        sector_size=sector_size,sector_data_offset=data_skip,disc_medium=medium,extract=extract)
+    if directory_mode:
+        recipe['directory']=dict(sectors=sector_count,files=directory_files)
     (root/'game/assets.json').write_text(json.dumps(recipe,indent=2)+'\n',encoding='utf-8')
     retained=dict(schema=profile.SCHEMA,input_sha256=inspection['input']['sha256'],
         modules=[dict(path=row['path'],**mapping) for row,(_,mapping) in zip(rows,prepared)],
