@@ -18,7 +18,50 @@ def probe(tmp_path_factory):
     (root/'main.cpp').write_text(r'''#include "disc_files.hpp"
 #include <array>
 #include <vector>
+
+int test_directory(const std::filesystem::path &assets) {
+ using namespace decomp_ps2::disc;
+ const Entry entries[]={
+     {"DIR/SECOND.BIN",5,2048},
+     {"SYSTEM.",7,12},
+     {"DIR/ORIGINAL.BIN",3,3000},
+ };
+ if(!mount_assets(assets,entries,2048,0,0x14).empty() ||
+    !mounted() || directory_sector_count()!=9 || medium()!=0x14)return 20;
+
+ Entry original;
+ if(!lookup(R"(cdrom0:\dir\original.bin;1)",original) || original.lba!=3 || original.size!=3000)return 21;
+ std::array<uint8_t,6144> data;
+ data.fill(0xa5);
+ if(!read_sectors(3,3,data.data(),data.size()))return 22;
+ for(size_t n=0;n<data.size();++n) {
+     const uint8_t expected=n<3000 ? n%251 : n<4096 ? 0 : 0x5a;
+     if(data[n]!=expected)return 23;
+ }
+ if(!read_sectors(4,2,data.data(),1000))return 24;
+ for(size_t n=0;n<1000;++n)if(data[n]!=(n<952 ? (2048+n)%251 : 0))return 25;
+
+ data.fill(0xa5);
+ if(read_sectors(5,2,data.data(),4096) || read_sectors(0,1,data.data(),2048) ||
+    read_sectors(8,1,data.data(),2048) || unmapped_reads!=3)return 26;
+ if(!std::all_of(data.begin(),data.end(),[](uint8_t value){return value==0xa5;}))return 27;
+
+ FILE *file=open("absent-system","rb","cdrom0:/SYSTEM.;1");
+ if(!file)return 28;
+ if(read(data.data(),1,data.size(),file)!=12 || std::memcmp(data.data(),"known config",12) ||
+    tell(file)!=12 || data[12]!=0xa5)return 29;
+ if(close(file))return 30;
+
+ const Entry overlap[]={{"DIR/ORIGINAL.BIN",3,3000},{"DIR/SECOND.BIN",4,2048}};
+ try {mount_directory(assets/"cd",overlap,9);return 31;}catch(const std::runtime_error&){}
+ const Entry incorrect_size[]={{"DIR/ORIGINAL.BIN",3,3001}};
+ try {mount_directory(assets/"cd",incorrect_size,9);return 32;}catch(const std::runtime_error&){}
+ if(!read_sectors(5,1,data.data(),2048) || data[0]!=0x5a)return 33;
+ return 0;
+}
+
 int main(int argc,char **argv) {
+ if(argc==2)return test_directory(argv[1]);
  if(argc!=5)return 1;
  using namespace decomp_ps2::disc;
  const unsigned sector=static_cast<unsigned>(std::stoul(argv[2])),skip=static_cast<unsigned>(std::stoul(argv[3]));
@@ -83,3 +126,15 @@ def test_native_iso_and_raw_disc_views_do_not_read_neighbouring_files(probe,tmp_
     with image.open('rb') as stream:
         stream.seek((lba+1)*sector+skip+952)
         assert stream.read(len(b'NEIGHBOUR-MUST-STAY-PRIVATE'))==b'NEIGHBOUR-MUST-STAY-PRIVATE'
+
+
+def test_native_extracted_disc_preserves_original_sector_ranges(probe,tmp_path):
+    assets=tmp_path/'local assets'
+    files=assets/'cd'/'DIR'
+    files.mkdir(parents=True)
+    (assets/'disc.directory').write_bytes(b'9\n')
+    (files/'ORIGINAL.BIN').write_bytes(bytes(n%251 for n in range(3000)))
+    (files/'SECOND.BIN').write_bytes(bytes([0x5a])*2048)
+    (files.parent/'SYSTEM').write_bytes(b'known config')
+    result=subprocess.run([probe,assets],cwd=tmp_path,capture_output=True,text=True,timeout=10)
+    assert result.returncode==0,(result.returncode,result.stderr)

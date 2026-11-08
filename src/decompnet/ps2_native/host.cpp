@@ -251,16 +251,9 @@ int main(int argc,char **argv) {
         runtime->setGuestHeapCeiling(ceiling);runtime->configureGuestHeap(ceiling,top);
         auto paths=PS2Runtime::getIoPaths();paths.cdRoot=root/"assets/cd";paths.mcRoot=root/"saves";
         fs::create_directories(paths.mcRoot);
-        if(decomp_ps2_game::has_disc){
-            paths.cdImage=root/"assets/disc.img";
-            if(fs::is_regular_file(root/"assets/disc.path")){
-                std::ifstream reference(root/"assets/disc.path");std::string path;std::getline(reference,path);
-                if(path.empty()||!reference)throw std::runtime_error("invalid external disc reference");
-                paths.cdImage=fs::u8path(path);
-                if(!paths.cdImage.is_absolute())throw std::runtime_error("external disc reference must be absolute");
-            }
-            decomp_ps2::disc::mount(paths.cdImage,decomp_ps2_game::files,decomp_ps2_game::sector_size,decomp_ps2_game::data_skip,decomp_ps2_game::disc_type);
-        }
+        if(decomp_ps2_game::has_disc)
+            paths.cdImage=decomp_ps2::disc::mount_assets(root/"assets",decomp_ps2_game::files,
+                decomp_ps2_game::sector_size,decomp_ps2_game::data_skip,decomp_ps2_game::disc_type);
         PS2Runtime::setIoPaths(paths);
         ps2_native_iop::setModules(*runtime,decomp_ps2_game::iop_modules);
         host.started=std::chrono::steady_clock::now();runtime->run();

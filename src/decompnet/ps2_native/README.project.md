@@ -44,6 +44,11 @@ IOP modules are extracted.
 Add --reference to the asset helper to retain the original disc at its current
 absolute path without copying it. Keep that file available when running; saves
 remain inside this source project. The default copies the disc for portability.
+For an extracted DVD tree, run `python tools/extract_assets.py --directory /path/to/extracted`.
+This mode verifies each exported file's SHA-256 and stages the verified files
+under `assets/cd`. The player uses the original sector addresses when it reads these
+files. The input folder can be moved after staging. This mode is available for
+2048-byte-sector DVD exports with a complete file inventory.
 Raw CD sector formats select CD medium replies automatically. For a CD converted
 to a 2048-byte ISO, set `disc_medium` to `cd` in its reviewed profile; otherwise
 2048-byte inputs use DVD replies. The original image's sector/file data is retained.

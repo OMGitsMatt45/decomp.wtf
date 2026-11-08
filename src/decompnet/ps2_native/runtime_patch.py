@@ -192,6 +192,13 @@ def patch_disc_services(root):
             const bool ok=decomp_ps2::disc::read_sectors(lbn,sectors,dst,byteCount);
             g_lastCdError=ok?0:-1;return ok;
         }''')
+    replace(support,'''    bool isResolvableCdLbn(uint32_t lbn)
+    {''','''    bool isResolvableCdLbn(uint32_t lbn)
+    {
+        // A directory mount retains the logical disc geometry, including its unmapped sectors.
+        // This keeps an in-bounds read failure from triggering register-layout recovery.
+        if (const uint64_t sectorCount = decomp_ps2::disc::directory_sector_count())
+            return static_cast<uint64_t>(lbn) < sectorCount;''')
 
 
 def patch_host(root):

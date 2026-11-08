@@ -53,6 +53,65 @@ def test_asset_staging_is_atomic_and_preserves_existing_saves(tmp_path):
     assert save.read_bytes()==b'keep'
 
 
+def test_extracted_dvd_staging_verifies_payload_and_preserves_saves(tmp_path):
+    from decompnet.ps2_native.extract_assets import stage
+
+    owner = tmp_path/'owner'
+    (owner/'BIN').mkdir(parents=True)
+    (owner/'BOOT.ELF').write_bytes(b'boot')
+    (owner/'BIN/DATA.BIN').write_bytes(b'good')
+    (owner/'NOEXT').write_bytes(b'bare')
+    (owner/'extraneous-save').write_bytes(b'private')
+    root = tmp_path/'source'
+    (root/'game').mkdir(parents=True)
+    (root/'saves').mkdir()
+    save = root/'saves/important'
+    save.write_bytes(b'keep')
+    files = [dict(path=name, size=4, sha256=hashlib.sha256((owner/name).read_bytes()).hexdigest())
+             for name in ('BOOT.ELF', 'BIN/DATA.BIN')]
+    files.append(dict(path='NOEXT.', size=4, sha256=hashlib.sha256(b'bare').hexdigest()))
+    recipe = dict(schema='decomp.wtf.ps2-assets/v1', kind='disc', sector_size=2048,
+                  sector_data_offset=0, disc_medium='dvd',
+                  input=dict(size=128*2048, sha256='0'*64), extract=[],
+                  directory=dict(sectors=128, files=files))
+    recipe_path = root/'game/assets.json'
+    recipe_path.write_text(json.dumps(recipe), encoding='utf-8')
+
+    with pytest.raises(ValueError, match='choose either'):
+        stage(owner, root, reference=True, directory=True)
+
+    (owner/'BIN/DATA.BIN').write_bytes(b'bad!')
+    with pytest.raises(ValueError, match='hash differs'):
+        stage(owner, root, directory=True)
+    assert not (root/'assets').exists() and save.read_bytes() == b'keep'
+
+    (owner/'BIN/DATA.BIN').write_bytes(b'good')
+    files.append(dict(files[0], path='../BOOT.ELF'))
+    recipe_path.write_text(json.dumps(recipe), encoding='utf-8')
+    with pytest.raises(ValueError, match='escapes'):
+        stage(owner, root, directory=True)
+    assert not (root/'assets').exists()
+    files.pop()
+    recipe_path.write_text(json.dumps(recipe), encoding='utf-8')
+
+    assets = stage(owner, root, directory=True)
+    assert (assets/'disc.directory').read_bytes() == b'128\n'
+    assert (assets/'cd/BOOT.ELF').read_bytes() == b'boot'
+    assert (assets/'cd/BIN/DATA.BIN').read_bytes() == b'good'
+    assert (assets/'cd/NOEXT.').read_bytes() == b'bare'
+    assert sorted(p.name for p in assets.iterdir()) == ['cd', 'disc.directory', 'identity.json']
+    assert not (assets/'cd/extraneous-save').exists()
+    assert save.read_bytes() == b'keep'
+
+
+def test_directory_recipe_requires_disjoint_sector_extents():
+    from decompnet.ps2_native import _disjoint_extents
+
+    first = dict(lba=20, size=2049)
+    assert _disjoint_extents([dict(lba=22, size=1), first, dict(lba=20, size=0)])
+    assert not _disjoint_extents([first, dict(lba=21, size=1)])
+
+
 def test_typed_analysis_preserves_load_images_and_explicit_late_entries():
     from decompnet.ps2_native.media import elf_info
     from decompnet.ps2_native.modules import typed_elf

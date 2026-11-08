@@ -1,26 +1,39 @@
 // SPDX-License-Identifier: MIT
-// Read-only ISO/BIN file views for the source-shipped PS2 filesystem services.
+// Read-only disc image and extracted file views for the PS2 filesystem services.
 #pragma once
 #ifndef DECOMP_PS2_DISC_FILES_HPP
 #define DECOMP_PS2_DISC_FILES_HPP
 #include <algorithm>
 #include <cerrno>
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <mutex>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace decomp_ps2::disc {
 struct Entry { std::string name; uint64_t lba, size; };
 struct Slice { Entry entry; uint64_t position=0; unsigned sector=2048, skip=0; };
+struct Extent {
+    std::filesystem::path path;
+    uint64_t lba, size;
+
+    uint64_t end_sector() const { return lba + (size + 2047) / 2048; }
+};
 inline std::mutex mutex;
-inline std::string image;
+inline std::filesystem::path image;
+inline std::unordered_map<std::string,std::filesystem::path> extracted_files;
+inline std::vector<Extent> extracted_extents;
+inline uint64_t extracted_sector_count=0;
+inline uint64_t unmapped_reads=0;
 inline unsigned sector_size=2048, data_skip=0;
 inline std::unordered_map<std::string,Entry> files;
 inline std::unordered_map<FILE*,Slice> slices;
@@ -79,6 +92,14 @@ inline int64_t physical_tell(FILE *file) {
 #endif
 }
 
+inline FILE *open_readonly(const std::filesystem::path &path) {
+#ifdef _WIN32
+    return _wfopen(path.c_str(),L"rb");
+#else
+    return std::fopen(path.c_str(),"rb");
+#endif
+}
+
 inline void mount(const std::filesystem::path &path,std::span<const Entry> entries,unsigned sector=2048,unsigned skip=0,unsigned medium=0) {
     std::lock_guard lock(mutex);
     if(!slices.empty())throw std::runtime_error("cannot replace a PS2 disc with open file views");
@@ -98,8 +119,95 @@ inline void mount(const std::filesystem::path &path,std::span<const Entry> entri
         }
         next.emplace(name,Entry{name,entry.lba,entry.size});
     }
-    image=path.string();files=std::move(next);sector_size=sector;data_skip=skip;read_bytes=read_calls=0;
+    image=path;files=std::move(next);sector_size=sector;data_skip=skip;read_bytes=read_calls=0;
+    extracted_files.clear();extracted_extents.clear();extracted_sector_count=unmapped_reads=0;
     medium_type=medium?medium:(sector==2048?0x14:0x12);
+}
+
+inline void mount_directory(const std::filesystem::path &root,std::span<const Entry> entries,
+                            uint64_t sector_count,unsigned medium=0x14) {
+    std::lock_guard lock(mutex);
+    if(!slices.empty())throw std::runtime_error("cannot replace a PS2 disc with open file views");
+    if(!sector_count || sector_count>UINT32_MAX)
+        throw std::runtime_error("invalid PS2 extracted disc sector count");
+    if(medium!=0x12 && medium!=0x14)throw std::runtime_error("invalid PS2 disc medium type");
+
+    std::unordered_map<std::string,Entry> next;
+    std::unordered_map<std::string,std::filesystem::path> paths;
+    std::vector<Extent> extents;
+    for(const auto &entry:entries) {
+        const auto name=normalized(entry.name);
+        if(name.empty() || next.contains(name))throw std::runtime_error("invalid or duplicate PS2 disc file");
+        if(entry.lba>sector_count || entry.size>(sector_count-entry.lba)*2048)
+            throw std::runtime_error("PS2 extracted disc extent exceeds its logical size");
+
+        auto path=root/name;
+        std::error_code error;
+        auto size=std::filesystem::file_size(path,error);
+        // An ISO 9660 extension separator can disappear when the file is extracted.
+        if(error && name.ends_with('.')) {
+            path=root/name.substr(0,name.size()-1);
+            size=std::filesystem::file_size(path,error);
+        }
+        if(error || size!=entry.size)
+            throw std::runtime_error("missing or wrong-sized PS2 extracted disc file: "+name);
+        if(entry.size)extents.push_back({path,entry.lba,entry.size});
+        next.emplace(name,Entry{name,entry.lba,entry.size});
+        paths.emplace(name,std::move(path));
+    }
+    std::sort(extents.begin(),extents.end(),[](const Extent &a,const Extent &b){return a.lba<b.lba;});
+    for(size_t n=1;n<extents.size();++n) {
+        if(extents[n].lba<extents[n-1].end_sector())
+            throw std::runtime_error("overlapping PS2 extracted disc extents");
+    }
+
+    image.clear();files=std::move(next);extracted_files=std::move(paths);extracted_extents=std::move(extents);
+    extracted_sector_count=sector_count;sector_size=2048;data_skip=0;medium_type=medium;
+    read_bytes=read_calls=unmapped_reads=0;
+}
+
+inline std::filesystem::path mount_assets(const std::filesystem::path &assets,std::span<const Entry> entries,
+                                          unsigned sector,unsigned skip,unsigned medium) {
+    const auto directory=assets/"disc.directory";
+    const auto reference_path=assets/"disc.path";
+    auto image_path=assets/"disc.img";
+    if(std::filesystem::exists(directory)) {
+        if(std::filesystem::exists(reference_path) || std::filesystem::exists(image_path))
+            throw std::runtime_error("multiple PS2 disc asset modes are present");
+        if(sector!=2048 || skip!=0)
+            throw std::runtime_error("PS2 extracted disc requires 2048-byte data sectors");
+        if(!std::filesystem::is_regular_file(directory))
+            throw std::runtime_error("invalid PS2 extracted disc marker");
+        std::ifstream marker(directory);
+        std::string text;
+        std::getline(marker,text);
+        if(text.ends_with('\r'))text.pop_back();
+        uint64_t sector_count=0;
+        const auto end=text.data()+text.size();
+        const auto result=std::from_chars(text.data(),end,sector_count);
+        if(!marker || result.ec!=std::errc{} || result.ptr!=end || marker.peek()!=EOF)
+            throw std::runtime_error("invalid PS2 extracted disc marker");
+        mount_directory(assets/"cd",entries,sector_count,medium?medium:0x14);
+        return {};
+    }
+
+    if(std::filesystem::is_regular_file(reference_path)) {
+        std::ifstream reference(reference_path);
+        std::string path;
+        std::getline(reference,path);
+        if(path.empty() || !reference)throw std::runtime_error("invalid external disc reference");
+        image_path=std::filesystem::u8path(path);
+        if(!image_path.is_absolute())throw std::runtime_error("external disc reference must be absolute");
+    }
+    if(!std::filesystem::is_regular_file(image_path))
+        throw std::runtime_error("PS2 disc assets are missing; run tools/extract_assets.py to prepare them");
+    mount(image_path,entries,sector,skip,medium);
+    return image_path;
+}
+
+inline uint64_t directory_sector_count() {
+    std::lock_guard lock(mutex);
+    return extracted_sector_count;
 }
 
 inline uint32_t medium() {std::lock_guard lock(mutex);return medium_type;}
@@ -114,13 +222,18 @@ inline FILE *open(const char *host,const char *mode,const char *guest) {
     if(!mode||mode[0]!='r'||std::strchr(mode,'+')){errno=EROFS;return nullptr;}
     const auto name=normalized(guest);
     if(name.empty()){errno=ENOENT;return nullptr;}
+    std::lock_guard lock(mutex);
+    const auto found=files.find(name);
+    if(extracted_sector_count && found!=files.end()) {
+        FILE *file=open_readonly(extracted_files.at(name));
+        if(file)slices.emplace(file,Slice{Entry{name,0,found->second.size}});
+        return file;
+    }
     // Extracted owner files may override disc assets. Code identity guards
     // still apply to executable modules independently of asset placement.
     if(FILE *local=std::fopen(host,mode))return local;
-    std::lock_guard lock(mutex);
-    const auto found=files.find(name);
     if(found==files.end()||image.empty()){errno=ENOENT;return nullptr;}
-    FILE *file=std::fopen(image.c_str(),"rb");
+    FILE *file=open_readonly(image);
     if(file)slices.emplace(file,Slice{found->second,0,sector_size,data_skip});
     return file;
 }
@@ -133,12 +246,62 @@ inline bool lookup(const std::string &path,Entry &entry) {
     entry=found->second;return true;
 }
 
-inline bool mounted() {std::lock_guard lock(mutex);return !image.empty();}
+inline bool mounted() {std::lock_guard lock(mutex);return !image.empty() || extracted_sector_count!=0;}
+
+inline bool read_directory_sectors(uint32_t lba,uint8_t *destination,size_t bytes) {
+    ++read_calls;
+    if(!bytes)return true;
+
+    const uint64_t start=uint64_t(lba)*2048;
+    const uint64_t last_sector=(start+bytes-1)/2048;
+    auto extent=std::upper_bound(extracted_extents.begin(),extracted_extents.end(),lba,
+        [](uint64_t sector,const Extent &candidate){return sector<candidate.lba;});
+    if(extent!=extracted_extents.begin())--extent;
+
+    // Validate coverage before writing any guest bytes.
+    uint64_t sector=lba;
+    for(auto current=extent;;++current) {
+        if(current==extracted_extents.end() || sector<current->lba || sector>=current->end_sector()) {
+            if(++unmapped_reads<=16)
+                std::fprintf(stderr,"PS2 extracted disc has no data for sector %llu\n",
+                    static_cast<unsigned long long>(sector));
+            errno=EIO;
+            return false;
+        }
+        if(last_sector<current->end_sector())break;
+        sector=current->end_sector();
+    }
+
+    size_t done=0;
+    while(done<bytes) {
+        const uint64_t position=start+done;
+        const uint64_t offset=position-extent->lba*2048;
+        const size_t chunk=static_cast<size_t>(std::min<uint64_t>(bytes-done,extent->end_sector()*2048-position));
+        const size_t from_file=offset<extent->size
+            ? static_cast<size_t>(std::min<uint64_t>(chunk,extent->size-offset)) : 0;
+        if(from_file) {
+            FILE *file=open_readonly(extent->path);
+            if(!file)return false;
+            const size_t got=physical_seek(file,static_cast<int64_t>(offset),SEEK_SET)
+                ? 0 : std::fread(destination+done,1,from_file,file);
+            std::fclose(file);
+            if(got!=from_file)return false;
+        }
+        // Named extraction excludes the final sector's file alignment padding.
+        if(from_file<chunk)std::memset(destination+done+from_file,0,chunk-from_file);
+        done+=chunk;
+        read_bytes+=chunk;
+        ++extent;
+    }
+    return true;
+}
 
 inline bool read_sectors(uint32_t lba,uint32_t count,uint8_t *destination,size_t bytes) {
     std::lock_guard lock(mutex);
-    if(image.empty()||bytes>uint64_t(count)*2048||(!destination&&bytes)){errno=EINVAL;return false;}
-    FILE *file=std::fopen(image.c_str(),"rb");
+    if(bytes>uint64_t(count)*2048 || (!destination&&bytes)){errno=EINVAL;return false;}
+    if(extracted_sector_count)return read_directory_sectors(lba,destination,bytes);
+    if(image.empty()){errno=EINVAL;return false;}
+    FILE *file=open_readonly(image);
     if(!file)return false;
     size_t done=0;
     while(done<bytes) {
