@@ -161,6 +161,15 @@ def _program_support(folder):
     """Keep whole-program operations static, including exceptional arithmetic."""
     header=folder/'ps2_vu1_program.h'
     flag_queue_bounds(header)
+    # A ready pair has no stalled cycles to feed PATH1. XGKICK still waits
+    # for an older packet even when every register operand is ready.
+    replace(header,'''    const bool kicking = m_kickActive;
+    if (kicking) [[unlikely]]
+    {
+        const Run::Clock clock = m_run.stall(m_cycle, ready, Pc, kick);''','''    const bool kicking = m_kickActive;
+    if (kicking && (kick || ready > m_cycle)) [[unlikely]]
+    {
+        const Run::Clock clock = m_run.stall(m_cycle, ready, Pc, kick);''')
     replace(header,'void forgetRoutines();',
         'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif')
     replace(header,'    void exactUpper(uint32_t upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
