@@ -17,6 +17,7 @@ def patch(root, *, owned_rows=True):
     uint32_t m_refreshWidth = 0u, m_refreshHeight = 0u;
     SDL_GPUTransferBuffer *m_upload = nullptr;''')
     target=folder/'sdlgpu_targets.cpp'
+    _sparsify_target_regions(target)
     replace(target,'    m_uploadCapacity = 0u;\n}', '''    m_uploadCapacity = 0u;
     if (m_device.valid()) {
         if (m_download) SDL_ReleaseGPUTransferBuffer(m_device.handle(), m_download);
@@ -106,6 +107,7 @@ SDL_GPUTexture *GsTargetCache::nativeTexture(SDL_GPUTexture *&texture, uint32_t 
             const uint8_t *row =''')
 
     backend=folder/'sdlgpu_backend.cpp'
+    _reuse_draw_state(backend)
     replace(backend,'    SDL_GPUTexture *dummyTexture = nullptr;', '''    SDL_GPUTransferBuffer *feedbackUpload = nullptr;
     uint32_t feedbackUploadCapacity = 0u;
     SDL_GPUTexture *dummyTexture = nullptr;''')
@@ -141,3 +143,154 @@ SDL_GPUTexture *GsTargetCache::nativeTexture(SDL_GPUTexture *&texture, uint32_t 
             SDL_ReleaseGPUTransferBuffer(m_impl->device.handle(), m_impl->feedbackUpload);
         if (m_impl->dummyTexture)
 ''')
+
+
+def _sparsify_target_regions(target):
+    """Visit sparse VRAM aliases without scanning every target cell."""
+    replace(target, '''    const uint32_t basePage = surface.base >> 5u;
+    const uint32_t pageRows = (surface.height + extent.height - 1u) / extent.height;
+
+    for (uint32_t row = 0u; row < pageRows; ++row) {
+        for (uint32_t column = 0u; column < pagesPerRow; ++column) {
+            const uint32_t page = (basePage + row * pagesPerRow + column) % kGsPageCount;
+            if (!pages.test(page))
+                continue;
+            GsRegion cell{column * extent.width, row * extent.height,
+                          (column + 1u) * extent.width, (row + 1u) * extent.height};
+            cell.x1 = std::min(cell.x1, surface.width);
+            cell.y1 = std::min(cell.y1, surface.height);
+            region.merge(cell);
+        }
+    }''', '''    const uint32_t basePage = (surface.base >> 5u) % kGsPageCount;
+    const uint32_t pageRows = (surface.height + extent.height - 1u) / extent.height;
+    const uint32_t pageColumns = std::min(pagesPerRow,
+        (surface.width + extent.width - 1u) / extent.width);
+    const uint32_t visibleCells = pageRows * pageColumns;
+    auto mergeCell = [&](uint32_t row, uint32_t column) {
+        GsRegion cell{column * extent.width, row * extent.height,
+                      (column + 1u) * extent.width, (row + 1u) * extent.height};
+        cell.x1 = std::min(cell.x1, surface.width);
+        cell.y1 = std::min(cell.y1, surface.height);
+        region.merge(cell);
+    };
+
+    // Sparse writes are cheaper to visit by VRAM page than by surface cell.
+    // Revisit a page at every VRAM wrap if the layout aliases itself.
+    if (visibleCells >= 64u && pages.count() <= visibleCells / 8u) {
+        const GsPageSet lowWord(~0ull);
+        const uint32_t cells = pageRows * pagesPerRow;
+        for (uint32_t first = 0u; first < kGsPageCount; first += 64u) {
+            for (uint64_t word = ((pages >> first) & lowWord).to_ullong();
+                 word != 0u; word &= word - 1u) {
+                const uint32_t page = first + static_cast<uint32_t>(std::countr_zero(word));
+                const uint32_t relative = (page + kGsPageCount - basePage) % kGsPageCount;
+                for (uint32_t cell = relative; cell < cells; cell += kGsPageCount)
+                    mergeCell(cell / pagesPerRow, cell % pagesPerRow);
+            }
+        }
+        return region;
+    }
+
+    for (uint32_t row = 0u; row < pageRows; ++row) {
+        for (uint32_t column = 0u; column < pageColumns; ++column) {
+            const uint32_t page = (basePage + row * pagesPerRow + column) % kGsPageCount;
+            if (pages.test(page))
+                mergeCell(row, column);
+        }
+    }''')
+    replace(target, '''        if (&other != &surface && !other.depth && (other.pages & writtenPages).any())
+            other.needsUpload.merge(regionForPages(other, writtenPages));''', '''        if (&other != &surface && !other.depth && (other.pages & writtenPages).any() &&
+            !other.needsUpload.contains(other.wholeRegion())) {
+            other.needsUpload.merge(regionForPages(other, writtenPages));
+        }''')
+
+
+def _reuse_draw_state(backend):
+    """Retain identical SDL draw bindings within one render pass."""
+    replace(backend, '''        GsSurface *activeDepth = nullptr;
+        GsPageSet drawnPages;
+
+        auto endPass = [&]() {
+            if (pass) {
+                SDL_EndGPURenderPass(pass);
+                pass = nullptr;
+            }
+        };''', '''        GsSurface *activeDepth = nullptr;
+        GsPageSet drawnPages;
+        const DrawBatch *boundBatch = nullptr;
+        SDL_GPUTexture *boundTexture = nullptr;
+
+        auto endPass = [&]() {
+            if (pass) {
+                SDL_EndGPURenderPass(pass);
+                pass = nullptr;
+                boundBatch = nullptr;
+                boundTexture = nullptr;
+            }
+        };''')
+    replace(backend, '''            SDL_GPUGraphicsPipeline *pipeline = device.pipeline(batch.pipeline, error);
+            if (!pipeline) {
+                endPass();
+                return setError(std::move(error));
+            }
+            SDL_BindGPUGraphicsPipeline(pass, pipeline);
+            SDL_SetGPUScissor(pass, &batch.scissor);
+            if (batch.usesBlendConstant) {
+                const SDL_FColor constant{batch.blendConstant, batch.blendConstant,
+                                          batch.blendConstant, batch.blendConstant};
+                SDL_SetGPUBlendConstants(pass, constant);
+            }
+
+            const SDL_GPUTextureSamplerBinding textureBinding{
+                sampledTexture ? sampledTexture : dummyTexture, device.sampler()};
+            SDL_BindGPUFragmentSamplers(pass, 0u, &textureBinding, 1u);
+
+            SDL_PushGPUVertexUniformData(commands, 0u, &batch.vertexUniforms,
+                                         sizeof(batch.vertexUniforms));
+            SDL_PushGPUFragmentUniformData(commands, 0u, &batch.fragmentUniforms,
+                                           sizeof(batch.fragmentUniforms));
+            SDL_DrawGPUPrimitives(pass, batch.vertexCount, 1u, batch.firstVertex, 0u);
+            ++stats.drawCalls;''', '''            // SDL invalidates graphics descriptors on a pipeline bind. Reapply
+            // all inputs on a bind, and reuse unchanged inputs within the pass.
+            const bool bindPipeline = !boundBatch || !(batch.pipeline == boundBatch->pipeline);
+            if (bindPipeline) {
+                SDL_GPUGraphicsPipeline *pipeline = device.pipeline(batch.pipeline, error);
+                if (!pipeline) {
+                    endPass();
+                    return setError(std::move(error));
+                }
+                SDL_BindGPUGraphicsPipeline(pass, pipeline);
+            }
+            if (bindPipeline || batch.scissor.x != boundBatch->scissor.x ||
+                batch.scissor.y != boundBatch->scissor.y ||
+                batch.scissor.w != boundBatch->scissor.w ||
+                batch.scissor.h != boundBatch->scissor.h) {
+                SDL_SetGPUScissor(pass, &batch.scissor);
+            }
+            if (batch.usesBlendConstant &&
+                (bindPipeline || !boundBatch->usesBlendConstant ||
+                 batch.blendConstant != boundBatch->blendConstant)) {
+                const SDL_FColor constant{batch.blendConstant, batch.blendConstant,
+                                          batch.blendConstant, batch.blendConstant};
+                SDL_SetGPUBlendConstants(pass, constant);
+            }
+
+            SDL_GPUTexture *texture = sampledTexture ? sampledTexture : dummyTexture;
+            if (bindPipeline || texture != boundTexture) {
+                const SDL_GPUTextureSamplerBinding textureBinding{texture, device.sampler()};
+                SDL_BindGPUFragmentSamplers(pass, 0u, &textureBinding, 1u);
+                boundTexture = texture;
+            }
+            if (bindPipeline || std::memcmp(&batch.vertexUniforms, &boundBatch->vertexUniforms,
+                                            sizeof(batch.vertexUniforms)) != 0) {
+                SDL_PushGPUVertexUniformData(commands, 0u, &batch.vertexUniforms,
+                                             sizeof(batch.vertexUniforms));
+            }
+            if (bindPipeline || std::memcmp(&batch.fragmentUniforms, &boundBatch->fragmentUniforms,
+                                            sizeof(batch.fragmentUniforms)) != 0) {
+                SDL_PushGPUFragmentUniformData(commands, 0u, &batch.fragmentUniforms,
+                                               sizeof(batch.fragmentUniforms));
+            }
+            SDL_DrawGPUPrimitives(pass, batch.vertexCount, 1u, batch.firstVertex, 0u);
+            boundBatch = &batch;
+            ++stats.drawCalls;''')

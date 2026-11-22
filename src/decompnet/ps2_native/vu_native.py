@@ -258,9 +258,64 @@ def reduce_clip_flag_batches(implementation):
 '''+marker)
 
 
+def _retire_vector_writes(pipeline):
+    """Commit x86-64 vector lanes with matching pending-write sequence numbers."""
+    source = pipeline.read_text(encoding='utf-8')
+    helper = r"""#if defined(_M_X64) || defined(__x86_64__)
+void commitLatestVector(float *destination, const float *value, const uint64_t *latest,
+                        uint64_t sequence, uint8_t lanes) {
+    const auto sequenceBits = _mm_set1_epi64x(static_cast<int64_t>(sequence));
+    // Both halves of each sequence number must match before writing that lane.
+    const auto match01 = _mm_cmpeq_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i *>(latest)), sequenceBits);
+    const auto match23 = _mm_cmpeq_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i *>(latest + 2)), sequenceBits);
+    const auto low = _mm_shuffle_ps(_mm_castsi128_ps(match01), _mm_castsi128_ps(match23), _MM_SHUFFLE(2, 0, 2, 0));
+    const auto high = _mm_shuffle_ps(_mm_castsi128_ps(match01), _mm_castsi128_ps(match23), _MM_SHUFFLE(3, 1, 3, 1));
+    const auto laneBits = _mm_setr_epi32(8, 4, 2, 1);
+    const auto enabled = _mm_cmpeq_epi32(_mm_and_si128(_mm_set1_epi32(lanes), laneBits), laneBits);
+    const auto mask = _mm_and_ps(_mm_and_ps(low, high), _mm_castsi128_ps(enabled));
+    const auto old = _mm_loadu_ps(destination);
+    _mm_storeu_ps(destination, _mm_or_ps(_mm_and_ps(mask, _mm_loadu_ps(value)), _mm_andnot_ps(mask, old)));
+}
+#endif
+
+"""
+    placement = 'template <size_t Size>\nuint32_t pipelineCycleMask'
+    vf = '#else\n        for (uint32_t component = 0; component < 4u; ++component)'
+    acc = """        for (uint32_t component = 0; component < 4u; ++component)
+        {
+            if ((write.laneMask & laneForComponent(component)) != 0u &&
+                m_accLatestWrite[component] == write.sequence)
+            {
+                m_state.acc[component] = write.value[component];
+            }
+        }"""
+    changes = (
+        ('#include <cstring>\n', """#include <cstring>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <emmintrin.h>
+#endif
+"""),
+        (placement, helper + placement),
+        (vf, """#elif defined(_M_X64) || defined(__x86_64__)
+        commitLatestVector(m_state.vf[write.reg], write.value.data(), m_vfLatestWrite[write.reg].data(),
+                           write.sequence, write.laneMask);
+""" + vf),
+        (acc, """#if defined(_M_X64) || defined(__x86_64__)
+        commitLatestVector(m_state.acc, write.value.data(), m_accLatestWrite.data(), write.sequence, write.laneMask);
+#else
+""" + acc + '\n#endif'),
+    )
+    if any(source.count(old) != 1 for old, _ in changes):
+        raise PCError('pinned vector pending-write layout differs: ' + pipeline.name)
+    for old, new in changes:
+        source = source.replace(old, new)
+    pipeline.write_text(source, encoding='utf-8')
+
+
 def patch(root):
     runtime=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime'
     folder=runtime/'src/lib/vu'
+    _retire_vector_writes(folder/'ps2_vu1_pipeline.cpp')
     for name,target in (('vu_catalog.hpp','decomp_vu_catalog.hpp'),('vu_execution.hpp','decomp_vu_execution.hpp'),
                        ('vu_native.inl','decomp_vu_native.inl')):
         (folder/target).write_bytes(Path(__file__).with_name(name).read_bytes())
