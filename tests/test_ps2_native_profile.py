@@ -132,6 +132,16 @@ def test_optional_profile_requires_the_exact_full_original_hash():
     assert profile.known('0'*64) is None
     data=profile.known('a38f71b7a02f1ae0fe65cc78137ee9c943b75b44473ae1cd5ed89ef0e61400e9')
     assert len(data['modules'])==7
-    assert len(data['modules'][0]['native_services'])==237
+    assert len(data['modules'][0]['native_services'])==236
     assert sum(len(m['functions']) for m in data['modules'])==12421
     assert any(f['address']==0x002d0df0 for f in data['modules'][0]['functions'])
+
+
+def test_dqviii_profile_translates_the_paired_guest_rng():
+    data = profile.known('a38f71b7a02f1ae0fe65cc78137ee9c943b75b44473ae1cd5ed89ef0e61400e9')
+    boot = data['modules'][0]
+    entries = {function['address']: function['size'] for function in boot['functions']}
+    services = {service['address'] for service in boot['native_services']}
+    rng_entries = {0x001343e0: 24, 0x001343f8: 100}
+    assert {address: entries[address] for address in rng_entries} == rng_entries
+    assert services.isdisjoint(rng_entries)
