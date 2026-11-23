@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 from .. import pc,toolchains
-from . import codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
+from . import audio_clock,codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
 from . import graphics_p4
 from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,packet_reuse,dma_chain_reuse,vif_unpack,vif_gif_worker,irx_fixture,vector_fixture,cheats
 
@@ -146,6 +146,7 @@ def generate(project,root):
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor)
+    audio_clock.patch(vendor, runtime_patch.replace)
     graphics_patch.patch(vendor);graphics_p4.patch(vendor);gs_worker.patch(vendor);packet_reuse.patch(vendor)
     dma_chain_reuse.patch(vendor,retain_large_vif1=True);vif_unpack.patch(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
@@ -247,7 +248,8 @@ def generate(project,root):
     if arena<16384 or arena>8*1024*1024 or arena%16:raise pc.PCError('PS2 runtime arena must be 16 KiB..8 MiB and 16-byte aligned')
     loaded_end=max(s['physical']+s['memory_size'] for s in inspection['program']['loads'] if s['region']=='ee-ram')
     _config(root,project,boot if files else 'boot.elf',files,recipe,iop,arena,loaded_end)
-    for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),('extract_assets.py','tools/extract_assets.py'),
+    for source,target in (('Project.cmake','CMakeLists.txt'),('host.cpp','native/main.cpp'),
+        ('NativeAudioClock.cmake','native/NativeAudioClock.cmake'),('audio_clock.inl','native/audio_clock.inl'),('extract_assets.py','tools/extract_assets.py'),
         ('send_pad_command.py','tools/send_pad_command.py'),
         ('vu_programs.py','tools/import_vu_programs.py'),
         ('disc_files.hpp','native/decomp_disc_files.hpp'),('utf8.manifest','native/utf8.manifest'),('service_probe.cpp','tests/services.cpp'),

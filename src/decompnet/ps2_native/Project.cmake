@@ -33,6 +33,7 @@ else()
 endif()
 set(PORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/runtime/ps2")
 add_subdirectory("${PORT_ROOT}/thirdparty/PS2Recomp" ps2-runtime EXCLUDE_FROM_ALL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/native/NativeAudioClock.cmake")
 set_property(TARGET ps2_runtime PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF)
 if(MSVC)
   # The guest ISA requires precise arithmetic. The upstream graphics-oriented
