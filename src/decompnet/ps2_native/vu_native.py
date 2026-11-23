@@ -183,7 +183,7 @@ def _program_support(folder):
     header=folder/'ps2_vu1_program.h'
     flag_queue_bounds(header)
     replace(header,'void forgetRoutines();',
-        'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif\n#ifdef DECOMP_PS2_NATIVE_VU0_PROGRAMS\nRoutine findVu0RegisterRoutine(const uint8_t *code, uint32_t pc);\n#endif')
+        'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU_PROGRAMS\nconst Entry *nativeEntries(size_t &count);\n#endif\n#ifdef DECOMP_PS2_NATIVE_VU0_PROGRAMS\nRoutine findVu0RegisterRoutine(const uint8_t *code, uint32_t pc);\n#endif')
     replace(header,'    void exactUpper(uint32_t upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
     template<uint32_t Upper> void exactUpper(){
         constexpr uint32_t fs=(Upper>>11u)&31u,ft=(Upper>>16u)&31u;
@@ -215,6 +215,28 @@ def _program_support(folder):
     implementation.write_text(text)
     reduce_clip_flag_batches(implementation)
     retire_saturated_fmac(implementation)
+
+
+def enable_vu0_scheduler(implementation):
+    """Share Run and Frame while keeping VU1 registry and profiling optional."""
+    vu1_available = '!defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)'
+    vu1_runtime = f'#if {vu1_available}'
+    source = implementation.read_text(encoding='utf-8')
+    if not source.startswith(vu1_runtime + '\n'):
+        raise PCError('pinned VU program build guard differs')
+    source = source.replace(vu1_runtime, vu1_runtime + ' || defined(DECOMP_PS2_NATIVE_VU0_PROGRAMS)', 1)
+    changes = (
+        ('#ifdef PS2X_VU_PROGRAM_EXTERN_INCLUDE', f'#if ({vu1_available}) && defined(PS2X_VU_PROGRAM_EXTERN_INCLUDE)'),
+        ('namespace ps2_vu_program\n{\nnamespace', 'namespace ps2_vu_program\n{\n' + vu1_runtime + '\nnamespace'),
+        ('void Access::pendVf(', '#endif\n\nvoid Access::pendVf('),
+        ('bool run(VU1Interpreter &vu,', vu1_runtime + '\nbool run(VU1Interpreter &vu,'),
+        ('}\n}\n\n#endif\n', '}\n#endif\n}\n\n#endif\n'),
+    )
+    if any(source.count(old) != 1 for old, _ in changes):
+        raise PCError('pinned VU program runtime layout differs')
+    for old, new in changes:
+        source = source.replace(old, new, 1)
+    implementation.write_text(source, encoding='utf-8')
 
 
 def retire_saturated_fmac(implementation):
@@ -386,6 +408,7 @@ def patch(root):
         path=folder/name;path.write_text('#ifndef DECOMP_PS2_NATIVE_VU\n'+path.read_text()+'\n#endif\n')
     path=folder/'ps2_vu1_program.cpp'
     path.write_text('#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)\n'+path.read_text()+'\n#endif\n')
+    enable_vu0_scheduler(path)
     vu_plain_sse.patch(root)
     vu_normalized_inputs.patch(root)
 

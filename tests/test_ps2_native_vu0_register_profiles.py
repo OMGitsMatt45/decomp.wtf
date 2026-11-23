@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from decompnet.ps2_native import vu_programs
+from decompnet.ps2_native import vu_native, vu_programs
 
 
 LOW_NOP = 0x8000033C
@@ -114,3 +114,15 @@ def test_local_install_keeps_the_vu1_registry(tmp_path, runtime):
     added = {'game/vu0_programs/vu0_registry.cpp', 'game/vu0_programs/vu0_register_0.cpp'}
     assert manifest['files'].keys() - old_hashes.keys() == added
     assert all(manifest['files'][name] == sha256((project/name).read_bytes()).hexdigest() for name in added)
+
+def test_vu0_only_build_keeps_the_scheduler_without_the_vu1_registry(tmp_path, runtime):
+    implementation = tmp_path/'ps2_vu1_program.cpp'
+    library = runtime/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu'
+    implementation.write_bytes((library/implementation.name).read_bytes())
+    vu_native.enable_vu0_scheduler(implementation)
+    source = implementation.read_text()
+    vu1_guard = '#if !defined(DECOMP_PS2_NATIVE_VU) || defined(DECOMP_PS2_NATIVE_VU_PROGRAMS)'
+    assert source.startswith(vu1_guard + ' || defined(DECOMP_PS2_NATIVE_VU0_PROGRAMS)\n')
+    assert 'namespace ps2_vu_program\n{\n' + vu1_guard + '\nnamespace' in source
+    assert '#endif\n\nvoid Access::pendVf(' in source
+    assert vu1_guard + '\nbool run(VU1Interpreter &vu,' in source
