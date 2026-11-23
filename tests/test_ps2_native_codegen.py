@@ -1,10 +1,13 @@
 """Guard generation must reject incomplete emission before changing output."""
+import shutil
 import struct
+import subprocess
 
 import pytest
 
 from decompnet.pc import PCError
 from decompnet.ps2_native.codegen import guard_generated
+from decompnet.ps2_native.runtime_patch import patch_ee_float_to_word
 from tests.fixtures.ps2_native import program
 
 
@@ -47,3 +50,64 @@ def test_code_identity_is_checked_before_cheat_data_side_effects(tmp_path):
     guard_generated(tmp_path,program()[0],expected_functions=1,cheat_poll=True)
     text=(tmp_path/'original.cpp').read_text()
     assert text.index('::check(rdram);')<text.index('decomp_ps2_cheats::poll(rdram);')
+
+
+def test_ee_float_to_word_truncates_and_saturates(tmp_path):
+    header = tmp_path / 'thirdparty/PS2Recomp/ps2xRuntime/include/ps2_runtime_macros.h'
+    header.parent.mkdir(parents=True)
+    header.write_text(
+        '#include <bit>\n#include <cmath>\n#include <cstdint>\n'
+        '#define FPU_CVT_W_S(a) ((int32_t)nearbyintf((float)(a)))\n',
+        encoding='utf-8',
+    )
+    patch_ee_float_to_word(tmp_path)
+    assert 'nearbyintf' not in header.read_text(encoding='utf-8')
+
+    compiler = shutil.which('c++') or shutil.which('clang++')
+    windows_compiler = shutil.which('clang-cl') or shutil.which('cl')
+    if not (compiler or windows_compiler):
+        pytest.skip('requires a C++20 compiler')
+    source = tmp_path / 'conversion.cpp'
+    source.write_text(
+        '''#include "ps2_runtime_macros.h"
+#include <cfenv>
+
+struct Case {
+    uint32_t input;
+    int32_t output;
+};
+
+int main()
+{
+    const Case cases[] = {
+        {0x3fffffffu, 1}, {0xbfffffffu, -1}, {0x80000001u, 0},
+        {0x4effffffu, 2147483520}, {0xceffffffu, -2147483520},
+        {0x4f000000u, INT32_MAX}, {0xcf000000u, INT32_MIN},
+        {0x7f800000u, INT32_MAX}, {0xff800000u, INT32_MIN},
+        {0x7fc00000u, INT32_MAX}, {0xffc00000u, INT32_MIN},
+    };
+    const int roundingModes[] = {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO};
+    for (const int mode : roundingModes) {
+        if (std::fesetround(mode))
+            return 1;
+        for (const auto test : cases) {
+            volatile float value = std::bit_cast<float>(test.input);
+            if (FPU_CVT_W_S(value) != test.output)
+                return 2;
+        }
+    }
+}
+''',
+        encoding='utf-8',
+    )
+    binary = tmp_path / 'conversion.exe'
+    command = (
+        [compiler, '-std=c++20', '-I', str(header.parent), str(source), '-o', str(binary)]
+        if compiler else
+        [windows_compiler, '/nologo', '/std:c++20', '/EHsc',
+         '/I' + str(header.parent), str(source), '/Fe' + str(binary)]
+    )
+    built = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, timeout=60)
+    assert built.returncode == 0, built.stderr
+    result = subprocess.run([str(binary)], capture_output=True, timeout=10)
+    assert result.returncode == 0
