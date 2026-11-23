@@ -28,6 +28,11 @@ else()
     "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xIOP/src/lle")
   file(GLOB VU_NATIVE_OPERATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/vu/*.cpp")
   file(GLOB VU_NATIVE_PROGRAMS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/vu_programs/*.cpp")
+  file(GLOB VU0_NATIVE_PROGRAMS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game/vu0_programs/*.cpp")
+  if(VU0_NATIVE_PROGRAMS)
+    target_sources(ps2_runtime PRIVATE ${VU0_NATIVE_PROGRAMS})
+    target_compile_definitions(ps2_runtime PRIVATE DECOMP_PS2_NATIVE_VU0_PROGRAMS=1)
+  endif()
   target_sources(ps2_runtime PRIVATE ${VU_NATIVE_OPERATIONS}
     ${VU_NATIVE_PROGRAMS}
     "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu/decomp_vu_pipeline.cpp")
@@ -36,7 +41,8 @@ else()
     target_compile_definitions(ps2_runtime PRIVATE DECOMP_PS2_NATIVE_VU_PROGRAMS=1)
   endif()
   target_include_directories(ps2_runtime PRIVATE "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/vu")
-  set_source_files_properties(${VU_NATIVE_OPERATIONS} ${VU_NATIVE_PROGRAMS} TARGET_DIRECTORY ps2_runtime
+  set_source_files_properties(${VU_NATIVE_OPERATIONS} ${VU_NATIVE_PROGRAMS} ${VU0_NATIVE_PROGRAMS}
+    TARGET_DIRECTORY ps2_runtime
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON COMPILE_OPTIONS "${_decomp_ps2_vu_options}")
 endif()
 

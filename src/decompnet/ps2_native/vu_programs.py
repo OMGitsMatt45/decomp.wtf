@@ -17,7 +17,10 @@ MAX_ROUTINES=4096
 MAX_PAIRS=131072
 
 
-def read_profiles(directories):
+def read_profiles(directories, *, unit=1):
+    if unit not in (0, 1):
+        raise ValueError('Select VU0 or VU1')
+    code_size = 4096 if unit == 0 else 16384
     if not directories or len(directories)>32:raise ValueError('Use 1..32 local VU profile directories')
     images={};entries=set()
     for directory in map(Path,directories):
@@ -32,11 +35,11 @@ def read_profiles(directories):
                 raise ValueError('VU profile names must be bounded hexadecimal hashes')
             try:pc=int(fields[1],16)
             except ValueError:raise ValueError('Invalid VU entry PC') from None
-            if pc<0 or pc>=16384 or pc&7:raise ValueError('VU entry must be aligned inside the code image')
+            if pc<0 or pc>=code_size or pc&7:raise ValueError('VU entry must be aligned inside the code image')
             name=fields[0]
             if name not in local:
-                path=directory/f'vu1-{name}.code'
-                if not path.is_file() or path.stat().st_size!=16384:raise ValueError('VU1 code images must be exactly 16384 bytes')
+                path=directory/f'vu{unit}-{name}.code'
+                if not path.is_file() or path.stat().st_size!=code_size:raise ValueError(f'VU{unit} code images must be exactly {code_size} bytes')
                 code=path.read_bytes();digest=hashlib.sha256(code).hexdigest()
                 images.setdefault(digest,code);local[name]=digest
                 if len(images)>MAX_IMAGES:raise ValueError('Too many VU code images')
@@ -134,7 +137,111 @@ def fixtures(runtime,output,programs,known_words):
         return emit(runtime,[directory],output,known_words,shards=4)
 
 
-def install(root,directories,shards):
+def emit_vu0_register_programs(runtime, directories, output, known_words):
+    """Emit guarded register-only VU0 routines using the pinned whole-program scheduler."""
+    output = Path(output)
+    images, entries = read_profiles(directories, unit=0)
+    compiler = Path(runtime)/'thirdparty/PS2Recomp/tools/compile_vu_programs.py'
+    spec = importlib.util.spec_from_file_location('_decomp_vu0_program_compiler', compiler)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.CODE_SIZE = 4096
+    module.PAIRS = module.CODE_SIZE // 8
+    decoded = {name: [module.Pair(*value) for value in struct.iter_unpack('<II', code)]
+               for name, code in images.items()}
+    routines = {}
+    total_pairs = 0
+    for digest, pc in sorted(entries):
+        routine = module.Routine(decoded[digest], pc // 8)
+        footprint = routine.footprint()
+        if not footprint or len(footprint) > 128:
+            raise ValueError('A VU0 register routine must have 1..128 guarded pairs')
+        for start, (body, term) in routine.blocks.items():
+            if (not body or term[0] not in ('cond', 'fall', 'end') or
+                    any(target <= start for target in module.successors(term))):
+                raise ValueError('VU0 register routines must always reach an E-bit exit by forward branches')
+            if term[0] == 'end' and term[1] >= module.PAIRS:
+                raise ValueError('VU0 E-bit exit must stay inside micro memory')
+            if term[0] == 'cond':
+                branch = body[-2]
+                immediate = routine.pairs[branch].lower & 0x7ff
+                if immediate & 0x400:
+                    immediate -= 0x800
+                if not 0 <= branch + 1 + immediate < module.PAIRS:
+                    raise ValueError('Wrapping VU0 branches need separate qualification')
+        for index in footprint:
+            pair = routine.pairs[index]
+            # The scheduler treats zero as a masked-out no-op. Beyond that,
+            # accept immediate loads, IADDIU, FSAND, IBEQ/IBNE and MOVE only.
+            move = (pair.op == 0x40 and (pair.lower & 0x3f) >= 0x3c
+                    and module.lower_special(pair.lower) == 0x30)
+            register_lower = pair.immediate or pair.lower == 0 or pair.op in (8, 0x1a, 0x28, 0x29) or move
+            if not register_lower or pair.upper & 0x38000000 or pair.word not in known_words:
+                raise ValueError('VU0 input uses an uncatalogued pair or operations outside the register-only scheduler')
+        key = routine.key()
+        if key not in routines:
+            routines[key] = routine
+            total_pairs += len(footprint)
+            if len(routines) > MAX_ROUTINES or total_pairs > MAX_PAIRS:
+                raise ValueError('Native VU0 routines exceed their pair or routine bound')
+
+    output.mkdir(parents=True, exist_ok=True)
+    declarations, clauses = [], []
+    for number, routine in enumerate(routines.values()):
+        name = f'vu0_register_{number}'
+        body = '\n'.join(module.emit_routine(routine, name, 128))
+        footprint = routine.footprint()
+        pc = routine.entry * 8
+        words = ', '.join(f'0x{routine.pairs[i].word:016x}ull' for i in footprint)
+        if footprint == list(range(footprint[0], footprint[-1]+1)):
+            guard = f'std::memcmp(code + {footprint[0] * 8}u, expected, sizeof(expected)) == 0'
+            positions = ''
+            matcher = ''
+        else:
+            indices = ', '.join(f'{index * 8}u' for index in footprint)
+            positions = f'    constexpr uint16_t positions[] = {{{indices}}};\n'
+            guard = 'matches(code, positions, expected)'
+            matcher = '''template <size_t N>
+static bool matches(const uint8_t *code, const uint16_t (&positions)[N], const uint64_t (&expected)[N]) {
+    for (size_t i = 0; i < N; ++i) {
+        if (std::memcmp(code + positions[i], &expected[i], sizeof(expected[i])) != 0) return false;
+    }
+    return true;
+}
+'''
+        (output/f'{name}.cpp').write_text(f'''// SPDX-License-Identifier: GPL-3.0-only
+#include <cstring>
+#include "ps2_vu1_program.h"
+namespace ps2_vu_program::generated_vu0 {{
+{body}
+{matcher}bool {name}_matches(const uint8_t *code, uint32_t pc) {{
+    if (pc != {pc}u) return false;
+    constexpr uint64_t expected[] = {{{words}}};
+{positions}    return {guard};
+}}
+}}
+''', encoding='utf-8')
+        declarations.append(f'uint32_t {name}(Run &, uint64_t);\nbool {name}_matches(const uint8_t *, uint32_t);')
+        clauses.append(f'    if ({name}_matches(code, pc)) return &{name};')
+    (output/'vu0_registry.cpp').write_text('''// SPDX-License-Identifier: GPL-3.0-only
+#include "ps2_vu1_program.h"
+namespace ps2_vu_program {
+namespace generated_vu0 {
+'''+'\n'.join(declarations)+'''
+}
+Routine findVu0RegisterRoutine(const uint8_t *code, uint32_t pc) {
+    using namespace generated_vu0;
+'''+ '\n'.join(clauses)+'''
+    return nullptr;
+}
+}
+''', encoding='utf-8')
+    return dict(routines=len(routines), pairs=total_pairs,
+                entries=len(entries), code_sha256=sorted(images), execution_model='guarded-static-vu0-registers',
+                runtime_compilation=False)
+
+
+def install(root,directories,shards, *, unit=1):
     root=Path(root).resolve();manifest_path=root/'pc-project.json';manifest=json.loads(manifest_path.read_text())
     if manifest.get('backend',{}).get('id')!='ps2-ps2recomp-experimental':raise ValueError('Expected a native PS2 export')
     for name,digest in manifest['files'].items():
@@ -142,18 +249,26 @@ def install(root,directories,shards):
         if not path.is_relative_to(root) or any(part in ('assets','saves','.git') for part in Path(name).parts):
             raise ValueError('Invalid export source path')
         if hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise ValueError('Preserve changed export source: '+name)
-    if 'DECOMP_PS2_NATIVE_VU_PROGRAMS' not in (root/'native/NativeExecution.cmake').read_text():
+    definition = 'DECOMP_PS2_NATIVE_VU0_PROGRAMS' if unit == 0 else 'DECOMP_PS2_NATIVE_VU_PROGRAMS'
+    if definition not in (root/'native/NativeExecution.cmake').read_text():
         raise ValueError('Re-export with native VU program support first')
     catalog=(root/'game/vu/catalog.cpp').read_text()
     words={int(w,16) for w in re.findall(r'\{0x([0-9a-f]{16})ull,decomp',catalog)}
     if not words:raise ValueError('The native VU input catalog is empty')
-    target=root/'game/vu_programs';prefix='game/vu_programs/'
+    prefix = 'game/vu0_programs/' if unit == 0 else 'game/vu_programs/'
+    target = root / prefix
+    if target.resolve() != target:
+        raise ValueError('Preserve a redirected native VU program folder')
     if target.exists() and any(p.is_file() and prefix+p.name not in manifest['files'] for p in target.iterdir()):
         raise ValueError('Preserve untracked files in the native VU program folder')
     with tempfile.TemporaryDirectory(prefix='.vu-program-stage-',dir=root/'game') as temporary:
         stage=Path(temporary)
         if not stage.resolve().is_relative_to((root/'game').resolve()):raise ValueError('Unexpected program staging path')
-        generated=stage/'output';record=emit(root/'runtime/ps2',directories,generated,words,shards)
+        generated = stage/'output'
+        if unit == 0:
+            record = emit_vu0_register_programs(root/'runtime/ps2', directories, generated, words)
+        else:
+            record = emit(root/'runtime/ps2', directories, generated, words, shards)
         target.mkdir(exist_ok=True);names={p.name for p in generated.iterdir()}
         for old in list(target.iterdir()):
             if old.name not in names:
@@ -163,7 +278,8 @@ def install(root,directories,shards):
             if not path.is_file() or path.suffix not in ('.cpp','.inc'):raise ValueError('Unexpected generated VU file')
             destination=target/path.name;os.replace(path,destination)
             manifest['files'][prefix+path.name]=hashlib.sha256(destination.read_bytes()).hexdigest()
-    manifest['vu_generation']['whole_programs']=record
+    key = 'whole_vu0_programs' if unit == 0 else 'whole_programs'
+    manifest['vu_generation'][key] = record
     with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=root,prefix='.vu-manifest-',suffix='.json',delete=False) as stream:
         temporary=Path(stream.name);stream.write(json.dumps(manifest,indent=2)+'\n')
     try:os.replace(temporary,manifest_path)
@@ -174,7 +290,8 @@ def install(root,directories,shards):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('profiles',nargs='+',type=Path)
     parser.add_argument('--project',type=Path,default=Path(__file__).resolve().parents[1]);parser.add_argument('--shards',type=int,default=32)
-    args=parser.parse_args();print(json.dumps(install(args.project,args.profiles,args.shards),indent=2))
+    parser.add_argument('--vu0-registers', action='store_true', help='Import guarded register-only VU0 programs from vu0-HEX.code images')
+    args=parser.parse_args();print(json.dumps(install(args.project,args.profiles,args.shards,unit=0 if args.vu0_registers else 1),indent=2))
 
 
 if __name__=='__main__':main()
