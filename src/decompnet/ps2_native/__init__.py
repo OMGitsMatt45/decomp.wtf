@@ -151,6 +151,7 @@ def generate(project,root):
     dma_chain_reuse.patch(vendor,retain_large_vif1=True);vif_unpack.patch(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
     runtime_patch.patch_invocation_stacks(vendor)
+    runtime_patch.patch_ee_float_to_word(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
     vif_gif_worker.patch(vendor)
     _log('Translate input-bound IOP modules...')

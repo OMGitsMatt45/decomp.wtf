@@ -101,6 +101,19 @@ def patch_invocation_stacks(root):
 }''')
 
 
+def patch_ee_float_to_word(root):
+    header = Path(root) / 'thirdparty/PS2Recomp/ps2xRuntime/include/ps2_runtime_macros.h'
+    replace(header, '#define FPU_CVT_W_S(a) ((int32_t)nearbyintf((float)(a)))', """// EE CVT.W.S truncates toward zero and saturates out-of-range inputs by sign.
+static inline int32_t ps2_fpu_cvt_w_s(float value)
+{
+    const auto bits = std::bit_cast<uint32_t>(value);
+    if ((bits & 0x7f800000u) < 0x4f000000u)
+        return static_cast<int32_t>(value);
+    return (bits & 0x80000000u) ? INT32_MIN : INT32_MAX;
+}
+#define FPU_CVT_W_S(a) ps2_fpu_cvt_w_s((float)(a))""")
+
+
 def patch_emitter(root):
     root = Path(root)
     translator = root / 'thirdparty/PS2Recomp/ps2xRecomp/src/lib/vu_translator.cpp'
