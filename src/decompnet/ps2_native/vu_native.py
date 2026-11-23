@@ -80,8 +80,29 @@ NATIVE_BODY=r'''
     struct Rounding {int previous;bool rounded;~Rounding(){if(rounded&&previous!=-1)std::fesetround(previous);}} rounding{previous,rounded};
     const uint64_t budgetEnd=m_cycle+maxCycles;bool programEnded=false;
     commitReadyPipelines();
-#ifdef DECOMP_PS2_NATIVE_VU_PROGRAMS
+#if defined(DECOMP_PS2_NATIVE_VU_PROGRAMS) || defined(DECOMP_PS2_NATIVE_VU0_PROGRAMS)
     static const bool wholePrograms=[](){const char *value=std::getenv("DECOMP_PS2_VU_PROGRAMS");return !value||std::strcmp(value,"0")!=0;}();
+#endif
+#ifdef DECOMP_PS2_NATIVE_VU0_PROGRAMS
+    // The VU0 registry accepts only code that stays inside its local register
+    // file. The existing scheduler's VU1 memory and kick operations are unused.
+    if (wholePrograms && m_unit == Unit::VU0 && memory && maxCycles >= ps2_vu_program::kMinimumBudget &&
+        vuCode == memory->getVU0Code() && vuData == memory->getVU0Data() &&
+        codeSize == PS2_VU0_CODE_SIZE && dataSize == PS2_VU0_DATA_SIZE &&
+        m_useCompiledExecution && !pipelinesPending() && !m_stopRequested && !m_state.ebit &&
+        !m_state.haltAfterDelaySlot && !m_state.branchPending && !m_pendingHaltD && !m_pendingHaltT &&
+        !m_state.dBitEnabled && !m_state.tBitEnabled && !m_xgkick.active) {
+        if (const auto routine = ps2_vu_program::findVu0RegisterRoutine(vuCode, m_state.pc)) {
+            const auto programBefore = m_compiledPairsExecuted;
+            ps2_vu_program::Run program(*this);
+            routine(program, budgetEnd);
+            programEnded = program.ended();
+            decomp_ps2::execution::vu_native_programs.fetch_add(1,std::memory_order_relaxed);
+            decomp_ps2::execution::vu_native_program_pairs.fetch_add(m_compiledPairsExecuted-programBefore,std::memory_order_relaxed);
+        }
+    }
+#endif
+#ifdef DECOMP_PS2_NATIVE_VU_PROGRAMS
     const bool trackedCode=memory&&m_unit==Unit::VU1&&vuCode==memory->getVU1Code()&&codeSize==PS2_VU1_CODE_SIZE;
     if(wholePrograms&&trackedCode&&budgetEnd-m_cycle>=ps2_vu_program::kMinimumBudget&&ps2_vu_program::Access::drained(*this)){
         if(const auto routine=ps2_vu_program::find(vuCode,codeSize,m_state.pc,memory->getVU1CodeGeneration())){
@@ -162,7 +183,7 @@ def _program_support(folder):
     header=folder/'ps2_vu1_program.h'
     flag_queue_bounds(header)
     replace(header,'void forgetRoutines();',
-        'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif')
+        'void forgetRoutines();\n#ifdef DECOMP_PS2_NATIVE_VU\nconst Entry *nativeEntries(size_t &count);\n#endif\n#ifdef DECOMP_PS2_NATIVE_VU0_PROGRAMS\nRoutine findVu0RegisterRoutine(const uint8_t *code, uint32_t pc);\n#endif')
     replace(header,'    void exactUpper(uint32_t upper);',r'''#ifdef DECOMP_PS2_NATIVE_VU
     template<uint32_t Upper> void exactUpper(){
         constexpr uint32_t fs=(Upper>>11u)&31u,ft=(Upper>>16u)&31u;
