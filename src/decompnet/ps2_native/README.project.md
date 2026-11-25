@@ -99,6 +99,11 @@ include `vu_native_programs` and `vu_native_program_pairs`; these count compiled
 program calls and pairs, not a different execution model. The player never runs
 the profile compiler or generates machine code.
 
+Set `DECOMP_PS2_DEFERRED_EE_TIMERS=1` before launching the player to accumulate
+EE timer cycles between MMIO accesses and interrupt deadlines. The runtime
+applies outstanding cycles before timer reads, writes, and scheduler shutdown.
+The default uses eager timer accounting.
+
 For hands-on integration checks, --pad-commands PATH reads one command from a
 local file: SEQUENCE BUTTON[+BUTTON] HOLD_TICKS. Increase SEQUENCE for each new
 command; holds last 1..3600 guest-vsync ticks. Buttons use PS2 names such as UP,
