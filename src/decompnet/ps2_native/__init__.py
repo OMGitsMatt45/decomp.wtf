@@ -12,7 +12,7 @@ import tempfile
 
 from .. import pc,toolchains
 from . import audio_clock,codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
-from . import graphics_p4
+from . import ee_timer,graphics_p4
 from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,packet_reuse,dma_chain_reuse,vif_unpack,vif_gif_worker,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
@@ -151,6 +151,7 @@ def generate(project,root):
     dma_chain_reuse.patch(vendor,retain_large_vif1=True);vif_unpack.patch(vendor);mpeg_patch.install(vendor)
     runtime_patch.patch_irx_loader(vendor)
     runtime_patch.patch_invocation_stacks(vendor)
+    ee_timer.patch(vendor)
     runtime_patch.patch_ee_float_to_word(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
     vif_gif_worker.patch(vendor)
