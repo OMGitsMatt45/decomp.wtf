@@ -45,7 +45,8 @@ def test_native_registry_selects_bytes_rejects_ambiguity_and_preserves_nested_fa
         pytest.skip('native module registry probe requires CMake and a C++20 compiler')
     (tmp_path / 'ps2_runtime.h').write_text('''#pragma once
 #include <cstdint>
-struct R5900Context { unsigned calls=0, value=0; bool throw_inside=false; };
+struct R5900Context { unsigned calls=0, value=0; bool throw_inside=false; uint32_t pc=0, ra=0; };
+inline uint32_t getRegU32(const R5900Context *context, unsigned index) { return index == 31 ? context->ra : 0; }
 class PS2Runtime { public: using RecompiledFunction=void(*)(uint8_t*, R5900Context*, PS2Runtime*); };
 ''')
     common = Path(__file__).parents[1] / 'src/decompnet/ps2_native/code_guard.hpp'
@@ -72,7 +73,8 @@ inline void {function}(uint8_t*, R5900Context *ctx, PS2Runtime*) {{
 }}
 ''')
         modules.append(dict(path=str(folder), identity=identity, namespace=namespace,
-            functions_header=header, entries=[dict(address=0x100000, function=function)]))
+            functions_header=header, entries=[dict(address=address, function=function)
+                                              for address in (0x100000, 0x100004)]))
     registry(modules[:2], tmp_path / 'distinct.cpp')
     registry([modules[0], modules[2]], tmp_path / 'ambiguous.cpp')
     (tmp_path / 'main.cpp').write_text('''#include "ps2_runtime.h"
@@ -96,8 +98,11 @@ int main() {
     g_ps2RecompiledFunctionTable[0](ram.data(), &ctx, nullptr);
     if(ctx.calls!=2 || ctx.value!=2) return 4;
     ram[0x100000]=0x77; bool rejected=false;
-    try { g_ps2RecompiledFunctionTable[0](ram.data(), &ctx, nullptr); }
-    catch(const decomp_ps2::CodeMismatch &) { rejected=true; }
+    ctx.pc=0x100004; ctx.ra=0x1fabc20;
+    try { g_ps2RecompiledFunctionTable[1](ram.data(), &ctx, nullptr); }
+    catch(const decomp_ps2::CodeMismatch &error) {
+        rejected=std::string(error.what()).find("pc=0x00100004 ra=0x01fabc20")!=std::string::npos;
+    }
     if(!rejected || ctx.calls!=2) return 5;
     ram[0x100000]=0x34; ctx.throw_inside=true; rejected=false;
     try { g_ps2RecompiledFunctionTable[0](ram.data(), &ctx, nullptr); }
