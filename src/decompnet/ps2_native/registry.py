@@ -83,7 +83,7 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
     if not modules or len(modules) > 1024: raise PCError('PS2 module registry count is invalid')
     if len({m['identity'] for m in modules}) != len(modules): raise PCError('PS2 module identities must be unique')
     entries = {}
-    lines = ['#include "ps2_runtime.h"', '#include <stdexcept>', '#include <string>', '#include <vector>']
+    lines = ['#include "ps2_runtime.h"', '#include <cstdio>', '#include <stdexcept>', '#include <string>', '#include <vector>']
     for module in modules:
         expected_namespace = 'decomp_ps2_module_' + module['identity']
         if (not re.fullmatch('[0-9a-f]{64}', module['identity']) or
@@ -119,6 +119,16 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
             targets[address]=dispatches[key]
             continue
         target=f'dispatch_{address:x}'
+        if not dispatches:
+            lines += [
+                '[[noreturn]] static void reject_unknown_resident_entry(const R5900Context &ctx) {',
+                '    char message[96];',
+                '    std::snprintf(message, sizeof(message),',
+                '        "no known module for resident EE entry pc=0x%08x ra=0x%08x",',
+                '        static_cast<unsigned>(ctx.pc), static_cast<unsigned>(getRegU32(&ctx, 31)));',
+                '    throw decomp_ps2::CodeMismatch(message);',
+                '}',
+            ]
         targets[address]=dispatches[key]=target
         lines += [f'static void {target}(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) {{',
                   '    PS2Runtime::RecompiledFunction selected = nullptr;']
@@ -130,7 +140,7 @@ def registry(modules: list[dict], output: Path, *, project_root: Path | None = N
                       f'        selected = {function};', '    }']
         # Never catch a mismatch from the selected function: restarting a second
         # implementation after guest side effects would corrupt guest state.
-        lines += ['    if (!selected) throw decomp_ps2::CodeMismatch("no known module for resident EE entry");',
+        lines += ['    if (!selected) reject_unknown_resident_entry(*ctx);',
                   '    selected(rdram, ctx, runtime);', '}']
     lines += [f'extern const uint32_t g_ps2RecompiledFunctionTableBase = {base}u;',
               f'extern const uint32_t g_ps2RecompiledFunctionTableEnd = {end}u;',
