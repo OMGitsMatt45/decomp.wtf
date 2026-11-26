@@ -1,9 +1,18 @@
 """Inspect native PC backend availability and verify generated source projects."""
+import argparse
 import json
 from pathlib import Path
 import sys
 
 from . import pc
+
+
+def _ps2_callback_argument(value):
+    try:
+        callee, argument = value.split(':', 1)
+        return int(callee, 0), int(argument, 10)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError('expected CALLEE:ARGUMENT, for example 0x100630:1') from error
 
 
 def add_parser(sub):
@@ -68,6 +77,8 @@ def add_parser(sub):
     ps2_inspect.add_argument('--quick', action='store_true', help='skip whole-image SHA-256; does not verify full input identity')
     ps2_inspect.add_argument('--discover-code', action='store_true',
         help='trace bounded static control flow in the boot ELF and recognized overlays; reports unresolved targets')
+    ps2_inspect.add_argument('--callback-arg', action='append', type=_ps2_callback_argument, default=[],
+        metavar='CALLEE:ARGUMENT', help='reviewed callback position for --discover-code, using argument index 0–7; repeatable')
     ps2 = actions.add_parser('ps2-native', help='experimental PS2 C++ source project with a source-shipped hardware runtime')
     ps2.add_argument('input',type=Path)
     ps2.add_argument('output',type=Path)
@@ -140,7 +151,8 @@ def run(args):
                 **({'renderer': args.renderer} if native else {}))
         elif args.pc_action == 'ps2-inspect':
             from .ps2_native.media import inspect
-            result = inspect(args.input, hash_input=not args.quick, discover_code=args.discover_code)
+            result = inspect(args.input, hash_input=not args.quick, discover_code=args.discover_code,
+                             callback_arguments=args.callback_arg)
         elif args.pc_action == 'ps2-native':
             from .ps2_native import export
             result = export(args.input,args.output,profile=args.profile,title=args.title,renderer=args.renderer)

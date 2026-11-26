@@ -27,7 +27,7 @@ def signed(value,bits):
     return (value-(1<<bits) if value>>(bits-1) else value)&MASK
 
 
-def resolve(original,info,offset,roots,*,max_instructions):
+def resolve(original, info, offset, roots, *, max_instructions, callback_arguments):
     zero=frozenset((0,));initial=(zero,)+(None,)*31
     # MIPS reginfo's GP is relocation metadata, rather than an inferred title address.
     table=struct.unpack_from('<I',original,32)[0]
@@ -37,6 +37,7 @@ def resolve(original,info,offset,roots,*,max_instructions):
             gp=struct.unpack_from('<I',original,sh[4]+20)[0]
             if gp:initial=initial[:28]+(frozenset((signed(gp,32),)),)+initial[29:]
     states={};pending=deque();decoded={};reads={};updates=0
+    callbacks = set()
 
     def instruction(pc):
         if pc not in decoded:
@@ -59,6 +60,18 @@ def resolve(original,info,offset,roots,*,max_instructions):
         if updates>max_instructions*8:raise PCError('PS2 indirect data-flow exceeds its work bound')
 
     def constants(value):return value if isinstance(value,frozenset) else None
+
+    def follow_callbacks(pc, callee, arguments):
+        for argument in callback_arguments.get(callee, ()):
+            for value in constants(arguments[4 + argument]) or ():
+                target = value & 0xffffffff
+                if not target or offset(target) is None:
+                    continue
+                callbacks.add((pc, callee, argument, target))
+                if len(callbacks) > max_instructions:
+                    raise PCError('PS2 callback discovery exceeds its edge bound')
+                push(target, initial)
+
     def binary(a,b,fn):
         a,b=constants(a),constants(b)
         if a is None or b is None:return None
@@ -176,7 +189,11 @@ def resolve(original,info,offset,roots,*,max_instructions):
                 delay=instruction(pc+4)
                 if delay is None or not delay.isValid() or delay.hasDelaySlot():continue
             if target and taken is not False:
-                for address in target:push(address,transfer(pc+4,branch_state(base,inst,True)))
+                arguments = transfer(pc+4,branch_state(base,inst,True))
+                for address in target:
+                    push(address, arguments)
+                    if call and callback_arguments:
+                        follow_callbacks(pc, address, arguments)
             if call and taken is not False:
                 continuation=list(transfer(pc+4,base));clobbered={*range(1,16),24,25,28}
                 for reg,value in enumerate(continuation):
@@ -200,4 +217,4 @@ def resolve(original,info,offset,roots,*,max_instructions):
         if inst.isJump() and not inst.isJumpWithAddress() and not inst.isReturn() and not(word>>26==0 and word&63==9 and rd==0 and rs==31):
             values=constants(state[rs])
             if values is not None:result[pc]=sorted(v&0xffffffff for v in values)
-    return result,[dict(address=a,size=n,writable=w) for (a,n),w in sorted(reads.items())]
+    return result, [dict(address=a,size=n,writable=w) for (a,n),w in sorted(reads.items())], sorted(callbacks)
