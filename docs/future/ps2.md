@@ -209,6 +209,12 @@ by original fixtures. Instruction and symbol bounds fail explicitly. This is
 preparation evidence, not a complete function map or gameplay qualification.
 No compiler or runtime is installed by either inspection mode.
 
+For a reviewed callee that takes a function pointer, pass `--callback-arg CALLEE:ARGUMENT`
+with `--discover-code`. Indexes 0 through 7 correspond to `$a0` through `$a3` and
+`$t0` through `$t3`. The report records the call site and executable targets
+found in that argument after the delay slot, including calls into the main ELF
+from an overlay. Use the existing reviewed input-bound profile when exporting.
+
 Metrowerks MWo3 overlays are recognized from their own headers, with independent
 hashes, load/text/data/BSS extents and constructor tables. An overlay can be
 wrapped for analysis as an ELF while preserving its entire original load image

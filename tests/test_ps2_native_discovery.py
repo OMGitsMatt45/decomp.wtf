@@ -78,6 +78,28 @@ def test_external_module_call_keeps_the_call_site_and_target():
     assert report['direct_calls'] == [dict(pc=BASE, target=0x500000)]
 
 
+def test_declared_callback_argument_uses_the_value_after_the_delay_slot():
+    callee = 0x500000
+    callback = BASE + 0x30
+    unrelated = BASE + 0x3c
+    original = stripped([
+        i(15, 0, 5, BASE >> 16), i(15, 0, 6, BASE >> 16), i(9, 6, 6, 0x3c),
+        3 << 26 | callee >> 2, i(9, 5, 5, 0x30), r(8, rs=31), 0,
+        0, 0, 0, 0, 0,
+        i(9, 0, 2, 7), r(8, rs=31), 0,
+        r(8, rs=31), 0,
+    ])
+    assert callback not in addresses(discover(original))
+    report = discover(original, callback_arguments=[(callee, 1)])
+    assert report['resolved_callback_arguments'] == [dict(pc=BASE + 12, callee=callee, argument=1, target=callback)]
+    assert dict(address=callback, reasons=['callback-argument']) in report['function_seeds']
+    assert {callback, callback + 4, callback + 8} <= addresses(report)
+    assert unrelated not in addresses(report)
+    assert report['unresolved'] == [dict(pc=BASE + 12, target=callee, kind='target-outside-executable')]
+    with pytest.raises(PCError, match='argument index'):
+        discover(original, callback_arguments=[(callee, 8)])
+
+
 def test_adjacent_virtual_code_with_discontinuous_file_offsets_retains_correct_hashes():
     import hashlib
     image = bytearray(program()[0])
@@ -134,3 +156,10 @@ def test_cli_static_discovery_reports_limits_without_installing_a_runtime(tmp_pa
     assert report['program']['code_discovery']['instructions'] == 2
     assert report['program']['code_discovery']['complete_function_map'] is False
     assert report['app_backend_registered'] is False
+
+    args = parser.parse_args(['pc', 'ps2-inspect', str(original), '--quick', '--discover-code',
+                              '--callback-arg', '0x500000:1'])
+    assert pc_cli.run(args) == 0
+    code = json.loads(capsys.readouterr().out)['program']['code_discovery']
+    assert code['callback_argument_contracts'] == [{'callee': 0x500000, 'argument': 1}]
+    assert code['resolved_callback_arguments'] == []

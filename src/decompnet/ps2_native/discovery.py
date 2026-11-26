@@ -2,13 +2,14 @@
 
 This records reachable instructions and function seeds, not a universal function
 map. Bounded constant pointers/jump tables resolve through register data flow;
-unknown indirect calls and system-service callbacks remain explicit.
+unknown indirect calls and system-service callbacks remain explicit. Reviewed
+callee signatures can identify code pointers passed in EE argument registers.
 Valid-looking words after a return are not automatically promoted to EE code.
 """
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections import deque
+from collections import defaultdict, deque
 import hashlib
 import struct
 
@@ -18,7 +19,7 @@ from ..pc import PCError
 from .media import MAX_PROGRAM, elf_info
 
 
-def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) -> dict:
+def discover(original: bytes, *, roots=(), callback_arguments=(), max_instructions: int = 2_000_000) -> dict:
     if len(original) > MAX_PROGRAM: raise PCError('PS2 discovery program exceeds its 32 MiB input bound')
     info = elf_info(original)
     if info['symbols'] > MAX_PROGRAM // 16: raise PCError('PS2 discovery symbol inventory exceeds its bound')
@@ -67,8 +68,20 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
             if kind & 15 == 2 and section_index not in (0, 0xFFF1): seed(address, 'elf-symbol')
     for pc in roots: seed(pc, 'supplied-root')
 
+    contracts = defaultdict(set)
+    for callee, argument in callback_arguments:
+        if (type(callee) is not int or not 0 < callee <= 0xffffffff or callee & 3 or
+                type(argument) is not int or not 0 <= argument < 8):
+            raise PCError('PS2 callback declarations need an aligned callee and argument index 0–7')
+        contracts[callee].add(argument)
+
     from .indirect import resolve
-    indirect, pointer_reads = resolve(original,info,offset,list(seeds),max_instructions=max_instructions)
+    indirect, pointer_reads, callbacks = resolve(original, info, offset, list(seeds),
+                                                 max_instructions=max_instructions, callback_arguments=contracts)
+    callback_sites = defaultdict(list)
+    for pc, callee, argument, target in callbacks:
+        callback_sites[pc].append(dict(pc=pc, callee=callee, argument=argument, target=target))
+    observed_callbacks = []
 
     pending = deque(seeds)
     processed, reached = set(), {}
@@ -108,6 +121,12 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
             reached[pc + 4] = delay.getRaw()
             if len(reached) > max_instructions:
                 raise PCError('PS2 discovery exceeds its instruction bound; no complete map was produced')
+        if is_call and taken is not False:
+            for callback in callback_sites.get(pc, ()):
+                target = callback['target']
+                seed(target, 'callback-argument')
+                pending.append(target)
+                observed_callbacks.append(callback)
         if instruction.isJumpWithAddress() or instruction.isBranch():
             target = (instruction.getInstrIndexAsVram() if instruction.isJumpWithAddress()
                       else instruction.getBranchVramGeneric())
@@ -142,7 +161,7 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
     for span in ranges:
         position = offset(span['address'])
         span['sha256'] = hashlib.sha256(original[position:position + span['size']]).hexdigest()
-    return dict(schema='decomp.wtf.ps2-code-discovery/v1', original_elf_sha256=info['sha256'],
+    report = dict(schema='decomp.wtf.ps2-code-discovery/v1', original_elf_sha256=info['sha256'],
         mapping_source=source, coverage='reachable-from-declared-roots', complete_function_map=False,
         native_game_qualified=False, instructions=len(reached), code_ranges=ranges,
         function_seeds=[dict(address=pc, reasons=sorted(reasons)) for pc, reasons in sorted(seeds.items())],
@@ -151,3 +170,8 @@ def discover(original: bytes, *, roots=(), max_instructions: int = 2_000_000) ->
         pointer_reads=pointer_reads,
         unresolved=sorted(unresolved, key=lambda c: c['pc']),
         invalid=sorted(invalid, key=lambda c: c['pc']), services=sorted(services, key=lambda c: c['pc']))
+    if contracts:
+        report['callback_argument_contracts'] = [dict(callee=callee, argument=argument)
+            for callee, arguments in sorted(contracts.items()) for argument in sorted(arguments)]
+        report['resolved_callback_arguments'] = sorted(observed_callbacks, key=lambda edge: edge['pc'])
+    return report

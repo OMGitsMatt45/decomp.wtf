@@ -159,8 +159,11 @@ def _inventory(disc):
     return entries, blocks
 
 
-def inspect(path: Path, *, hash_input: bool = True, discover_code: bool = False) -> dict:
+def inspect(path: Path, *, hash_input: bool = True, discover_code: bool = False, callback_arguments=()) -> dict:
     path = Path(path)
+    callback_arguments = tuple(callback_arguments)
+    if callback_arguments and not discover_code:
+        raise PCError('PS2 callback arguments require --discover-code')
     try:
         with path.open('rb') as stream:
             before = os.fstat(stream.fileno())
@@ -207,7 +210,8 @@ def inspect(path: Path, *, hash_input: bool = True, discover_code: bool = False)
                             from .modules import mwo3_elf
                             roots = [pc for pc in overlay['constructors']
                                 if overlay['text_address'] <= pc < overlay['text_address'] + overlay['text_size']]
-                            overlay['code_discovery'] = discover(mwo3_elf(overlay_bytes), roots=roots)
+                            overlay['code_discovery'] = discover(mwo3_elf(overlay_bytes), roots=roots,
+                                                                 callback_arguments=callback_arguments)
                             overlay['code_discovery']['entry_role'] = 'synthetic-overlay-text-start'
                         overlays.append(overlay); rec['role'] = 'ee-overlay'; rec['overlay_format'] = 'MWo3'
                 result = dict(input_kind='disc', sector_size=disc.size, sector_data_offset=disc.skip,
@@ -216,7 +220,7 @@ def inspect(path: Path, *, hash_input: bool = True, discover_code: bool = False)
                     iop_modules=[e['path'] for e in entries if e.get('role') == 'iop-irx'])
             if discover_code:
                 from .discovery import discover
-                program['code_discovery'] = discover(program_bytes)
+                program['code_discovery'] = discover(program_bytes, callback_arguments=callback_arguments)
             digest = _hash(stream) if hash_input else None
             after = os.fstat(stream.fileno())
             if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
