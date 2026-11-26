@@ -229,6 +229,16 @@ def patch_host(root):
     request.callToken = scope.token();''','''    if (const auto response=decomp_ps2::cdvd_scmd(rdram,request)) return *response;
     auto scope = m_iopHost->enterCall(ctx, rdram);
     request.callToken = scope.token();''')
+    # Run optional project cleanup on the EE owner before OS-thread teardown.
+    replace(source, '#include "ps2_runtime.h"\n', '''#include "ps2_runtime.h"
+#if defined(DECOMP_PS2_EE_THREAD_EXIT)
+extern "C" void DECOMP_PS2_EE_THREAD_EXIT() noexcept;
+#endif
+''')
+    replace(source, '        gameThreadFinished.store(true, std::memory_order_release);', '''#if defined(DECOMP_PS2_EE_THREAD_EXIT)
+        DECOMP_PS2_EE_THREAD_EXIT();
+#endif
+        gameThreadFinished.store(true, std::memory_order_release);''')
     replace(source,'    const bool firstReport = !m_missingFunctionReported.exchange(true, std::memory_order_acq_rel);',
         '    ++decompMissingFunctions;\n    const bool firstReport = !m_missingFunctionReported.exchange(true, std::memory_order_acq_rel);')
     replace(source,'            std::cerr << "Error during program execution: " << e.what() << std::endl;',
