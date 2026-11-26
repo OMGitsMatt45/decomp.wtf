@@ -220,7 +220,9 @@ endif()
     return executable(build,'static_vu')
 
 
-def test_static_vector_values_masked_lanes_and_current_sticky_flags(vu_probe):
+@pytest.mark.parametrize('packed', ['0', '1'] if os.name == 'nt' else ['0'])
+def test_static_vector_values_masked_lanes_and_current_sticky_flags(vu_probe, packed):
+    env = dict(os.environ, DECOMP_PS2_VU0_PACKED_ARITHMETIC=packed)
     vectors = [([0x3F800000,0xC0000000,0,0x80000000],[0x40000000,0x3F800000,0x80000000,0]),
                ([0x7F7FFFFF,0xFF7FFFFF,0x00800000,0x80800000],[0x7F7FFFFF,0x7F7FFFFF,0x3F000000,0xBF000000]),
                ([0x7FC00001,0xFF800000,1,0x80000001],[0x7F800000,0x7FC00000,0x00800000,0x00800000]),
@@ -228,7 +230,8 @@ def test_static_vector_values_masked_lanes_and_current_sticky_flags(vu_probe):
     for index, operation in enumerate(PLAIN_OPERATIONS):
         for a,b in vectors:
             for status in (0, 0xFF0):
-                result = subprocess.run([vu_probe,str(index),f'{status:x}',*[f'{v:x}' for v in a+b]],capture_output=True,text=True,timeout=10)
+                result = subprocess.run([vu_probe,str(index),f'{status:x}',*[f'{v:x}' for v in a+b]],
+                                        capture_output=True,text=True,timeout=10,env=env)
                 assert result.returncode == 0, result.stderr
                 assert json.loads(result.stdout) == expected(operation,a,b,status), (operation,a,b,status,result.stdout)
 

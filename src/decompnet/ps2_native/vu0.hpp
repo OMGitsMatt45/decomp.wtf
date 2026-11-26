@@ -8,6 +8,7 @@
 #include "ps2_vu1_upper_engine.h"
 #include <cfenv>
 #include <cstring>
+#include <cstdlib>
 #include <stdexcept>
 
 namespace decomp_ps2 {
@@ -55,6 +56,23 @@ namespace vu0_detail {
         const auto normal = _mm_andnot_si128(_mm_or_si128(zero, special), bits);
         return _mm_castsi128_ps(_mm_or_si128(normal, _mm_or_si128(_mm_and_si128(zero, sign),
             _mm_and_si128(special, _mm_or_si128(sign, _mm_set1_epi32(0x7f7fffff))))));
+    }
+
+    constexpr uint8_t packedLaneMask[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+
+    template<unsigned Lane>
+    PS2_VU_FORCE_INLINE __m128 broadcastLane(__m128 lanes)
+    {
+        return _mm_shuffle_ps(lanes, lanes, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
+    }
+
+    template<unsigned Destination>
+    PS2_VU_FORCE_INLINE void storePackedLanes(__m128 &target, __m128 result)
+    {
+        if constexpr (Destination == 15u)
+            target = result;
+        else if constexpr (Destination != 0u)
+            target = _mm_blend_ps(target, result, packedLaneMask[Destination]);
     }
 
     constexpr bool isMinMax(uint32_t word)
@@ -174,6 +192,84 @@ namespace vu0_detail {
                 _mm_setcsr((_mm_getcsr() & ~mask) | previous);
         }
     };
+
+    template <uint32_t Word>
+    constexpr bool packedAddSubWord()
+    {
+        constexpr unsigned low = Word & 0x3fu;
+        constexpr unsigned op = low >= 0x3cu ? (Word & 3u) | ((Word >> 4u) & 0x7cu) : low;
+        return (Word & 0x01e00000u) != 0u &&
+            (op <= 7u || op == 0x20u || op == 0x22u || op == 0x24u || op == 0x26u || op == 0x28u || op == 0x2cu);
+    }
+
+    template <uint32_t Word>
+    PS2_VU_FORCE_INLINE bool tryPackedAddSub(R5900Context &ctx)
+    {
+        constexpr unsigned low = Word & 0x3fu;
+        constexpr bool accumulator = low >= 0x3cu;
+        constexpr unsigned op = accumulator ? (Word & 3u) | ((Word >> 4u) & 0x7cu) : low;
+        constexpr unsigned destination = (Word >> 21u) & 15u;
+        constexpr bool add = op <= 3u || op == 0x20u || op == 0x22u || op == 0x28u;
+        constexpr bool sub = (op >= 4u && op <= 7u) || op == 0x24u || op == 0x26u || op == 0x2cu;
+        static_assert((add || sub) && destination != 0u);
+
+        // Preserve the reference's trap order when a host exception is unmasked.
+        if ((_mm_getcsr() & 0x1f80u) != 0x1f80u)
+            return false;
+
+        constexpr unsigned fs = (Word >> 11u) & 31u;
+        constexpr unsigned ft = (Word >> 16u) & 31u;
+        constexpr unsigned fd = (Word >> 6u) & 31u;
+        const __m128 left = normalizedLanes(ctx.vu0_vf[fs]);
+        __m128 right;
+        if constexpr (op <= 7u)
+            right = broadcastLane<op & 3u>(ctx.vu0_vf[ft]);
+        else if constexpr (op == 0x20u || op == 0x24u)
+            right = _mm_set1_ps(ctx.vu0_q);
+        else if constexpr (op == 0x22u || op == 0x26u)
+            right = _mm_set1_ps(ctx.vu0_i);
+        else
+            right = ctx.vu0_vf[ft];
+        right = normalizedLanes(right);
+
+        Rounding rounding;
+        const __m128 result = add ? _mm_add_ps(left, right) : _mm_sub_ps(left, right);
+        const __m128i magnitudeMask = _mm_set1_epi32(0x7fffffffu);
+        const __m128i magnitude = _mm_and_si128(_mm_castps_si128(result), magnitudeMask);
+        const __m128i normal = _mm_and_si128(_mm_cmpgt_epi32(magnitude, _mm_set1_epi32(0x007fffffu)),
+                                            _mm_cmplt_epi32(magnitude, _mm_set1_epi32(0x7f7fffffu)));
+        const auto mask = [](__m128i bits) PS2_VU_INLINE_LAMBDA { return _mm_movemask_ps(_mm_castsi128_ps(bits)); };
+        constexpr int active = packedLaneMask[destination];
+        const int normalLanes = mask(normal) & active;
+        int zeroLanes = 0;
+        if (normalLanes != active)
+        {
+            const __m128i zero = _mm_setzero_si128();
+            const __m128i leftBits = _mm_castps_si128(left);
+            const __m128i rightBits = _mm_castps_si128(right);
+            const __m128i bothZero = _mm_cmpeq_epi32(_mm_and_si128(_mm_or_si128(leftBits, rightBits), magnitudeMask), zero);
+            const __m128i cancels = _mm_cmpeq_epi32(leftBits,
+                add ? _mm_xor_si128(rightBits, _mm_set1_epi32(INT32_MIN)) : rightBits);
+            zeroLanes = mask(_mm_and_si128(_mm_cmpeq_epi32(magnitude, zero), _mm_or_si128(cancels, bothZero))) & active;
+            // A zero caused by host flush-to-zero still needs exact underflow flags.
+            if ((normalLanes | zeroLanes) != active)
+                return false;
+        }
+
+        const uint32_t zeros = packedLaneMask[zeroLanes];
+        const uint32_t signs = packedLaneMask[_mm_movemask_ps(result) & active];
+        Sink{ctx}.fmac(zeros | (signs << 4u), (zeros != 0u) | ((signs != 0u) << 1u), 0u);
+        if constexpr (accumulator)
+            storePackedLanes<destination>(ctx.vu0_acc, result);
+        else if constexpr (fd != 0u)
+            storePackedLanes<destination>(ctx.vu0_vf[fd], result);
+        return true;
+    }
+
+    inline const bool packedArithmeticEnabled = [] {
+        const char *value = std::getenv("DECOMP_PS2_VU0_PACKED_ARITHMETIC");
+        return value && value[0] == '1' && value[1] == '\0';
+    }();
 #else
     struct Rounding {
         int previous=std::fegetround();
@@ -201,6 +297,16 @@ template<uint32_t Word> DECOMP_VU0_NOINLINE void vu_upper(R5900Context &ctx) {
     else
 #endif
     {
+#if defined(_WIN64) && (defined(_M_X64) || defined(__x86_64__))
+        if (vu0_detail::packedArithmeticEnabled)
+        {
+            if constexpr (vu0_detail::packedAddSubWord<Word>())
+            {
+                if (vu0_detail::tryPackedAddSub<Word>(ctx))
+                    return;
+            }
+        }
+#endif
         constexpr unsigned fs = (Word >> 11) & 31, ft = (Word >> 16) & 31;
         float left[4], right[4], accumulator[4];
         std::memcpy(left, &ctx.vu0_vf[fs], 16);
