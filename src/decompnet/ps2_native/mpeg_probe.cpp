@@ -1,5 +1,6 @@
 // CC0 original MPEG-2 video fixture: authored pixels, no game/movie/BIOS data.
 #include "ps2_runtime.h"
+#include "ps2_movie_progress.h"
 #include "ps2_stubs.h"
 #include <algorithm>
 #include <iostream>
@@ -47,6 +48,7 @@ int main(){try{
     constexpr uint32_t object=0x210000,work=0x220000,input=0x260000,picture=0x270000;
     std::vector<uint8_t> unrelated(ram+0x100000,ram+0x200000);
     ps2_stubs::sceMpegInit(ram,&ctx,runtime.get());
+    require(ps2_stubs::moviePicturesDelivered()==0,"MPEG init must clear reported progress");
     for(unsigned mode=0;mode<6;++mode){
     reg(4,object);reg(5,work);reg(6,8192);ps2_stubs::sceMpegCreate(ram,&ctx,runtime.get());
     require(word(object+0x40)==work,"MPEG work-buffer identity");
@@ -62,6 +64,8 @@ int main(){try{
         else ps2_stubs::sceMpegGetPictureRAW8(ram,&ctx,runtime.get());
     }catch(const std::runtime_error&){rejected=true;}
     require(rejected==(mode>=3),"MPEG RAW8 invalid buffer rejection");
+    require(ps2_stubs::moviePicturesDelivered()==(mode<3?1u:0u),"MPEG progress counts only delivered pictures");
+    if(mode<3)require(ps2_stubs::moviePicturesDelivered()==1u,"Reading MPEG progress must leave playback untouched");
     require(word(object)==32&&word(object+4)==16&&word(object+8)==0,"decoded MPEG dimensions/picture readiness");
     if(mode<3)require(word(work+0xe4)==(mode==2?6u:2u),"MPEG output macroblock capacity metadata");
     if(mode==0){
@@ -77,7 +81,9 @@ int main(){try{
             require(ram[picture+n]==0xa5,"RAW8 padding and tail canaries");
     }else for(unsigned n=0;n<8192;++n)require(ram[picture+n]==0xa5,"invalid RAW8 buffer caused partial writes");
     reg(4,object);ps2_stubs::sceMpegClearRefBuff(ram,&ctx,runtime.get());
-    ps2_stubs::sceMpegReset(ram,&ctx,runtime.get());ps2_stubs::sceMpegDelete(ram,&ctx,runtime.get());
+    ps2_stubs::sceMpegReset(ram,&ctx,runtime.get());
+    require(ps2_stubs::moviePicturesDelivered()==0,"MPEG reset must clear its progress");
+    ps2_stubs::sceMpegDelete(ram,&ctx,runtime.get());
     require(std::equal(unrelated.begin(),unrelated.end(),ram+0x100000),"MPEG services changed unrelated guest code/data");
     }
     std::cout<<"{\"mpeg2\":true,\"raw8\":true,\"raw8xy\":true,\"guarded_buffers\":true,\"decoded_pixels\":512,\"preserved_guest_bytes\":1048576,\"encoded_bytes\":"<<video.size()<<"}\n";
