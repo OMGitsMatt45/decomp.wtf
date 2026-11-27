@@ -61,6 +61,97 @@ def patch_irx_loader(root):
             for (uint32_t entry = 0; entry + 8u <= size; entry += 8u)''')
 
 
+def patch_pad_script(root):
+    runtime = Path(root)/'thirdparty/PS2Recomp/ps2xRuntime'
+    header = runtime/'include/runtime/ps2_pad.h'
+    source = runtime/'src/lib/ps2_pad.cpp'
+    stub = runtime/'src/lib/Kernel/Stubs/Pad.cpp'
+    replace(header, '    bool readState(int port, int slot, uint8_t *data, size_t size);',
+            '''    bool readState(int port, int slot, uint8_t *data, size_t size);
+    bool readState(int port, int slot, uint8_t *data, size_t size, uint64_t guestField);''')
+    replace(stub, '#include "Pad.h"', '#include "Pad.h"\n#include "runtime/ee_scheduler.h"')
+    replace(stub, 'runtime->padBackend().readState(port, slot, backendData, sizeof(backendData))',
+            '''runtime->padBackend().readState(port, slot, backendData, sizeof(backendData),
+                                                               runtime->eeScheduler().currentVSyncTick())''')
+    replace(source, '#include <fstream>', '#include <fstream>\n#include <optional>')
+    replace(source, '        uint32_t mask = 0u;\n        bool active = false;', '        uint32_t mask = 0u;')
+    replace(source, '''    // Merges scripted buttons into whatever the host sampled, so a human can
+    // still take over while a script is running.
+    void applyPadScript(uint32_t &held, uint32_t &pressed)
+    {
+        ensurePadScriptLoaded();
+        if (g_padScript.empty())
+        {
+            return;
+        }
+        const uint64_t frame = g_guestFrame.load(std::memory_order_relaxed);
+        for (PadScriptEvent &event : g_padScript)
+        {
+            const bool on = frame >= event.frame && frame < event.frame + event.holdFrames;
+            if (on)
+            {
+                held |= event.mask;
+                if (!event.active)
+                {
+                    pressed |= event.mask;
+                    event.active = true;
+                    if (g_padScriptVerbose)
+                    {
+                        std::fprintf(stderr, "[pad] frame %llu: press 0x%04x\\n",
+                                     static_cast<unsigned long long>(frame), event.mask);
+                    }
+                }
+            }
+            else
+            {
+                event.active = false;
+            }
+        }
+    }''', '''    // Evaluate the tape on the guest read, even when the presenter misses a field.
+    // Scripted holds do not use the wall-clock latch for physical button taps.
+    uint32_t scriptedButtons(uint64_t field)
+    {
+        ensurePadScriptLoaded();
+        static thread_local std::optional<uint64_t> previousField;
+        uint32_t held = 0u;
+        for (const PadScriptEvent &event : g_padScript)
+        {
+            if (field < event.frame)
+                break;
+            if (field - event.frame >= event.holdFrames)
+                continue;
+            held |= event.mask;
+            if (g_padScriptVerbose &&
+                (!previousField || *previousField < event.frame || *previousField - event.frame >= event.holdFrames))
+                std::fprintf(stderr, "[pad] frame %llu: press 0x%04x\\n",
+                             static_cast<unsigned long long>(field), event.mask);
+        }
+        if (g_padScriptVerbose)
+            previousField = field;
+        return held;
+    }''')
+    replace(source, '        applyPadScript(held, pressed);\n', '')
+    replace(source, '''    const uint16_t btns = static_cast<uint16_t>(0xFFFFu & ~active);
+    data[2] = static_cast<uint8_t>(btns & 0xFF);
+    data[3] = static_cast<uint8_t>(btns >> 8);
+    return true;
+}''', '''    const uint16_t btns = static_cast<uint16_t>(0xFFFFu & ~active);
+    data[2] = static_cast<uint8_t>(btns & 0xFF);
+    data[3] = static_cast<uint8_t>(btns >> 8);
+    return true;
+}
+
+bool PSPadBackend::readState(int port, int slot, uint8_t *data, size_t size, uint64_t guestField)
+{
+    if (!readState(port, slot, data, size))
+        return false;
+    const uint32_t held = scriptedButtons(guestField);
+    data[2] &= static_cast<uint8_t>(~held);
+    data[3] &= static_cast<uint8_t>(~(held >> 8));
+    return true;
+}''')
+
+
 def patch_invocation_stacks(root):
     source=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp'
     replace(source,'''                GuestInvocation completed = std::move(running->invocations.back());
