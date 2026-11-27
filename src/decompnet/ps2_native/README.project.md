@@ -110,6 +110,12 @@ command; holds last 1..3600 guest-vsync ticks. Buttons use PS2 names such as UP,
 CROSS and TRIANGLE; NONE releases the test input. Commands merge with normal
 controller input. The file is limited to 128 bytes and is unused unless selected.
 
+For a fixed replay, set `DQ8_PAD_SCRIPT` to the path of a text file with one
+hold per line. For example, `120 UP+CROSS 6` adds Up and Cross to guest reads
+on fields 120 through 125. A skipped presenter poll does not shift a hold.
+The script merges with the controller, and `DQ8_PAD_SCRIPT_VERBOSE=1` logs
+the guest field where a scripted hold is first observed.
+
 For an instruction reference, configure a separate directory:
 
 ```sh

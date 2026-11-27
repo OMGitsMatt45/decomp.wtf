@@ -8,6 +8,7 @@
 #include "spu2.h"
 #include "ps2_iop_transport.h"
 #include <array>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -65,6 +66,33 @@ int main(int argc,char **argv){try{
  ps2PadPublishHostState(0,1u<<14,0x10203040);PSPadBackend pad;uint8_t report[32];
  require(pad.readState(0,0,report,sizeof(report))&&!(report[3]&0x40)&&report[4]==0x10&&report[7]==0x40,"published pad edge/axes");
  require(pad.readState(0,0,report,sizeof(report))&&(report[3]&0x40),"pad edge must be consumed once");
+
+ constexpr const char *padTape="100 CROSS 4;101 UP 2";
+#ifdef _WIN32
+ require(_putenv_s("DQ8_PAD_SCRIPT",padTape)==0,"set scripted pad fixture");
+#else
+ require(setenv("DQ8_PAD_SCRIPT",padTape,1)==0,"set scripted pad fixture");
+#endif
+ ps2_stubs::scePadInit(ram,&ctx,runtime.get());
+ reg(4,0);reg(5,0);reg(6,0);ps2_stubs::scePadPortOpen(ram,&ctx,runtime.get());
+ require(value()==1,"open original pad port");
+ const auto guestButtons=[&](uint64_t field){
+  runtime->memory().gs().vsyncTick.store(field);
+  reg(4,0);reg(5,0);reg(6,buffer);ps2_stubs::scePadRead(ram,&ctx,runtime.get());
+  require(value()==1,"read original pad port");
+  return uint16_t(~(ram[buffer+2]|(ram[buffer+3]<<8)));
+ };
+ ps2PadSetGuestFrame(10);
+ ps2PadPublishHostState(0x0040,0,0x80808080u);
+ require(guestButtons(99)==0x0040,"physical hold before scripted start");
+ require(guestButtons(100)==0x4040,"script starts without a presenter poll");
+ require(guestButtons(101)==0x4050&&guestButtons(101)==0x4050,"overlapping scripted holds remain stable across guest reads");
+ ps2PadSetGuestFrame(101);
+ ps2PadPublishHostState(0x0040,0,0x80808080u);
+ require(guestButtons(103)==0x4040&&guestButtons(104)==0x0040,"script expires at its guest-field boundary");
+ require(guestButtons(105)==0x0040,"script leaves no latched tap for later reads");
+ runtime->memory().gs().vsyncTick.store(0);
+
  OriginalPcm pcm;ps2x::iop::lle::Spu2 spu(pcm);
  // Original register program: core 1 AutoDMA, dry PCM gates and fixed stereo
  // master/input gains. The expected samples follow two integer gain stages.

@@ -146,6 +146,7 @@ def generate(project,root):
     for name in ('game/modules','native','tools','tests','LICENSES','runtime'):(root/name).mkdir(parents=True)
     vendor=root/'runtime/ps2';shutil.copytree(sdk,vendor)
     runtime_patch.patch_filesystem(vendor);runtime_patch.patch_disc_services(vendor);runtime_patch.patch_host(vendor)
+    runtime_patch.patch_pad_script(vendor)
     audio_clock.patch(vendor, runtime_patch.replace)
     graphics_patch.patch(vendor);graphics_p4.patch(vendor);graphics_ct32.patch(vendor)
     gs_worker.patch(vendor);packet_reuse.patch(vendor)
