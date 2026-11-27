@@ -58,6 +58,8 @@ if(DECOMP_PS2_BUILD_NATIVE_TESTS)
   endif()
   add_executable(ps2_iop_probe tests/native_iop_probe.cpp)
   add_executable(ps2_scheduler_probe tests/native_scheduler_probe.cpp "${PS2_TEST_ROOT}/src/test_function_table.cpp")
+  target_include_directories(ps2_scheduler_probe PRIVATE
+    "${PORT_ROOT}/thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel")
   add_executable(ps2_gs_worker_probe tests/native_gs_worker_probe.cpp)
   add_executable(ps2_vif_gif_worker_probe tests/native_vif_gif_worker_probe.cpp
     "${PS2_TEST_ROOT}/src/test_function_table.cpp")
