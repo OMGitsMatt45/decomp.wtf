@@ -13,6 +13,7 @@ import tempfile
 from .. import pc,toolchains
 from . import audio_clock,codegen,media,modules,profile,provider,registry,reports,runtime_patch,mpeg_patch
 from . import ee_timer,graphics_p4,graphics_ct32
+from . import presentation_patch
 from . import iop_native,vu_native,vu_discovery,vu_programs,graphics_patch,gs_worker,packet_reuse,dma_chain_reuse,vif_unpack,vif_gif_worker,irx_fixture,vector_fixture,cheats
 
 BACKEND_ID='ps2-ps2recomp-experimental'
@@ -158,6 +159,7 @@ def generate(project,root):
     runtime_patch.patch_ee_float_to_word(vendor)
     iop_native.patch(vendor);vu_native.patch(vendor)
     vif_gif_worker.patch(vendor)
+    presentation_patch.patch(vendor)
     _log('Translate input-bound IOP modules...')
     iop_generation=iop_native.generate([(name,_read(path,inspection,name)) for name in inspection.get('iop_modules',[])],
         sdk/'thirdparty/PS2Recomp/ps2xIOP/src/lle/cpu.cpp',root/'game/iop')
