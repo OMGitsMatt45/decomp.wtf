@@ -152,6 +152,91 @@ bool PSPadBackend::readState(int port, int slot, uint8_t *data, size_t size, uin
 }''')
 
 
+def order_ee_deadlines(source):
+    """Select guest deadlines first and keep the existing host VBlank policy."""
+    newline = '\r\n' if '\r\n' in source else '\n'
+    source = source.replace('\r\n', '\n')
+
+    def site(anchor):
+        if source.count(anchor) != 1:
+            raise PCError('pinned PS2 EE deadline integration site differs')
+        return source.index(anchor)
+
+    begin = site('    for (;;)\n    {\n        std::vector<ScheduledEvent> due;')
+    vblank = site('            if (scheduled.event.type == EeEventType::VBlankStart)')
+    end = site('            processEvent(scheduled.event);\n        }\n    }\n}\n')
+    if not begin < vblank < end or 'std::partition(m_deadlines.begin()' not in source[begin:vblank]:
+        raise PCError('pinned PS2 EE deadline dispatch differs')
+
+    host_policy = ''.join(line[4:] if line.startswith('    ') else line
+                          for line in source[vblank:end].splitlines(keepends=True))
+    source = source[:begin] + '''    for (;;)
+    {
+        ScheduledEvent scheduled;
+        {
+            std::unique_lock lock(m_eventMutex);
+            const auto next = std::min_element(m_deadlines.begin(), m_deadlines.end(),
+                [](const ScheduledEvent &left, const ScheduledEvent &right) {
+                    return std::tie(left.deadlineCycle, left.event.type, left.event.id, left.sequence) <
+                           std::tie(right.deadlineCycle, right.event.type, right.event.id, right.sequence);
+                });
+            if (next == m_deadlines.end() || next->deadlineCycle > m_eeCycle)
+            {
+                return;
+            }
+
+            // Select the next guest event before considering when the host can
+            // run it. A later guest deadline may already be due in wall time.
+            if (pacingNow() < next->hostDeadline)
+            {
+                if (pacingWaitUntil(lock, next->hostDeadline, [this]()
+                                    { return !m_events.empty() ||
+                                             m_stopRequested.load(std::memory_order_acquire); }))
+                {
+                    return;
+                }
+                // The wait releases the event lock. Recheck the next event.
+                continue;
+            }
+
+            scheduled = *next;
+            m_deadlines.erase(next);
+            updateNextDeadline();
+        }
+
+''' + host_policy + '''        processEvent(scheduled.event);
+    }
+}
+''' + source[end + len('            processEvent(scheduled.event);\n        }\n    }\n}\n'):]
+
+    idle_choice = '''    if (hasTimerDeadline)
+    {
+        const auto timerHostDeadline = pacingNow() + eeCyclesToHostDuration(timerCycles);
+        if (timerHostDeadline < hostDeadline)
+        {
+            deadlineCycle = m_eeCycle + timerCycles;
+            hostDeadline = timerHostDeadline;
+        }
+    }'''
+    site(idle_choice)
+    source = source.replace(idle_choice, '''    if (hasTimerDeadline && (m_deadlines.empty() ||
+        timerCycles < (deadlineCycle > m_eeCycle ? deadlineCycle - m_eeCycle : 0u)))
+    {
+        deadlineCycle = m_eeCycle + timerCycles;
+        // A late scheduled event must not add a real wait before the timer
+        // that precedes it in guest cycles.
+        hostDeadline = std::min(hostDeadline, pacingNow() + eeCyclesToHostDuration(timerCycles));
+    }''')
+    site('#include <stdexcept>\n')
+    source = source.replace('#include <stdexcept>\n', '#include <stdexcept>\n#include <tuple>\n')
+    return source.replace('\n', newline)
+
+
+def patch_ee_deadline_order(root):
+    source = Path(root)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp'
+    source.write_bytes(order_ee_deadlines(source.read_bytes().decode('utf-8')).encode('utf-8'))
+
+
 def patch_invocation_stacks(root):
     source=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp'
     replace(source,'''                GuestInvocation completed = std::move(running->invocations.back());
