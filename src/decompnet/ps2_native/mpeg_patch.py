@@ -1,11 +1,12 @@
-"""Remove inherited title-global writes from the shared MPEG service."""
+"""Integrate native MPEG picture output and read-only decoder progress."""
 from pathlib import Path
 from .runtime_patch import replace
 from ..pc import PCError
 
 
 def install(root):
-    source=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp'
+    runtime=Path(root)/'thirdparty/PS2Recomp/ps2xRuntime'
+    source=runtime/'src/lib/Kernel/Stubs/MPEG.cpp'
     (source.parent/'decomp_mpeg_raw8.hpp').write_bytes(Path(__file__).with_name('mpeg_raw8.hpp').read_bytes())
     replace(source,'            std::vector<uint8_t> rgba;','            std::vector<uint8_t> rgba;\n            std::vector<uint8_t> yuv420;')
     replace(source,'                frames.push_back(std::move(decoded));',
@@ -112,3 +113,74 @@ def install(root):
     }''','''    void sceMpegGetPictureRAW8xy(uint8_t *rdram,R5900Context *ctx,PS2Runtime *runtime) {
         decompMpegPicture(rdram,ctx,runtime,2);
     }''')
+    install_picture_progress(runtime)
+
+
+def install_picture_progress(runtime):
+    """Expose delivered source-picture ordinals after the RGBA/RAW8 output patch."""
+    runtime = Path(runtime)
+    source = runtime/'src/lib/Kernel/Stubs/MPEG.cpp'
+    header = runtime/'include/ps2_movie_progress.h'
+    replace(source, '#include "MPEG.h"\n', '#include "MPEG.h"\n#include "ps2_movie_progress.h"\n')
+    replace(source, '            uint32_t picturesServed = 0u;',
+            '            uint32_t picturesServed = 0u;\n'
+            '            uint32_t lastDeliveredPicture = 0u;\n'
+            '            uint64_t pictureProgressEpoch = 0u;')
+    replace(source, '            uint32_t nextCallbackHandle = 1u;',
+            '            uint32_t nextCallbackHandle = 1u;\n'
+            '            uint32_t latestMoviePictureContext = 0u;\n'
+            '            uint64_t nextPictureProgressEpoch = 0u;')
+    replace(source, '    void resetMpegStubState()\n', '''    uint32_t moviePicturesDelivered()
+    {
+        std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+        const auto &playbacks = g_mpeg_stub_state.playbackByMpeg;
+        const auto last = playbacks.find(g_mpeg_stub_state.latestMoviePictureContext);
+        return last == playbacks.end() ? 0u : last->second.lastDeliveredPicture;
+    }
+
+    void resetMpegStubState()
+''')
+    replace(source, '''        void writeDecodedFrameToGuest(uint8_t *rdram, uint32_t destAddr, const MpegDecodedFrame &frame)
+        {
+            if (!rdram || destAddr == 0u || frame.rgba.empty() || frame.width <= 0 || frame.height <= 0)
+            {
+                return;
+            }''', '''        bool writeDecodedFrameToGuest(uint8_t *rdram, uint32_t destAddr, const MpegDecodedFrame &frame)
+        {
+            if (!rdram || destAddr == 0u || frame.rgba.empty() || frame.width <= 0 || frame.height <= 0)
+            {
+                return false;
+            }''')
+    replace(source, '        }\n\n        void resetMpegStubStateUnlocked()\n',
+            '            return true;\n        }\n\n        void resetMpegStubStateUnlocked()\n')
+    replace(source, '        uint32_t frameCount = 0u;\n        bool haveFrame = false;',
+            '        uint32_t frameCount = 0u;\n'
+            '        uint64_t pictureProgressEpoch = 0u;\n'
+            '        bool haveFrame = false;')
+    replace(source, '                playback.picturesServed += 1u;',
+            '''                playback.picturesServed += 1u;
+                if (playback.pictureProgressEpoch == 0u)
+                    playback.pictureProgressEpoch = ++g_mpeg_stub_state.nextPictureProgressEpoch;
+                pictureProgressEpoch = playback.pictureProgressEpoch;''')
+    replace(source, '''            if (mode==0) writeDecodedFrameToGuest(rdram,imageAddr,frame);
+            else decompWriteRaw8(rdram,imageAddr,frame,getRegU32(ctx,6),getRegU32(ctx,7),mode==2);''',
+            '''            bool delivered = true;
+            if (mode == 0)
+                delivered = writeDecodedFrameToGuest(rdram, imageAddr, frame);
+            else
+                decompWriteRaw8(rdram, imageAddr, frame, getRegU32(ctx, 6), getRegU32(ctx, 7), mode == 2);
+
+            if (delivered)
+            {
+                std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                auto &playbacks = g_mpeg_stub_state.playbackByMpeg;
+                const auto current = playbacks.find(mpegAddr);
+                // Reset, stream restart or deletion may have retired this picture during output.
+                if (current != playbacks.end() && current->second.pictureProgressEpoch == pictureProgressEpoch)
+                {
+                    g_mpeg_stub_state.latestMoviePictureContext = mpegAddr;
+                    auto &last = current->second.lastDeliveredPicture;
+                    last = std::max(last, frameCount + 1u);
+                }
+            }''')
+    header.write_bytes(Path(__file__).with_name('mpeg_progress.hpp').read_bytes())
